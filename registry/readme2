@@ -1,0 +1,49 @@
+AI5R/
+│
+├── README.md
+│
+├── BOOTSTRAP/
+│   ├── LOAD.md
+│   ├── CURRENT_STATE.md
+│   ├── SESSION.md
+│   └── ROADMAP.md
+│
+├── CONSTITUTION/
+│   ├── 00_IDENTITY.md
+│   ├── 01_MISSION.md
+│   ├── 02_VALUES.md
+│   ├── 03_THINKING_MODEL.md
+│   ├── 04_DECISION_FRAMEWORK.md
+│   ├── 05_ARCHITECTURE.md
+│   ├── 06_FACTORY_SYSTEM.md
+│   ├── 07_DEVELOPMENT_RULES.md
+│   ├── 08_OUTPUT_STANDARD.md
+│   ├── 09_COMMUNICATION.md
+│   ├── 10_MEMORY_POLICY.md
+│   ├── 11_PROMPT_LIBRARY.md
+│   └── 12_EXECUTION_PROTOCOL.md
+│
+├── SYSTEM/
+│   └── SYSTEM_PROMPT.md
+│
+├── ADR/
+├── ROADMAP/
+├── ARCHITECTURE/
+├── CORE-SERVICES/
+│   ├── KERNEL/
+│   ├── MEMORY/
+│   ├── GIT/
+│   ├── ARTIFACT/
+│   ├── DNA/
+│   └── REVIEWER/
+│
+├── FACTORIES/
+│   ├── OSA/
+│   ├── DEVELOPER/
+│   ├── BOOK/
+│   ├── ACTIVITY/
+│   ├── WEBSITE/
+│   └── VIDEO/
+│
+├── DOCS/
+└── RELEASES/
