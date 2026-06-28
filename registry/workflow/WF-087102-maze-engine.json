@@ -1,0 +1,40 @@
+{
+  "manifest": {
+    "artifact_id": "WF-087102",
+    "artifact_type": "workflow",
+    "name": "Maze Engine",
+    "version": "2.0.0",
+    "status": "working",
+    "library_layer": "working_library",
+    "factory": "developer",
+    "mission_id": null,
+    "tags": [
+      "maze",
+      "activity",
+      "svg",
+      "workflow"
+    ],
+    "content_summary": "Algorithmic maze engine for activity books",
+    "constitution_version": "draft",
+    "reproducibility": {
+      "memory_record_required": true,
+      "git_commit_required": true,
+      "review_status_required": true
+    },
+    "github": {
+      "owner": "alfikrraid-cmd",
+      "repository": "AI5R",
+      "branch": "main",
+      "path": "registry/workflow/WF-087102-maze-engine.json",
+      "commit_sha": null,
+      "url": null
+    },
+    "review": {
+      "status": "pending",
+      "score": null
+    },
+    "created_at": "2026-06-28T13:41:27.102Z",
+    "updated_at": "2026-06-28T13:41:27.102Z"
+  },
+  "content": {}
+}
