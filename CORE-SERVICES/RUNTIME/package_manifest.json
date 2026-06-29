@@ -14,41 +14,41 @@
   "workflows": [
     {
       "id": "WF-OSA-RUNTIME-BOOT-001",
-      "file": "workflows/WF-OSA-RUNTIME-BOOT-001.json",
+      "file": "CORE-SERVICES/RUNTIME/WORKFLOWS/WF-OSA-RUNTIME-BOOT-001.json",
       "endpoint": "POST /webhook/osa/runtime/boot",
       "role": "boot"
     },
     {
       "id": "WF-OSA-RUNTIME-STATUS-001",
-      "file": "workflows/WF-OSA-RUNTIME-STATUS-001.json",
+      "file": "CORE-SERVICES/RUNTIME/WORKFLOWS/WF-OSA-RUNTIME-STATUS-001.json",
       "endpoint": "POST /webhook/osa/runtime/status",
       "role": "status"
     },
     {
       "id": "WF-OSA-RUNTIME-MODULES-001",
-      "file": "workflows/WF-OSA-RUNTIME-MODULES-001.json",
+      "file": "CORE-SERVICES/RUNTIME/WORKFLOWS/WF-OSA-RUNTIME-MODULES-001.json",
       "endpoint": "POST /webhook/osa/runtime/modules",
       "role": "modules"
     },
     {
       "id": "WF-OSA-RUNTIME-HEALTH-001",
-      "file": "workflows/WF-OSA-RUNTIME-HEALTH-001.json",
+      "file": "CORE-SERVICES/RUNTIME/WORKFLOWS/WF-OSA-RUNTIME-HEALTH-001.json",
       "endpoint": "POST /webhook/osa/runtime/health",
       "role": "health"
     },
     {
       "id": "WF-OSA-RUNTIME-EVENTS-001",
-      "file": "workflows/WF-OSA-RUNTIME-EVENTS-001.json",
+      "file": "CORE-SERVICES/RUNTIME/WORKFLOWS/WF-OSA-RUNTIME-EVENTS-001.json",
       "endpoint": "POST /webhook/osa/runtime/events",
       "role": "events"
     }
   ],
   "inputs": [
-    "system_manifest.json",
-    "registry.json",
-    "dependency_graph.json",
-    "runtime.json",
-    "version.json"
+    "CORE-SERVICES/RUNTIME/EXAMPLES/system_manifest.json",
+    "CORE-SERVICES/RUNTIME/EXAMPLES/registry.json",
+    "CORE-SERVICES/RUNTIME/EXAMPLES/dependency_graph.json",
+    "CORE-SERVICES/RUNTIME/EXAMPLES/runtime.json",
+    "CORE-SERVICES/RUNTIME/EXAMPLES/version.json"
   ],
   "storage": {
     "single_source_of_truth": "PostgreSQL",
