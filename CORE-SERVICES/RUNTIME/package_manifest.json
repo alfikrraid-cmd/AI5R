@@ -1,0 +1,58 @@
+{
+  "package_id": "OSA-RUNTIME-CORE-001",
+  "asset_id": "OSA.RUNTIME.CORE.001",
+  "legacy_alias": [
+    "OSA-RUNTIME-CORE-001"
+  ],
+  "name": "OSA Runtime Core Package",
+  "version": "1.0.0",
+  "status": "ACTIVE",
+  "phase": "Phase 2 \u2013 Platform Runtime",
+  "package_mode": true,
+  "entrypoint": "WF-OSA-RUNTIME-BOOT-001",
+  "description": "Runtime core for OSA to boot, load registry, resolve dependencies, manage state, expose runtime APIs, monitor health, and dispatch events.",
+  "workflows": [
+    {
+      "id": "WF-OSA-RUNTIME-BOOT-001",
+      "file": "CORE-SERVICES/RUNTIME/WORKFLOWS/WF-OSA-RUNTIME-BOOT-001.json",
+      "endpoint": "POST /webhook/osa/runtime/boot",
+      "role": "boot"
+    },
+    {
+      "id": "WF-OSA-RUNTIME-STATUS-001",
+      "file": "CORE-SERVICES/RUNTIME/WORKFLOWS/WF-OSA-RUNTIME-STATUS-001.json",
+      "endpoint": "POST /webhook/osa/runtime/status",
+      "role": "status"
+    },
+    {
+      "id": "WF-OSA-RUNTIME-MODULES-001",
+      "file": "CORE-SERVICES/RUNTIME/WORKFLOWS/WF-OSA-RUNTIME-MODULES-001.json",
+      "endpoint": "POST /webhook/osa/runtime/modules",
+      "role": "modules"
+    },
+    {
+      "id": "WF-OSA-RUNTIME-HEALTH-001",
+      "file": "CORE-SERVICES/RUNTIME/WORKFLOWS/WF-OSA-RUNTIME-HEALTH-001.json",
+      "endpoint": "POST /webhook/osa/runtime/health",
+      "role": "health"
+    },
+    {
+      "id": "WF-OSA-RUNTIME-EVENTS-001",
+      "file": "CORE-SERVICES/RUNTIME/WORKFLOWS/WF-OSA-RUNTIME-EVENTS-001.json",
+      "endpoint": "POST /webhook/osa/runtime/events",
+      "role": "events"
+    }
+  ],
+  "inputs": [
+    "CORE-SERVICES/RUNTIME/EXAMPLES/system_manifest.json",
+    "CORE-SERVICES/RUNTIME/EXAMPLES/registry.json",
+    "CORE-SERVICES/RUNTIME/EXAMPLES/dependency_graph.json",
+    "CORE-SERVICES/RUNTIME/EXAMPLES/runtime.json",
+    "CORE-SERVICES/RUNTIME/EXAMPLES/version.json"
+  ],
+  "storage": {
+    "single_source_of_truth": "PostgreSQL",
+    "github_required": false
+  },
+  "created_at": "2026-06-29T08:18:47Z"
+}

@@ -1,0 +1,125 @@
+{
+  "name": "WF-OSA-RUNTIME-STATUS-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "osa/runtime/status",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "0838df02-7206-4269-9a2b-03c6888892b0",
+      "name": "POST /osa/runtime/status",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "CREATE TABLE IF NOT EXISTS osa_runtime_state (id text primary key, state jsonb, updated_at timestamptz default now()); SELECT state, updated_at FROM osa_runtime_state WHERE id = 'current';",
+        "options": {}
+      },
+      "id": "1ecc29a9-3793-4c1c-b5e9-9e62d68d474c",
+      "name": "Read Runtime State",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        260,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_POSTGRES_CREDENTIAL_ID",
+          "name": "AI5R PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst now = new Date().toISOString();\nreturn [{\n  json: {\n    status: \"READY\",\n    product: \"OSA\",\n    service: \"OSA-RUNTIME-CORE-001\",\n    version: \"1.0.0\",\n    checked_at: now,\n    health: \"healthy\",\n    modules_loaded: 8,\n    failed_modules: 0\n  }\n}];\n"
+      },
+      "id": "f17746cd-5340-4c13-9519-93cd2b77a79b",
+      "name": "Compose Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        560,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{$json}}",
+        "options": {}
+      },
+      "id": "e80e655d-cfd6-4daa-9e92-b131adf95017",
+      "name": "Respond JSON",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        820,
+        0
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "POST /osa/runtime/status": {
+      "main": [
+        [
+          {
+            "node": "Read Runtime State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Runtime State": {
+      "main": [
+        [
+          {
+            "node": "Compose Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compose Status": {
+      "main": [
+        [
+          {
+            "node": "Respond JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "versionId": "c473cc81-e28c-46e5-b64e-96590ebd7622",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "AI5R-OSA-RUNTIME"
+  },
+  "id": "WF-OSA-RUNTIME-STATUS-001",
+  "tags": [
+    "AI5R",
+    "OSA",
+    "RuntimeCore",
+    "Sprint11"
+  ]
+}

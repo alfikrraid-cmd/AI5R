@@ -1,0 +1,149 @@
+{
+  "name": "WF-OSA-RUNTIME-BOOT-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "osa/runtime/boot",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "ad30da83-d802-4e84-8d90-09934933dcb9",
+      "name": "POST /osa/runtime/boot",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst body = items[0].json.body || items[0].json || {};\nconst bootMode = body.boot_mode || \"normal\";\nconst bootedAt = new Date().toISOString();\n\nconst systemManifest = {\n  system_id: \"AI5R\",\n  kernel: \"OSA\",\n  architecture: \"Asset-Oriented Operating Platform\",\n  version: \"1.0.0\"\n};\n\nconst registry = {\n  registry_version: \"1.0.0\",\n  assets: [\n    { asset_id: \"OSA.KERNEL.GATEWAY.001\", legacy_alias: [\"OSA-KERNEL-001\"], status: \"active\", asset_type: \"kernel\" },\n    { asset_id: \"OSA.KERNEL.CREDENTIAL_VAULT.001\", legacy_alias: [\"OSA-KERNEL-002\"], status: \"active\", asset_type: \"kernel\" },\n    { asset_id: \"OSA.KERNEL.LOGGER.001\", legacy_alias: [\"OSA-KERNEL-003\"], status: \"active\", asset_type: \"kernel\" },\n    { asset_id: \"OSA.KERNEL.REGISTRY.001\", legacy_alias: [\"OSA-KERNEL-004\"], status: \"active\", asset_type: \"kernel\" },\n    { asset_id: \"OSA.KERNEL.HEALTH_MONITOR.001\", legacy_alias: [\"OSA-KERNEL-005\"], status: \"active\", asset_type: \"kernel\" },\n    { asset_id: \"AI5R.PLATFORM.MEMORY.001\", legacy_alias: [\"AI5R-MEMORY\"], status: \"active\", asset_type: \"platform\" },\n    { asset_id: \"AI5R.PLATFORM.GIT.001\", legacy_alias: [\"AI5R-GIT\"], status: \"active\", asset_type: \"platform\" },\n    { asset_id: \"AI5R.PLATFORM.ARTIFACT.001\", legacy_alias: [\"AI5R-ARTIFACT\"], status: \"active\", asset_type: \"platform\" }\n  ]\n};\n\nconst dependencyGraph = {\n  \"AI5R.PLATFORM.MEMORY.001\": [\"OSA.KERNEL.REGISTRY.001\", \"OSA.KERNEL.LOGGER.001\"],\n  \"AI5R.PLATFORM.GIT.001\": [\"OSA.KERNEL.GATEWAY.001\", \"OSA.KERNEL.LOGGER.001\"],\n  \"AI5R.PLATFORM.ARTIFACT.001\": [\"AI5R.PLATFORM.MEMORY.001\", \"AI5R.PLATFORM.GIT.001\"]\n};\n\nconst assets = registry.assets;\nconst assetMap = Object.fromEntries(assets.map(a => [a.asset_id, a]));\nconst visited = new Set();\nconst loading = new Set();\nconst loadOrder = [];\nconst errors = [];\n\nfunction visit(id) {\n  if (visited.has(id)) return;\n  if (loading.has(id)) {\n    errors.push(`Circular dependency detected: ${id}`);\n    return;\n  }\n  loading.add(id);\n  for (const dep of dependencyGraph[id] || []) {\n    if (!assetMap[dep]) errors.push(`Missing dependency ${dep} for ${id}`);\n    else visit(dep);\n  }\n  loading.delete(id);\n  visited.add(id);\n  if (assetMap[id]) loadOrder.push(id);\n}\n\nfor (const asset of assets) visit(asset.asset_id);\n\nconst failed = errors.length;\nconst runtimeState = {\n  status: failed ? \"DEGRADED\" : \"READY\",\n  product: \"OSA\",\n  service: \"OSA-RUNTIME-CORE-001\",\n  version: \"1.0.0\",\n  boot_mode: bootMode,\n  booted_at: bootedAt,\n  system_manifest: systemManifest,\n  modules_loaded: loadOrder.length,\n  failed_modules: failed,\n  load_order: loadOrder,\n  loaded_modules: loadOrder.map(id => ({ asset_id: id, status: \"loaded\", loaded_at: bootedAt })),\n  running_missions: [],\n  health: failed ? \"degraded\" : \"healthy\",\n  errors\n};\n\nreturn [{ json: { runtimeState } }];\n"
+      },
+      "id": "7f558ce1-f1ad-4a71-95ae-ae93a65e5ae1",
+      "name": "Boot Loader + Dependency Resolver",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "CREATE TABLE IF NOT EXISTS osa_runtime_state (id text primary key, state jsonb, updated_at timestamptz default now()); INSERT INTO osa_runtime_state (id, state, updated_at) VALUES ('current', '{{ JSON.stringify($json.runtimeState) }}'::jsonb, now()) ON CONFLICT (id) DO UPDATE SET state = EXCLUDED.state, updated_at = now();",
+        "options": {}
+      },
+      "id": "ce2beb75-6695-4e56-8df6-4431074a302d",
+      "name": "UPSERT Runtime State",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        560,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_POSTGRES_CREDENTIAL_ID",
+          "name": "AI5R PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst state = items[0].json.runtimeState || items[0].json;\nreturn [{\n  json: {\n    success: state.failed_modules === 0,\n    product: \"OSA\",\n    service: \"OSA-RUNTIME-CORE-001\",\n    version: state.version || \"1.0.0\",\n    status: state.status || \"READY\",\n    boot_time: state.booted_at,\n    modules_loaded: state.modules_loaded || 0,\n    failed_modules: state.failed_modules || 0,\n    health: state.health || \"healthy\",\n    load_order: state.load_order || [],\n    errors: state.errors || []\n  }\n}];\n"
+      },
+      "id": "d84b7866-7631-4c3c-85e0-1c46857638a2",
+      "name": "Build Boot Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        860,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{$json}}",
+        "options": {}
+      },
+      "id": "6bfae74e-f010-4df1-b639-036230619386",
+      "name": "Respond JSON",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        0
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "POST /osa/runtime/boot": {
+      "main": [
+        [
+          {
+            "node": "Boot Loader + Dependency Resolver",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Boot Loader + Dependency Resolver": {
+      "main": [
+        [
+          {
+            "node": "UPSERT Runtime State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "UPSERT Runtime State": {
+      "main": [
+        [
+          {
+            "node": "Build Boot Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Boot Response": {
+      "main": [
+        [
+          {
+            "node": "Respond JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "versionId": "118cbada-75e6-4260-b743-a38bf8fb4ccb",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "AI5R-OSA-RUNTIME"
+  },
+  "id": "WF-OSA-RUNTIME-BOOT-001",
+  "tags": [
+    "AI5R",
+    "OSA",
+    "RuntimeCore",
+    "Sprint11"
+  ]
+}

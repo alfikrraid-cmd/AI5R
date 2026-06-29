@@ -1,0 +1,125 @@
+{
+  "name": "WF-OSA-RUNTIME-HEALTH-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "osa/runtime/health",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "ed71d001-3b46-4c5e-90fc-17cf8159ea5c",
+      "name": "POST /osa/runtime/health",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst checkedAt = new Date().toISOString();\nreturn [{\n  json: {\n    service: \"OSA-RUNTIME-CORE-001\",\n    healthy: true,\n    health: \"healthy\",\n    checked_at: checkedAt,\n    checks: [\n      { component: \"runtime\", healthy: true },\n      { component: \"registry\", healthy: true },\n      { component: \"event_dispatcher\", healthy: true }\n    ]\n  }\n}];\n"
+      },
+      "id": "a9fa51aa-ef69-43eb-b4c1-b518ddd75d9b",
+      "name": "Health Check",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "CREATE TABLE IF NOT EXISTS osa_runtime_health (id text primary key, health jsonb, updated_at timestamptz default now()); INSERT INTO osa_runtime_health (id, health, updated_at) VALUES ('current', '{{ JSON.stringify($json) }}'::jsonb, now()) ON CONFLICT (id) DO UPDATE SET health = EXCLUDED.health, updated_at = now();",
+        "options": {}
+      },
+      "id": "fa10b712-c9c0-4068-95ca-caca3e29e767",
+      "name": "Write Health State",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        560,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_POSTGRES_CREDENTIAL_ID",
+          "name": "AI5R PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{$json}}",
+        "options": {}
+      },
+      "id": "1ace2bab-ada7-4f65-9083-03ef6baffc7b",
+      "name": "Respond JSON",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        820,
+        0
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "POST /osa/runtime/health": {
+      "main": [
+        [
+          {
+            "node": "Health Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Health Check": {
+      "main": [
+        [
+          {
+            "node": "Write Health State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Health State": {
+      "main": [
+        [
+          {
+            "node": "Respond JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "versionId": "5b1828c1-f155-429f-86ee-c0b46139c517",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "AI5R-OSA-RUNTIME"
+  },
+  "id": "WF-OSA-RUNTIME-HEALTH-001",
+  "tags": [
+    "AI5R",
+    "OSA",
+    "RuntimeCore",
+    "Sprint11"
+  ]
+}

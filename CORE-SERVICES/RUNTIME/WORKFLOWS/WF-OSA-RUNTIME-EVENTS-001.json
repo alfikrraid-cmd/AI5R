@@ -1,0 +1,125 @@
+{
+  "name": "WF-OSA-RUNTIME-EVENTS-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "osa/runtime/events",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "38f6645c-37a4-4bb1-b8bd-a0740e6d3b60",
+      "name": "POST /osa/runtime/events",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst body = items[0].json.body || items[0].json || {};\nconst event = {\n  event_id: `EVT-${Date.now()}`,\n  type: body.type || \"BOOT\",\n  source: body.source || \"OSA-RUNTIME-CORE-001\",\n  payload: body.payload || {},\n  created_at: new Date().toISOString()\n};\nreturn [{ json: { success: true, event } }];\n"
+      },
+      "id": "e765f479-d602-41ca-adf6-e60139be1884",
+      "name": "Validate + Build Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "CREATE TABLE IF NOT EXISTS osa_runtime_events (event_id text primary key, event jsonb, created_at timestamptz default now()); INSERT INTO osa_runtime_events (event_id, event, created_at) VALUES ('{{ $json.event.event_id }}', '{{ JSON.stringify($json.event) }}'::jsonb, now());",
+        "options": {}
+      },
+      "id": "a3f3b356-8eaa-48e8-b558-24c893b714c4",
+      "name": "Write Event Log",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        560,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_POSTGRES_CREDENTIAL_ID",
+          "name": "AI5R PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{$json}}",
+        "options": {}
+      },
+      "id": "123e083d-8bb4-44e9-91c8-8b5cbc714619",
+      "name": "Respond JSON",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        820,
+        0
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "POST /osa/runtime/events": {
+      "main": [
+        [
+          {
+            "node": "Validate + Build Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate + Build Event": {
+      "main": [
+        [
+          {
+            "node": "Write Event Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Event Log": {
+      "main": [
+        [
+          {
+            "node": "Respond JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "versionId": "8b4bdf1f-1633-48ed-8976-cee01aaa188a",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "AI5R-OSA-RUNTIME"
+  },
+  "id": "WF-OSA-RUNTIME-EVENTS-001",
+  "tags": [
+    "AI5R",
+    "OSA",
+    "RuntimeCore",
+    "Sprint11"
+  ]
+}

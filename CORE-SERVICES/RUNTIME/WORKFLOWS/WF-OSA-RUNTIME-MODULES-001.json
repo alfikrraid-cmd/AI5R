@@ -1,0 +1,93 @@
+{
+  "name": "WF-OSA-RUNTIME-MODULES-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "osa/runtime/modules",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "8382faeb-2ed1-46c6-aaed-1cf6a545ea51",
+      "name": "POST /osa/runtime/modules",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst modules = [\n  \"OSA.KERNEL.GATEWAY.001\",\n  \"OSA.KERNEL.CREDENTIAL_VAULT.001\",\n  \"OSA.KERNEL.LOGGER.001\",\n  \"OSA.KERNEL.REGISTRY.001\",\n  \"OSA.KERNEL.HEALTH_MONITOR.001\",\n  \"AI5R.PLATFORM.MEMORY.001\",\n  \"AI5R.PLATFORM.GIT.001\",\n  \"AI5R.PLATFORM.ARTIFACT.001\"\n].map(asset_id => ({ asset_id, status: \"registered\", health: \"unknown\" }));\nreturn [{ json: { service: \"OSA-RUNTIME-CORE-001\", modules_count: modules.length, modules } }];\n"
+      },
+      "id": "e7f0f927-a1ea-4666-a318-a2f51a515bd3",
+      "name": "List Runtime Modules",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{$json}}",
+        "options": {}
+      },
+      "id": "15f51135-f6e4-4403-8094-64538799b78c",
+      "name": "Respond JSON",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        520,
+        0
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "POST /osa/runtime/modules": {
+      "main": [
+        [
+          {
+            "node": "List Runtime Modules",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Runtime Modules": {
+      "main": [
+        [
+          {
+            "node": "Respond JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "versionId": "1c0ef38d-1b87-4aa0-a712-2cd87f4e045e",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "AI5R-OSA-RUNTIME"
+  },
+  "id": "WF-OSA-RUNTIME-MODULES-001",
+  "tags": [
+    "AI5R",
+    "OSA",
+    "RuntimeCore",
+    "Sprint11"
+  ]
+}
