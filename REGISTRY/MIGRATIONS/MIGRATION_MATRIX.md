@@ -13,14 +13,16 @@ AI5R-DEV-MISSION-010
 
 | Legacy Path | Target Path | Action | Status |
 |-------------|-------------|--------|--------|
-| registry/BOOTSTRAP | BOOTSTRAP | Review | Pending |
-| registry/CONTITUTION | CONSTITUTION | Merge | Pending |
-| registry/SYSTEM | SYSTEM | Review | Pending |
-| registry/workflow | REGISTRY/WORKFLOWS | Move | Pending |
+| registry/BOOTSTRAP | BOOTSTRAP | No migration required | Deprecated |
+| registry/CONTITUTION | CONSTITUTION | Copy completed | Migrated |
+| registry/SYSTEM | SYSTEM / REGISTRY | Defer to Runtime Sprint | Deferred |
+| registry/workflow | REGISTRY/WORKFLOWS | Copy completed | Migrated |
 | registry/test | TESTS | Review | Pending |
-| registry/readme2 | DOCS | Review | Pending |
+| registry/readme2 | DOCS | Review | Pending 
+
 
 ---
+
 
 # Migration Rules
 

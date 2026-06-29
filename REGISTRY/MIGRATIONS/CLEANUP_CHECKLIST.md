@@ -16,11 +16,14 @@ AI5R-DEV-MISSION-010
 
 ## Migration
 
-- [ ] Bootstrap
-- [ ] Constitution
-- [ ] System
-- [ ] Workflow
-- [ ] Test
+
+- [x] Bootstrap reviewed
+- [x] Constitution copied to CONSTITUTION/
+- [ ] System deferred to Runtime Sprint
+- [x] Workflow copied to REGISTRY/WORKFLOWS/
+- [ ] Test pending review
+- [ ] Legacy removal deferred to PR #2
+
 
 ---
 
