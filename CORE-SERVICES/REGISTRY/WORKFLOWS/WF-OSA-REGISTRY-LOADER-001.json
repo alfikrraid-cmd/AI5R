@@ -1,0 +1,78 @@
+{
+  "id": "WF-OSA-REGISTRY-LOADER-001",
+  "name": "WF-OSA-REGISTRY-LOADER-001",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "osa/runtime/registry/load",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "registry-loader-webhook",
+      "name": "POST /osa/runtime/registry/load",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const now = new Date().toISOString();\n\nconst systemManifest = {\n  system_id: 'AI5R',\n  kernel: 'OSA',\n  architecture: 'Asset-Oriented Operating Platform',\n  version: '1.0.0'\n};\n\nconst registry = {\n  registry_version: '1.0.0',\n  assets: [\n    { asset_id: 'OSA.KERNEL.GATEWAY.001', asset_type: 'kernel', status: 'active' },\n    { asset_id: 'OSA.KERNEL.CREDENTIAL_VAULT.001', asset_type: 'kernel', status: 'active' },\n    { asset_id: 'OSA.KERNEL.LOGGER.001', asset_type: 'kernel', status: 'active' },\n    { asset_id: 'OSA.KERNEL.REGISTRY.001', asset_type: 'kernel', status: 'active' },\n    { asset_id: 'OSA.KERNEL.HEALTH_MONITOR.001', asset_type: 'kernel', status: 'active' },\n    { asset_id: 'AI5R.PLATFORM.MEMORY.001', asset_type: 'platform', status: 'active' },\n    { asset_id: 'AI5R.PLATFORM.GIT.001', asset_type: 'platform', status: 'active' },\n    { asset_id: 'AI5R.PLATFORM.ARTIFACT.001', asset_type: 'platform', status: 'active' }\n  ]\n};\n\nconst dependencyGraph = {\n  'AI5R.PLATFORM.MEMORY.001': ['OSA.KERNEL.REGISTRY.001', 'OSA.KERNEL.LOGGER.001'],\n  'AI5R.PLATFORM.GIT.001': ['OSA.KERNEL.GATEWAY.001', 'OSA.KERNEL.LOGGER.001'],\n  'AI5R.PLATFORM.ARTIFACT.001': ['AI5R.PLATFORM.MEMORY.001', 'AI5R.PLATFORM.GIT.001']\n};\n\nconst assetMap = Object.fromEntries(registry.assets.map(a => [a.asset_id, a]));\nconst modules = registry.assets.map(asset => ({\n  asset_id: asset.asset_id,\n  asset_type: asset.asset_type,\n  status: asset.status,\n  dependencies: dependencyGraph[asset.asset_id] || []\n}));\n\nconst errors = [];\nfor (const mod of modules) {\n  for (const dep of mod.dependencies) {\n    if (!assetMap[dep]) errors.push(`Missing dependency ${dep} for ${mod.asset_id}`);\n  }\n}\n\nreturn [{\n  json: {\n    success: errors.length === 0,\n    service: 'OSA-REGISTRY-LOADER-001',\n    status: errors.length ? 'DEGRADED' : 'READY',\n    loaded_at: now,\n    system_manifest: systemManifest,\n    registry_version: registry.registry_version,\n    modules_count: modules.length,\n    modules,\n    errors\n  }\n}];"
+      },
+      "id": "registry-loader-code",
+      "name": "Load Registry + Resolve Dependencies",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        300,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{$json}}",
+        "options": {}
+      },
+      "id": "registry-loader-respond",
+      "name": "Respond JSON",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        600,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "POST /osa/runtime/registry/load": {
+      "main": [
+        [
+          {
+            "node": "Load Registry + Resolve Dependencies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Registry + Resolve Dependencies": {
+      "main": [
+        [
+          {
+            "node": "Respond JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
