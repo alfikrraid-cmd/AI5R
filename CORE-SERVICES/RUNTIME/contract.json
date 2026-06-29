@@ -1,0 +1,53 @@
+{
+  "service_id": "OSA-RUNTIME-CORE-001",
+  "version": "1.0.0",
+  "public_endpoints": {
+    "boot": {
+      "method": "POST",
+      "path": "/webhook/osa/runtime/boot",
+      "input": {
+        "boot_mode": "normal"
+      },
+      "output": "BootResponse"
+    },
+    "status": {
+      "method": "POST",
+      "path": "/webhook/osa/runtime/status",
+      "output": "RuntimeStatus"
+    },
+    "modules": {
+      "method": "POST",
+      "path": "/webhook/osa/runtime/modules",
+      "output": "RuntimeModules"
+    },
+    "health": {
+      "method": "POST",
+      "path": "/webhook/osa/runtime/health",
+      "output": "RuntimeHealth"
+    },
+    "events": {
+      "method": "POST",
+      "path": "/webhook/osa/runtime/events",
+      "input": {
+        "type": "BOOT",
+        "source": "string",
+        "payload": {}
+      },
+      "output": "RuntimeEventAck"
+    }
+  },
+  "events": [
+    "BOOT",
+    "SHUTDOWN",
+    "MODULE_LOADED",
+    "MISSION_STARTED",
+    "MISSION_FINISHED",
+    "ERROR",
+    "HEALTH_CHANGED"
+  ],
+  "database_tables": [
+    "osa_runtime_state",
+    "osa_runtime_health",
+    "osa_runtime_events"
+  ]
+}

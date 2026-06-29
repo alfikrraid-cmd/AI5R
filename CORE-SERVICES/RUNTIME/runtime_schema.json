@@ -1,0 +1,22 @@
+{
+  "runtime_state": {
+    "status": "READY | DEGRADED | ERROR | SHUTDOWN",
+    "booted_at": "ISO_DATE",
+    "version": "1.0.0",
+    "loaded_modules": [],
+    "running_missions": [],
+    "health": "healthy | degraded | unhealthy",
+    "errors": []
+  },
+  "boot_response": {
+    "success": true,
+    "product": "OSA",
+    "service": "OSA-RUNTIME-CORE-001",
+    "version": "1.0.0",
+    "status": "READY",
+    "boot_time": "ISO_DATE",
+    "modules_loaded": 0,
+    "failed_modules": 0,
+    "health": "healthy"
+  }
+}
