@@ -1,0 +1,82 @@
+{
+  "_meta": {
+    "file": "system_manifest.json",
+    "layer": "System Identity Layer",
+    "sprint": "010",
+    "version": "1.0.0",
+    "created": "2026-06-29",
+    "owner": "AI5R",
+    "status": "ACTIVE",
+    "description": "Canonical identity definition of the AI5R system. This file is the single source of truth for what AI5R is. Do not edit without Founder approval."
+  },
+
+  "system": {
+    "id": "AI5R",
+    "name": "Artificial Intelligence Five Revolution",
+    "tagline": "Build AI systems that build businesses.",
+    "version": "1.0.0",
+    "status": "ACTIVE",
+    "milestone": "M0",
+    "founded": "2026-06-28"
+  },
+
+  "kernel": {
+    "id": "OSA-KERNEL-001",
+    "name": "OSA",
+    "full_name": "Opportunity System Architecture",
+    "version": "1.0.0",
+    "status": "ACTIVE",
+    "role": "Orchestration layer — coordinates all factories, agents, and modules",
+    "note": "OSA is a product built BY AI5R, not the creator of AI5R."
+  },
+
+  "platforms": [
+    {
+      "id": "AI5R-MEMORY-001",
+      "name": "AI5R Memory",
+      "version": "1.0.0",
+      "status": "PLANNED",
+      "responsibility": "Persistent knowledge store across sessions"
+    },
+    {
+      "id": "AI5R-GIT-001",
+      "name": "AI5R Git",
+      "version": "1.0.0",
+      "status": "PLANNED",
+      "responsibility": "Version control and artifact history"
+    },
+    {
+      "id": "AI5R-ARTIFACT-001",
+      "name": "AI5R Artifact",
+      "version": "1.0.0",
+      "status": "PLANNED",
+      "responsibility": "Artifact storage, retrieval, and packaging"
+    }
+  ],
+
+  "founder": {
+    "alias": "B",
+    "role": "Founder",
+    "authority": "Final decisions on Tier 2 and Tier 3 items"
+  },
+
+  "north_star_kpi": {
+    "metric": "Monthly Recurring Revenue",
+    "target": "Rp 1.000.000.000",
+    "unit": "IDR/month",
+    "current_milestone": "M0",
+    "milestone_target": "M0 — Prototype operational"
+  },
+
+  "architecture_law": "Component → Engine → Factory → Product → Company",
+
+  "module_philosophy": "Everything is a Module. Every component, engine, factory, workflow, prompt, product, template, blueprint, and DNA has a unique identity, version, owner, and status.",
+
+  "constitution_version": "1.0.0",
+  "constitution_docs": [
+    "00_IDENTITY", "01_MISSION", "02_VALUES", "03_THINKING_MODEL",
+    "04_DECISION_FRAMEWORK", "05_ARCHITECTURE", "06_FACTORY_SYSTEM",
+    "07_DEVELOPMENT_RULES", "08_OUTPUT_STANDARD", "09_COMMUNICATION",
+    "10_MEMORY_POLICY", "11_PROMPT_LIBRARY", "12_EXECUTION_PROTOCOL"
+  ]
+}

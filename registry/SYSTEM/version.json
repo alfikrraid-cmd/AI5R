@@ -1,0 +1,96 @@
+{
+  "_meta": {
+    "file": "version.json",
+    "layer": "System Identity Layer",
+    "sprint": "010",
+    "version": "1.0.0",
+    "created": "2026-06-29",
+    "owner": "AI5R",
+    "status": "ACTIVE",
+    "description": "Single source of truth for the current version of every AI5R module. Maintained by Version Engine [08] in production. Updated manually until Sprint 013+ when Version Engine is operational.",
+    "versioning_standard": "Semantic Versioning 2.0.0 — MAJOR.MINOR.PATCH",
+    "last_updated": "2026-06-29"
+  },
+
+  "system": {
+    "AI5R": "1.0.0",
+    "constitution": "1.0.0",
+    "system_identity_layer": "1.0.0"
+  },
+
+  "kernel": {
+    "OSA-KERNEL-001": "1.0.0"
+  },
+
+  "platforms": {
+    "AI5R-PLATFORM-001": "1.0.0",
+    "AI5R-PLATFORM-002": "1.0.0",
+    "AI5R-PLATFORM-003": "1.0.0"
+  },
+
+  "factories": {
+    "FACTORY-DEV-001": "1.0.0"
+  },
+
+  "engines": {
+    "REQ-ENGINE-001":  "1.0.0",
+    "ARCH-ENGINE-001": "0.1.0",
+    "NODE-ENGINE-001": "0.1.0",
+    "PRMT-ENGINE-001": "0.1.0",
+    "QA-ENGINE-001":   "0.1.0",
+    "DEPL-ENGINE-001": "0.1.0",
+    "DOC-ENGINE-001":  "0.1.0",
+    "VER-ENGINE-001":  "0.1.0",
+    "MCP-ENGINE-001":  "0.1.0",
+    "MAZE-ENGINE-001": "2.0.0-dev"
+  },
+
+  "prompts": {
+    "PROMPT-REQ-001":  "1.0.0",
+    "PROMPT-ARCH-001": "1.0.0",
+    "PROMPT-QA-001":   "1.0.0",
+    "PROMPT-DOC-001":  "1.0.0",
+    "PROMPT-GEN-001":  "1.0.0"
+  },
+
+  "version_rules": {
+    "MAJOR": "Breaking change to input or output contract — all consumers must be updated",
+    "MINOR": "New capability added, backward compatible",
+    "PATCH": "Bug fix, wording improvement, non-contract change",
+    "DRAFT_SUFFIX": "-dev indicates in-development, not production-ready",
+    "PLANNED_VERSION": "0.1.0 indicates planned but not yet built"
+  },
+
+  "changelog": [
+    {
+      "date": "2026-06-29",
+      "sprint": "010",
+      "changes": [
+        "AI5R system version established at 1.0.0",
+        "System Identity Layer introduced (Sprint 010)",
+        "REQ-ENGINE-001 v1.0.0 marked ACTIVE (built Sprint 001)",
+        "Engines [02]–[09] registered at 0.1.0 (PLANNED)",
+        "Prompts PROMPT-REQ-001 through PROMPT-GEN-001 registered at 1.0.0 (from Constitution)",
+        "MAZE-ENGINE-001 registered at 2.0.0-dev (DEV-MISSION-001 in progress)"
+      ]
+    },
+    {
+      "date": "2026-06-29",
+      "sprint": "001",
+      "changes": [
+        "REQ-ENGINE-001 v1.0.0 built — Requirement Engine operational",
+        "FACTORY-DEV-001 v1.0.0 blueprint established",
+        "PROMPT-REQ-001 v1.0.0 defined in Constitution"
+      ]
+    },
+    {
+      "date": "2026-06-28",
+      "sprint": "000",
+      "changes": [
+        "AI5R Constitution v1.0.0 written",
+        "OSA-KERNEL-001 v1.0.0 defined",
+        "AI5R system founded"
+      ]
+    }
+  ]
+}

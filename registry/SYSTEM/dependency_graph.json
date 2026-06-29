@@ -1,0 +1,97 @@
+{
+  "_meta": {
+    "file": "dependency_graph.json",
+    "layer": "System Identity Layer",
+    "sprint": "010",
+    "version": "1.0.0",
+    "created": "2026-06-29",
+    "owner": "AI5R",
+    "status": "ACTIVE",
+    "description": "Directed acyclic graph of all module dependencies. Read: 'node X depends on node Y'. Generated from registry.json dependents/dependencies fields. Update whenever a module is added or its contracts change.",
+    "graph_type": "DAG",
+    "direction": "dependency (X → Y means X depends on Y)"
+  },
+
+  "nodes": [
+    { "id": "OSA-KERNEL-001",    "name": "OSA Kernel",             "type": "KERNEL",   "status": "ACTIVE"   },
+    { "id": "AI5R-PLATFORM-001", "name": "AI5R Memory",            "type": "PLATFORM", "status": "PLANNED"  },
+    { "id": "AI5R-PLATFORM-002", "name": "AI5R Git",               "type": "PLATFORM", "status": "PLANNED"  },
+    { "id": "AI5R-PLATFORM-003", "name": "AI5R Artifact",          "type": "PLATFORM", "status": "PLANNED"  },
+    { "id": "FACTORY-DEV-001",   "name": "Developer Factory",      "type": "FACTORY",  "status": "ACTIVE"   },
+    { "id": "REQ-ENGINE-001",    "name": "Requirement Engine",     "type": "ENGINE",   "status": "ACTIVE"   },
+    { "id": "ARCH-ENGINE-001",   "name": "Architecture Engine",    "type": "ENGINE",   "status": "PLANNED"  },
+    { "id": "NODE-ENGINE-001",   "name": "Node Builder Engine",    "type": "ENGINE",   "status": "PLANNED"  },
+    { "id": "PRMT-ENGINE-001",   "name": "Prompt Engine",          "type": "ENGINE",   "status": "PLANNED"  },
+    { "id": "QA-ENGINE-001",     "name": "QA Engine",              "type": "ENGINE",   "status": "PLANNED"  },
+    { "id": "DEPL-ENGINE-001",   "name": "Deployment Engine",      "type": "ENGINE",   "status": "PLANNED"  },
+    { "id": "DOC-ENGINE-001",    "name": "Documentation Engine",   "type": "ENGINE",   "status": "PLANNED"  },
+    { "id": "VER-ENGINE-001",    "name": "Version Engine",         "type": "ENGINE",   "status": "PLANNED"  },
+    { "id": "MCP-ENGINE-001",    "name": "MCP Engine",             "type": "ENGINE",   "status": "PLANNED"  },
+    { "id": "PROMPT-REQ-001",    "name": "Req Parser Prompt",      "type": "PROMPT",   "status": "ACTIVE"   },
+    { "id": "PROMPT-ARCH-001",   "name": "Arch Designer Prompt",   "type": "PROMPT",   "status": "ACTIVE"   },
+    { "id": "MAZE-ENGINE-001",   "name": "Maze Engine",            "type": "ENGINE",   "status": "DRAFT"    }
+  ],
+
+  "edges": [
+    { "from": "FACTORY-DEV-001", "to": "OSA-KERNEL-001",    "type": "ORCHESTRATED_BY",  "description": "Factory is orchestrated by the OSA Kernel" },
+    { "from": "REQ-ENGINE-001",  "to": "FACTORY-DEV-001",   "type": "BELONGS_TO",        "description": "Requirement Engine is Engine [01] of Developer Factory" },
+    { "from": "REQ-ENGINE-001",  "to": "PROMPT-REQ-001",    "type": "USES_PROMPT",       "description": "Requirement Engine calls PROMPT-REQ-001-v1.0 via Claude API" },
+    { "from": "ARCH-ENGINE-001", "to": "FACTORY-DEV-001",   "type": "BELONGS_TO",        "description": "Architecture Engine is Engine [02] of Developer Factory" },
+    { "from": "ARCH-ENGINE-001", "to": "REQ-ENGINE-001",    "type": "CONSUMES_OUTPUT",   "description": "Architecture Engine consumes requirement_spec from Engine [01]" },
+    { "from": "ARCH-ENGINE-001", "to": "PROMPT-ARCH-001",   "type": "USES_PROMPT",       "description": "Architecture Engine calls PROMPT-ARCH-001-v1.0 via Claude API" },
+    { "from": "NODE-ENGINE-001", "to": "FACTORY-DEV-001",   "type": "BELONGS_TO",        "description": "Node Builder Engine is Engine [03] of Developer Factory" },
+    { "from": "NODE-ENGINE-001", "to": "ARCH-ENGINE-001",   "type": "CONSUMES_OUTPUT",   "description": "Node Builder consumes architecture_spec from Engine [02]" },
+    { "from": "PRMT-ENGINE-001", "to": "FACTORY-DEV-001",   "type": "BELONGS_TO",        "description": "Prompt Engine is Engine [04] of Developer Factory" },
+    { "from": "PRMT-ENGINE-001", "to": "NODE-ENGINE-001",   "type": "CONSUMES_OUTPUT",   "description": "Prompt Engine consumes node_manifest from Engine [03]" },
+    { "from": "QA-ENGINE-001",   "to": "FACTORY-DEV-001",   "type": "BELONGS_TO",        "description": "QA Engine is Engine [05] of Developer Factory" },
+    { "from": "QA-ENGINE-001",   "to": "PRMT-ENGINE-001",   "type": "CONSUMES_OUTPUT",   "description": "QA Engine receives all artifacts from Engines [01]–[04]" },
+    { "from": "DEPL-ENGINE-001", "to": "FACTORY-DEV-001",   "type": "BELONGS_TO",        "description": "Deployment Engine is Engine [06] of Developer Factory" },
+    { "from": "DEPL-ENGINE-001", "to": "QA-ENGINE-001",     "type": "GATED_BY",          "description": "Deployment Engine only runs on QA PASS gate" },
+    { "from": "DOC-ENGINE-001",  "to": "FACTORY-DEV-001",   "type": "BELONGS_TO",        "description": "Documentation Engine is Engine [07] of Developer Factory" },
+    { "from": "DOC-ENGINE-001",  "to": "DEPL-ENGINE-001",   "type": "CONSUMES_OUTPUT",   "description": "Documentation Engine receives deployment_report from Engine [06]" },
+    { "from": "VER-ENGINE-001",  "to": "FACTORY-DEV-001",   "type": "BELONGS_TO",        "description": "Version Engine is Engine [08] of Developer Factory" },
+    { "from": "VER-ENGINE-001",  "to": "DOC-ENGINE-001",    "type": "CONSUMES_OUTPUT",   "description": "Version Engine receives documentation from Engine [07]" },
+    { "from": "MCP-ENGINE-001",  "to": "FACTORY-DEV-001",   "type": "BELONGS_TO",        "description": "MCP Engine is Engine [09] of Developer Factory" },
+    { "from": "MCP-ENGINE-001",  "to": "VER-ENGINE-001",    "type": "CONSUMES_OUTPUT",   "description": "MCP Engine receives version_manifest from Engine [08]" }
+  ],
+
+  "pipeline_sequence": {
+    "factory": "FACTORY-DEV-001",
+    "description": "Linear execution order of engines within Developer Factory",
+    "sequence": [
+      { "step": 1,  "engine": "REQ-ENGINE-001",  "gate": "PASS required to proceed",      "output": "requirement_spec"  },
+      { "step": 2,  "engine": "ARCH-ENGINE-001",  "gate": "PASS required to proceed",      "output": "architecture_spec" },
+      { "step": 3,  "engine": "NODE-ENGINE-001",  "gate": "PASS required to proceed",      "output": "node_manifest"     },
+      { "step": 4,  "engine": "PRMT-ENGINE-001",  "gate": "PASS required to proceed",      "output": "prompt_library"    },
+      { "step": 5,  "engine": "QA-ENGINE-001",    "gate": "GO/NO-GO — FAIL halts factory", "output": "qa_report"         },
+      { "step": 6,  "engine": "DEPL-ENGINE-001",  "gate": "PASS required to proceed",      "output": "deployment_report" },
+      { "step": 7,  "engine": "DOC-ENGINE-001",   "gate": "PASS required to proceed",      "output": "documentation"     },
+      { "step": 8,  "engine": "VER-ENGINE-001",   "gate": "PASS required to proceed",      "output": "version_manifest"  },
+      { "step": 9,  "engine": "MCP-ENGINE-001",   "gate": "PASS = Mission Complete",       "output": "mcp_config"        }
+    ]
+  },
+
+  "critical_paths": [
+    {
+      "path_id": "CP-001",
+      "name": "Core Factory Pipeline",
+      "description": "Any break in this chain halts the entire Developer Factory",
+      "nodes": ["REQ-ENGINE-001", "ARCH-ENGINE-001", "NODE-ENGINE-001", "PRMT-ENGINE-001", "QA-ENGINE-001", "DEPL-ENGINE-001", "DOC-ENGINE-001", "VER-ENGINE-001", "MCP-ENGINE-001"],
+      "risk": "HIGH — single point of failure at each step"
+    },
+    {
+      "path_id": "CP-002",
+      "name": "QA Gate",
+      "description": "QA Engine is the highest-risk gate — a FAIL here halts everything after step 5",
+      "nodes": ["QA-ENGINE-001"],
+      "risk": "HIGH — binding gate, only Founder can override"
+    }
+  ],
+
+  "isolation_analysis": {
+    "description": "Modules with no dependents are safe to modify without cascading impact",
+    "isolated_modules": ["MCP-ENGINE-001", "MAZE-ENGINE-001"],
+    "high_impact_modules": ["OSA-KERNEL-001", "FACTORY-DEV-001", "REQ-ENGINE-001"],
+    "note": "Changing any contract on a high-impact module requires review of all downstream dependents"
+  }
+}

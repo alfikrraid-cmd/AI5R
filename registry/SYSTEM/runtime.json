@@ -1,0 +1,85 @@
+{
+  "_meta": {
+    "file": "runtime.json",
+    "layer": "System Identity Layer",
+    "sprint": "010",
+    "version": "1.0.0",
+    "created": "2026-06-29",
+    "owner": "AI5R",
+    "status": "SCHEMA_ONLY",
+    "description": "Runtime state of all active AI5R modules. THIS FILE IS NOT EDITED MANUALLY. It is generated and maintained by the Runtime Loader (Sprint 011). This version defines the schema and contains example state for documentation purposes.",
+    "important": "Do not trust this file as live runtime state until Runtime Loader (Sprint 011) is operational. Until then, check n8n directly for workflow execution state.",
+    "populated_by": "Runtime Loader — Sprint 011",
+    "refresh_interval_seconds": 30
+  },
+
+  "_schema": {
+    "description": "Every entry in active_modules follows this shape",
+    "module_runtime_entry": {
+      "id": "string — module ID from registry.json",
+      "name": "string",
+      "type": "string",
+      "version": "string",
+      "status": "RUNNING | IDLE | ERROR | STARTING | STOPPING",
+      "pid": "string | null — process or workflow execution ID",
+      "started_at": "ISO8601 | null",
+      "last_heartbeat": "ISO8601 | null",
+      "current_mission": "string | null — DEV-MISSION-NNN if processing a mission",
+      "error": "string | null — last error message if status is ERROR",
+      "metrics": {
+        "executions_today": "number",
+        "last_execution_ms": "number",
+        "success_rate_7d": "number — 0.0 to 1.0"
+      }
+    }
+  },
+
+  "snapshot_at": "NOT_LIVE — Sprint 011 not yet deployed",
+  "environment": "development",
+  "n8n_instance": "http://localhost:5678",
+
+  "active_modules": [
+    {
+      "_note": "EXAMPLE ONLY — not live state",
+      "id": "REQ-ENGINE-001",
+      "name": "Requirement Engine",
+      "type": "ENGINE",
+      "version": "1.0.0",
+      "status": "IDLE",
+      "pid": null,
+      "started_at": null,
+      "last_heartbeat": null,
+      "current_mission": null,
+      "error": null,
+      "metrics": {
+        "executions_today": 0,
+        "last_execution_ms": 0,
+        "success_rate_7d": null
+      }
+    }
+  ],
+
+  "active_missions": [],
+
+  "system_health": {
+    "status": "UNKNOWN",
+    "note": "Populated by Runtime Loader in Sprint 011",
+    "components": {
+      "n8n": "UNKNOWN",
+      "claude_api": "UNKNOWN",
+      "registry": "LOADED",
+      "constitution": "LOADED"
+    }
+  },
+
+  "sprint_011_deliverable": {
+    "description": "Runtime Loader will replace this file with live state",
+    "capabilities": [
+      "Poll n8n every 30s for active workflow execution status",
+      "Write status, pid, last_heartbeat to active_modules entries",
+      "Detect ERROR state and alert Founder",
+      "Track active missions and their current engine step",
+      "Expose /system/health endpoint for monitoring"
+    ]
+  }
+}

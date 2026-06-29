@@ -1,0 +1,144 @@
+{
+  "_meta": {
+    "file": "module_schema.json",
+    "layer": "System Identity Layer",
+    "sprint": "010",
+    "version": "1.0.0",
+    "created": "2026-06-29",
+    "owner": "AI5R",
+    "status": "ACTIVE",
+    "description": "Canonical schema that every module in AI5R must conform to before it can be registered in registry.json. This is the contract for 'Everything is a Module'."
+  },
+
+  "module_types": [
+    "KERNEL",
+    "PLATFORM",
+    "FACTORY",
+    "ENGINE",
+    "COMPONENT",
+    "WORKFLOW",
+    "PROMPT",
+    "PRODUCT",
+    "TEMPLATE",
+    "BLUEPRINT",
+    "DNA",
+    "AGENT"
+  ],
+
+  "id_format": {
+    "pattern": "{TYPE}-{DOMAIN}-{NNN}",
+    "rules": [
+      "Uppercase only",
+      "Hyphen-separated",
+      "NNN is zero-padded 3-digit integer",
+      "Globally unique within AI5R",
+      "Once assigned, ID never changes — version handles evolution"
+    ],
+    "examples": [
+      "OSA-KERNEL-001",
+      "AI5R-PLATFORM-001",
+      "FACTORY-DEV-001",
+      "REQ-ENGINE-001",
+      "SVG-MAZE-001",
+      "WORKFLOW-N8N-001",
+      "PROMPT-REQ-001",
+      "PRODUCT-OSA-001",
+      "TPL-A4-001",
+      "BLUEPRINT-MAZE-001",
+      "DNA-SAAS-001",
+      "AGENT-RESEARCHER-001"
+    ]
+  },
+
+  "required_fields": {
+    "id": {
+      "type": "string",
+      "description": "Globally unique identifier following id_format pattern",
+      "required": true
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable name",
+      "required": true
+    },
+    "type": {
+      "type": "string",
+      "enum": "module_types",
+      "description": "Module classification",
+      "required": true
+    },
+    "version": {
+      "type": "string",
+      "format": "MAJOR.MINOR.PATCH",
+      "description": "Semantic version",
+      "required": true
+    },
+    "status": {
+      "type": "string",
+      "enum": ["DRAFT", "ACTIVE", "DEPRECATED", "ARCHIVED", "PLANNED"],
+      "description": "Lifecycle status",
+      "required": true
+    },
+    "owner": {
+      "type": "string",
+      "description": "Who owns this module — AI5R or a sub-system ID",
+      "required": true
+    },
+    "layer": {
+      "type": "string",
+      "description": "Position in the Component → Engine → Factory → Product → Company hierarchy",
+      "required": true
+    },
+    "registered": {
+      "type": "string",
+      "format": "ISO8601 date",
+      "description": "Date first registered",
+      "required": true
+    }
+  },
+
+  "optional_fields": {
+    "description": "One-sentence purpose statement",
+    "factory": "Parent factory ID if this is an engine or component",
+    "input_contract": "ID or schema reference for accepted input",
+    "output_contract": "ID or schema reference for produced output",
+    "dependencies": "Array of module IDs this module depends on",
+    "dependents": "Array of module IDs that depend on this module",
+    "sprint_introduced": "Sprint number where this module was first built",
+    "last_modified": "ISO8601 date of last change",
+    "tags": "Array of searchable labels",
+    "docs": "Path or URL to documentation",
+    "source": "Path or URL to source file/workflow"
+  },
+
+  "module_template": {
+    "id": "TYPE-DOMAIN-NNN",
+    "name": "Human-readable name",
+    "type": "ENGINE",
+    "version": "1.0.0",
+    "status": "ACTIVE",
+    "owner": "AI5R",
+    "layer": "Engine",
+    "registered": "YYYY-MM-DD",
+    "description": "One sentence.",
+    "factory": null,
+    "input_contract": null,
+    "output_contract": null,
+    "dependencies": [],
+    "dependents": [],
+    "sprint_introduced": "NNN",
+    "last_modified": "YYYY-MM-DD",
+    "tags": [],
+    "docs": null,
+    "source": null
+  },
+
+  "registration_rules": [
+    "A module must have all required_fields filled before it can be added to registry.json",
+    "A module with status PLANNED may be pre-registered but cannot be added to runtime.json",
+    "ID is immutable after first registration — change requires deprecating old ID and registering new one",
+    "Version increment is mandatory for any change to input_contract or output_contract",
+    "Deprecated modules stay in registry with status=DEPRECATED — they are never deleted",
+    "Every module in registry.json must have a corresponding entry in dependency_graph.json"
+  ]
+}
