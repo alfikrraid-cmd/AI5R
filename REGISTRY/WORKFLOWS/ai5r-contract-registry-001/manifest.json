@@ -1,0 +1,10 @@
+{
+  "artifact_id": "WF-CONTRACT-REGISTRY-001",
+  "service_id": "AI5R-CONTRACT-REGISTRY-001",
+  "mission": "Build AI5R-CONTRACT-REGISTRY-001 Contract Registry service. It must register, get, search, list, and update API contracts for AI5R services. It should store contract metadata, commit contract JSON to GitHub, save Memory records, and provide service discovery for Developer Factory.",
+  "version": "1.1.0",
+  "status": "published_candidate",
+  "score": 85,
+  "threshold": 85,
+  "created_at": "2026-06-28T16:53:16.358Z"
+}
