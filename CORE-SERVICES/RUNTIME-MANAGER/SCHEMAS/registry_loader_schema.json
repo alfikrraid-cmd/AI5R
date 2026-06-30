@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0.0",
+  "loader": "OSA Registry Loader",
+  "output": {
+    "runtime_status": "READY",
+    "loaded_at": "ISO_DATE",
+    "modules": [
+      {
+        "asset_id": "",
+        "asset_type": "",
+        "status": "",
+        "dependencies": []
+      }
+    ],
+    "errors": []
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "package_id": "OSA-RUNTIME-MANAGER-001",
+  "asset_id": "OSA.RUNTIME.MANAGER.001",
+  "name": "OSA Runtime Manager",
+  "version": "0.1.0",
+  "status": "DRAFT",
+  "mission": "AI5R-DEV-MISSION-013",
+  "depends_on": [
+    "OSA-RUNTIME-CORE-001"
+  ],
+  "components": [
+    "Registry Loader",
+    "Module Manager",
+    "Runtime State Manager",
+    "Health Manager",
+    "Event Dispatcher",
+    "Runtime Dashboard"
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "id": "WF-OSA-REGISTRY-LOADER-001",
+  "name": "OSA Registry Loader",
+  "version": "0.1.0",
+  "status": "DRAFT",
+  "purpose": "Load registry.json, dependency_graph.json, and system_manifest.json into runtime memory."
+}
