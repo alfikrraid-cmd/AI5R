@@ -8,6 +8,7 @@ import importlib.util
 import json
 
 
+
 ARTIFACTS = [
     "DATABASE",
     "WORKFLOWS",
@@ -24,6 +25,21 @@ CRUD_OPERATIONS = [
     "UPDATE",
     "DELETE",
 ]
+
+
+
+def load_sql_generator():
+    generator_path = Path("AI5R-SDK/FACTORY/GENERATORS/sql_generator.py")
+
+    spec = importlib.util.spec_from_file_location(
+        "factory_sql_generator",
+        generator_path,
+    )
+
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    return module.SQLGenerator()
 
 
 def load_registry(module_name: str):
@@ -70,9 +86,28 @@ class ManufacturingService:
             encoding="utf-8"
         )
 
+        self._generate_sql_artifacts(root=root, registry=registry)
+
         self._generate_crud_workflows(root=root, registry=registry)
 
         return root
+
+
+    def _generate_sql_artifacts(self, root: Path, registry: dict):
+
+        sql_generator = load_sql_generator()
+        database_dir = root / "DATABASE"
+
+        files = {
+            "001_create_table.sql": sql_generator.generate_create_table(registry),
+            "002_seed.sql": sql_generator.generate_seed(registry),
+            "003_indexes.sql": sql_generator.generate_indexes(registry),
+            "999_rollback.sql": sql_generator.generate_rollback(registry),
+        }
+
+        for filename, content in files.items():
+            output = database_dir / filename
+            output.write_text(content, encoding="utf-8")
 
     def _generate_crud_workflows(self, root: Path, registry: dict):
 
