@@ -1,0 +1,51 @@
+{
+  "name": "WF-LTSA-BRAIN-PUMP-DETAIL-001",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "ltsa/pump/detail",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-pump-detail",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        260,
+        300
+      ],
+      "webhookId": "ltsa-brain-pump-detail-001"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\"success\": true, \"product\": \"LTSA-BRAIN\", \"module\": \"PUMP\", \"operation\": \"DETAIL\"}"
+      },
+      "id": "response-pump-detail",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        520,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
