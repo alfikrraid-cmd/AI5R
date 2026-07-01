@@ -1,0 +1,26 @@
+{
+  "name": "WF-LTSA-CUSTOMER-LIST-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "ltsa/customer/list",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook-ltsa-customer-list",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ]
+    }
+  ],
+  "connections": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}

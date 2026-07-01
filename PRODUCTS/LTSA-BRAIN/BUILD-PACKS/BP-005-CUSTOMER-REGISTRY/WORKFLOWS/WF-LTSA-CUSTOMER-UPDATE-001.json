@@ -1,0 +1,26 @@
+{
+  "name": "WF-LTSA-CUSTOMER-UPDATE-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "PUT",
+        "path": "ltsa/customer/update",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook-ltsa-customer-update",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ]
+    }
+  ],
+  "connections": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}

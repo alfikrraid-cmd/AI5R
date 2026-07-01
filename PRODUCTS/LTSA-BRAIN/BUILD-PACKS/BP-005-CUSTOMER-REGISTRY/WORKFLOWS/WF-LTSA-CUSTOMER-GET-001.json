@@ -1,0 +1,26 @@
+{
+  "name": "WF-LTSA-CUSTOMER-GET-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "ltsa/customer/get",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook-ltsa-customer-get",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ]
+    }
+  ],
+  "connections": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}

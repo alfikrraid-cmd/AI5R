@@ -1,0 +1,26 @@
+{
+  "name": "WF-LTSA-CUSTOMER-CREATE-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ltsa/customer/create",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook-ltsa-customer-create",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ]
+    }
+  ],
+  "connections": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}

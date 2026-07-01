@@ -1,0 +1,26 @@
+{
+  "name": "WF-LTSA-CUSTOMER-DELETE-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "DELETE",
+        "path": "ltsa/customer/delete",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook-ltsa-customer-delete",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ]
+    }
+  ],
+  "connections": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}
