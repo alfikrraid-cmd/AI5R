@@ -1,0 +1,26 @@
+{
+  "module": "pump",
+  "product": "LTSA-BRAIN",
+  "database": {
+    "schema": "public",
+    "table": "ltsa_pumps",
+    "primary_lookup": {
+      "field": "tag_number",
+      "type": "string",
+      "query_param": "tag_number"
+    }
+  },
+  "workflows": {
+    "detail": {
+      "name": "WF-LTSA-PUMP-DETAIL-001",
+      "method": "GET",
+      "webhook_path": "ltsa/pump/detail",
+      "operation": "read_one",
+      "response": {
+        "success_key": "success",
+        "data_key": "data",
+        "not_found_message": "Pump not found"
+      }
+    }
+  }
+}
