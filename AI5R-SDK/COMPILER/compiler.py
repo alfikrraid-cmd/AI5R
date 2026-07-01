@@ -1,12 +1,14 @@
-#!/usr/bin/env python3
-
 from workflow_generator import generate_workflow
+from VALIDATOR.validator import validate
 
 
 class Compiler:
 
-    def build(self, module_name: str, workflow_type: str):
+    def build(self, module_name: str, workflow_type: str, spec_path: str = None):
         print("Loading compiler...")
+
+        if spec_path:
+            validate(spec_path)
 
         workflow = generate_workflow(module_name, workflow_type)
 
