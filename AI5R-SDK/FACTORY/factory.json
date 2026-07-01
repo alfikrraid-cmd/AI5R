@@ -1,0 +1,14 @@
+{
+  "factory": "AI5R Digital Factory",
+  "version": "0.1.0",
+  "generator": "FM-001",
+  "output": "Build Pack",
+  "artifacts": [
+    "DATABASE",
+    "WORKFLOWS",
+    "SCHEMAS",
+    "TESTS",
+    "REPORTS",
+    "README.md"
+  ]
+}
