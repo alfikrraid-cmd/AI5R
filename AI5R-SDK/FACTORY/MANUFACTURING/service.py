@@ -1,9 +1,10 @@
 """
 AI5R Manufacturing Service
-FM-001.5
+FM-001.6.6 Registry-driven Manufacturing
 """
 
 from pathlib import Path
+import importlib.util
 import json
 
 
@@ -25,12 +26,27 @@ CRUD_OPERATIONS = [
 ]
 
 
+def load_registry(module_name: str):
+    loader_path = Path("AI5R-SDK/FACTORY/REGISTRY/loader.py")
+
+    spec = importlib.util.spec_from_file_location(
+        "factory_registry_loader",
+        loader_path,
+    )
+
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    loader = module.FactoryRegistryLoader()
+    return loader.load_module(module_name)
+
+
 class ManufacturingService:
 
     def manufacture_module(self, module_name: str, product: str = "LTSA-BRAIN"):
 
         clean_module = module_name.upper().replace("BP-", "")
-        module_slug = clean_module.lower()
+        registry = load_registry(clean_module)
 
         root = (
             Path("PRODUCTS")
@@ -48,15 +64,24 @@ class ManufacturingService:
         readme.write_text(
             f"# Build Pack\n\n"
             f"Product: {product}\n"
-            f"Module: {clean_module}\n",
+            f"Module: {registry['module']}\n"
+            f"Table: {registry['table']}\n"
+            f"Primary Key: {registry['primary_key']}\n",
             encoding="utf-8"
         )
 
-        self._generate_crud_workflows(root, product, clean_module, module_slug)
+        self._generate_crud_workflows(root=root, registry=registry)
 
         return root
 
-    def _generate_crud_workflows(self, root: Path, product: str, module_name: str, module_slug: str):
+    def _generate_crud_workflows(self, root: Path, registry: dict):
+
+        product = registry["product"]
+        module_name = registry["module"]
+        module_slug = module_name.lower()
+        table_name = registry["table"]
+        primary_key = registry["primary_key"]
+        fields = registry["fields"]
 
         workflow_dir = root / "WORKFLOWS"
 
@@ -84,7 +109,9 @@ class ManufacturingService:
                                 "success": True,
                                 "product": product,
                                 "module": module_name,
-                                "operation": operation
+                                "operation": operation,
+                                "table": table_name,
+                                "primary_key": primary_key
                             })
                         },
                         "id": f"response-{module_slug}-{operation.lower()}",
@@ -108,12 +135,14 @@ class ManufacturingService:
                     }
                 },
                 "settings": {
-                    "executionOrder": "v1"
+                    "executionOrder": "v1",
+                    "registry": {
+                        "table": table_name,
+                        "primary_key": primary_key,
+                        "fields": fields
+                    }
                 }
             }
 
             output = workflow_dir / f"WF-{product}-{module_name}-{operation}-001.json"
-            output.write_text(
-                json.dumps(workflow, indent=2),
-                encoding="utf-8"
-            )
+            output.write_text(json.dumps(workflow, indent=2), encoding="utf-8")

@@ -20,7 +20,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "{\"success\": true, \"product\": \"LTSA-BRAIN\", \"module\": \"PUMP\", \"operation\": \"DETAIL\"}"
+        "responseBody": "{\"success\": true, \"product\": \"LTSA-BRAIN\", \"module\": \"PUMP\", \"operation\": \"DETAIL\", \"table\": \"pump_registry\", \"primary_key\": \"pump_code\"}"
       },
       "id": "response-pump-detail",
       "name": "Respond to Webhook",
@@ -46,6 +46,47 @@
     }
   },
   "settings": {
-    "executionOrder": "v1"
+    "executionOrder": "v1",
+    "registry": {
+      "table": "pump_registry",
+      "primary_key": "pump_code",
+      "fields": [
+        {
+          "name": "pump_code",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "pump_name",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "manufacturer",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "model",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "serial_number",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "location",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "required": false
+        }
+      ]
+    }
   }
 }
