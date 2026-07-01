@@ -1,0 +1,59 @@
+{
+  "name": "WF-LTSA-PUMP-DETAIL-001",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "ltsa/pump/detail",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "Webhook",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "WF-LTSA-PUMP-DETAIL-001"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT *\nFROM public.ltsa_pumps\nWHERE tag_number = $1;",
+        "options": {
+          "queryReplacement": "={ $json.query.tag_number }"
+        }
+      },
+      "id": "Postgres",
+      "name": "Postgres",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        260,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Postgres",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {},
+  "staticData": null
+}
