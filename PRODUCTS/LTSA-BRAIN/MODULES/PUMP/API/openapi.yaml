@@ -1,0 +1,55 @@
+openapi: 3.0.3
+info:
+  title: LTSA Brain Pump Registry API
+  version: 1.0.0
+
+paths:
+  /pumps:
+    get:
+      summary: List pumps
+      responses:
+        "200":
+          description: List of pumps
+
+    post:
+      summary: Create pump
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Pump"
+      responses:
+        "201":
+          description: Pump created
+
+components:
+  schemas:
+    Pump:
+      type: object
+      required:
+        - tag_number
+        - area
+      properties:
+        tag_number:
+          type: string
+        area:
+          type: string
+        location:
+          type: string
+        pump_type:
+          type: string
+        api_plan:
+          type: string
+        seal_type:
+          type: string
+        status:
+          type: string
+        manufacturer:
+          type: string
+        model:
+          type: string
+        drawing_ref:
+          type: string
+        notes:
+          type: string
