@@ -1,0 +1,95 @@
+{
+  "name": "WF-LTSA-PUMP-REGISTRY-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ltsa/pumps/create",
+        "responseMode": "responseNode"
+      },
+      "id": "webhook-create-pump",
+      "name": "Webhook Create Pump",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || $json;\n\nif (!body.tag_number) {\n  throw new Error('tag_number is required');\n}\n\nif (!body.area) {\n  throw new Error('area is required');\n}\n\nreturn [\n  {\n    json: {\n      tag_number: body.tag_number,\n      area: body.area,\n      location: body.location || null,\n      pump_type: body.pump_type || null,\n      api_plan: body.api_plan || null,\n      seal_type: body.seal_type || null,\n      status: body.status || 'UNKNOWN',\n      manufacturer: body.manufacturer || null,\n      model: body.model || null,\n      drawing_ref: body.drawing_ref || null,\n      notes: body.notes || null\n    }\n  }\n];"
+      },
+      "id": "validate-pump-input",
+      "name": "Validate Pump Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO ltsa_pumps (\n  tag_number,\n  area,\n  location,\n  pump_type,\n  api_plan,\n  seal_type,\n  status,\n  manufacturer,\n  model,\n  drawing_ref,\n  notes\n)\nVALUES (\n  '{{$json.tag_number}}',\n  '{{$json.area}}',\n  '{{$json.location}}',\n  '{{$json.pump_type}}',\n  '{{$json.api_plan}}',\n  '{{$json.seal_type}}',\n  '{{$json.status}}',\n  '{{$json.manufacturer}}',\n  '{{$json.model}}',\n  '{{$json.drawing_ref}}',\n  '{{$json.notes}}'\n)\nRETURNING *;"
+      },
+      "id": "insert-pump-postgres",
+      "name": "Insert Pump to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [540, 0],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_POSTGRES_CREDENTIAL_ID",
+          "name": "LTSA Brain PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"success\": true,\n  \"message\": \"Pump created successfully\",\n  \"data\": {{$json}}\n}"
+      },
+      "id": "response-success",
+      "name": "Response Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [820, 0]
+    }
+  ],
+  "connections": {
+    "Webhook Create Pump": {
+      "main": [
+        [
+          {
+            "node": "Validate Pump Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Pump Input": {
+      "main": [
+        [
+          {
+            "node": "Insert Pump to PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Pump to PostgreSQL": {
+      "main": [
+        [
+          {
+            "node": "Response Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}
