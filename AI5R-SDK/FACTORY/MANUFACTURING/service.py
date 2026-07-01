@@ -88,6 +88,8 @@ class ManufacturingService:
 
         self._generate_sql_artifacts(root=root, registry=registry)
 
+        self._generate_schema_artifacts(root=root, registry=registry)
+
         self._generate_crud_workflows(root=root, registry=registry)
 
         return root
@@ -108,6 +110,32 @@ class ManufacturingService:
         for filename, content in files.items():
             output = database_dir / filename
             output.write_text(content, encoding="utf-8")
+
+
+    def _generate_schema_artifacts(self, root: Path, registry: dict):
+
+        generator_path = Path("AI5R-SDK/FACTORY/GENERATORS/schema_generator.py")
+
+        spec = importlib.util.spec_from_file_location(
+            "schema_generator",
+            generator_path,
+        )
+
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        generator = module.SchemaGenerator()
+        schema_dir = root / "SCHEMAS"
+
+        (schema_dir / f"{registry['module'].lower()}.schema.json").write_text(
+            generator.generate_json_schema(registry),
+            encoding="utf-8"
+        )
+
+        (schema_dir / f"{registry['module'].lower()}.openapi.json").write_text(
+            generator.generate_openapi(registry),
+            encoding="utf-8"
+        )
 
     def _generate_crud_workflows(self, root: Path, registry: dict):
 

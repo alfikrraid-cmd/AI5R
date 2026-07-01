@@ -1,0 +1,14 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "PUMP",
+    "version": "1.0.0"
+  },
+  "components": {
+    "schemas": {
+      "PUMP": {
+        "type": "object"
+      }
+    }
+  }
+}
