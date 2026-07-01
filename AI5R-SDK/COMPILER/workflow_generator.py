@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 
-import json
 import sys
 from pathlib import Path
 
 from module_loader import load_module
 from sql_generator import generate_detail_sql
+from validator import validate_workflow
+from exporter import export_json
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -17,6 +18,9 @@ def generate_workflow(module_name: str, workflow_type: str):
 
     workflow_spec = spec["workflows"][workflow_type]
     lookup = spec["database"]["primary_lookup"]
+
+    if workflow_type != "detail":
+        raise ValueError(f"Unsupported workflow_type for now: {workflow_type}")
 
     sql = generate_detail_sql(module_name)
 
@@ -74,6 +78,7 @@ def generate_workflow(module_name: str, workflow_type: str):
         "staticData": None
     }
 
+    validate_workflow(workflow)
     return workflow
 
 
@@ -90,8 +95,7 @@ def main():
     workflow = generate_workflow(module_name, workflow_type)
     output_file = OUTPUT_DIR / f"{workflow['name']}.json"
 
-    with open(output_file, "w", encoding="utf-8") as f:
-        json.dump(workflow, f, indent=2)
+    export_json(workflow, output_file)
 
     print(output_file)
 
