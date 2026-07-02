@@ -1,0 +1,46 @@
+{
+  "module": "SEAL",
+  "product": "LTSA-BRAIN",
+  "table": "seal_registry",
+  "primary_key": "seal_code",
+  "fields": [
+    {
+      "name": "seal_code",
+      "type": "string",
+      "required": true
+    },
+    {
+      "name": "seal_name",
+      "type": "string",
+      "required": true
+    },
+    {
+      "name": "manufacturer",
+      "type": "string"
+    },
+    {
+      "name": "model",
+      "type": "string"
+    },
+    {
+      "name": "shaft_size",
+      "type": "number"
+    },
+    {
+      "name": "material",
+      "type": "string"
+    },
+    {
+      "name": "temperature_limit",
+      "type": "number"
+    },
+    {
+      "name": "pressure_limit",
+      "type": "number"
+    },
+    {
+      "name": "status",
+      "type": "string"
+    }
+  ]
+}

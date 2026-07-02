@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SEAL",
+  "type": "object",
+  "properties": {
+    "seal_code": {
+      "type": "string"
+    },
+    "seal_name": {
+      "type": "string"
+    },
+    "manufacturer": {
+      "type": "string"
+    },
+    "model": {
+      "type": "string"
+    },
+    "shaft_size": {
+      "type": "number"
+    },
+    "material": {
+      "type": "string"
+    },
+    "temperature_limit": {
+      "type": "number"
+    },
+    "pressure_limit": {
+      "type": "number"
+    },
+    "status": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "seal_code",
+    "seal_name"
+  ]
+}
