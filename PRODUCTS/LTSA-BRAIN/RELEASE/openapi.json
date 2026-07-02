@@ -1,0 +1,499 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "LTSA Brain API",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/customers": {
+      "get": {
+        "tags": [
+          "Customer"
+        ],
+        "summary": "List customers",
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Customer"
+        ],
+        "summary": "Create customer",
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/customers/{id}": {
+      "get": {
+        "tags": [
+          "Customer"
+        ],
+        "summary": "Get customer detail",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Customer"
+        ],
+        "summary": "Update customer",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Customer"
+        ],
+        "summary": "Delete customer",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      }
+    },
+    "/pumps": {
+      "get": {
+        "tags": [
+          "Pump"
+        ],
+        "summary": "List pumps",
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Pump"
+        ],
+        "summary": "Create pump",
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/pumps/{id}": {
+      "get": {
+        "tags": [
+          "Pump"
+        ],
+        "summary": "Get pump detail",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Pump"
+        ],
+        "summary": "Update pump",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Pump"
+        ],
+        "summary": "Delete pump",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      }
+    },
+    "/assets": {
+      "get": {
+        "tags": [
+          "Asset"
+        ],
+        "summary": "List assets",
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Asset"
+        ],
+        "summary": "Create asset",
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/assets/{id}": {
+      "get": {
+        "tags": [
+          "Asset"
+        ],
+        "summary": "Get asset detail",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Asset"
+        ],
+        "summary": "Update asset",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Asset"
+        ],
+        "summary": "Delete asset",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      }
+    },
+    "/inspections": {
+      "get": {
+        "tags": [
+          "Inspection"
+        ],
+        "summary": "List inspections",
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Inspection"
+        ],
+        "summary": "Create inspection",
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/inspections/{id}": {
+      "get": {
+        "tags": [
+          "Inspection"
+        ],
+        "summary": "Get inspection detail",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Inspection"
+        ],
+        "summary": "Update inspection",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Inspection"
+        ],
+        "summary": "Delete inspection",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      }
+    },
+    "/maintenances": {
+      "get": {
+        "tags": [
+          "Maintenance"
+        ],
+        "summary": "List maintenances",
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Maintenance"
+        ],
+        "summary": "Create maintenance",
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/maintenances/{id}": {
+      "get": {
+        "tags": [
+          "Maintenance"
+        ],
+        "summary": "Get maintenance detail",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Maintenance"
+        ],
+        "summary": "Update maintenance",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Maintenance"
+        ],
+        "summary": "Delete maintenance",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      }
+    }
+  }
+}
