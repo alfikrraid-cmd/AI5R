@@ -6,6 +6,7 @@ Compiler is the only producer of IR.
 """
 
 from IR.entity_ir import EntityIR
+from IR.compilation_unit import CompilationUnit
 
 
 class MinimalCompiler:
@@ -24,3 +25,25 @@ class MinimalCompiler:
             name=entity,
             fields=fields
         )
+
+    def compile_product(self, manifest: dict) -> CompilationUnit:
+        product = manifest.get("product") or manifest.get("name")
+
+        if not product:
+            raise ValueError("Product manifest must contain 'product' or 'name'")
+
+        entities = manifest.get("entities", [])
+
+        if not isinstance(entities, list):
+            raise ValueError("'entities' must be a list")
+
+        unit = CompilationUnit(
+            product=product,
+            metadata=manifest.get("metadata", {})
+        )
+
+        for entity_manifest in entities:
+            unit.add_entity(self.compile_entity(entity_manifest))
+
+        return unit
+
