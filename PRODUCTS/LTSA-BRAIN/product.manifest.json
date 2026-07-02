@@ -1,0 +1,44 @@
+{
+  "product": {
+    "name": "LTSA-BRAIN",
+    "display_name": "LTSA Brain",
+    "version": "1.0.0",
+    "description": "Industrial Asset Reliability Platform",
+    "company": "AI5R",
+    "type": "saas"
+  },
+
+  "modules": [
+    {
+      "name": "customer",
+      "enabled": true
+    },
+    {
+      "name": "pump",
+      "enabled": true
+    },
+    {
+      "name": "asset",
+      "enabled": true
+    },
+    {
+      "name": "inspection",
+      "enabled": true
+    },
+    {
+      "name": "maintenance",
+      "enabled": true
+    }
+  ],
+
+  "artifacts": {
+    "database": true,
+    "schema": true,
+    "openapi": true,
+    "workflow": true,
+    "manifest": true,
+    "readme": true,
+    "release": true
+  }
+}
+
