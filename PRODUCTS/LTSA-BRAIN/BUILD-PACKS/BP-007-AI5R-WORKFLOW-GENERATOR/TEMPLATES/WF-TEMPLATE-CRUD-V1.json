@@ -1,0 +1,217 @@
+{
+  "name": "WF-TEMPLATE-CRUD-V1",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "72e68412-c22b-48e5-9374-724c0b4f93eb",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "7d26edb2-8d78-4b5a-be59-c08a1201a548",
+      "name": "GET /ltsa/customer/detail",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -720,
+        112
+      ],
+      "webhookId": "72e68412-c22b-48e5-9374-724c0b4f93eb"
+    },
+    {
+      "parameters": {
+        "jsCode": "const id = $json.query?.id;\n\nreturn [{\n  json: {\n    id,\n    valid: !!id\n  }\n}];"
+      },
+      "id": "a93c504c-272d-4265-ac45-e1f4a368fda0",
+      "name": "Parse ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -480,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "valid-id-check",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "19a59739-907d-4858-91cd-5601227a67a5",
+      "name": "IF Valid ID",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -240,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT *\nFROM public.customer_registry\nWHERE id = '{{ $json.id }}'\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ [$json.id] }}"
+        }
+      },
+      "id": "242d16d3-db27-49a9-b7fb-2013a707c62f",
+      "name": "Get Customer Detail",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        0,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first()?.json;\n\nif (!row || !row.id) {\n  return [{\n    json: {\n      statusCode: 404,\n      success: false,\n      message: \"Customer not found\",\n      data: null\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    statusCode: 200,\n    success: true,\n    message: \"Customer detail found\",\n    data: row\n  }\n}];"
+      },
+      "id": "db8b6640-1e76-4f78-b08f-e52963050e03",
+      "name": "Build Detail Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: $json.success, message: $json.message, data: $json.data } }}",
+        "options": {
+          "responseCode": "={{ $json.statusCode }}"
+        }
+      },
+      "id": "2f77cc61-8867-4952-b73b-27d876f59910",
+      "name": "Respond Detail",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        480,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, message: $json.message } }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "033452a8-3124-4495-beba-446905ad3ec4",
+      "name": "Respond 400",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        224
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "GET /ltsa/customer/detail": {
+      "main": [
+        [
+          {
+            "node": "Parse ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse ID": {
+      "main": [
+        [
+          {
+            "node": "IF Valid ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Valid ID": {
+      "main": [
+        [
+          {
+            "node": "Get Customer Detail",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 400",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Customer Detail": {
+      "main": [
+        [
+          {
+            "node": "Build Detail Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Detail Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Detail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "c389b4dc-003c-45a0-be10-c0ba11411560",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c7d8d76602cbcfa01fb1a201683d9f603f182a4257c15bd264e0f6630efb6844"
+  },
+  "nodeGroups": [],
+  "id": "OXe2EmBVTEqibcRC",
+  "tags": []
+}

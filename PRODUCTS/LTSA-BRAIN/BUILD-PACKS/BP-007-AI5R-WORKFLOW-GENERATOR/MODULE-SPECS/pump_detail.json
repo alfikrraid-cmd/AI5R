@@ -1,0 +1,13 @@
+{
+  "workflow_name": "WF-LTSA-PUMP-DETAIL-001",
+  "module": "pump",
+  "title": "Pump",
+  "operation": "detail",
+  "method": "GET",
+  "endpoint": "ltsa/pump/detail",
+  "table": "public.ltsa_pumps",
+  "lookup_field": "tag_number",
+  "not_found_message": "Pump not found",
+  "found_message": "Pump detail found"
+}
+

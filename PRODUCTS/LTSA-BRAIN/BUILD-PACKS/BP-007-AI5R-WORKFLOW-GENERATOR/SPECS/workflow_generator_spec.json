@@ -1,0 +1,6 @@
+
+{
+  "module": "customer",
+  "table": "customer_registry",
+  "operations": ["create", "list", "detail", "by-code", "update", "delete"]
+}
