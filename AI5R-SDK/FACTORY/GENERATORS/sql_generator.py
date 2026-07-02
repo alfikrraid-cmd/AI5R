@@ -1,72 +1,36 @@
 """
-AI5R SQL Manufacturing Engine
-FM-001.7
+FM-100.3.1 SQL Generator
+
+Generates database.sql from a CompilationUnit.
 """
 
-SQL_TYPE_MAP = {
-    "string": "TEXT",
-    "integer": "INTEGER",
-    "number": "NUMERIC",
-    "boolean": "BOOLEAN",
-    "date": "DATE",
-    "datetime": "TIMESTAMP"
-}
+from pathlib import Path
 
 
 class SQLGenerator:
-
-    def generate_create_table(self, registry: dict) -> str:
-        table = registry["table"]
-        primary_key = registry["primary_key"]
-        fields = registry["fields"]
+    def generate(self, unit, output_path: str) -> str:
+        path = Path(output_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
 
         lines = []
-        lines.append(f"CREATE TABLE IF NOT EXISTS public.{table} (")
+        lines.append("-- AI5R Generated SQL")
+        lines.append(f"-- Product: {unit.product}")
+        lines.append("")
 
-        column_lines = []
+        for entity in unit.entities:
+            table_name = f"ltsa_{entity.name}s"
 
-        for field in fields:
-            name = field["name"]
-            field_type = SQL_TYPE_MAP.get(field.get("type", "string"), "TEXT")
-            required = field.get("required", False)
+            lines.append(f"CREATE TABLE IF NOT EXISTS {table_name} (")
+            lines.append("    id SERIAL PRIMARY KEY,")
+            lines.append("    code VARCHAR(100) UNIQUE NOT NULL,")
+            lines.append("    name VARCHAR(255) NOT NULL,")
+            lines.append("    status VARCHAR(50) DEFAULT 'active',")
+            lines.append("    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,")
+            lines.append("    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+            lines.append(");")
+            lines.append("")
 
-            column = f"    {name} {field_type}"
+        sql = "\n".join(lines)
+        path.write_text(sql, encoding="utf-8")
 
-            if name == primary_key:
-                column += " PRIMARY KEY"
-
-            if required:
-                column += " NOT NULL"
-
-            column_lines.append(column)
-
-        column_lines.append("    created_at TIMESTAMP DEFAULT NOW()")
-        column_lines.append("    updated_at TIMESTAMP DEFAULT NOW()")
-
-        lines.append(",\n".join(column_lines))
-        lines.append(");")
-
-        return "\n".join(lines)
-
-    def generate_seed(self, registry: dict) -> str:
-        table = registry["table"]
-        primary_key = registry["primary_key"]
-
-        return (
-            f"INSERT INTO public.{table} ({primary_key})\n"
-            f"VALUES ('TEST-001')\n"
-            f"ON CONFLICT ({primary_key}) DO NOTHING;\n"
-        )
-
-    def generate_indexes(self, registry: dict) -> str:
-        table = registry["table"]
-        primary_key = registry["primary_key"]
-
-        return (
-            f"CREATE INDEX IF NOT EXISTS idx_{table}_{primary_key}\n"
-            f"ON public.{table} ({primary_key});\n"
-        )
-
-    def generate_rollback(self, registry: dict) -> str:
-        table = registry["table"]
-        return f"DROP TABLE IF EXISTS public.{table};\n"
+        return sql
