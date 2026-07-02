@@ -5,6 +5,7 @@ FM-100.4 Manufacturing Engine
 from GENERATORS.sql_generator import SQLGenerator
 from GENERATORS.schema_generator import SchemaGenerator
 from GENERATORS.openapi_generator import OpenAPIGenerator
+from GENERATORS.workflow_generator import WorkflowGenerator
 
 
 class ManufacturingEngine:
