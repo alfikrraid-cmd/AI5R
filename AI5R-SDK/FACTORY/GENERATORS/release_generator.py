@@ -1,26 +1,26 @@
+import json
 from pathlib import Path
 
 from MANUFACTURING.station import ManufacturingStation
 
 
-class SQLGenerator(ManufacturingStation):
+class ReleaseGenerator(ManufacturingStation):
 
     @property
     def name(self):
-        return "sql"
+        return "release"
 
     def run(self, unit, target):
         output = Path(target)
         output.parent.mkdir(parents=True, exist_ok=True)
 
-        sql = f"""-- Auto Generated
+        release = {
+            "product": unit.product,
+            "release": "generated",
+            "status": "ready"
+        }
 
-CREATE TABLE {unit.product.lower()} (
-    id SERIAL PRIMARY KEY
-);
-"""
-
-        output.write_text(sql)
+        output.write_text(json.dumps(release, indent=2))
         return str(output)
 
     def generate(self, unit, target):

@@ -1,46 +1,54 @@
 """
-FM-100.4 Manufacturing Engine
+FM-103.3 Manufacturing Engine with Auto Discovery and Deterministic Order
 """
 
-from GENERATORS.sql_generator import SQLGenerator
-from GENERATORS.schema_generator import SchemaGenerator
-from GENERATORS.openapi_generator import OpenAPIGenerator
-from GENERATORS.workflow_generator import WorkflowGenerator
+from MANUFACTURING.station_discovery import StationDiscovery
+from MANUFACTURING.station_registry import StationRegistry
 
 
 class ManufacturingEngine:
 
     def __init__(self):
 
-        self.generators = [
-            SQLGenerator(),
-            SchemaGenerator(),
-            OpenAPIGenerator()
+        self.registry = StationRegistry()
+
+        discovery = StationDiscovery()
+        stations = discovery.discover("GENERATORS")
+
+        for station in stations:
+            self.registry.register(station)
+
+        self.targets = {
+            "sql": "database.sql",
+            "schema": "schema.json",
+            "openapi": "openapi.json",
+            "workflow": "workflow.json",
+            "release": "release.json"
+        }
+
+        self.pipeline = [
+            "sql",
+            "schema",
+            "openapi",
+            "workflow",
+            "release"
         ]
 
     def manufacture(self, unit, output_dir):
 
         results = []
 
-        for generator in self.generators:
+        for station_name in self.pipeline:
 
-            name = generator.__class__.__name__.lower()
+            station = self.registry.get(station_name)
 
-            if "sql" in name:
-                target = f"{output_dir}/database.sql"
-
-            elif "schema" in name:
-                target = f"{output_dir}/schema.json"
-
-            elif "openapi" in name:
-                target = f"{output_dir}/openapi.json"
-
-            else:
+            if station is None:
                 continue
 
-            generator.generate(unit, target)
+            target = f"{output_dir}/{self.targets[station_name]}"
+
+            station.run(unit, target)
 
             results.append(target)
 
         return results
-

@@ -18,9 +18,9 @@ def test_engine():
         "PRODUCTS/LTSA-BRAIN/RELEASE"
     )
 
-    assert len(outputs) == 3
+    assert len(outputs) == 5
     print(outputs)
-    print("FM-100.4 Manufacturing Engine OK")
+    print("FM-100.6 Manufacturing Engine OK")
 
 
 if __name__ == "__main__":
