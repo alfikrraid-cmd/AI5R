@@ -1,9 +1,11 @@
 """
-FM-103.3 Manufacturing Engine with Auto Discovery and Deterministic Order
+FM-104.6 Manufacturing Engine with Dependency Graph Pipeline
 """
 
 from MANUFACTURING.station_discovery import StationDiscovery
 from MANUFACTURING.station_registry import StationRegistry
+from MANUFACTURING.dependency_graph import DependencyGraph
+from MANUFACTURING.topological_sort import TopologicalSorter
 
 
 class ManufacturingEngine:
@@ -26,13 +28,8 @@ class ManufacturingEngine:
             "release": "release.json"
         }
 
-        self.pipeline = [
-            "sql",
-            "schema",
-            "openapi",
-            "workflow",
-            "release"
-        ]
+        graph = DependencyGraph(self.registry.all()).build()
+        self.pipeline = TopologicalSorter().sort(graph)
 
     def manufacture(self, unit, output_dir):
 
@@ -43,6 +40,9 @@ class ManufacturingEngine:
             station = self.registry.get(station_name)
 
             if station is None:
+                continue
+
+            if station_name not in self.targets:
                 continue
 
             target = f"{output_dir}/{self.targets[station_name]}"

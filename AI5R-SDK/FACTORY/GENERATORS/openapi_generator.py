@@ -10,6 +10,11 @@ class OpenAPIGenerator(ManufacturingStation):
     def name(self):
         return "openapi"
 
+
+    @property
+    def depends_on(self):
+        return ["schema"]
+
     def run(self, unit, target):
         output = Path(target)
         output.parent.mkdir(parents=True, exist_ok=True)

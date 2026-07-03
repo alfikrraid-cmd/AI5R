@@ -10,6 +10,11 @@ class SchemaGenerator(ManufacturingStation):
     def name(self):
         return "schema"
 
+
+    @property
+    def depends_on(self):
+        return ["sql"]
+
     def run(self, unit, target):
         output = Path(target)
         output.parent.mkdir(parents=True, exist_ok=True)

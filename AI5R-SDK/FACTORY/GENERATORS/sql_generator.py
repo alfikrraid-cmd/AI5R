@@ -9,6 +9,11 @@ class SQLGenerator(ManufacturingStation):
     def name(self):
         return "sql"
 
+
+    @property
+    def depends_on(self):
+        return []
+
     def run(self, unit, target):
         output = Path(target)
         output.parent.mkdir(parents=True, exist_ok=True)

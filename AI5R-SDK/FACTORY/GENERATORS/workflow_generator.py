@@ -10,6 +10,11 @@ class WorkflowGenerator(ManufacturingStation):
     def name(self):
         return "workflow"
 
+
+    @property
+    def depends_on(self):
+        return ["schema", "openapi"]
+
     def run(self, unit, target):
         output = Path(target)
         output.parent.mkdir(parents=True, exist_ok=True)

@@ -10,6 +10,11 @@ class ReleaseGenerator(ManufacturingStation):
     def name(self):
         return "release"
 
+
+    @property
+    def depends_on(self):
+        return ["workflow"]
+
     def run(self, unit, target):
         output = Path(target)
         output.parent.mkdir(parents=True, exist_ok=True)
