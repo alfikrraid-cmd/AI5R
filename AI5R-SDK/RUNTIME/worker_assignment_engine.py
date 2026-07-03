@@ -1,21 +1,24 @@
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 from RUNTIME.enterprise_task import EnterpriseTask
+from RUNTIME.enterprise_worker import EnterpriseWorker
 
 
 class WorkerAssignmentEngine:
+
     def __init__(self):
-        self._workers: Dict[str, List[str]] = {}
+        self._workers: List[EnterpriseWorker] = []
 
-    def register_worker(self, worker_id: str, capabilities: List[str]) -> None:
-        self._workers[worker_id] = capabilities
+    def register(self, worker: EnterpriseWorker):
+        self._workers.append(worker)
 
-    def assign(self, task: EnterpriseTask) -> Optional[str]:
-        for worker_id, capabilities in self._workers.items():
-            if task.task_type in capabilities:
-                task.assign(worker_id)
-                return worker_id
+    def assign(self, task: EnterpriseTask) -> Optional[EnterpriseWorker]:
+        for worker in self._workers:
+            if worker.supports(task.task_type):
+                task.assign(worker.worker_id)
+                return worker
+
         return None
 
-    def workers(self) -> Dict[str, List[str]]:
+    def workers(self):
         return self._workers
