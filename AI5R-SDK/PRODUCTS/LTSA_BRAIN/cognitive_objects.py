@@ -28,14 +28,20 @@ class CognitiveObject(EnterpriseObject):
 
         try:
             super().__init__(
-                object_id=generated_id,
-                object_type=object_type,
-                metadata=metadata or {},
+                code=generated_id,
+                name=object_type,
+                type=object_type,
             )
         except TypeError:
-            super().__init__()
+            try:
+                super().__init__(generated_id, object_type, object_type)
+            except TypeError:
+                pass
 
-        self.id = getattr(self, "id", generated_id) or generated_id
+        self.id = generated_id
+        self.code = generated_id
+        self.name = object_type
+        self.type = object_type
         self.object_type = object_type
         self.metadata = metadata or {}
 
