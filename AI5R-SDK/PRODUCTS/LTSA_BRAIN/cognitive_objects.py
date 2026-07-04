@@ -24,11 +24,20 @@ class CognitiveObject(EnterpriseObject):
         history=None,
         payload=None,
     ):
-        super().__init__(
-            object_id=str(uuid4()),
-            object_type=object_type,
-            metadata=metadata or {},
-        )
+        generated_id = str(uuid4())
+
+        try:
+            super().__init__(
+                object_id=generated_id,
+                object_type=object_type,
+                metadata=metadata or {},
+            )
+        except TypeError:
+            super().__init__()
+
+        self.id = getattr(self, "id", generated_id) or generated_id
+        self.object_type = object_type
+        self.metadata = metadata or {}
 
         self.version = version
         self.created_at = datetime.now(timezone.utc).isoformat()
