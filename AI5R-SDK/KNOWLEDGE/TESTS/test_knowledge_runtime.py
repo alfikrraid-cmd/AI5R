@@ -15,6 +15,7 @@ def test_knowledge_runtime():
         organization_id="org-001",
         department_id="dept-001",
         source_code="SRC-001",
+        source_name="Unit Test Source",
         source_type="manual",
         metadata={"trust_level": "verified"},
     )
