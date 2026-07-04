@@ -10,7 +10,6 @@ class SchemaGenerator(ManufacturingStation):
     def name(self):
         return "schema"
 
-
     @property
     def depends_on(self):
         return ["sql"]
@@ -33,7 +32,7 @@ class SchemaGenerator(ManufacturingStation):
         }
 
         output.write_text(json.dumps(schema, indent=2))
-        return str(output)
+        return schema
 
     def generate(self, unit, target):
         return self.run(unit, target)

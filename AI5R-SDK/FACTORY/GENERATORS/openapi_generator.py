@@ -10,7 +10,6 @@ class OpenAPIGenerator(ManufacturingStation):
     def name(self):
         return "openapi"
 
-
     @property
     def depends_on(self):
         return ["schema"]
@@ -22,29 +21,46 @@ class OpenAPIGenerator(ManufacturingStation):
         paths = {}
 
         for entity in unit.entities:
-            route = f"/{entity.name.lower()}"
-            paths[route] = {
+            base = f"/{entity.name.lower()}s"
+            detail = f"{base}/{{id}}"
+
+            paths[base] = {
                 "get": {
-                    "summary": f"List {entity.name}",
-                    "responses": {
-                        "200": {
-                            "description": "OK"
-                        }
-                    }
+                    "summary": f"List {entity.name}s",
+                    "responses": {"200": {"description": "OK"}}
+                },
+                "post": {
+                    "summary": f"Create {entity.name}",
+                    "responses": {"201": {"description": "Created"}}
+                }
+            }
+
+            paths[detail] = {
+                "get": {
+                    "summary": f"Get {entity.name}",
+                    "responses": {"200": {"description": "OK"}}
+                },
+                "put": {
+                    "summary": f"Update {entity.name}",
+                    "responses": {"200": {"description": "OK"}}
+                },
+                "delete": {
+                    "summary": f"Delete {entity.name}",
+                    "responses": {"204": {"description": "No Content"}}
                 }
             }
 
         openapi = {
             "openapi": "3.0.0",
             "info": {
-                "title": unit.product,
+                "title": "LTSA Brain API",
                 "version": "1.0.0"
             },
             "paths": paths
         }
 
         output.write_text(json.dumps(openapi, indent=2))
-        return str(output)
+        return openapi
 
     def generate(self, unit, target):
         return self.run(unit, target)
