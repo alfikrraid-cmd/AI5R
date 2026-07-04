@@ -2,8 +2,10 @@ from pathlib import Path
 
 try:
     from .template_loader import TemplateLoader
+    from .template_registry import TemplateRegistry
 except ImportError:
     from template_loader import TemplateLoader
+    from template_registry import TemplateRegistry
 
 
 class FoundationGenerator:
@@ -18,6 +20,7 @@ class FoundationGenerator:
         base_dir = Path(__file__).resolve().parent
         self.template_dir = Path(template_dir) if template_dir else base_dir / "TEMPLATES"
         self.loader = TemplateLoader(self.template_dir)
+        self.registry = TemplateRegistry()
 
     def generate(
         self,
@@ -53,31 +56,22 @@ class FoundationGenerator:
             "module_name": module_name,
         }
 
-        if legacy_mode:
-            files = {
-                "__init__.py": "init.py.tpl",
-                f"{module_name}_object.py": "object.py.tpl",
-                f"{module_name}_registry.py": "registry.py.tpl",
-                f"{module_name}_validation_engine.py": "validation.py.tpl",
-                f"{module_name}_runtime.py": "runtime.py.tpl",
-                f"{module_name}_manifest.py": "manifest.py.tpl",
-                f"{module_name}_manufacturing_station.py": "station.py.tpl",
-                f"TESTS/test_{module_name}_object.py": "test_object.py.tpl",
-                f"DOCS/{foundation_code}-SPECIFICATION.md": "specification.md.tpl",
-                f"DOCS/{foundation_name.upper()}-FOUNDATION-FREEZE-v1.0.md": "freeze.md.tpl",
-            }
-        else:
-            files = {
-                f"{module_name}.py": "object.py.tpl",
-                f"{module_name}_registry.py": "registry.py.tpl",
-                f"{module_name}_validator.py": "validation.py.tpl",
-                f"{module_name}_runtime.py": "runtime.py.tpl",
-                "manifest.json": "manifest.json.tpl",
-                f"{module_name}_station.py": "station.py.tpl",
-                f"TESTS/test_{module_name}.py": "test_object.py.tpl",
-                "SPECIFICATION.md": "specification.md.tpl",
-                "FREEZE.md": "freeze.md.tpl",
-            }
+        registry_mode = "legacy" if legacy_mode else "standard"
+        files = self.registry.get(registry_mode)
+
+        rendered_files = {}
+
+        for relative_path, template_name in files.items():
+            rendered_path = (
+                relative_path
+                .replace("{{module_name}}", module_name)
+                .replace("{{foundation_code}}", foundation_code)
+                .replace("{{foundation_upper}}", foundation_name.upper())
+            )
+
+            rendered_files[rendered_path] = template_name
+
+        files = rendered_files
 
         generated = []
 
