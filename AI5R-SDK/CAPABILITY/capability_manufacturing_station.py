@@ -1,9 +1,7 @@
-from MANUFACTURING.station import ManufacturingStation
-
 from .capability_manifest import CapabilityManifest
 
 
-class CapabilityManufacturingStation(ManufacturingStation):
+class CapabilityManufacturingStation:
     """
     AI5R Capability Manufacturing Station
 
