@@ -11,26 +11,20 @@ from KNOWLEDGE.knowledge_registry import KnowledgeRegistry
 def test_knowledge_registry():
     registry = KnowledgeRegistry()
 
-    item = KnowledgeObject(
-        organization_id="ORG-001",
-        department_id="DEPT-ENG-001",
-        owner_worker_id="WORKER-001",
-        knowledge_code="KNW-LTSA-001",
-        title="LTSA Brain Pump Knowledge",
-        content="Pump registry contains pump assets, specifications, and operating context.",
-        source_type="MANUAL",
-        metadata={
-            "domain": "power_plant",
-            "criticality": "high",
-        },
+    knowledge = KnowledgeObject(
+        knowledge_id="knowledge-001",
+        knowledge_code="KF-001",
+        domain="maintenance",
+        tags=["pump", "inspection"],
+        metadata={"source": "unit-test"},
     )
 
-    registry.register(item)
+    registered = registry.register(knowledge)
 
-    assert registry.get(item.knowledge_id).title == "LTSA Brain Pump Knowledge"
-    assert len(registry.list_by_organization("ORG-001")) == 1
-    assert len(registry.list_by_department("DEPT-ENG-001")) == 1
-    assert registry.search("ORG-001", "pump")[0].knowledge_code == "KNW-LTSA-001"
+    assert registered == knowledge
+    assert registry.exists("knowledge-001") is True
+    assert registry.get("knowledge-001") == knowledge
+    assert len(registry.list_all()) == 1
 
     print("KF-001 Knowledge Registry OK")
 
