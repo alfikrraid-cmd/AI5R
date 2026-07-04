@@ -23,7 +23,6 @@ class RealityProcessingStation:
         temperature = measurements.get("temperature") or self._extract_temperature(raw_content)
 
         findings = list(payload.get("findings", []))
-
         content_lower = raw_content.lower()
 
         if "seal leakage" in content_lower or "seal_leakage" in content_lower:
