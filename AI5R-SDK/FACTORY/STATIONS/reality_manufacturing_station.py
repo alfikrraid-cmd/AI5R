@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from typing import Any
+
+from FACTORY.CORE import BaseManufacturingStation
 
 
 @dataclass
@@ -10,52 +11,43 @@ class RealityManufacturingInput:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
-@dataclass
-class RealityManufacturingResult:
-    status: str
-    station: str
-    source: str
-    manufactured_at: str
-    reality_object: dict[str, Any]
-    events: list[dict[str, Any]]
-
-
-class RealityManufacturingStation:
-    station_name = "MS-001 Reality Manufacturing Station"
+class RealityManufacturingStation(BaseManufacturingStation):
+    station_code = "MS-001"
+    station_name = "Reality Manufacturing Station"
+    object_type = "REALITY_OBJECT"
+    event_type = "REALITY_MANUFACTURED"
+    required_input = "source"
 
     def manufacture(
         self,
         manufacturing_input: RealityManufacturingInput,
         context: dict[str, Any] | None = None,
-    ) -> RealityManufacturingResult:
+    ):
         if not manufacturing_input.source:
             raise ValueError("Reality source is required")
 
-        manufactured_at = datetime.now(timezone.utc).isoformat()
+        result = super().manufacture(
+            payload={
+                "source": manufacturing_input.source,
+                "payload": manufacturing_input.payload,
+                "context": context or {},
+            },
+            metadata=manufacturing_input.metadata,
+        )
 
-        reality_object = {
+        result.source = manufacturing_input.source
+        result.reality_object = {
             "type": "REALITY_OBJECT",
             "source": manufacturing_input.source,
             "payload": manufacturing_input.payload,
             "metadata": manufacturing_input.metadata,
             "context": context or {},
-            "manufactured_at": manufactured_at,
+            "manufactured_at": result.manufactured_at,
         }
 
-        events = [
-            {
-                "event_type": "REALITY_MANUFACTURED",
-                "station": self.station_name,
-                "source": manufacturing_input.source,
-                "created_at": manufactured_at,
-            }
-        ]
+        result.events[0]["station"] = self.full_station_name()
 
-        return RealityManufacturingResult(
-            status="MANUFACTURED",
-            station=self.station_name,
-            source=manufacturing_input.source,
-            manufactured_at=manufactured_at,
-            reality_object=reality_object,
-            events=events,
-        )
+        return result
+
+
+RealityManufacturingResult = object
