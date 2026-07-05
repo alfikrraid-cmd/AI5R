@@ -78,6 +78,10 @@ class ACMSManifest:
         return cls.MANUFACTURING_LINES
 
     @classmethod
+    def contracts(cls):
+        return cls.MANUFACTURING_LINES
+
+    @classmethod
     def line_codes(cls):
         return [line.code for line in cls.MANUFACTURING_LINES]
 
