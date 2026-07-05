@@ -58,6 +58,12 @@ from .recommendation_manufacturing_station import (
     RecommendationManufacturingStation,
 )
 
+from .action_manufacturing_station import (
+    ActionManufacturingInput,
+    ActionManufacturingResult,
+    ActionManufacturingStation,
+)
+
 __all__ = [
     "RealityManufacturingInput",
     "RealityManufacturingResult",
@@ -89,4 +95,7 @@ __all__ = [
     "RecommendationManufacturingInput",
     "RecommendationManufacturingResult",
     "RecommendationManufacturingStation",
+    "ActionManufacturingInput",
+    "ActionManufacturingResult",
+    "ActionManufacturingStation",
 ]
