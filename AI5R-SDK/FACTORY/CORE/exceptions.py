@@ -1,0 +1,2 @@
+class ManufacturingValidationError(ValueError):
+    pass
