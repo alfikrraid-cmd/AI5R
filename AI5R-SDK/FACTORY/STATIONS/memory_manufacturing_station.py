@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from typing import Any
-from uuid import uuid4
+
+from FACTORY.CORE import BaseManufacturingStation
 
 
 @dataclass
@@ -10,51 +10,40 @@ class MemoryManufacturingInput:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
-@dataclass
-class MemoryManufacturingResult:
-    status: str
-    station: str
-    memory_object: dict[str, Any]
-    memory_id: str
-    memory_timestamp: str
-    events: list[dict[str, Any]]
-
-
-class MemoryManufacturingStation:
-    station_name = "MS-004 Memory Manufacturing Station"
+class MemoryManufacturingStation(BaseManufacturingStation):
+    station_code = "MS-004"
+    station_name = "Memory Manufacturing Station"
+    object_type = "MEMORY_OBJECT"
+    event_type = "MEMORY_MANUFACTURED"
+    required_input = "experience_object"
 
     def manufacture(
         self,
         manufacturing_input: MemoryManufacturingInput,
-    ) -> MemoryManufacturingResult:
+    ):
         if not manufacturing_input.experience_object:
             raise ValueError("Experience object is required")
 
-        memory_timestamp = datetime.now(timezone.utc).isoformat()
-        memory_id = str(uuid4())
+        result = super().manufacture(
+            payload={
+                "experience_object": manufacturing_input.experience_object,
+            },
+            metadata=manufacturing_input.metadata,
+        )
 
-        memory_object = {
+        result.memory_id = result.object_id
+        result.memory_timestamp = result.manufactured_at
+        result.memory_object = {
             "type": "MEMORY_OBJECT",
-            "memory_id": memory_id,
+            "memory_id": result.object_id,
             "experience_object": manufacturing_input.experience_object,
             "metadata": manufacturing_input.metadata,
-            "memory_timestamp": memory_timestamp,
+            "memory_timestamp": result.manufactured_at,
         }
 
-        events = [
-            {
-                "event_type": "MEMORY_MANUFACTURED",
-                "station": self.station_name,
-                "memory_id": memory_id,
-                "created_at": memory_timestamp,
-            }
-        ]
+        result.events[0]["memory_id"] = result.object_id
 
-        return MemoryManufacturingResult(
-            status="MANUFACTURED",
-            station=self.station_name,
-            memory_object=memory_object,
-            memory_id=memory_id,
-            memory_timestamp=memory_timestamp,
-            events=events,
-        )
+        return result
+
+
+MemoryManufacturingResult = object
