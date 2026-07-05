@@ -5,6 +5,11 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from FOUNDATION.canonical_object import CanonicalObject, utc_now_iso
+from FOUNDATION.canonical_identity import CanonicalIdentityGenerator
+
+
+def setup_function():
+    CanonicalIdentityGenerator.reset()
 
 
 def test_utc_now_iso_returns_zulu_time():
@@ -80,3 +85,21 @@ def test_canonical_object_generates_event():
     assert event["object_type"] == "TEST_OBJECT"
     assert event["metadata"]["domain"] == "foundation"
     assert event["timestamp"].endswith("Z")
+
+
+def test_canonical_object_auto_generates_identity():
+    obj = CanonicalObject(
+        object_type="KNW",
+    )
+
+    assert obj.object_id.startswith("AI5R-KNW-")
+    assert CanonicalIdentityGenerator.current_counter("KNW") == 1
+
+
+def test_canonical_object_keeps_manual_identity():
+    obj = CanonicalObject(
+        object_id="OBJ-MANUAL-001",
+        object_type="TEST_OBJECT",
+    )
+
+    assert obj.object_id == "OBJ-MANUAL-001"

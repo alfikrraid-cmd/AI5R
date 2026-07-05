@@ -2,6 +2,8 @@ from dataclasses import dataclass, field, asdict
 from datetime import UTC, datetime
 from typing import Any
 
+from FOUNDATION.canonical_identity import CanonicalIdentityGenerator
+
 
 def utc_now_iso() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
@@ -9,12 +11,18 @@ def utc_now_iso() -> str:
 
 @dataclass
 class CanonicalObject:
-    object_id: str
     object_type: str
+    object_id: str | None = None
     version: str = "1.0"
     metadata: dict[str, Any] = field(default_factory=dict)
     created_at: str = field(default_factory=utc_now_iso)
     updated_at: str = field(default_factory=utc_now_iso)
+
+    def __post_init__(self) -> None:
+        if not self.object_id and self.object_type:
+            self.object_id = CanonicalIdentityGenerator.generate(
+                self.object_type
+            ).value
 
     def validate(self) -> bool:
         if not self.object_id:
