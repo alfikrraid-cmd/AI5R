@@ -1,0 +1,21 @@
+{
+  "product": {
+    "name": "LTSA AI",
+    "owner": "AI5R",
+    "version": "0.1.0",
+    "description": "LTSA AI is an AI5R product for L Technical Service Agreement intelligence."
+  },
+  "pipeline": [
+    "MS-001",
+    "MS-002",
+    "MS-003",
+    "MS-004",
+    "MS-005",
+    "MS-006",
+    "MS-007",
+    "MS-008",
+    "MS-009",
+    "MS-010",
+    "MS-011"
+  ]
+}
