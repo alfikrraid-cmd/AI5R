@@ -28,6 +28,12 @@ from .knowledge_manufacturing_station import (
     KnowledgeManufacturingStation,
 )
 
+from .capability_manufacturing_station import (
+    CapabilityManufacturingInput,
+    CapabilityManufacturingResult,
+    CapabilityManufacturingStation,
+)
+
 __all__ = [
     "RealityManufacturingInput",
     "RealityManufacturingResult",
@@ -44,4 +50,7 @@ __all__ = [
     "KnowledgeManufacturingInput",
     "KnowledgeManufacturingResult",
     "KnowledgeManufacturingStation",
+    "CapabilityManufacturingInput",
+    "CapabilityManufacturingResult",
+    "CapabilityManufacturingStation",
 ]
