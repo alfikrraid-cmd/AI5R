@@ -34,6 +34,12 @@ class KnowledgeObject(CanonicalObject):
         self.relationships = relationships or []
         self.conflicts = conflicts or []
 
+        # scoring signals (native state)
+        self.impact = metadata.get("impact") if metadata else None
+        self.urgency = metadata.get("urgency") if metadata else None
+        self.actionability = metadata.get("actionability") if metadata else None
+
+
     @property
     def knowledge_id(self) -> str:
         return self.object_id
@@ -73,7 +79,13 @@ class KnowledgeObject(CanonicalObject):
         if not data:
             raise ValueError("Knowledge object data is required")
 
-        return cls(
+        metadata = dict(data.get("metadata", {}))
+
+        for key in ["impact", "urgency", "actionability"]:
+            if key in data:
+                metadata[key] = data[key]
+
+        obj = cls(
             knowledge_id=data.get("knowledge_id") or data.get("object_id"),
             summary=data["summary"],
             facts=data.get("facts", []),
@@ -81,11 +93,17 @@ class KnowledgeObject(CanonicalObject):
             priority=data.get("priority", {}),
             relationships=data.get("relationships", []),
             conflicts=data.get("conflicts", []),
-            metadata=data.get("metadata", {}),
+            metadata=metadata,
             created_at=data.get("created_at"),
             updated_at=data.get("updated_at"),
             version=data.get("version", "1.0"),
         )
+
+        obj.impact = metadata.get("impact")
+        obj.urgency = metadata.get("urgency")
+        obj.actionability = metadata.get("actionability")
+
+        return obj
 
     @classmethod
     def deserialize(cls, data: dict[str, Any]) -> "KnowledgeObject":
