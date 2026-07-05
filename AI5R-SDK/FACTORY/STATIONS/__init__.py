@@ -40,6 +40,12 @@ from .context_manufacturing_station import (
     ContextManufacturingStation,
 )
 
+from .reasoning_manufacturing_station import (
+    ReasoningManufacturingInput,
+    ReasoningManufacturingResult,
+    ReasoningManufacturingStation,
+)
+
 __all__ = [
     "RealityManufacturingInput",
     "RealityManufacturingResult",
@@ -62,4 +68,7 @@ __all__ = [
     "ContextManufacturingInput",
     "ContextManufacturingResult",
     "ContextManufacturingStation",
+    "ReasoningManufacturingInput",
+    "ReasoningManufacturingResult",
+    "ReasoningManufacturingStation",
 ]
