@@ -1,9 +1,7 @@
-from MANUFACTURING.station import ManufacturingStation
-
 from .knowledge_manifest import KnowledgeManifest
 
 
-class KnowledgeManufacturingStation(ManufacturingStation):
+class KnowledgeManufacturingStation:
     """
     AI5R Knowledge Manufacturing Station
 
