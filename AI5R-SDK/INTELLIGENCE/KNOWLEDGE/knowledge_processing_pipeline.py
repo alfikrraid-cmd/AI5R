@@ -34,9 +34,24 @@ class KnowledgeProcessingPipeline:
             "signals": classification.signals,
         })
 
-        priority = self.prioritizer.prioritize(
-            knowledge_object.to_dict()
+        priority_input = knowledge_object.to_dict()
+        priority_input["impact"] = getattr(
+            knowledge_object,
+            "impact",
+            knowledge_object.metadata.get("impact", 0.5),
         )
+        priority_input["urgency"] = getattr(
+            knowledge_object,
+            "urgency",
+            knowledge_object.metadata.get("urgency", 0.5),
+        )
+        priority_input["actionability"] = getattr(
+            knowledge_object,
+            "actionability",
+            knowledge_object.metadata.get("actionability", 0.5),
+        )
+
+        priority = self.prioritizer.prioritize(priority_input)
 
         knowledge_object.attach_priority({
             "impact": priority.impact,
