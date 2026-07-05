@@ -98,7 +98,7 @@ def test_premise_station_adds_reasoning_trace():
     assert "KO-RS003" in reasoning.supporting_knowledge
 
 
-def test_premise_station_rejects_missing_knowledge_objects:
+def test_premise_station_rejects_missing_knowledge_objects():
     station = PremiseManufacturingStation()
     reasoning = ReasoningObject()
 
