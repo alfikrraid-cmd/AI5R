@@ -22,6 +22,12 @@ from .memory_manufacturing_station import (
     MemoryManufacturingStation,
 )
 
+from .knowledge_manufacturing_station import (
+    KnowledgeManufacturingInput,
+    KnowledgeManufacturingResult,
+    KnowledgeManufacturingStation,
+)
+
 __all__ = [
     "RealityManufacturingInput",
     "RealityManufacturingResult",
@@ -35,4 +41,7 @@ __all__ = [
     "MemoryManufacturingInput",
     "MemoryManufacturingResult",
     "MemoryManufacturingStation",
+    "KnowledgeManufacturingInput",
+    "KnowledgeManufacturingResult",
+    "KnowledgeManufacturingStation",
 ]
