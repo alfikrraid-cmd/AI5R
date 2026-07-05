@@ -1,19 +1,27 @@
 from EXECUTION.execution_runtime import ExecutionRuntime
+from INTEGRATION.pipeline_validation_engine import PipelineValidationEngine
 
 
 class ExecutionPipeline:
     """
     AI5R Execution Pipeline
 
-    Converts a plan into execution objects.
+    Validates and converts a plan into execution objects.
     """
 
     def __init__(self):
         self.execution_runtime = ExecutionRuntime()
+        self.validator = PipelineValidationEngine()
 
     def create_from_plan(self, plan):
-        if not plan:
-            raise ValueError("Plan is required")
+        validation = self.validator.validate_plan(plan)
+
+        if not validation["valid"]:
+            return {
+                "status": "INVALID_PLAN",
+                "validation": validation,
+                "executions": [],
+            }
 
         executions = []
 
@@ -34,6 +42,7 @@ class ExecutionPipeline:
 
         return {
             "status": "PIPELINE_CREATED",
+            "validation": validation,
             "plan_id": plan.plan_id,
             "executions": executions,
         }
