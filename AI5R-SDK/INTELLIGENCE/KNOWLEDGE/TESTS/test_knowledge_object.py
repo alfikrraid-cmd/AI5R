@@ -92,3 +92,29 @@ def test_knowledge_object_can_add_relationship_and_conflict():
     assert len(knowledge.relationships) == 1
     assert len(knowledge.conflicts) == 1
     assert knowledge.conflicts[0]["severity"] == "HIGH"
+
+from FOUNDATION.canonical_object import CanonicalObject
+from FOUNDATION.canonical_identity import CanonicalIdentityGenerator
+
+
+def test_knowledge_object_inherits_canonical_object():
+    knowledge = KnowledgeObject(
+        knowledge_id="KO-006",
+        summary="Knowledge object now inherits canonical object",
+    )
+
+    assert isinstance(knowledge, CanonicalObject)
+    assert knowledge.object_id == "KO-006"
+    assert knowledge.object_type == "KNOWLEDGE_OBJECT"
+    assert knowledge.knowledge_id == "KO-006"
+
+
+def test_knowledge_object_can_auto_generate_identity():
+    CanonicalIdentityGenerator.reset()
+
+    knowledge = KnowledgeObject(
+        summary="Auto generated knowledge identity",
+    )
+
+    assert knowledge.knowledge_id.startswith("AI5R-KNOWLEDGE_OBJECT-")
+    assert knowledge.object_id == knowledge.knowledge_id
