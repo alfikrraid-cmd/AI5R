@@ -4,6 +4,7 @@ from typing import Any, Callable
 from FOUNDATION.canonical_identity import CanonicalIdentityGenerator
 from FOUNDATION.canonical_object import utc_now_iso
 from FOUNDATION.canonical_event import CanonicalEvent
+from FOUNDATION.pipeline_contract import PipelineContract
 
 
 @dataclass
@@ -19,7 +20,7 @@ class PipelineStage:
 
 
 @dataclass
-class CanonicalPipeline:
+class CanonicalPipeline(PipelineContract):
     pipeline_name: str
     stages: list[PipelineStage] = field(default_factory=list)
     pipeline_id: str | None = None
@@ -45,6 +46,9 @@ class CanonicalPipeline:
 
         self.stages.append(stage)
         return self
+
+    def execute(self, payload: Any) -> dict[str, Any]:
+        return self.run(payload)
 
     def run(self, payload: Any) -> dict[str, Any]:
         self.validate()

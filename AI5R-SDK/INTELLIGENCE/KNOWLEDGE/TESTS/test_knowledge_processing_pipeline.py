@@ -82,3 +82,23 @@ def test_pipeline_rejects_empty_many():
         assert False
     except ValueError as error:
         assert "knowledge_objects are required" in str(error)
+
+from FOUNDATION.pipeline_contract import PipelineContract
+
+
+def test_knowledge_processing_pipeline_implements_contract():
+    pipeline = KnowledgeProcessingPipeline()
+
+    assert isinstance(pipeline, PipelineContract)
+
+
+def test_knowledge_processing_pipeline_execute_delegates_to_process():
+    pipeline = KnowledgeProcessingPipeline()
+
+    result = pipeline.execute({
+        "knowledge_id": "KO-P005",
+        "summary": "UMKM pricing strategy improves revenue",
+    })
+
+    assert result.knowledge_object.classification["domain"] == "business"
+    assert "classification" in result.stages

@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Any
 
+from FOUNDATION.pipeline_contract import PipelineContract
 from INTELLIGENCE.KNOWLEDGE.knowledge_classifier import KnowledgeClassificationEngine
 from INTELLIGENCE.KNOWLEDGE.knowledge_object import KnowledgeObject
 from INTELLIGENCE.KNOWLEDGE.knowledge_prioritizer import KnowledgePrioritizationEngine
@@ -12,10 +13,16 @@ class KnowledgeProcessingResult:
     stages: list[str]
 
 
-class KnowledgeProcessingPipeline:
+class KnowledgeProcessingPipeline(PipelineContract):
     def __init__(self):
         self.classifier = KnowledgeClassificationEngine()
         self.prioritizer = KnowledgePrioritizationEngine()
+
+    def execute(
+        self,
+        payload: KnowledgeObject | dict[str, Any],
+    ) -> KnowledgeProcessingResult:
+        return self.process(payload)
 
     def process(
         self,
