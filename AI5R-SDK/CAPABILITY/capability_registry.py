@@ -1,49 +1,31 @@
+from CAPABILITY.CONTRACTS.capability_contract import CapabilityManifest
+
+
 class CapabilityRegistry:
-    """
-    Enterprise Capability Registry
-
-    Objective:
-    Store and retrieve Capability Objects by canonical identifiers.
-    """
-
     def __init__(self):
-        self._capabilities = {}
+        self._capabilities: dict[str, CapabilityManifest] = {}
 
-    def register(self, capability):
-        capability_id = getattr(capability, "capability_id", None)
+    def register(self, manifest: CapabilityManifest):
+        if not manifest.capability_id:
+            raise ValueError("capability_id is required")
 
-        if capability_id is None:
-            raise ValueError("Capability object must have capability_id")
+        self._capabilities[manifest.capability_id] = manifest
 
-        self._capabilities[capability_id] = capability
-        return capability
+        return manifest
 
-    def get(self, capability_id):
+    def get(self, capability_id: str):
         return self._capabilities.get(capability_id)
 
-    def exists(self, capability_id):
-        return capability_id in self._capabilities
-
-    def list_all(self):
-        return list(self._capabilities.values())
-
-    def list_by_organization(self, organization_id):
-        return [
-            capability
-            for capability in self._capabilities.values()
-            if getattr(capability, "organization_id", None) == organization_id
-        ]
 
     def list_by_domain(self, domain):
         return [
             capability
-            for capability in self._capabilities.values()
+            for capability in self.list_all()
             if domain in getattr(capability, "supported_domains", [])
         ]
 
-    def list_by_status(self, status):
-        return [
-            capability
-            for capability in self._capabilities.values()
-            if getattr(capability, "status", None) == status
-        ]
+    def list_all(self):
+        return list(self._capabilities.values())
+
+    def exists(self, capability_id: str) -> bool:
+        return capability_id in self._capabilities
