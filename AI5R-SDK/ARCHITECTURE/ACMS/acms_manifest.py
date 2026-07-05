@@ -9,6 +9,23 @@ class ManufacturingLineSpec:
     output_object: str
     stations: list[str] = field(default_factory=list)
 
+    @property
+    def line_code(self) -> str:
+        return self.code
+
+    def validate(self) -> bool:
+        if not self.code:
+            raise ValueError("line code is required")
+        if not self.name:
+            raise ValueError("line name is required")
+        if not self.input_object:
+            raise ValueError("input object is required")
+        if not self.output_object:
+            raise ValueError("output object is required")
+        if not self.stations:
+            raise ValueError("stations are required")
+        return True
+
 
 class ACMSManifest:
     system_name = "AI5R Artificial Cognitive Manufacturing System"
