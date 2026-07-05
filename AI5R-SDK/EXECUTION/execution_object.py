@@ -1,41 +1,20 @@
 from dataclasses import dataclass, field
-from datetime import datetime, UTC
-from typing import Dict, Any
+from datetime import datetime
+from typing import Any
 from uuid import uuid4
 
 
 @dataclass
 class ExecutionObject:
-    """
-    Enterprise Execution Object
-
-    Represents an execution generated
-    from a planning object.
-    """
-
     plan_id: str
-
     step_number: int
-
     action: str
-
     capability_code: str
-
-    input_data: Dict[str, Any] = field(default_factory=dict)
-
-    output_data: Dict[str, Any] = field(default_factory=dict)
-
-    metadata: Dict[str, Any] = field(default_factory=dict)
-
+    input_data: dict[str, Any]
+    capability_id: str = "CAPABILITY-DEFAULT"
     object_type: str = "EXECUTION"
-
-    execution_id: str = field(default_factory=lambda: str(uuid4()))
-
     status: str = "PENDING"
-
-    created_at: str = field(
-        default_factory=lambda: datetime.now(UTC).isoformat()
-    )
-
-    def to_dict(self):
-        return self.__dict__
+    output_data: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
+    execution_id: str = field(default_factory=lambda: f"EXEC-{uuid4()}")
+    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())

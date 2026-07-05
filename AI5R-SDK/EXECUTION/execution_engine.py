@@ -2,38 +2,22 @@ from EXECUTION.execution_object import ExecutionObject
 
 
 class ExecutionEngine:
-    """
-    Enterprise Execution Engine
-
-    Converts a plan step into an execution object.
-    """
-
     def create_execution(
         self,
-        plan_id,
-        step_number,
-        action,
-        capability_code,
-        input_data=None,
-        metadata=None,
-    ):
-        if not plan_id:
-            raise ValueError("Plan ID is required")
-
-        if not step_number:
-            raise ValueError("Step number is required")
-
-        if not action:
-            raise ValueError("Action is required")
-
-        if not capability_code:
-            raise ValueError("Capability code is required")
-
+        plan_id: str,
+        step_number: int,
+        action: str,
+        capability_code: str,
+        input_data: dict,
+        metadata: dict | None = None,
+        capability_id: str = "CAPABILITY-DEFAULT",
+    ) -> ExecutionObject:
         return ExecutionObject(
             plan_id=plan_id,
             step_number=step_number,
             action=action,
             capability_code=capability_code,
-            input_data=input_data or {},
+            input_data=input_data,
             metadata=metadata or {},
+            capability_id=capability_id if capability_id != "CAPABILITY-DEFAULT" else capability_code,
         )
