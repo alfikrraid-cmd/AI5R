@@ -1,5 +1,4 @@
 from dataclasses import dataclass, field
-from ARCHITECTURE.ACMS.manufacturing_line_contract import ManufacturingLineContract
 
 
 @dataclass(frozen=True)
@@ -88,21 +87,3 @@ class ACMSManifest:
             if line.code == code:
                 return line
         return None
-
-
-    @classmethod
-    def contracts(cls):
-        contracts = []
-
-        for line in cls.MANUFACTURING_LINES:
-            contracts.append(
-                ManufacturingLineContract(
-                    line_code=line.code,
-                    line_name=line.name,
-                    input_object=line.input_object,
-                    output_object=line.output_object,
-                    stations=line.stations,
-                )
-            )
-
-        return contracts
