@@ -33,3 +33,4 @@ from .CONTEXT import EmployeeContext, EmployeeContextManager
 from .INBOX import EmployeeInbox, EmployeeMessage, EmployeeMessagePriority, EmployeeMessageStatus
 from .MEMORY import EmployeeMemory, EmployeeMemoryStore
 from .CONVERSATION import EmployeeConversation, EmployeeConversationStore
+from .SUPERVISOR import EmployeeSupervisorReview, SupervisorDecision, EmployeeSupervisorStore
