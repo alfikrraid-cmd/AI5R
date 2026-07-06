@@ -36,3 +36,4 @@ from .CONVERSATION import EmployeeConversation, EmployeeConversationStore
 from .SUPERVISOR import EmployeeSupervisorReview, SupervisorDecision, EmployeeSupervisorStore
 from .COLLABORATION import CollaborationTask, CollaborationStatus, CollaborationManager
 from .GOALS import EmployeeGoal, GoalStatus, GoalEngine
+from .SKILLS import EmployeeSkill, SkillEngine
