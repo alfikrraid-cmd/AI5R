@@ -15,7 +15,7 @@ class DigitalEmployee:
 
     def __init__(self, *args, **kwargs):
         self.capabilities = []
-        self.status = "CREATED"
+        self.status = "ACTIVE"
         self.current_task = None
 
         if len(args) == 2:
@@ -85,3 +85,21 @@ class DigitalEmployee:
     def activate(self):
         self.status = "ACTIVE"
         return self
+
+
+    def evaluate(self):
+        self.status = "EVALUATED"
+        return {
+            "employee": self.employee_name,
+            "task": self.current_task,
+            "status": "EVALUATED",
+        }
+
+
+    def learn(self):
+        self.status = "LEARNING"
+        return {
+            "employee": self.employee_name,
+            "task": self.current_task,
+            "status": "LEARNED",
+        }
