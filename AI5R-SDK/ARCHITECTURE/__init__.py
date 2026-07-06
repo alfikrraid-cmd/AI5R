@@ -4,3 +4,4 @@ from .kernel_boot_manager import (
     BootResult,
     KernelBootManager,
 )
+from .service_container import ServiceContainer
