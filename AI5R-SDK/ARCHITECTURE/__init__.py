@@ -9,3 +9,4 @@ from .service_bus import (
     ServiceBus,
     ServiceEvent,
 )
+from .enterprise_brain_connector import EnterpriseBrainConnector
