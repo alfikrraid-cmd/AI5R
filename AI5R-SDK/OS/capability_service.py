@@ -1,7 +1,7 @@
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any
 
 
@@ -49,7 +49,10 @@ class CapabilityService:
     def list(self) -> list[Capability]:
         return list(self._capabilities.values())
 
-    def list_by_identity(self, identity_id: str) -> list[Capability]:
+    def list_by_identity(
+        self,
+        identity_id: str,
+    ) -> list[Capability]:
         return [
             capability
             for capability in self._capabilities.values()
