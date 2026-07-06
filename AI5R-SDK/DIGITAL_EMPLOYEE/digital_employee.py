@@ -97,3 +97,10 @@ class DigitalEmployee:
             "status": "EXECUTED",
         }
 
+    def ready(self):
+        self.status = "READY"
+        return self
+
+    def is_ready(self) -> bool:
+        return self.status == "READY"
+
