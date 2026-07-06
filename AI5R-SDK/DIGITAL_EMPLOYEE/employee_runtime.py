@@ -4,57 +4,53 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
+from .employee_identity import EmployeeIdentity
+from .employee_capability import EmployeeCapability
+
 
 @dataclass
-class EmployeeIdentity:
-    employee_id: str
-    employee_name: str
-    department: str
-    role: str
-    identity_id: str | None = None
+class EmployeeRuntimeInput:
+    identity: EmployeeIdentity
+    capability: EmployeeCapability
+    task: str
+    payload: dict[str, Any] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
-    created_at: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
-
-    def __post_init__(self):
-        if self.identity_id is None:
-            self.identity_id = self.employee_id
 
 
 @dataclass
 class EmployeeRuntimeResult:
     employee_id: str
-    status: str
+    capability_id: str
+    task: str
+    status: str = "EXECUTED"
     output: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
     executed_at: str = field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
 
 
 class EmployeeRuntime:
-    def __init__(self, identity: EmployeeIdentity):
-        self.identity = identity
+    def __init__(self):
         self.history: list[EmployeeRuntimeResult] = []
 
     def execute(
         self,
-        task: str,
-        payload: dict[str, Any] | None = None,
+        runtime_input: EmployeeRuntimeInput,
     ) -> EmployeeRuntimeResult:
-        if not task:
+        if not runtime_input.task:
             raise ValueError("task is required")
 
         result = EmployeeRuntimeResult(
-            employee_id=self.identity.employee_id,
-            status="EXECUTED",
+            employee_id=runtime_input.identity.employee_id,
+            capability_id=runtime_input.capability.capability_id,
+            task=runtime_input.task,
             output={
-                "task": task,
-                "payload": payload or {},
-                "employee_name": self.identity.employee_name,
-                "department": self.identity.department,
-                "role": self.identity.role,
+                "employee": runtime_input.identity,
+                "capability": runtime_input.capability,
+                "payload": runtime_input.payload,
             },
+            metadata=runtime_input.metadata,
         )
 
         self.history.append(result)
