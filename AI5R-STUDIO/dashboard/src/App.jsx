@@ -13,6 +13,7 @@ import StatusCard from "./components/StatusCard";
 import AgentPanel from "./components/AgentPanel";
 import BrainActivity from "./components/BrainActivity";
 import MemoryPanel from "./components/MemoryPanel";
+import BrainStream from "./components/BrainStream";
 
 
 
@@ -90,6 +91,8 @@ function App(){
             <BrainActivity />
 
             <MemoryPanel />
+
+            <BrainStream />
 
 
         </div>
