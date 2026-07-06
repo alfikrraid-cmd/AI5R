@@ -1,11 +1,9 @@
-import {
-    useEffect,
-    useState
-} from "react";
+import { useEffect, useState } from "react";
 
 
 import {
-    getSystemStatus
+    getSystemStatus,
+    getDashboardData
 } from "./api/ai5rClient";
 
 
@@ -31,6 +29,14 @@ function App(){
     );
 
 
+    const [dashboard,setDashboard] = useState(
+        {
+            agents:0,
+            memories:0
+        }
+    );
+
+
 
     useEffect(()=>{
 
@@ -38,6 +44,12 @@ function App(){
         getSystemStatus()
             .then(data=>{
                 setSystem(data);
+            });
+
+
+        getDashboardData()
+            .then(data=>{
+                setDashboard(data);
             });
 
 
@@ -77,17 +89,22 @@ function App(){
 
                 <StatusCard
                     title="Agents"
-                    value="4"
+                    value={
+                        dashboard.agents
+                    }
                 />
 
 
                 <StatusCard
                     title="Memory"
-                    value="120"
+                    value={
+                        dashboard.memories
+                    }
                 />
 
 
             </div>
+
 
 
             <AgentPanel />
