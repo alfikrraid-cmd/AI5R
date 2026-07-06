@@ -33,3 +33,4 @@ from .capability_loader import (
     Capability,
     CapabilityLoader,
 )
+from .VERIFICATION import ArchitectureVerifier, VerificationResult
