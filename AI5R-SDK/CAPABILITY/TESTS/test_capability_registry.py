@@ -1,37 +1,38 @@
-import sys
 from pathlib import Path
+import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from CAPABILITY.capability_object import CapabilityObject
+from CAPABILITY.CONTRACTS.capability_contract import CapabilityManifest
 from CAPABILITY.capability_registry import CapabilityRegistry
 
 
-def test_capability_registry():
+def test_capability_registry_registers_manifest():
     registry = CapabilityRegistry()
 
-    capability = CapabilityObject(
-        organization_id="ORG-001",
-        capability_code="CAP-003",
-        capability_name="Pump Inspection",
-        description="Register pump inspection capability",
-        supported_domains=["maintenance", "asset"],
-        required_knowledge_ids=["KN-001"],
+    manifest = CapabilityManifest(
+        capability_id="UMKM",
+        capability_name="UMKM Capability",
     )
 
-    registered = registry.register(capability)
+    registry.register(manifest)
 
-    assert registered == capability
-    assert registry.exists(capability.capability_id) is True
-    assert registry.get(capability.capability_id) == capability
+    assert registry.exists("UMKM") is True
+    assert registry.get("UMKM").capability_name == "UMKM Capability"
     assert len(registry.list_all()) == 1
-    assert registry.list_by_organization("ORG-001") == [capability]
-    assert registry.list_by_domain("maintenance") == [capability]
-    assert registry.list_by_status("ACTIVE") == [capability]
-
-    print("CP-003 Capability Registry OK")
 
 
-if __name__ == "__main__":
-    test_capability_registry()
+def test_capability_registry_rejects_empty_id():
+    registry = CapabilityRegistry()
+
+    manifest = CapabilityManifest(
+        capability_id="",
+        capability_name="Invalid Capability",
+    )
+
+    try:
+        registry.register(manifest)
+        assert False
+    except ValueError as error:
+        assert str(error) == "capability_id is required"
