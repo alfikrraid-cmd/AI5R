@@ -16,6 +16,7 @@ import MemoryPanel from "./components/MemoryPanel";
 import BrainStream from "./components/BrainStream";
 import EmployeePanel from "./components/EmployeePanel";
 import Timeline from "./components/Timeline";
+import IntelligenceGraph from "./components/IntelligenceGraph";
 
 
 
@@ -99,6 +100,8 @@ function App(){
             <EmployeePanel />
 
             <Timeline />
+
+            <IntelligenceGraph />
 
 
         </div>
