@@ -21,3 +21,6 @@ __all__ = [
 
 from .employee_state import EmployeeState
 from .employee_lifecycle import EmployeeLifecycle, EmployeeLifecycleEvent
+from .task import EmployeeTask
+from .execution_result import ExecutionResult
+from .employee_execution import EmployeeExecutionEngine
