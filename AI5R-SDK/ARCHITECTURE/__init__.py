@@ -29,3 +29,7 @@ from .resource_manager import (
     Resource,
     ResourceManager,
 )
+from .capability_loader import (
+    Capability,
+    CapabilityLoader,
+)
