@@ -38,3 +38,4 @@ from .COLLABORATION import CollaborationTask, CollaborationStatus, Collaboration
 from .GOALS import EmployeeGoal, GoalStatus, GoalEngine
 from .SKILLS import EmployeeSkill, SkillEngine
 from .PERFORMANCE import EmployeePerformance, PerformanceEngine
+from .AUTONOMOUS import AutonomousLoop, AutonomousState, AutonomousRuntime
