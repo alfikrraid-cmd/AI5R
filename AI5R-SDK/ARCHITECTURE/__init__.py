@@ -5,3 +5,7 @@ from .kernel_boot_manager import (
     KernelBootManager,
 )
 from .service_container import ServiceContainer
+from .service_bus import (
+    ServiceBus,
+    ServiceEvent,
+)
