@@ -1,10 +1,44 @@
+import {
+    useEffect,
+    useState
+} from "react";
+
+
+import {
+    getSystemStatus
+} from "./api/ai5rClient";
+
+
 import StatusCard from "./components/StatusCard";
 import AgentPanel from "./components/AgentPanel";
 import BrainActivity from "./components/BrainActivity";
 import MemoryPanel from "./components/MemoryPanel";
 
 
+
 function App(){
+
+
+    const [system,setSystem] = useState(
+        {
+            status:"LOADING"
+        }
+    );
+
+
+
+    useEffect(()=>{
+
+
+        getSystemStatus()
+            .then(data=>{
+                setSystem(data);
+            });
+
+
+    },[]);
+
+
 
     return (
 
@@ -16,22 +50,31 @@ function App(){
             </h1>
 
 
+
             <div className="grid">
+
 
                 <StatusCard
                     title="System"
-                    value="ONLINE"
+                    value={
+                        system.status
+                    }
                 />
 
+
                 <StatusCard
-                    title="Brain"
-                    value="ACTIVE"
+                    title="Service"
+                    value={
+                        system.service || "-"
+                    }
                 />
+
 
                 <StatusCard
                     title="Agents"
                     value="4"
                 />
+
 
                 <StatusCard
                     title="Memory"
