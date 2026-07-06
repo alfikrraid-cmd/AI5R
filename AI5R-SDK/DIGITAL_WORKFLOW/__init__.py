@@ -6,4 +6,7 @@ __all__ = [
     "Workflow",
     "WorkflowStep",
     "WorkflowRuntime",
+    "WorkflowGraph",
 ]
+
+from .workflow_graph import WorkflowGraph
