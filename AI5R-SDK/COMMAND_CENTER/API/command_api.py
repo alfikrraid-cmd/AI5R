@@ -10,10 +10,12 @@ class APIResponse:
     created_at: str = datetime.now(UTC).isoformat()
 
 
+
 class AI5RCommandAPI:
 
     def __init__(self):
         self.requests = []
+        self.event_history = []
 
 
     def health(self):
@@ -25,6 +27,7 @@ class AI5RCommandAPI:
                 "service": "COMMAND_CENTER"
             }
         )
+
 
 
     def send_command(
@@ -40,4 +43,43 @@ class AI5RCommandAPI:
                 "command": command,
                 "queue_size": len(self.requests)
             }
+        )
+
+
+
+    def register_event(
+        self,
+        event_type: str,
+        payload: dict[str, Any]
+    ):
+
+        event = {
+
+            "event_type": event_type,
+
+            "payload": payload,
+
+            "created_at": datetime.now(UTC).isoformat()
+
+        }
+
+
+        self.event_history.append(event)
+
+        return event
+
+
+
+    def events(self):
+
+        return APIResponse(
+
+            status="OK",
+
+            data={
+
+                "events": self.event_history
+
+            }
+
         )
