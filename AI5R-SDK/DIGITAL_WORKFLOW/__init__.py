@@ -10,3 +10,5 @@ __all__ = [
 ]
 
 from .workflow_graph import WorkflowGraph
+
+from .workflow_dependency_graph import WorkflowDependencyGraph
