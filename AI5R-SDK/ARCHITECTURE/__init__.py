@@ -35,3 +35,4 @@ from .capability_loader import (
 )
 from .VERIFICATION import ArchitectureVerifier, VerificationResult
 from .GRAPH import DependencyGraph, DependencyGraphAnalyzer
+from .CYCLE import CircularDependencyDetector, CycleDetectionResult
