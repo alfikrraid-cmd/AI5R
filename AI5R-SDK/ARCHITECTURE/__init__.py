@@ -34,3 +34,4 @@ from .capability_loader import (
     CapabilityLoader,
 )
 from .VERIFICATION import ArchitectureVerifier, VerificationResult
+from .GRAPH import DependencyGraph, DependencyGraphAnalyzer
