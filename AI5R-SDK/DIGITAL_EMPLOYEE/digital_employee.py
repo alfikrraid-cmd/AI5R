@@ -74,3 +74,26 @@ class DigitalEmployee:
 
     def suspend(self) -> None:
         self.status = "SUSPENDED"
+
+    def initialize(self):
+        self.status = "INITIALIZED"
+        return self
+
+    def execute(
+        self,
+        task: str,
+        payload: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        if not task:
+            raise ValueError("task is required")
+
+        return {
+            "employee_id": self.employee_id,
+            "employee_name": self.employee_name,
+            "department": self.department,
+            "role": self.role,
+            "task": task,
+            "payload": payload or {},
+            "status": "EXECUTED",
+        }
+
