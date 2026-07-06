@@ -37,3 +37,4 @@ from .SUPERVISOR import EmployeeSupervisorReview, SupervisorDecision, EmployeeSu
 from .COLLABORATION import CollaborationTask, CollaborationStatus, CollaborationManager
 from .GOALS import EmployeeGoal, GoalStatus, GoalEngine
 from .SKILLS import EmployeeSkill, SkillEngine
+from .PERFORMANCE import EmployeePerformance, PerformanceEngine
