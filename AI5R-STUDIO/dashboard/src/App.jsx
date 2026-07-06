@@ -15,6 +15,7 @@ import BrainActivity from "./components/BrainActivity";
 import MemoryPanel from "./components/MemoryPanel";
 import BrainStream from "./components/BrainStream";
 import EmployeePanel from "./components/EmployeePanel";
+import Timeline from "./components/Timeline";
 
 
 
@@ -96,6 +97,8 @@ function App(){
             <BrainStream />
 
             <EmployeePanel />
+
+            <Timeline />
 
 
         </div>
