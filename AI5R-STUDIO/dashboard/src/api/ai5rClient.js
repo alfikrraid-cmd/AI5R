@@ -1,19 +1,19 @@
 const API_URL = "http://localhost:8000";
 
 
-export async function getSystemStatus(){
+export async function getDashboardData(){
 
-    try {
+    try{
 
         const response = await fetch(
-            `${API_URL}/health`
+            `${API_URL}/dashboard`
         );
 
 
         if(!response.ok){
 
             throw new Error(
-                "API unavailable"
+                "Dashboard API unavailable"
             );
 
         }
@@ -22,15 +22,19 @@ export async function getSystemStatus(){
         return await response.json();
 
 
-    } catch(error){
+    }catch(error){
 
         return {
 
-            status:"OFFLINE",
+            system_status:"OFFLINE",
 
-            system:"AI5R",
+            brain_status:"UNKNOWN",
 
-            service:"COMMAND_CENTER"
+            agents:0,
+
+            memories:0,
+
+            governance:"UNKNOWN"
 
         };
 
