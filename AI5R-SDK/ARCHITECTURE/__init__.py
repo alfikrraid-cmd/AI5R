@@ -25,3 +25,7 @@ from .event_dispatcher import (
     DispatchResult,
     EventDispatcher,
 )
+from .resource_manager import (
+    Resource,
+    ResourceManager,
+)
