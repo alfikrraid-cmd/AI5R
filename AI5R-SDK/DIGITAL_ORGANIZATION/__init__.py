@@ -5,3 +5,5 @@ from .organization import DigitalOrganization
 from .delegation_runtime import Delegation, DelegationRuntime
 from .meeting_runtime import Meeting, MeetingRuntime
 from .organization_runtime import OrganizationRuntime
+from .organization_blueprint import OrganizationBlueprint
+from .blueprint_runtime import BlueprintRuntime
