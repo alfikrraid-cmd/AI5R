@@ -14,6 +14,7 @@ import AgentPanel from "./components/AgentPanel";
 import BrainActivity from "./components/BrainActivity";
 import MemoryPanel from "./components/MemoryPanel";
 import BrainStream from "./components/BrainStream";
+import EmployeePanel from "./components/EmployeePanel";
 
 
 
@@ -93,6 +94,8 @@ function App(){
             <MemoryPanel />
 
             <BrainStream />
+
+            <EmployeePanel />
 
 
         </div>
