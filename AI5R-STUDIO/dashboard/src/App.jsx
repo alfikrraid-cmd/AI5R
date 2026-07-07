@@ -19,6 +19,7 @@ import CommandConsole from "./components/CommandConsole";
 import { UMKMOverview, UMKMAgents, UMKMInsight } from "./products/UMKM_OS";
 import UMKMLiveStatus from "./products/UMKM_OS/components/UMKMLiveStatus";
 import AdvisorChat from "./products/UMKM_OS/components/AdvisorChat";
+import ExecutiveDashboard from "./products/UMKM_OS/components/ExecutiveDashboard";
 
 
 
@@ -135,6 +136,8 @@ function App(){
             <UMKMLiveStatus />
 
             <AdvisorChat />
+
+            <ExecutiveDashboard />
 
 
         </div>
