@@ -17,6 +17,7 @@ import LiveRuntimeStatus from "./components/LiveRuntimeStatus";
 import LiveOrganizationTree from "./components/LiveOrganizationTree";
 import LiveTaskTimeline from "./components/LiveTaskTimeline";
 import LiveMemoryFeed from "./components/LiveMemoryFeed";
+import LiveReasoningStream from "./components/LiveReasoningStream";
 import BrainEventStream from "./components/BrainEventStream";
 import EmployeePanel from "./components/EmployeePanel";
 import Timeline from "./components/Timeline";
@@ -128,6 +129,7 @@ function App(){
             <LiveOrganizationTree />
             <LiveTaskTimeline />
             <LiveMemoryFeed />
+            <LiveReasoningStream />
             <LiveEventStream />
 
             <BrainEventStream />
