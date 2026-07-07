@@ -3,6 +3,7 @@ from pathlib import Path
 
 from PRODUCT_REGISTRY import ProductRegistry
 from PRODUCT_ENGINE import ProductSpecification
+from OSA.RUNTIME_PIPELINE import RuntimePipeline
 
 
 class ProductRuntime:
@@ -10,6 +11,7 @@ class ProductRuntime:
         self.root_path = Path(root_path)
         self.registry = ProductRegistry(root_path)
         self.running_products = {}
+        self.runtime_pipeline = RuntimePipeline()
 
     def start(self, specification: ProductSpecification):
         registered = self.registry.register(specification)
@@ -43,6 +45,43 @@ class ProductRuntime:
         )
 
         return runtime_context
+
+
+    def run_goal(
+        self,
+        product_name: str,
+        goal: str,
+        employee_id: str = "EMP-001",
+    ):
+        normalized = (
+            product_name.strip()
+            .upper()
+            .replace(" ", "_")
+            .replace("-", "_")
+        )
+
+        runtime = self.running_products.get(normalized)
+
+        if runtime is None:
+            raise ValueError("product is not running")
+
+        result = self.runtime_pipeline.execute(
+            command=goal,
+            employee_id=employee_id,
+        )
+
+        return {
+            "status": "SUCCESS",
+            "product": normalized,
+            "goal": goal,
+            "pipeline_id": result.pipeline_id,
+            "goal_id": result.goal_id,
+            "task_count": result.task_count,
+            "execution_count": result.execution_count,
+            "memory_count": result.memory_count,
+            "memories": result.memories,
+            "summary": result.summary,
+        }
 
     def stop(self, product_name: str):
         normalized = (

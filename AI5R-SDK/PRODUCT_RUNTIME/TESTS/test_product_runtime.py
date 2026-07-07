@@ -66,3 +66,26 @@ def test_product_runtime_stop(tmp_path):
 
     assert stopped["status"] == "STOPPED"
     assert "stopped_at" in stopped
+
+
+def test_product_runtime_runs_goal_through_runtime_pipeline(tmp_path):
+    runtime = ProductRuntime(tmp_path)
+
+    specification = ProductSpecification(
+        product_name="UMKM OS",
+        domains=["Marketing", "Sales"],
+    )
+
+    runtime.start(specification)
+
+    result = runtime.run_goal(
+        product_name="UMKM OS",
+        goal="Create UMKM sales plan",
+        employee_id="EMP-001",
+    )
+
+    assert result["status"] == "SUCCESS"
+    assert result["product"] == "UMKM_OS"
+    assert result["pipeline_id"].startswith("PIPE-CMD-")
+    assert result["execution_count"] >= 1
+    assert result["memory_count"] >= 1
