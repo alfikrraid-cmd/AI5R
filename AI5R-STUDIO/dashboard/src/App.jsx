@@ -17,6 +17,7 @@ import Timeline from "./components/Timeline";
 import IntelligenceGraph from "./components/IntelligenceGraph";
 import CommandConsole from "./components/CommandConsole";
 import { UMKMOverview, UMKMAgents, UMKMInsight } from "./products/UMKM_OS";
+import UMKMLiveStatus from "./products/UMKM_OS/components/UMKMLiveStatus";
 
 
 
@@ -129,6 +130,8 @@ function App(){
             <UMKMAgents />
 
             <UMKMInsight />
+
+            <UMKMLiveStatus />
 
 
         </div>
