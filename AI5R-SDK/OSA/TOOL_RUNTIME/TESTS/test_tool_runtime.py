@@ -4,7 +4,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT))
 
-from OSA.TOOL_REGISTRY import ToolRegistry
 from OSA.TOOL_RUNTIME import (
     ToolExecutionRequest,
     ToolRuntime,
@@ -15,13 +14,18 @@ def echo_tool(text: str):
     return text.upper()
 
 
-def test_tool_runtime_executes_registered_tool():
-    registry = ToolRegistry()
-    registry.register(
-        "echo",
-        echo_tool,
-    )
+class FakeToolRegistry:
+    def __init__(self):
+        self.tools = {
+            "echo": echo_tool,
+        }
 
+    def resolve(self, tool_name):
+        return self.tools[tool_name]
+
+
+def test_tool_runtime_executes_registered_tool():
+    registry = FakeToolRegistry()
     runtime = ToolRuntime(registry)
 
     result = runtime.execute(
@@ -38,8 +42,7 @@ def test_tool_runtime_executes_registered_tool():
 
 
 def test_tool_runtime_requires_tool_name():
-    registry = ToolRegistry()
-    runtime = ToolRuntime(registry)
+    runtime = ToolRuntime(FakeToolRegistry())
 
     try:
         runtime.execute(
