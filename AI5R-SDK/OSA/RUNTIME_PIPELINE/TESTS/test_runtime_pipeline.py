@@ -70,3 +70,18 @@ def test_runtime_pipeline_requires_goal_content():
         assert str(error) == "goal description or desired_outcomes is required"
     else:
         raise AssertionError("ValueError was not raised")
+
+
+def test_runtime_pipeline_execute_accepts_command_string():
+    pipeline = RuntimePipeline()
+
+    result = pipeline.execute(
+        command="Create UMKM marketing campaign",
+        employee_id="EMP-001",
+    )
+
+    assert result.pipeline_id.startswith("PIPE-CMD-")
+    assert result.goal_id.startswith("CMD-")
+    assert result.task_count == 1
+    assert result.execution_count == 1
+    assert result.memory_count == 1

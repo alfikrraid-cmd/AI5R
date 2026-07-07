@@ -36,6 +36,23 @@ class RuntimePipeline:
         self.reflection_engine = ReflectionEngine()
         self.memory_engine = MemoryLearningEngine()
 
+    def execute(self, command: str, employee_id: str = "EMP-001") -> RuntimePipelineResult:
+        clean_command = str(command).strip()
+
+        if not clean_command:
+            raise ValueError("command is required")
+
+        timestamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S%f")
+
+        return self.run(
+            {
+                "goal_id": f"CMD-{timestamp}",
+                "description": clean_command,
+                "desired_outcomes": [clean_command],
+                "employee_id": employee_id,
+            }
+        )
+
     def run(self, goal: dict[str, Any]) -> RuntimePipelineResult:
         goal_id = goal.get("goal_id")
 
