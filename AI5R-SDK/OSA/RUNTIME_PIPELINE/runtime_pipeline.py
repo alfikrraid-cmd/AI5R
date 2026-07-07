@@ -8,6 +8,7 @@ from OSA.API.CONVERSATION.conversation_api import OSAConversationAPI
 from OSA.CAPABILITY_RESOLVER.capability_resolver import CapabilityResolver
 from OSA.DIGITAL_EMPLOYEE_ORCHESTRATOR import DigitalEmployeeOrchestrator
 from OSA.EXECUTION_DISPATCHER import ExecutionDispatcher
+from OSA.EVENT_BUS_INTEGRATION import OSAEventBusIntegration, OSAEventType
 from OSA.MEMORY_LEARNING_ENGINE import MemoryLearningEngine
 from OSA.REFLECTION_ENGINE import ReflectionEngine
 
@@ -38,6 +39,7 @@ class RuntimePipeline:
         self.reflection_engine = ReflectionEngine()
         self.memory_engine = MemoryLearningEngine()
         self.conversation_api = OSAConversationAPI()
+        self.event_bus = OSAEventBusIntegration()
 
     def execute(self, command: str, employee_id: str = "EMP-001") -> RuntimePipelineResult:
         clean_command = str(command).strip()
@@ -71,8 +73,23 @@ class RuntimePipeline:
         if not goal_id:
             raise ValueError("goal_id is required")
 
+        self.event_bus.publish(
+            OSAEventType.PIPELINE_STARTED,
+            source="RuntimePipeline",
+            payload={"goal_id": goal_id},
+        )
+
         plan = self._create_runtime_plan(goal)
         capability_assignments = self.capability_resolver.resolve(plan)
+
+        self.event_bus.publish(
+            OSAEventType.CAPABILITY_RESOLVED,
+            source="RuntimePipeline",
+            payload={
+                "goal_id": goal_id,
+                "assignment_count": len(capability_assignments),
+            },
+        )
 
         memories = []
 
@@ -92,6 +109,16 @@ class RuntimePipeline:
                 },
             )
 
+            self.event_bus.publish(
+                OSAEventType.EMPLOYEE_ASSIGNED,
+                source="RuntimePipeline",
+                payload={
+                    "goal_id": goal_id,
+                    "task_id": task["task_id"],
+                    "employee_id": employee_assignment.employee_id,
+                },
+            )
+
             execution_job = self.dispatcher.dispatch(employee_assignment)
 
             completed_job = self.dispatcher.complete(
@@ -101,10 +128,49 @@ class RuntimePipeline:
                 },
             )
 
+            self.event_bus.publish(
+                OSAEventType.EXECUTION_COMPLETED,
+                source="RuntimePipeline",
+                payload={
+                    "goal_id": goal_id,
+                    "task_id": task["task_id"],
+                    "execution_id": completed_job.execution_id,
+                },
+            )
+
             reflection = self.reflection_engine.reflect(completed_job)
+
+            self.event_bus.publish(
+                OSAEventType.REFLECTION_CREATED,
+                source="RuntimePipeline",
+                payload={
+                    "goal_id": goal_id,
+                    "task_id": task["task_id"],
+                    "execution_id": completed_job.execution_id,
+                },
+            )
             memory = self.memory_engine.learn(reflection)
 
+            self.event_bus.publish(
+                OSAEventType.MEMORY_LEARNED,
+                source="RuntimePipeline",
+                payload={
+                    "goal_id": goal_id,
+                    "task_id": task["task_id"],
+                },
+            )
+
             memories.append(memory)
+
+        self.event_bus.publish(
+            OSAEventType.PIPELINE_COMPLETED,
+            source="RuntimePipeline",
+            payload={
+                "goal_id": goal_id,
+                "task_count": len(plan.steps),
+                "memory_count": len(memories),
+            },
+        )
 
         return RuntimePipelineResult(
             pipeline_id=f"PIPE-{goal_id}",

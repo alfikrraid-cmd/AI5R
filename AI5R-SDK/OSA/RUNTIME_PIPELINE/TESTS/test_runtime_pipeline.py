@@ -98,3 +98,24 @@ def test_runtime_pipeline_execute_uses_conversation_api():
     assert result.pipeline_id.startswith("PIPE-CMD-")
     assert result.summary["conversation_message"].startswith("Understanding request:")
     assert result.summary["conversation_recommendation"] == "Analyze opportunity and generate AI system blueprint"
+
+
+def test_runtime_pipeline_publishes_lifecycle_events():
+    pipeline = RuntimePipeline()
+
+    result = pipeline.execute(
+        command="Create UMKM sales plan",
+        employee_id="EMP-001",
+    )
+
+    events = pipeline.event_bus.list_events()
+    event_types = [event.event_type.value for event in events]
+
+    assert result.pipeline_id.startswith("PIPE-CMD-")
+    assert "PIPELINE_STARTED" in event_types
+    assert "CAPABILITY_RESOLVED" in event_types
+    assert "EMPLOYEE_ASSIGNED" in event_types
+    assert "EXECUTION_COMPLETED" in event_types
+    assert "REFLECTION_CREATED" in event_types
+    assert "MEMORY_LEARNED" in event_types
+    assert "PIPELINE_COMPLETED" in event_types
