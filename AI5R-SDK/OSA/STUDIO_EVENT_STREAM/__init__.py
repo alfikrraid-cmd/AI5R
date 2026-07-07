@@ -7,3 +7,5 @@ __all__ = [
     "StudioEvent",
     "StudioEventStream",
 ]
+
+from .runtime_event_bridge import RuntimeEventBridge
