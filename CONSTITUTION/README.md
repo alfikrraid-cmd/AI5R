@@ -1,0 +1,21 @@
+# AI5R Constitution
+
+This directory is the single source of truth for AI5R.
+
+Read in order:
+
+00-VISION.md
+01-MANIFESTO.md
+02-PRINCIPLES.md
+03-GOVERNANCE.md
+04-LAYER_ARCHITECTURE.md
+05-DEPENDENCY_RULES.md
+06-RUNTIME_MODEL.md
+07-FACTORY_MODEL.md
+08-PRODUCT_MODEL.md
+09-BUSINESS_VERTICAL_MODEL.md
+10-CODING_STANDARD.md
+11-TEST_STANDARD.md
+12-RELEASE_STANDARD.md
+
+Nothing may violate the Constitution.
