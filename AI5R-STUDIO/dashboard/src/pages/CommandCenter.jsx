@@ -11,6 +11,7 @@ import CommandInput from "../components/CommandInput";
 import ConversationPanel from "../components/ConversationPanel";
 import TaskQueue from "../components/TaskQueue";
 import ExecutionStatus from "../components/ExecutionStatus";
+import BrainEventStream from "../components/BrainEventStream";
 
 function CommandCenter() {
     const [employees, setEmployees] = useState([]);
@@ -79,6 +80,8 @@ function CommandCenter() {
                     <CommandInput onExecute={handleExecute} />
 
                     <ExecutionStatus />
+
+                    <BrainEventStream />
                 </div>
 
                 <div className="command-right">

@@ -12,6 +12,7 @@ import AgentPanel from "./components/AgentPanel";
 import BrainActivity from "./components/BrainActivity";
 import MemoryPanel from "./components/MemoryPanel";
 import BrainStream from "./components/BrainStream";
+import BrainEventStream from "./components/BrainEventStream";
 import EmployeePanel from "./components/EmployeePanel";
 import Timeline from "./components/Timeline";
 import IntelligenceGraph from "./components/IntelligenceGraph";
@@ -118,6 +119,8 @@ function App(){
             <MemoryPanel />
 
             <BrainStream />
+
+            <BrainEventStream />
 
             <EmployeePanel />
 
