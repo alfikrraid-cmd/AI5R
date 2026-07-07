@@ -6,7 +6,7 @@ describe("createLiveStreamClient", () => {
     const close = vi.fn();
     let instance;
 
-    global.EventSource = vi.fn((endpoint) => {
+    global.EventSource = vi.fn(function EventSourceMock(endpoint) {
       instance = {
         endpoint,
         close,
@@ -44,11 +44,13 @@ describe("createLiveStreamClient", () => {
   });
 
   it("reports parse errors", () => {
-    global.EventSource = vi.fn(() => ({
-      close: vi.fn(),
-      onmessage: null,
-      onerror: null,
-    }));
+    global.EventSource = vi.fn(function EventSourceMock() {
+      return {
+        close: vi.fn(),
+        onmessage: null,
+        onerror: null,
+      };
+    });
 
     const onError = vi.fn();
 
