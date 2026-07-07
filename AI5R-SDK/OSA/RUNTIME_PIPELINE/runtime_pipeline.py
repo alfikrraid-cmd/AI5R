@@ -4,15 +4,11 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
-from OSA.CAPABILITY_RESOLVER import CapabilityResolver
+from OSA.CAPABILITY_RESOLVER.capability_resolver import CapabilityResolver
 from OSA.DIGITAL_EMPLOYEE_ORCHESTRATOR import DigitalEmployeeOrchestrator
 from OSA.EXECUTION_DISPATCHER import ExecutionDispatcher
-from OSA.GOAL_DECOMPOSITION_ENGINE import GoalDecompositionEngine
-from OSA.GOAL_TASK_INTEGRATION import GoalTaskIntegration
 from OSA.MEMORY_LEARNING_ENGINE import MemoryLearningEngine
-from OSA.PLANNER_ENGINE import PlannerEngine
 from OSA.REFLECTION_ENGINE import ReflectionEngine
-from OSA.UNIVERSAL_TASK_ENGINE import UniversalTaskEngine
 
 
 @dataclass
@@ -26,15 +22,14 @@ class RuntimePipelineResult:
     created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
 
+@dataclass
+class RuntimePlan:
+    goal_id: str
+    steps: list[str]
+
+
 class RuntimePipeline:
     def __init__(self):
-        self.goal_engine = GoalDecompositionEngine()
-        self.task_engine = UniversalTaskEngine()
-        self.goal_task_integration = GoalTaskIntegration(
-            goal_engine=self.goal_engine,
-            task_engine=self.task_engine,
-        )
-        self.planner = PlannerEngine()
         self.capability_resolver = CapabilityResolver()
         self.orchestrator = DigitalEmployeeOrchestrator()
         self.dispatcher = ExecutionDispatcher()
@@ -47,17 +42,25 @@ class RuntimePipeline:
         if not goal_id:
             raise ValueError("goal_id is required")
 
-        tasks = self.goal_task_integration.create_tasks_from_goal(goal)
-        plan = self.planner.create_plan(goal_id=goal_id, tasks=tasks)
+        plan = self._create_runtime_plan(goal)
+        capability_assignments = self.capability_resolver.resolve(plan)
 
         memories = []
 
-        for planned_task in plan.tasks:
-            capability_assignment = self.capability_resolver.resolve(planned_task)
+        for index, capability_assignment in enumerate(capability_assignments, start=1):
+            task = {
+                "task_id": f"TASK-{index:03d}",
+                "goal_id": goal_id,
+                "description": capability_assignment.step,
+            }
 
             employee_assignment = self.orchestrator.assign(
-                task=planned_task,
-                capability_assignment=capability_assignment,
+                task=task,
+                capability_assignment={
+                    "employee_id": self._resolve_employee_id(capability_assignment.capability),
+                    "capability_id": capability_assignment.capability,
+                    "confidence": capability_assignment.confidence,
+                },
             )
 
             execution_job = self.dispatcher.dispatch(employee_assignment)
@@ -65,7 +68,7 @@ class RuntimePipeline:
             completed_job = self.dispatcher.complete(
                 execution_job.execution_id,
                 {
-                    "output": f"Executed {planned_task['task_id']}",
+                    "output": f"Executed {task['task_id']}: {task['description']}",
                 },
             )
 
@@ -77,8 +80,43 @@ class RuntimePipeline:
         return RuntimePipelineResult(
             pipeline_id=f"PIPE-{goal_id}",
             goal_id=goal_id,
-            task_count=len(tasks),
+            task_count=len(plan.steps),
             execution_count=len(memories),
             memory_count=len(memories),
             memories=memories,
         )
+
+    def _create_runtime_plan(self, goal: dict[str, Any]) -> RuntimePlan:
+        goal_id = goal["goal_id"]
+        desired_outcomes = goal.get("desired_outcomes") or []
+
+        steps = [
+            str(outcome)
+            for outcome in desired_outcomes
+            if str(outcome).strip()
+        ]
+
+        if not steps:
+            description = str(goal.get("description", "")).strip()
+            if description:
+                steps = [description]
+
+        if not steps:
+            raise ValueError("goal description or desired_outcomes is required")
+
+        return RuntimePlan(
+            goal_id=goal_id,
+            steps=steps,
+        )
+
+    def _resolve_employee_id(self, capability: str) -> str:
+        capability_to_employee = {
+            "MarketAnalysis": "EMP-MARKET",
+            "ContentPlanning": "EMP-CONTENT",
+            "FinancialPlanning": "EMP-FINANCE",
+            "ExecutionManagement": "EMP-EXECUTION",
+            "PerformanceEvaluation": "EMP-EVALUATION",
+            "GeneralReasoning": "EMP-GENERAL",
+        }
+
+        return capability_to_employee.get(capability, "EMP-GENERAL")
