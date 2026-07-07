@@ -16,6 +16,7 @@ import EmployeePanel from "./components/EmployeePanel";
 import Timeline from "./components/Timeline";
 import IntelligenceGraph from "./components/IntelligenceGraph";
 import CommandConsole from "./components/CommandConsole";
+import { UMKMOverview, UMKMAgents, UMKMInsight } from "./products/UMKM_OS";
 
 
 
@@ -122,6 +123,12 @@ function App(){
             <IntelligenceGraph />
 
             <CommandConsole />
+
+            <UMKMOverview />
+
+            <UMKMAgents />
+
+            <UMKMInsight />
 
 
         </div>
