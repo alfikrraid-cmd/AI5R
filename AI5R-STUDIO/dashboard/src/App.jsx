@@ -13,6 +13,7 @@ import BrainActivity from "./components/BrainActivity";
 import MemoryPanel from "./components/MemoryPanel";
 import BrainStream from "./components/BrainStream";
 import LiveEventStream from "./components/LiveEventStream";
+import LiveRuntimeStatus from "./components/LiveRuntimeStatus";
 import BrainEventStream from "./components/BrainEventStream";
 import EmployeePanel from "./components/EmployeePanel";
 import Timeline from "./components/Timeline";
@@ -120,6 +121,7 @@ function App(){
             <MemoryPanel />
 
             <BrainStream />
+            <LiveRuntimeStatus />
             <LiveEventStream />
 
             <BrainEventStream />
