@@ -31,5 +31,6 @@ class OSACommandAPI:
             "task_count": result.task_count,
             "execution_count": result.execution_count,
             "memory_count": result.memory_count,
+            "memories": result.memories,
             "response": "Command accepted by Runtime Pipeline",
         }
