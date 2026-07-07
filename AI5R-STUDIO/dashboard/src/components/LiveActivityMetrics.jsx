@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react";
-import { createLiveStreamClient } from "../api/liveStreamClient";
+import { useLiveStream } from "../context/LiveStreamContext";
 
 const DEFAULT_METRICS = {
   events: 0,
@@ -9,51 +8,43 @@ const DEFAULT_METRICS = {
   workers: 0,
 };
 
+function buildMetrics(events) {
+  return events.reduce(
+    (metrics, event) => {
+      const next = { ...metrics };
+
+      next.events += 1;
+
+      switch (event.event_type) {
+        case "TASK_EVENT":
+          next.tasks += 1;
+          break;
+
+        case "MEMORY_EVENT":
+          next.memories += 1;
+          break;
+
+        case "REASONING_EVENT":
+          next.reasoning += 1;
+          break;
+
+        case "ORGANIZATION_SNAPSHOT":
+          next.workers = event.workers?.length ?? next.workers;
+          break;
+
+        default:
+          break;
+      }
+
+      return next;
+    },
+    { ...DEFAULT_METRICS }
+  );
+}
+
 function LiveActivityMetrics() {
-  const [metrics, setMetrics] = useState(DEFAULT_METRICS);
-
-  useEffect(() => {
-    let client;
-
-    try {
-      client = createLiveStreamClient({
-        onEvent: (event) => {
-          setMetrics((current) => {
-            const next = { ...current };
-
-            next.events += 1;
-
-            switch (event.event_type) {
-              case "TASK_EVENT":
-                next.tasks += 1;
-                break;
-
-              case "MEMORY_EVENT":
-                next.memories += 1;
-                break;
-
-              case "REASONING_EVENT":
-                next.reasoning += 1;
-                break;
-
-              case "ORGANIZATION_SNAPSHOT":
-                next.workers = event.workers?.length ?? next.workers;
-                break;
-
-              default:
-                break;
-            }
-
-            return next;
-          });
-        },
-      });
-    } catch {
-      // ignore
-    }
-
-    return () => client?.close();
-  }, []);
+  const { events } = useLiveStream();
+  const metrics = buildMetrics(events);
 
   return (
     <section className="panel">
@@ -91,4 +82,5 @@ function LiveActivityMetrics() {
   );
 }
 
+export { buildMetrics };
 export default LiveActivityMetrics;

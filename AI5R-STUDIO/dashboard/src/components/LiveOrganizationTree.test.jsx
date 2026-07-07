@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import { LiveStreamProvider } from "../context/LiveStreamContext";
 import { describe, expect, it, vi } from "vitest";
 import LiveOrganizationTree from "./LiveOrganizationTree";
 
@@ -16,7 +17,7 @@ describe("LiveOrganizationTree", () => {
       return instance;
     });
 
-    render(<LiveOrganizationTree />);
+    render(<LiveStreamProvider><LiveOrganizationTree /></LiveStreamProvider>);
 
     instance.onmessage({
       data: JSON.stringify({

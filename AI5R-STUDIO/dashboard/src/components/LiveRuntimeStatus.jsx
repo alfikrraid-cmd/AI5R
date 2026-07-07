@@ -1,35 +1,9 @@
-import { useEffect, useState } from "react";
-import { createLiveStreamClient } from "../api/liveStreamClient";
+import { useLiveStream } from "../context/LiveStreamContext";
 
 function LiveRuntimeStatus() {
-  const [connection, setConnection] = useState("CONNECTING");
-  const [lastEvent, setLastEvent] = useState(null);
-  const [heartbeat, setHeartbeat] = useState(null);
-
-  useEffect(() => {
-    let client;
-
-    try {
-      client = createLiveStreamClient({
-        onEvent: (event) => {
-          setConnection("LIVE");
-          setLastEvent(event);
-          setHeartbeat(new Date().toISOString());
-        },
-        onError: () => {
-          setConnection("RECONNECTING");
-        },
-      });
-    } catch {
-      setConnection("UNAVAILABLE");
-    }
-
-    return () => {
-      if (client) {
-        client.close();
-      }
-    };
-  }, []);
+  const { events, status } = useLiveStream();
+  const lastEvent = events[0] || null;
+  const heartbeat = lastEvent?.timestamp || null;
 
   return (
     <section className="panel">
@@ -38,7 +12,7 @@ function LiveRuntimeStatus() {
       <div className="runtime-status-grid">
         <div>
           <strong>Connection</strong>
-          <p>{connection}</p>
+          <p>{status}</p>
         </div>
 
         <div>

@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import { LiveStreamProvider } from "../context/LiveStreamContext";
 import { describe, expect, it, vi } from "vitest";
 import LiveReasoningStream from "./LiveReasoningStream";
 
@@ -15,7 +16,7 @@ describe("LiveReasoningStream", () => {
       return instance;
     });
 
-    render(<LiveReasoningStream />);
+    render(<LiveStreamProvider><LiveReasoningStream /></LiveStreamProvider>);
 
     instance.onmessage({
       data: JSON.stringify({

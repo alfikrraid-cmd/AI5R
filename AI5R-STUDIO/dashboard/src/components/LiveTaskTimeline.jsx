@@ -1,38 +1,16 @@
-import { useEffect, useState } from "react";
-import { createLiveStreamClient } from "../api/liveStreamClient";
+import { useLiveStream } from "../context/LiveStreamContext";
 
 function LiveTaskTimeline() {
-  const [tasks, setTasks] = useState([]);
-
-  useEffect(() => {
-    let client;
-
-    try {
-      client = createLiveStreamClient({
-        onEvent: (event) => {
-          if (event.event_type === "TASK_EVENT") {
-            setTasks((current) => [
-              {
-                task_id: event.task_id,
-                title: event.title || event.task_name || "Untitled Task",
-                status: event.status || "UNKNOWN",
-                timestamp: event.timestamp || new Date().toISOString(),
-              },
-              ...current,
-            ].slice(0, 20));
-          }
-        },
-      });
-    } catch {
-      setTasks([]);
-    }
-
-    return () => {
-      if (client) {
-        client.close();
-      }
-    };
-  }, []);
+  const { events } = useLiveStream();
+  const tasks = events
+    .filter((event) => event.event_type === "TASK_EVENT")
+    .slice(0, 20)
+    .map((event) => ({
+      task_id: event.task_id,
+      title: event.title || event.task_name || "Untitled Task",
+      status: event.status || "UNKNOWN",
+      timestamp: event.timestamp || new Date().toISOString(),
+    }));
 
   return (
     <section className="panel">

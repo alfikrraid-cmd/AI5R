@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import { LiveStreamProvider } from "../context/LiveStreamContext";
 import { describe, expect, it, vi } from "vitest";
 import LiveTaskTimeline from "./LiveTaskTimeline";
 
@@ -16,7 +17,7 @@ describe("LiveTaskTimeline", () => {
       return instance;
     });
 
-    render(<LiveTaskTimeline />);
+    render(<LiveStreamProvider><LiveTaskTimeline /></LiveStreamProvider>);
 
     instance.onmessage({
       data: JSON.stringify({

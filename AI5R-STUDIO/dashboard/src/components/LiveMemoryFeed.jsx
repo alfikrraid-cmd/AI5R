@@ -1,38 +1,17 @@
-import { useEffect, useState } from "react";
-import { createLiveStreamClient } from "../api/liveStreamClient";
+import { useLiveStream } from "../context/LiveStreamContext";
 
 function LiveMemoryFeed() {
-  const [memories, setMemories] = useState([]);
+  const { events } = useLiveStream();
 
-  useEffect(() => {
-    let client;
-
-    try {
-      client = createLiveStreamClient({
-        onEvent: (event) => {
-          if (event.event_type === "MEMORY_EVENT") {
-            setMemories((current) => [
-              {
-                memory_id: event.memory_id,
-                memory_type: event.memory_type || "MEMORY",
-                summary: event.summary || event.content || "Memory captured",
-                timestamp: event.timestamp || new Date().toISOString(),
-              },
-              ...current,
-            ].slice(0, 20));
-          }
-        },
-      });
-    } catch {
-      setMemories([]);
-    }
-
-    return () => {
-      if (client) {
-        client.close();
-      }
-    };
-  }, []);
+  const memories = events
+    .filter((event) => event.event_type === "MEMORY_EVENT")
+    .slice(0, 20)
+    .map((event) => ({
+      memory_id: event.memory_id,
+      memory_type: event.memory_type || "MEMORY",
+      summary: event.summary || event.content || "Memory captured",
+      timestamp: event.timestamp || new Date().toISOString(),
+    }));
 
   return (
     <section className="panel">

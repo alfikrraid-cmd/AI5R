@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import { LiveStreamProvider } from "../context/LiveStreamContext";
 import { describe, expect, it, vi } from "vitest";
 import LiveActivityMetrics from "./LiveActivityMetrics";
 
@@ -16,7 +17,7 @@ describe("LiveActivityMetrics", () => {
       return instance;
     });
 
-    render(<LiveActivityMetrics />);
+    render(<LiveStreamProvider><LiveActivityMetrics /></LiveStreamProvider>);
 
     instance.onmessage({
       data: JSON.stringify({

@@ -1,33 +1,16 @@
-import { useEffect, useState } from "react";
-import { createLiveStreamClient } from "../api/liveStreamClient";
+import { useLiveStream } from "../context/LiveStreamContext";
 
 function LiveReasoningStream() {
-  const [steps, setSteps] = useState([]);
+  const { events } = useLiveStream();
 
-  useEffect(() => {
-    let client;
-
-    try {
-      client = createLiveStreamClient({
-        onEvent: (event) => {
-          if (event.event_type === "REASONING_EVENT") {
-            setSteps((current) => [
-              {
-                stage: event.stage || "UNKNOWN",
-                summary: event.summary || "",
-                timestamp: event.timestamp || new Date().toISOString(),
-              },
-              ...current,
-            ].slice(0, 30));
-          }
-        },
-      });
-    } catch {
-      setSteps([]);
-    }
-
-    return () => client?.close();
-  }, []);
+  const steps = events
+    .filter((event) => event.event_type === "REASONING_EVENT")
+    .slice(0, 30)
+    .map((event) => ({
+      stage: event.stage || "UNKNOWN",
+      summary: event.summary || "",
+      timestamp: event.timestamp || new Date().toISOString(),
+    }));
 
   return (
     <section className="panel">

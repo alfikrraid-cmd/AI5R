@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 
-
 import {
     getSystemStatus,
     getDashboardData
 } from "./api/ai5rClient";
 
+import { LiveStreamProvider } from "./context/LiveStreamContext";
 
 import StatusCard from "./components/StatusCard";
 import AgentPanel from "./components/AgentPanel";
@@ -29,103 +29,32 @@ import UMKMLiveStatus from "./products/UMKM_OS/components/UMKMLiveStatus";
 import AdvisorChat from "./products/UMKM_OS/components/AdvisorChat";
 import ExecutiveDashboard from "./products/UMKM_OS/components/ExecutiveDashboard";
 
-
-
 function App(){
-
-
-    const [system,setSystem] = useState(
-        {
-            status:"LOADING"
-        }
-    );
-
-
-    const [dashboard,setDashboard] = useState(
-        {
-            agents:0,
-            memories:0
-        }
-    );
-
-
+    const [system,setSystem] = useState({ status:"LOADING" });
+    const [dashboard,setDashboard] = useState({ agents:0, memories:0 });
 
     useEffect(()=>{
-
-
-        getSystemStatus()
-            .then(data=>{
-                setSystem(data);
-            });
-
-
-        getDashboardData()
-            .then(data=>{
-                setDashboard(data);
-            });
-
-
+        getSystemStatus().then(data=>setSystem(data));
+        getDashboardData().then(data=>setDashboard(data));
     },[]);
 
-
-
     return (
-
+        <LiveStreamProvider>
         <div className="dashboard">
-
-
-            <h1>
-                🌳 AI5R OS COMMAND CENTER
-            </h1>
-
-
+            <h1>🌳 AI5R OS COMMAND CENTER</h1>
 
             <div className="grid">
-
-
-                <StatusCard
-                    title="System"
-                    value={
-                        system.status
-                    }
-                />
-
-
-                <StatusCard
-                    title="Service"
-                    value={
-                        system.service || "-"
-                    }
-                />
-
-
-                <StatusCard
-                    title="Agents"
-                    value={
-                        dashboard.agents
-                    }
-                />
-
-
-                <StatusCard
-                    title="Memory"
-                    value={
-                        dashboard.memories
-                    }
-                />
-
-
+                <StatusCard title="System" value={system.status} />
+                <StatusCard title="Service" value={system.service || "-"} />
+                <StatusCard title="Agents" value={dashboard.agents} />
+                <StatusCard title="Memory" value={dashboard.memories} />
             </div>
 
-
-
             <AgentPanel />
-
             <BrainActivity />
-
             <MemoryPanel />
-
             <BrainStream />
+
             <LiveRuntimeStatus />
             <LiveOrganizationTree />
             <LiveTaskTimeline />
@@ -135,33 +64,20 @@ function App(){
             <LiveEventStream />
 
             <BrainEventStream />
-
             <EmployeePanel />
-
             <Timeline />
-
             <IntelligenceGraph />
-
             <CommandConsole />
 
             <UMKMOverview />
-
             <UMKMAgents />
-
             <UMKMInsight />
-
             <UMKMLiveStatus />
-
             <AdvisorChat />
-
             <ExecutiveDashboard />
-
-
         </div>
-
+        </LiveStreamProvider>
     );
-
 }
-
 
 export default App;

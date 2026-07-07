@@ -1,39 +1,16 @@
-import { useEffect, useState } from "react";
-import { createLiveStreamClient } from "../api/liveStreamClient";
+import { useLiveStream } from "../context/LiveStreamContext";
 
 function LiveOrganizationTree() {
-  const [organization, setOrganization] = useState({
-    departments: [],
-    workers: [],
-  });
+  const { events } = useLiveStream();
 
-  useEffect(() => {
-    let client;
+  const snapshot = events.find(
+    (event) => event.event_type === "ORGANIZATION_SNAPSHOT"
+  );
 
-    try {
-      client = createLiveStreamClient({
-        onEvent: (event) => {
-          if (event.event_type === "ORGANIZATION_SNAPSHOT") {
-            setOrganization({
-              departments: event.departments || [],
-              workers: event.workers || [],
-            });
-          }
-        },
-      });
-    } catch {
-      setOrganization({
-        departments: [],
-        workers: [],
-      });
-    }
-
-    return () => {
-      if (client) {
-        client.close();
-      }
-    };
-  }, []);
+  const organization = {
+    departments: snapshot?.departments || [],
+    workers: snapshot?.workers || [],
+  };
 
   return (
     <section className="panel">

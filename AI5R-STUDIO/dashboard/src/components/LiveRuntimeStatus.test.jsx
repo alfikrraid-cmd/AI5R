@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import { LiveStreamProvider } from "../context/LiveStreamContext";
 import { describe, expect, it, vi } from "vitest";
 import LiveRuntimeStatus from "./LiveRuntimeStatus";
 
@@ -16,7 +17,7 @@ describe("LiveRuntimeStatus", () => {
       return instance;
     });
 
-    render(<LiveRuntimeStatus />);
+    render(<LiveStreamProvider><LiveRuntimeStatus /></LiveStreamProvider>);
 
     expect(screen.getByText("CONNECTING")).toBeTruthy();
 
@@ -46,7 +47,7 @@ describe("LiveRuntimeStatus", () => {
       return instance;
     });
 
-    render(<LiveRuntimeStatus />);
+    render(<LiveStreamProvider><LiveRuntimeStatus /></LiveStreamProvider>);
 
     instance.onerror({});
 
