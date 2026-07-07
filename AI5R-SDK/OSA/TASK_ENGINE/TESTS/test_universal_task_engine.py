@@ -26,3 +26,16 @@ def test_submit_publishes_event():
     assert len(events) == 1
     assert events[0]["event"] == "TASK_CREATED"
     assert events[0]["module"] == "TASK_ENGINE"
+
+
+def test_submit_includes_goal_decomposition():
+    engine = UniversalTaskEngine()
+
+    task = engine.submit("Create marketing strategy for UMKM batik")
+
+    assert task.goal_id.startswith("GOAL-")
+    assert len(task.subtasks) >= 5
+
+    events = engine.event_bus.list_events()
+    assert events[0]["payload"]["goal_id"] == task.goal_id
+    assert len(events[0]["payload"]["subtasks"]) >= 5
