@@ -18,6 +18,7 @@ import IntelligenceGraph from "./components/IntelligenceGraph";
 import CommandConsole from "./components/CommandConsole";
 import { UMKMOverview, UMKMAgents, UMKMInsight } from "./products/UMKM_OS";
 import UMKMLiveStatus from "./products/UMKM_OS/components/UMKMLiveStatus";
+import AdvisorChat from "./products/UMKM_OS/components/AdvisorChat";
 
 
 
@@ -132,6 +133,8 @@ function App(){
             <UMKMInsight />
 
             <UMKMLiveStatus />
+
+            <AdvisorChat />
 
 
         </div>
