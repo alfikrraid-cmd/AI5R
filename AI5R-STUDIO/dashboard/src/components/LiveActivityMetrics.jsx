@@ -37,9 +37,7 @@ function LiveActivityMetrics() {
                 break;
 
               case "ORGANIZATION_SNAPSHOT":
-                next.workers =
-                  event.workers?.length ??
-                  next.workers;
+                next.workers = event.workers?.length ?? next.workers;
                 break;
 
               default:
@@ -50,7 +48,9 @@ function LiveActivityMetrics() {
           });
         },
       });
-    } catch {}
+    } catch {
+      // ignore
+    }
 
     return () => client?.close();
   }, []);

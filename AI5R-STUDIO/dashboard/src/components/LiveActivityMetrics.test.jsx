@@ -39,7 +39,7 @@ describe("LiveActivityMetrics", () => {
     instance.onmessage({
       data: JSON.stringify({
         event_type: "ORGANIZATION_SNAPSHOT",
-        workers: [{ id: 1 }, { id: 2 }, { id: 3 }],
+        workers: [{}, {}, {}],
       }),
     });
 
