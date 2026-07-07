@@ -32,7 +32,7 @@ def test_integration_runtime_api_runs_goal_to_studio_payload():
     assert payload["events"][-1]["event_type"] == "AUTONOMOUS_RUNTIME_COMPLETED"
 
 
-def test_integration_runtime_api_requires_goal_id:
+def test_integration_runtime_api_requires_goal_id():
     api = IntegrationRuntimeAPI()
 
     try:
