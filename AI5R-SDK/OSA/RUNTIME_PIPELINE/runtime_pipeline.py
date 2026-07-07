@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
+from OSA.API.CONVERSATION.conversation_api import OSAConversationAPI
 from OSA.CAPABILITY_RESOLVER.capability_resolver import CapabilityResolver
 from OSA.DIGITAL_EMPLOYEE_ORCHESTRATOR import DigitalEmployeeOrchestrator
 from OSA.EXECUTION_DISPATCHER import ExecutionDispatcher
@@ -19,6 +20,7 @@ class RuntimePipelineResult:
     execution_count: int
     memory_count: int
     memories: list[Any] = field(default_factory=list)
+    summary: dict[str, Any] = field(default_factory=dict)
     created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
 
@@ -35,6 +37,7 @@ class RuntimePipeline:
         self.dispatcher = ExecutionDispatcher()
         self.reflection_engine = ReflectionEngine()
         self.memory_engine = MemoryLearningEngine()
+        self.conversation_api = OSAConversationAPI()
 
     def execute(self, command: str, employee_id: str = "EMP-001") -> RuntimePipelineResult:
         clean_command = str(command).strip()
@@ -44,14 +47,23 @@ class RuntimePipeline:
 
         timestamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S%f")
 
-        return self.run(
+        conversation = self.conversation_api.process(clean_command)
+
+        result = self.run(
             {
                 "goal_id": f"CMD-{timestamp}",
                 "description": clean_command,
-                "desired_outcomes": [clean_command],
+                "desired_outcomes": [conversation.recommendation],
                 "employee_id": employee_id,
             }
         )
+
+        result.summary["command"] = clean_command
+        result.summary["employee_id"] = employee_id
+        result.summary["conversation_message"] = conversation.message
+        result.summary["conversation_recommendation"] = conversation.recommendation
+
+        return result
 
     def run(self, goal: dict[str, Any]) -> RuntimePipelineResult:
         goal_id = goal.get("goal_id")
