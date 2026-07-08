@@ -27,3 +27,17 @@ def test_ai5r_kernel_use_and_ask(tmp_path):
 
     assert result["status"] == "SUCCESS"
     assert result["pipeline_id"].startswith("PIPE-CMD-")
+
+
+def test_ai5r_kernel_use_vertical_and_ask(tmp_path):
+    ai5r = AI5R(root_path=tmp_path)
+
+    loaded = ai5r.use_vertical("UMKM_OS")
+
+    assert loaded["status"] == "STARTED"
+
+    result = ai5r.ask("Create UMKM growth plan")
+
+    assert result["status"] == "SUCCESS"
+    assert result["product"] == "UMKM_OS"
+    assert result["pipeline_id"].startswith("PIPE-CMD-")

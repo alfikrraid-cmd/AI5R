@@ -1,10 +1,13 @@
 from PRODUCT_RUNTIME import ProductRuntime
+from BUSINESS_VERTICALS.REGISTRY import VerticalRegistry
 
 
 class AI5R:
     def __init__(self, root_path="."):
         self.product_runtime = ProductRuntime(root_path)
         self.active_product = None
+        self.active_vertical = None
+        self.vertical_registry = VerticalRegistry()
 
     def load(self, product_name: str, domains: list[str] | None = None):
         result = self.product_runtime.load(
@@ -15,6 +18,28 @@ class AI5R:
         return result
 
 
+
+
+    def use_vertical(self, vertical_name: str):
+        runtime = self.vertical_registry.create(
+            vertical_name,
+            root_path=self.product_runtime.root_path,
+        )
+
+        try:
+            started = runtime.start()
+        except TypeError:
+            started = runtime.start(
+                {
+                    "product": vertical_name,
+                    "agents": [],
+                }
+            )
+
+        self.active_vertical = runtime
+        self.active_product = vertical_name
+
+        return started
 
     def use(self, product_name: str, domains: list[str] | None = None):
         return self.load(
@@ -29,6 +54,12 @@ class AI5R:
         )
 
     def run(self, goal: str, employee_id: str = "EMP-001"):
+        if self.active_vertical:
+            return self.active_vertical.run_goal(
+                goal=goal,
+                employee_id=employee_id,
+            )
+
         if not self.active_product:
             raise ValueError("no active product loaded")
 
