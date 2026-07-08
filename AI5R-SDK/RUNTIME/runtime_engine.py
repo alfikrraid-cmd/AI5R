@@ -85,3 +85,40 @@ class RuntimeEngine:
                 metadata=request.metadata,
                 error=str(exc),
             )
+
+    def execute_pipeline(
+        self,
+        profile: str,
+        definitions: tuple[str, ...],
+        payload: dict[str, Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> RuntimeResponse:
+        if not definitions:
+            raise ValueError("definitions are required")
+
+        current_payload = payload or {}
+        current_metadata = metadata or {}
+
+        for definition in definitions:
+            response = self.execute(
+                RuntimeRequest(
+                    profile=profile,
+                    definition=definition,
+                    payload=current_payload,
+                    metadata=current_metadata,
+                )
+            )
+
+            if response.status == RuntimeStatus.FAILED:
+                return response
+
+            current_payload = response.output
+            current_metadata = response.metadata
+
+        return RuntimeResponse(
+            status=RuntimeStatus.SUCCESS,
+            profile=profile,
+            definition=definitions[-1],
+            output=current_payload,
+            metadata=current_metadata,
+        )
