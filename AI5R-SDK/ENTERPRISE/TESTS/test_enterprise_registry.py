@@ -1,42 +1,16 @@
-import sys
-from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT))
-
-from ENTERPRISE.enterprise_object import EnterpriseObject
-from ENTERPRISE.enterprise_registry import EnterpriseRegistry
+from ENTERPRISE import EnterpriseRegistry
 
 
-def test_enterprise_registry():
-    registry = EnterpriseRegistry("department")
+def test_enterprise_registry_lists_objects_by_type():
+    registry = EnterpriseRegistry()
 
-    req_dept = EnterpriseObject(
-        code="DEPT-REQ",
-        name="Requirement Department",
-        type="department",
-        owner="CTO",
-        tags=["factory", "requirement"],
-    )
+    registry.register("company", "PT Mitra Andalan Servisindo")
+    registry.register("company", "CV Razzan Teknik Mandiri")
+    registry.register("brand", "Alleira Florist")
 
-    registry.register(req_dept)
+    companies = registry.list_by_type("company")
+    brands = registry.list_by_type("brand")
 
-    assert registry.get("DEPT-REQ").name == "Requirement Department"
-    assert len(registry.list()) == 1
-
-    registry.update_status("DEPT-REQ", "active")
-    assert registry.get("DEPT-REQ").status == "active"
-
-    result = registry.find_by_tag("requirement")
-    assert len(result) == 1
-    assert result[0].code == "DEPT-REQ"
-
-    data = registry.to_dict()
-    assert data["object_type"] == "department"
-    assert data["count"] == 1
-
-    print("EL-003 Enterprise Registry Engine OK")
-
-
-if __name__ == "__main__":
-    test_enterprise_registry()
+    assert len(companies) == 2
+    assert len(brands) == 1
+    assert brands[0].name == "Alleira Florist"
