@@ -4,6 +4,9 @@ from .BOM import (
     DBOMComponentType,
     DigitalBillOfMaterials,
 )
+from .FACTORY import (
+    DigitalFactory,
+)
 from .LINES import (
     ProductionLine,
 )
@@ -29,6 +32,7 @@ __all__ = [
     "DBOMComponentStatus",
     "DBOMComponentType",
     "DigitalBillOfMaterials",
+    "DigitalFactory",
     "ProductionLine",
     "ManufacturingObject",
     "ManufacturingObjectType",
