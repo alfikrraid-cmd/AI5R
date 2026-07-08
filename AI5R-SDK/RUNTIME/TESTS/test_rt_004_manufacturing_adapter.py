@@ -4,10 +4,10 @@ from MANUFACTURING import (
     ProductionLine,
 )
 from RUNTIME import (
-    ManufacturingRuntimeAdapter,
     RuntimeEngine,
     RuntimeStatus,
 )
+from RUNTIME.ADAPTERS import ManufacturingRuntimeAdapter
 
 
 def test_manufacturing_adapter_executes_order_through_runtime_pipeline():

@@ -1,13 +1,11 @@
 from dataclasses import dataclass, field
 from typing import Any
 
-from MANUFACTURING import (
-    ManufacturingOrder,
-    ManufacturingRecipe,
-    ProductionLine,
-)
-from RUNTIME import (
-    ManufacturingRuntimeAdapter,
+from MANUFACTURING.LINES import ProductionLine
+from MANUFACTURING.ORDERS import ManufacturingOrder
+from MANUFACTURING.RECIPES import ManufacturingRecipe
+from RUNTIME.ADAPTERS.manufacturing_adapter import ManufacturingRuntimeAdapter
+from RUNTIME.runtime_engine import (
     RuntimeEngine,
     RuntimeResponse,
 )

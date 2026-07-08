@@ -1,9 +1,9 @@
 from MANUFACTURING import (
-    DigitalFactory,
     ManufacturingOrder,
     ManufacturingRecipe,
     ProductionLine,
 )
+from MANUFACTURING.FACTORY import DigitalFactory
 from RUNTIME import RuntimeStatus
 
 
