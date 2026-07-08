@@ -14,6 +14,20 @@ class AI5R:
         self.active_product = result["product"]
         return result
 
+
+
+    def use(self, product_name: str, domains: list[str] | None = None):
+        return self.load(
+            product_name=product_name,
+            domains=domains,
+        )
+
+    def ask(self, prompt: str, employee_id: str = "EMP-001"):
+        return self.run(
+            goal=prompt,
+            employee_id=employee_id,
+        )
+
     def run(self, goal: str, employee_id: str = "EMP-001"):
         if not self.active_product:
             raise ValueError("no active product loaded")
