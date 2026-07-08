@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Any
 
+from MANUFACTURING.FACTORY.factory_registry import FactoryRegistry
 from MANUFACTURING.LINES import ProductionLine
 from MANUFACTURING.ORDERS import ManufacturingOrder
 from MANUFACTURING.RECIPES import ManufacturingRecipe
@@ -18,8 +19,7 @@ class DigitalFactory:
     engine: RuntimeEngine = field(default_factory=RuntimeEngine)
     profile: str = "manufacturing"
     metadata: dict[str, Any] = field(default_factory=dict)
-    recipes: dict[str, ManufacturingRecipe] = field(default_factory=dict)
-    lines: dict[str, ProductionLine] = field(default_factory=dict)
+    registry: FactoryRegistry = field(default_factory=FactoryRegistry)
 
     def validate(self) -> bool:
         return bool(
@@ -33,29 +33,13 @@ class DigitalFactory:
         recipe: ManufacturingRecipe,
         line: ProductionLine,
     ) -> None:
-        if not recipe.validate():
-            raise ValueError("manufacturing recipe is invalid")
-        if not line.validate():
-            raise ValueError("production line is invalid")
-        if recipe.product_type != line.product_type:
-            raise ValueError("recipe and production line product type mismatch")
-        if recipe.production_line_id != line.line_id:
-            raise ValueError("recipe and production line mismatch")
-
-        self.recipes[recipe.product_type] = recipe
-        self.lines[recipe.production_line_id] = line
+        self.registry.register_recipe(recipe, line)
 
     def get_recipe(self, product_type: str) -> ManufacturingRecipe:
-        recipe = self.recipes.get(product_type)
-        if recipe is None:
-            raise ValueError(f"recipe not found for product type: {product_type}")
-        return recipe
+        return self.registry.get_recipe(product_type)
 
     def get_line(self, line_id: str) -> ProductionLine:
-        line = self.lines.get(line_id)
-        if line is None:
-            raise ValueError(f"production line not found: {line_id}")
-        return line
+        return self.registry.get_line(line_id)
 
     def manufacture(
         self,
