@@ -33,9 +33,9 @@ class ManufacturingRuntimeAdapter:
         if recipe.production_line_id != line.line_id:
             raise ValueError("recipe and production line mismatch")
 
-        return self.engine.execute_pipeline(
+        return self.engine.execute_capability_pipeline(
             profile=self.profile,
-            definitions=line.station_ids,
+            capability_ids=line.execution_ids(),
             payload={
                 "order_id": order.order_id,
                 "product_name": order.product_name,
@@ -47,6 +47,7 @@ class ManufacturingRuntimeAdapter:
             metadata={
                 "adapter": "ManufacturingRuntimeAdapter",
                 "recipe_version": recipe.version,
+                "line_is_capability_based": line.is_capability_based(),
                 **self.metadata,
                 **order.metadata,
                 **recipe.metadata,
