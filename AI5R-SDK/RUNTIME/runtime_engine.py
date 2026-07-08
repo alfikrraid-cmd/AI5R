@@ -49,8 +49,23 @@ class RuntimeEngine:
 
         self._handlers[(profile, definition)] = handler
 
+    def register_capability(
+        self,
+        profile: str,
+        capability_id: str,
+        handler: RuntimeHandler,
+    ) -> None:
+        self.register_handler(
+            profile=profile,
+            definition=capability_id,
+            handler=handler,
+        )
+
     def has_handler(self, profile: str, definition: str) -> bool:
         return (profile, definition) in self._handlers
+
+    def has_capability(self, profile: str, capability_id: str) -> bool:
+        return self.has_handler(profile, capability_id)
 
     def execute(
         self,
@@ -121,4 +136,18 @@ class RuntimeEngine:
             definition=definitions[-1],
             output=current_payload,
             metadata=current_metadata,
+        )
+
+    def execute_capability_pipeline(
+        self,
+        profile: str,
+        capability_ids: tuple[str, ...],
+        payload: dict[str, Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> RuntimeResponse:
+        return self.execute_pipeline(
+            profile=profile,
+            definitions=capability_ids,
+            payload=payload,
+            metadata=metadata,
         )
