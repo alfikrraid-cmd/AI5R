@@ -1,41 +1,16 @@
-import sys
-from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT))
-
-from AI5R_KERNEL import AI5RKernel
+from AI5R_KERNEL import AI5R
 
 
-def test_ai5r_kernel_manufactures_product():
-    kernel = AI5RKernel()
+def test_ai5r_kernel_loads_product_and_runs_goal(tmp_path):
+    ai5r = AI5R(root_path=tmp_path)
 
-    result = kernel.manufacture("Digital Employee")
+    loaded = ai5r.load("UMKM OS")
 
-    assert result["status"] == "MANUFACTURED"
-    assert result["product"] == "DIGITAL_EMPLOYEE"
+    assert loaded["status"] == "RUNNING"
+    assert loaded["product"] == "UMKM_OS"
 
-    assert result["payload"]["specification"]["status"] == "SPECIFIED"
-    assert result["payload"]["factory"]["status"] == "BUILT"
-    assert result["payload"]["assembly"]["status"] == "ASSEMBLED"
-    assert result["payload"]["artifact"]["status"] == "MANUFACTURED"
-    assert result["payload"]["registry"]["status"] == "REGISTERED"
-    assert result["payload"]["runtime"]["status"] == "RUNNING"
-    assert result["payload"]["release"]["status"] == "RELEASED"
+    result = ai5r.run("Create UMKM sales plan")
 
-    assert len(result["history"]) == 7
-
-
-def test_ai5r_kernel_accepts_initial_payload():
-    kernel = AI5RKernel()
-
-    result = kernel.manufacture(
-        "Digital School",
-        payload={
-            "source": "test",
-        },
-    )
-
-    assert result["product"] == "DIGITAL_SCHOOL"
-    assert result["payload"]["source"] == "test"
-    assert result["payload"]["release"]["status"] == "RELEASED"
+    assert result["status"] == "SUCCESS"
+    assert result["product"] == "UMKM_OS"
+    assert result["pipeline_id"].startswith("PIPE-CMD-")

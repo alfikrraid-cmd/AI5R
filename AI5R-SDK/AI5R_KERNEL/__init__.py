@@ -1,3 +1,5 @@
-from .ai5r_kernel import AI5RKernel
+from .ai5r import AI5R
 
-__all__ = ["AI5RKernel"]
+__all__ = [
+    "AI5R",
+]
