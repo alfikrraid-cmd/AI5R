@@ -1,16 +1,10 @@
-from .OBJECTS import (
-    ManufacturingObject,
-    ManufacturingObjectType,
-)
-from .ORDERS import (
+from .manufacturing_order import (
     ManufacturingOrder,
     ManufacturingOrderPriority,
     ManufacturingOrderStatus,
 )
 
 __all__ = [
-    "ManufacturingObject",
-    "ManufacturingObjectType",
     "ManufacturingOrder",
     "ManufacturingOrderPriority",
     "ManufacturingOrderStatus",
