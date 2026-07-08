@@ -2,10 +2,10 @@
 FM-104.6 Manufacturing Engine with Dependency Graph Pipeline
 """
 
-from MANUFACTURING.station_discovery import StationDiscovery
-from MANUFACTURING.station_registry import StationRegistry
-from MANUFACTURING.dependency_graph import DependencyGraph
-from MANUFACTURING.topological_sort import TopologicalSorter
+from FACTORY.MANUFACTURING.station_discovery import StationDiscovery
+from FACTORY.MANUFACTURING.station_registry import StationRegistry
+from FACTORY.MANUFACTURING.dependency_graph import DependencyGraph
+from FACTORY.MANUFACTURING.topological_sort import TopologicalSorter
 
 
 class ManufacturingEngine:

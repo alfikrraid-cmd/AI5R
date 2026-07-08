@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from MANUFACTURING.service import ManufacturingService
+from FACTORY.MANUFACTURING.service import ManufacturingService
 
 
 class ProductBuilder:

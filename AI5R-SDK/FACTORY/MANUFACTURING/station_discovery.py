@@ -6,7 +6,7 @@ import importlib
 import inspect
 import pkgutil
 
-from MANUFACTURING.station import ManufacturingStation
+from FACTORY.MANUFACTURING.station import ManufacturingStation
 
 
 class StationDiscovery:
