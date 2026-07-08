@@ -17,6 +17,8 @@ from .enterprise_relationship import (
 )
 
 __all__ = [
+    "EnterpriseGraphRelationship",
+    "EnterpriseKnowledgeGraph",
     "EnterpriseBoot",
     "EnterpriseObject",
     "EnterpriseObjectType",
@@ -27,3 +29,8 @@ __all__ = [
 ]
 
 from .enterprise_boot import EnterpriseBoot
+
+from .enterprise_graph import (
+    EnterpriseGraphRelationship,
+    EnterpriseKnowledgeGraph,
+)
