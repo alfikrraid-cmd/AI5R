@@ -68,3 +68,29 @@ class AI5R:
             goal=goal,
             employee_id=employee_id,
         )
+
+    def status(self, product_name: str | None = None):
+        target = product_name or self.active_product
+
+        if not target:
+            raise ValueError("no active product loaded")
+
+        return self.product_runtime.status(target)
+
+    def stop(self, product_name: str | None = None):
+        target = product_name or self.active_product
+
+        if not target:
+            raise ValueError("no active product loaded")
+
+        result = self.product_runtime.stop(target)
+
+        if product_name is None:
+            self.active_product = None
+            self.active_vertical = None
+
+        return result
+
+    def list_products(self):
+        return self.product_runtime.registry.list_all()
+

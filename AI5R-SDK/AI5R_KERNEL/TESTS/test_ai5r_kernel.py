@@ -41,3 +41,25 @@ def test_ai5r_kernel_use_vertical_and_ask(tmp_path):
     assert result["status"] == "SUCCESS"
     assert result["product"] == "UMKM_OS"
     assert result["pipeline_id"].startswith("PIPE-CMD-")
+
+
+def test_ai5r_kernel_product_lifecycle(tmp_path):
+    ai5r = AI5R(root_path=tmp_path)
+
+    ai5r.use("UMKM OS")
+
+    status = ai5r.status()
+
+    assert status["status"] == "RUNNING"
+    assert status["product"] == "UMKM_OS"
+
+    products = ai5r.list_products()
+
+    assert "UMKM_OS" in [
+        product["product"]
+        for product in products
+    ]
+
+    stopped = ai5r.stop()
+
+    assert stopped["status"] == "STOPPED"
