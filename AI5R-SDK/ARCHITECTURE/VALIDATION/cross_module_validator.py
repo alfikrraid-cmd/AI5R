@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 import importlib
 import pkgutil
-import AI5R_SDK
+import sys
 
 
 @dataclass
@@ -14,13 +15,23 @@ class CrossModuleValidationResult:
 
 
 class CrossModuleValidator:
+    def _sdk_root(self) -> Path:
+        current = Path(__file__).resolve()
+        for parent in current.parents:
+            if parent.name == "AI5R-SDK":
+                return parent
+        raise RuntimeError("AI5R-SDK root not found")
+
     def scan_packages(self):
+        sdk_root = self._sdk_root()
+
+        if str(sdk_root) not in sys.path:
+            sys.path.insert(0, str(sdk_root))
+
         return [
             m.name
-            for m in pkgutil.walk_packages(
-                AI5R_SDK.__path__,
-                AI5R_SDK.__name__ + "."
-            )
+            for m in pkgutil.iter_modules([str(sdk_root)])
+            if not m.name.startswith("__")
         ]
 
     def validate_imports(self) -> CrossModuleValidationResult:
