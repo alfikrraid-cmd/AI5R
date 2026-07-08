@@ -1,3 +1,6 @@
+from .ADAPTERS import (
+    ManufacturingRuntimeAdapter,
+)
 from .runtime_engine import (
     RuntimeEngine,
     RuntimeHandler,
@@ -7,6 +10,7 @@ from .runtime_engine import (
 )
 
 __all__ = [
+    "ManufacturingRuntimeAdapter",
     "RuntimeEngine",
     "RuntimeHandler",
     "RuntimeRequest",
