@@ -89,3 +89,16 @@ def test_product_runtime_runs_goal_through_runtime_pipeline(tmp_path):
     assert result["pipeline_id"].startswith("PIPE-CMD-")
     assert result["execution_count"] >= 1
     assert result["memory_count"] >= 1
+
+
+def test_product_runtime_loads_product_by_name(tmp_path):
+    runtime = ProductRuntime(tmp_path)
+
+    result = runtime.load("UMKM OS")
+
+    assert result["status"] == "RUNNING"
+    assert result["product"] == "UMKM_OS"
+
+    status = runtime.status("UMKM OS")
+
+    assert status["status"] == "RUNNING"

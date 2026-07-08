@@ -13,6 +13,15 @@ class ProductRuntime:
         self.running_products = {}
         self.runtime_pipeline = RuntimePipeline()
 
+
+    def load(self, product_name: str, domains: list[str] | None = None):
+        specification = ProductSpecification(
+            product_name=product_name,
+            domains=domains or [],
+        )
+
+        return self.start(specification)
+
     def start(self, specification: ProductSpecification):
         registered = self.registry.register(specification)
 
