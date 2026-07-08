@@ -1,3 +1,4 @@
+from .capability import RuntimeCapability
 from .runtime_engine import (
     RuntimeEngine,
     RuntimeHandler,
@@ -7,6 +8,7 @@ from .runtime_engine import (
 )
 
 __all__ = [
+    "RuntimeCapability",
     "RuntimeEngine",
     "RuntimeHandler",
     "RuntimeRequest",
