@@ -1,5 +1,6 @@
 from .runtime_engine import (
     RuntimeEngine,
+    RuntimeHandler,
     RuntimeRequest,
     RuntimeResponse,
     RuntimeStatus,
@@ -7,6 +8,7 @@ from .runtime_engine import (
 
 __all__ = [
     "RuntimeEngine",
+    "RuntimeHandler",
     "RuntimeRequest",
     "RuntimeResponse",
     "RuntimeStatus",
