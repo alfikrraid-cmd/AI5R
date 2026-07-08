@@ -29,3 +29,6 @@ class ProductRegistry:
     def get(self, product_name: str):
         normalized = product_name.strip().upper().replace(" ", "_").replace("-", "_")
         return self.products.get(normalized)
+
+    def list_all(self):
+        return list(self.products.values())

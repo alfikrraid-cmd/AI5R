@@ -53,3 +53,29 @@ def test_product_registry_returns_none_for_unknown_product(tmp_path):
     result = registry.get("Unknown Product")
 
     assert result is None
+
+
+def test_product_registry_lists_registered_products(tmp_path):
+    registry = ProductRegistry(tmp_path)
+
+    registry.register(
+        ProductSpecification(
+            product_name="UMKM OS",
+            domains=["Marketing", "Sales"],
+        )
+    )
+
+    registry.register(
+        ProductSpecification(
+            product_name="School OS",
+            domains=["Education"],
+        )
+    )
+
+    products = registry.list_all()
+
+    names = [product["product"] for product in products]
+
+    assert "UMKM_OS" in names
+    assert "SCHOOL_OS" in names
+    assert len(products) == 2
