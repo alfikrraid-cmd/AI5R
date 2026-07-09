@@ -43,6 +43,31 @@ class EmployeeRuntime:
             )
         )
 
+    def __init__(self, activity_registry: EmployeeActivityRegistry | None = None) -> None:
+        self.activity_registry = activity_registry or EmployeeActivityRegistry()
+
+    def _record_activity(
+        self,
+        employee: DigitalEmployee,
+        work_item: WorkItem,
+        activity_type: str,
+        status: str,
+        message: str,
+        progress: int,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        self.activity_registry.record(
+            EmployeeActivity(
+                employee_id=employee.employee_id,
+                activity_type=activity_type,
+                status=status,
+                message=message,
+                progress=progress,
+                work_item_id=work_item.work_item_id,
+                metadata=metadata or {},
+            )
+        )
+
     def receive_work(
         self,
         employee: DigitalEmployee,
