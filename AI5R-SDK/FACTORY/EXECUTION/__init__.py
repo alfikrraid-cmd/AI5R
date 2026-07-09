@@ -6,8 +6,11 @@ __all__ = [
     "ExecutionResult",
     "WorkspaceBuilder",
     "BuildValidator",
+    "ZipExporter",
 ]
 
 from .workspace_builder import WorkspaceBuilder
 
 from .build_validator import BuildValidator
+
+from .zip_exporter import ZipExporter
