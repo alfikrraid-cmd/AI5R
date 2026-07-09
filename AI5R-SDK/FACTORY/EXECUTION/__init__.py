@@ -5,6 +5,9 @@ __all__ = [
     "FactoryExecutionEngine",
     "ExecutionResult",
     "WorkspaceBuilder",
+    "BuildValidator",
 ]
 
 from .workspace_builder import WorkspaceBuilder
+
+from .build_validator import BuildValidator
