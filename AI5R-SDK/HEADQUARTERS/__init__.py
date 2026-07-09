@@ -18,6 +18,8 @@ __all__ = [
     "MemoryRegistry",
     "MemoryQuery",
     "MemoryRepository",
+    "Experience",
+    "LearningEngine",
 ]
 
 from .executive_meeting import (
@@ -40,3 +42,13 @@ from .CORPORATE_MEMORY import (
     MemoryQuery,
     MemoryRepository,
 )
+
+
+from .LEARNING import (
+
+Experience,
+
+LearningEngine,
+
+)
+
