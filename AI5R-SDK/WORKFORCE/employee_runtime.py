@@ -207,3 +207,22 @@ class EmployeeRuntime:
             phase="IDLE",
             metadata={},
         )
+
+    def run(
+        self,
+        employee: DigitalEmployee,
+        work_item: WorkItem,
+    ) -> list[RuntimeResult]:
+        results = []
+
+        self.receive_work(employee, work_item)
+        results.append(
+            RuntimeResult("OK", employee.employee_id, work_item.work_item_id, "RECEIVED", {})
+        )
+
+        results.append(self.think(employee, work_item))
+        results.append(self.execute(employee, work_item))
+        results.append(self.review(employee, work_item))
+        results.append(self.learn(employee, work_item))
+
+        return results
