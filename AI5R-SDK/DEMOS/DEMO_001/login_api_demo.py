@@ -3,6 +3,7 @@ from WORKFORCE.it_department_pack import ITDepartmentPack
 from WORKFORCE.project_manager_capability import ProjectManagerCapability
 from WORKFORCE.work_board import WorkBoard
 from WORKFORCE.employee_runtime import EmployeeRuntime
+from WORKFORCE.mission_orchestrator import MissionOrchestrator
 from WORKFORCE.employee_activity_registry import EmployeeActivityRegistry
 from WORKFORCE.workforce_event_bus import WorkforceEventBus
 from WORKFORCE.workforce_manufacturing_adapter import WorkforceManufacturingAdapter
@@ -50,14 +51,22 @@ def run_demo():
 
     event_bus = WorkforceEventBus()
     activity_registry = EmployeeActivityRegistry(event_bus=event_bus)
-    runtime = EmployeeRuntime(activity_registry=activity_registry)
-    runtime.receive_work(backend, backend_work)
-    think_result = runtime.think(backend, backend_work)
-    logs.append("✓ Employee Runtime thinking completed")
+    orchestrator = MissionOrchestrator(activity_registry=activity_registry)
+    mission_result = orchestrator.run(
+        employee=backend,
+        work_item=backend_work,
+        mission_id="MISSION-DEMO-001",
+    )
+
+    logs.append("✓ Mission Orchestrator completed employee lifecycle")
     logs.append("✓ Activity Timeline recorded")
     logs.append(
+        "✓ Runtime phases: "
+        + " → ".join(mission_result.runtime_phases)
+    )
+    logs.append(
         "✓ Selected capabilities: "
-        + ", ".join(think_result.metadata["selected_capabilities"])
+        + ", ".join(backend.metadata.get("selected_capabilities", []))
     )
 
     order = WorkforceManufacturingAdapter().create_order(

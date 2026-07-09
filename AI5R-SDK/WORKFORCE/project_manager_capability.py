@@ -30,7 +30,7 @@ class ProjectManagerCapability:
                 assigned_position_id="SOLUTION_ARCHITECT",
             ),
             WorkItem(
-                title="Implement backend",
+                title="Implement API backend",
                 assigned_position_id="BACKEND_ENGINEER",
             ),
             WorkItem(
