@@ -10,6 +10,7 @@ __all__ = [
     "ExecutiveMeetingRuntime",
     "ExecutiveMeetingResult",
     "ExecutiveOpinion",
+    "ExecutiveBoardFactory",
 ]
 
 from .executive_meeting import (
@@ -17,3 +18,5 @@ from .executive_meeting import (
     ExecutiveMeetingResult,
     ExecutiveOpinion,
 )
+
+from .executive_board_factory import ExecutiveBoardFactory
