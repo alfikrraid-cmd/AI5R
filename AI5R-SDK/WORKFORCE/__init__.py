@@ -32,8 +32,13 @@ __all__ = [
     "EmployeeRuntime",
     "RuntimeResult",
     "WorkforceManufacturingAdapter",
+    "EmployeeActivity",
+    "EmployeeActivityRegistry",
 ]
 
 from .employee_runtime import EmployeeRuntime, RuntimeResult
 
 from .workforce_manufacturing_adapter import WorkforceManufacturingAdapter
+
+from .employee_activity import EmployeeActivity
+from .employee_activity_registry import EmployeeActivityRegistry
