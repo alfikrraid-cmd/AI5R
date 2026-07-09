@@ -1,13 +1,16 @@
-from SALES.CONTRACTS.sales_workforce_contract import SalesPlan, SalesTarget
-from SALES.RUNTIME.sales_executive_runtime import SalesExecutiveRuntime
+from SALES.CONTRACTS import ExecutiveGoal, SalesPlan, SalesTarget
+from SALES.RUNTIME import SalesExecutiveRuntime, SalesExecutiveOrchestrator
 from SALES.PIPELINE import SalesOpportunity, SalesPipeline
 from SALES.CRM import Customer, CustomerInteraction, SalesCRMRuntime
 from SALES.PROPOSAL import SalesProposal, ProposalGenerator
+from SALES.REPORTING import ExecutiveReport
 
 __all__ = [
+    "ExecutiveGoal",
     "SalesPlan",
     "SalesTarget",
     "SalesExecutiveRuntime",
+    "SalesExecutiveOrchestrator",
     "SalesOpportunity",
     "SalesPipeline",
     "Customer",
@@ -15,4 +18,5 @@ __all__ = [
     "SalesCRMRuntime",
     "SalesProposal",
     "ProposalGenerator",
+    "ExecutiveReport",
 ]
