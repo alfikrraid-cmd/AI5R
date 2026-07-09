@@ -9,6 +9,7 @@ from WORKFORCE.workforce_event_bus import WorkforceEventBus
 from WORKFORCE.workforce_manufacturing_adapter import WorkforceManufacturingAdapter
 from MANUFACTURING.ORDERS import ManufacturingOrderPriority
 from DEMOS.DEMO_001.production_plan import Demo001ProductionPlan
+from DIGITAL_TWIN.workforce_twin_projector import WorkforceTwinProjector
 
 
 def run_demo():
@@ -78,6 +79,9 @@ def run_demo():
 
     logs.append("✓ Canonical Manufacturing Order created")
     logs.append(f"✓ Order ID: {order.order_id}")
+    twin_store = WorkforceTwinProjector().project_stream(event_bus.stream())
+    logs.append("✓ Digital Twin Snapshot created")
+
     plan = Demo001ProductionPlan().create_from_order(order)
     logs.append("✓ Product Blueprint resolved")
     logs.append("✓ Production Plan created")
@@ -90,6 +94,7 @@ def run_demo():
         "order": order,
         "production_plan": plan,
         "activity_stream": event_bus.stream(),
+        "digital_twin_snapshot": twin_store.snapshot(),
     }
 
 
@@ -102,6 +107,11 @@ if __name__ == "__main__":
     for line in result["logs"]:
         print(line)
 
+    print("=" * 56)
+    print("Digital Twin Snapshot")
+    print("-" * 56)
+    for entity_id, twin in result.get("digital_twin_snapshot", {}).items():
+        print(f"{entity_id} | {twin['entity_type']} | {twin['status']} | {twin['state'].get('progress', 0)}%")
     print("=" * 56)
     print("Activity Timeline")
     print("-" * 56)
