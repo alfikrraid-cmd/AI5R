@@ -3,6 +3,8 @@ from typing import Any
 
 from WORKFORCE.digital_employee import DigitalEmployee
 from WORKFORCE.work_item import WorkItem
+from WORKFORCE.employee_activity import EmployeeActivity
+from WORKFORCE.employee_activity_registry import EmployeeActivityRegistry
 
 
 @dataclass
@@ -16,6 +18,31 @@ class RuntimeResult:
 
 class EmployeeRuntime:
 
+    def __init__(self, activity_registry: EmployeeActivityRegistry | None = None) -> None:
+        self.activity_registry = activity_registry or EmployeeActivityRegistry()
+
+    def _record_activity(
+        self,
+        employee: DigitalEmployee,
+        work_item: WorkItem,
+        activity_type: str,
+        status: str,
+        message: str,
+        progress: int,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        self.activity_registry.record(
+            EmployeeActivity(
+                employee_id=employee.employee_id,
+                activity_type=activity_type,
+                status=status,
+                message=message,
+                progress=progress,
+                work_item_id=work_item.work_item_id,
+                metadata=metadata or {},
+            )
+        )
+
     def receive_work(
         self,
         employee: DigitalEmployee,
@@ -23,6 +50,14 @@ class EmployeeRuntime:
     ) -> RuntimeResult:
 
         employee.metadata["runtime_state"] = "THINKING"
+        self._record_activity(
+            employee,
+            work_item,
+            activity_type="RECEIVED_WORK",
+            status="THINKING",
+            message="Employee received work item",
+            progress=10,
+        )
 
         return RuntimeResult(
             status="OK",
@@ -56,6 +91,15 @@ class EmployeeRuntime:
 
         employee.metadata["runtime_state"] = "EXECUTING"
         employee.metadata["selected_capabilities"] = selected_capabilities
+        self._record_activity(
+            employee,
+            work_item,
+            activity_type="THINKING",
+            status="CAPABILITY_SELECTED",
+            message="Employee selected capabilities",
+            progress=35,
+            metadata={"selected_capabilities": selected_capabilities},
+        )
 
         return RuntimeResult(
             status="OK",
@@ -74,6 +118,14 @@ class EmployeeRuntime:
     ) -> RuntimeResult:
 
         employee.metadata["runtime_state"] = "REVIEWING"
+        self._record_activity(
+            employee,
+            work_item,
+            activity_type="EXECUTING",
+            status="REVIEWING",
+            message="Employee completed execution step",
+            progress=70,
+        )
 
         return RuntimeResult(
             status="OK",
@@ -90,6 +142,14 @@ class EmployeeRuntime:
     ) -> RuntimeResult:
 
         employee.metadata["runtime_state"] = "LEARNING"
+        self._record_activity(
+            employee,
+            work_item,
+            activity_type="REVIEWING",
+            status="LEARNING",
+            message="Employee completed review step",
+            progress=90,
+        )
 
         return RuntimeResult(
             status="OK",
@@ -106,6 +166,14 @@ class EmployeeRuntime:
     ) -> RuntimeResult:
 
         employee.metadata["runtime_state"] = "IDLE"
+        self._record_activity(
+            employee,
+            work_item,
+            activity_type="LEARNING",
+            status="COMPLETED",
+            message="Employee completed learning step",
+            progress=100,
+        )
 
         return RuntimeResult(
             status="COMPLETED",
