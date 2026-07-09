@@ -39,6 +39,8 @@ __all__ = [
     "MissionOrchestrator",
     "MissionResult",
     "WorkforceExecutionPlan",
+    "DigitalWorkforceScheduler",
+    "SchedulerDecision",
 ]
 
 from .employee_runtime import EmployeeRuntime, RuntimeResult
@@ -53,3 +55,5 @@ from .workforce_event_bus import WorkforceEvent, WorkforceEventBus
 from .mission_orchestrator import MissionOrchestrator, MissionResult
 
 from .workforce_execution_plan import WorkforceExecutionPlan
+
+from .digital_workforce_scheduler import DigitalWorkforceScheduler, SchedulerDecision
