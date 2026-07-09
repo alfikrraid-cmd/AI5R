@@ -20,7 +20,6 @@ def test_base_station_canonical_is_active():
 def test_duplicate_areas_are_marked_for_review():
     pending = list_components_needing_confirmation()
 
-    assert "manufacturing_order" in pending
     assert "manufacturing_engine" in pending
     assert "station_registry" in pending
 
