@@ -3,6 +3,8 @@ from WORKFORCE.it_department_pack import ITDepartmentPack
 from WORKFORCE.project_manager_capability import ProjectManagerCapability
 from WORKFORCE.work_board import WorkBoard
 from WORKFORCE.employee_runtime import EmployeeRuntime
+from WORKFORCE.employee_activity_registry import EmployeeActivityRegistry
+from WORKFORCE.workforce_event_bus import WorkforceEventBus
 from WORKFORCE.workforce_manufacturing_adapter import WorkforceManufacturingAdapter
 from MANUFACTURING.ORDERS import ManufacturingOrderPriority
 from DEMOS.DEMO_001.production_plan import Demo001ProductionPlan
@@ -46,10 +48,13 @@ def run_demo():
     board.claim(backend, backend_work.work_item_id)
     logs.append("✓ Backend Engineer claimed work item")
 
-    runtime = EmployeeRuntime()
+    event_bus = WorkforceEventBus()
+    activity_registry = EmployeeActivityRegistry(event_bus=event_bus)
+    runtime = EmployeeRuntime(activity_registry=activity_registry)
     runtime.receive_work(backend, backend_work)
     think_result = runtime.think(backend, backend_work)
     logs.append("✓ Employee Runtime thinking completed")
+    logs.append("✓ Activity Timeline recorded")
     logs.append(
         "✓ Selected capabilities: "
         + ", ".join(think_result.metadata["selected_capabilities"])
@@ -75,6 +80,7 @@ def run_demo():
         "logs": logs,
         "order": order,
         "production_plan": plan,
+        "activity_stream": event_bus.stream(),
     }
 
 
@@ -87,5 +93,11 @@ if __name__ == "__main__":
     for line in result["logs"]:
         print(line)
 
+    print("=" * 56)
+    print("Activity Timeline")
+    print("-" * 56)
+    for event in result.get("activity_stream", []):
+        payload = event["payload"]
+        print(f"{payload['activity_type']} | {payload['status']} | {payload['progress']}% | {payload['message']}")
     print("=" * 56)
     print("")
