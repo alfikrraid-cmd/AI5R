@@ -7,6 +7,8 @@ from .sprint import Sprint
 from .sprint_factory import SprintFactory
 from .department import Department
 from .department_factory import DepartmentFactory
+from .organization import Organization
+from .organization_factory import OrganizationFactory
 
 __all__ = [
     "Worker",
@@ -18,4 +20,6 @@ __all__ = [
     "SprintFactory",
     "Department",
     "DepartmentFactory",
+    "Organization",
+    "OrganizationFactory",
 ]
