@@ -7,4 +7,13 @@ __all__ = [
 
     "ExecutiveBoard",
 
+    "ExecutiveMeetingRuntime",
+    "ExecutiveMeetingResult",
+    "ExecutiveOpinion",
 ]
+
+from .executive_meeting import (
+    ExecutiveMeetingRuntime,
+    ExecutiveMeetingResult,
+    ExecutiveOpinion,
+)
