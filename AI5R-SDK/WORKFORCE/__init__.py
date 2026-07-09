@@ -31,6 +31,9 @@ __all__ = [
     "WorkBoard",
     "EmployeeRuntime",
     "RuntimeResult",
+    "WorkforceManufacturingAdapter",
 ]
 
 from .employee_runtime import EmployeeRuntime, RuntimeResult
+
+from .workforce_manufacturing_adapter import WorkforceManufacturingAdapter
