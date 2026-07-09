@@ -29,4 +29,8 @@ __all__ = [
     "ProjectManagerCapability",
     "SprintTask",
     "WorkBoard",
+    "EmployeeRuntime",
+    "RuntimeResult",
 ]
+
+from .employee_runtime import EmployeeRuntime, RuntimeResult
