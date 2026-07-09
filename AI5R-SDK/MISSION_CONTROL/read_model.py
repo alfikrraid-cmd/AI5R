@@ -6,7 +6,7 @@ class MissionControlReadModel:
 
     mission: dict = field(default_factory=dict)
 
-    organization: list = field(default_factory=list)
+    organization: dict = field(default_factory=dict)
 
     timeline: list = field(default_factory=list)
 
@@ -20,7 +20,7 @@ class MissionControlReadModel:
 
         return {
             "mission": self.mission,
-            "organization": self.organization,
+            "organization": list(self.organization.values()),
             "timeline": self.timeline,
             "pipeline": self.pipeline,
             "artifacts": self.artifacts,

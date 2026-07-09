@@ -15,9 +15,11 @@ class MissionControlProjector:
 
         if event_type == "EMPLOYEE_ACTIVITY_RECORDED":
 
-            self.model.organization.append({
+            employee_id = payload["employee_id"]
 
-                "employee_id": payload["employee_id"],
+            self.model.organization[employee_id] = {
+
+                "employee_id": employee_id,
 
                 "status": payload["status"],
 
@@ -25,7 +27,7 @@ class MissionControlProjector:
 
                 "activity": payload["activity_type"],
 
-            })
+            }
 
             self.model.timeline.append(payload)
 
