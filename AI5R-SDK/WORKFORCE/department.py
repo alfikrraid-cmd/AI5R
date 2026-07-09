@@ -2,6 +2,8 @@ from dataclasses import dataclass, field
 from typing import Any
 from uuid import uuid4
 
+from WORKFORCE.sprint_factory import SprintFactory
+
 
 @dataclass
 class Department:
@@ -26,3 +28,20 @@ class Department:
     def add_capability(self, capability_id: str) -> None:
         if capability_id not in self.capability_ids:
             self.capability_ids.append(capability_id)
+
+    def start_sprint(self, objective: str, metadata: dict[str, Any] | None = None):
+        result = SprintFactory().manufacture(
+            objective=objective,
+            organization_id=self.organization_id,
+            department_id=self.department_id,
+            metadata=metadata or {},
+        )
+
+        sprint = result["asset"]
+        self.add_sprint(sprint.sprint_id)
+
+        return {
+            "status": "SPRINT_STARTED",
+            "department_id": self.department_id,
+            "sprint": sprint,
+        }
