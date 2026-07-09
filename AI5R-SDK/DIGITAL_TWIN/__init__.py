@@ -4,4 +4,7 @@ from .twin_store import DigitalTwinStore
 __all__ = [
     "DigitalTwin",
     "DigitalTwinStore",
+    "WorkforceTwinProjector",
 ]
+
+from .workforce_twin_projector import WorkforceTwinProjector
