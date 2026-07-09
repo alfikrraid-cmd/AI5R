@@ -65,6 +65,8 @@ class ProjectManagerCapability:
 
         return {
             "status": "TASKS_CREATED",
+            "sprint_id": sprint.sprint_id,
+            "project_manager_id": project_manager.employee_id,
             "tasks": tasks,
         }
 
