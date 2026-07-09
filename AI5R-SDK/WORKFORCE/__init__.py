@@ -9,6 +9,7 @@ from .department import Department
 from .department_factory import DepartmentFactory
 from .organization import Organization
 from .organization_factory import OrganizationFactory
+from .it_department_pack import ITDepartmentPack
 
 __all__ = [
     "Worker",
@@ -22,4 +23,5 @@ __all__ = [
     "DepartmentFactory",
     "Organization",
     "OrganizationFactory",
+    "ITDepartmentPack",
 ]
