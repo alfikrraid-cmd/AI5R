@@ -4,19 +4,10 @@ from uuid import uuid4
 
 from WORKFORCE.digital_employee import DigitalEmployee
 from WORKFORCE.sprint import Sprint
+from WORKFORCE.work_item import WorkItem
 
 
-@dataclass
-class SprintTask:
-    title: str
-    assigned_position_id: str
-    description: str = ""
-    status: str = "CREATED"
-    assigned_employee_id: str | None = None
-    metadata: dict[str, Any] = field(default_factory=dict)
-    task_id: str = field(default_factory=lambda: f"TASK-{uuid4()}")
-
-
+SprintTask = WorkItem
 class ProjectManagerCapability:
 
     def breakdown_sprint(
@@ -34,34 +25,34 @@ class ProjectManagerCapability:
             )
 
         tasks = [
-            SprintTask(
+            WorkItem(
                 title="Design solution architecture",
                 assigned_position_id="SOLUTION_ARCHITECT",
             ),
-            SprintTask(
+            WorkItem(
                 title="Implement backend",
                 assigned_position_id="BACKEND_ENGINEER",
             ),
-            SprintTask(
+            WorkItem(
                 title="Implement frontend",
                 assigned_position_id="FRONTEND_ENGINEER",
             ),
-            SprintTask(
+            WorkItem(
                 title="Create quality tests",
                 assigned_position_id="QA_ENGINEER",
             ),
-            SprintTask(
+            WorkItem(
                 title="Prepare deployment",
                 assigned_position_id="DEVOPS_ENGINEER",
             ),
-            SprintTask(
+            WorkItem(
                 title="Document delivery",
                 assigned_position_id="DOCUMENTATION_ENGINEER",
             ),
         ]
 
         for task in tasks:
-            sprint.add_task(task.task_id)
+            sprint.add_work_item(task)
 
         return {
             "status": "TASKS_CREATED",

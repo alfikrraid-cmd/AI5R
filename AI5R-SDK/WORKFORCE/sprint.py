@@ -2,6 +2,8 @@ from dataclasses import dataclass, field
 from typing import Any
 from uuid import uuid4
 
+from WORKFORCE.work_item import WorkItem
+
 
 @dataclass
 class Sprint:
@@ -11,6 +13,7 @@ class Sprint:
     status: str = "CREATED"
     assigned_employee_ids: list[str] = field(default_factory=list)
     task_ids: list[str] = field(default_factory=list)
+    work_items: list[WorkItem] = field(default_factory=list)
     manufacturing_order_ids: list[str] = field(default_factory=list)
     artifact_ids: list[str] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -20,6 +23,11 @@ class Sprint:
     def add_task(self, task_id: str) -> None:
         if task_id not in self.task_ids:
             self.task_ids.append(task_id)
+
+    def add_work_item(self, work_item: WorkItem) -> None:
+        if work_item.work_item_id not in self.task_ids:
+            self.work_items.append(work_item)
+            self.add_task(work_item.work_item_id)
 
     def assign_employee(self, employee_id: str) -> None:
         if employee_id not in self.assigned_employee_ids:
