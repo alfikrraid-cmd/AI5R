@@ -10,6 +10,7 @@ from .department_factory import DepartmentFactory
 from .organization import Organization
 from .organization_factory import OrganizationFactory
 from .it_department_pack import ITDepartmentPack
+from .project_manager_capability import ProjectManagerCapability, SprintTask
 
 __all__ = [
     "Worker",
@@ -24,4 +25,6 @@ __all__ = [
     "Organization",
     "OrganizationFactory",
     "ITDepartmentPack",
+    "ProjectManagerCapability",
+    "SprintTask",
 ]
