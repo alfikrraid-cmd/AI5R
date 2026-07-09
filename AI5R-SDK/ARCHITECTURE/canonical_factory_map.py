@@ -4,7 +4,8 @@ CANONICAL_FACTORY_MAP = {
         "compatibility": [
             "FACTORY.ORDERS.manufacturing_order",
         ],
-        "status": "NEEDS_CONFIRMATION",
+        "status": "CANONICAL_CONFIRMED",
+        "rule": "All new code must use MANUFACTURING.ORDERS.ManufacturingOrder",
     },
     "manufacturing_engine": {
         "canonical": "MANUFACTURING.manufacturing_engine",
@@ -40,6 +41,13 @@ def get_canonical(component_name: str) -> str:
         raise KeyError(f"Unknown factory component: {component_name}")
 
     return CANONICAL_FACTORY_MAP[component_name]["canonical"]
+
+
+def get_status(component_name: str) -> str:
+    if component_name not in CANONICAL_FACTORY_MAP:
+        raise KeyError(f"Unknown factory component: {component_name}")
+
+    return CANONICAL_FACTORY_MAP[component_name]["status"]
 
 
 def list_components_needing_confirmation() -> list[str]:
