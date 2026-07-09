@@ -17,7 +17,7 @@ def test_execution_engine_executes_plan():
 
     assert len(result.artifacts) == 3
 
-    assert result.workspace["status"] == "PENDING"
+    assert result.workspace["status"] == "WORKSPACE_CREATED"
 
 
 def test_execution_result_has_execution_id():
