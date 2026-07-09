@@ -38,14 +38,33 @@ class EmployeeRuntime:
         work_item: WorkItem,
     ) -> RuntimeResult:
 
+        objective_text = " ".join(
+            [
+                work_item.title,
+                work_item.description,
+                " ".join(work_item.metadata.values())
+                if work_item.metadata
+                else "",
+            ]
+        ).lower()
+
+        selected_capabilities = [
+            capability_id
+            for capability_id in employee.capability_ids
+            if capability_id.lower() in objective_text
+        ]
+
         employee.metadata["runtime_state"] = "EXECUTING"
+        employee.metadata["selected_capabilities"] = selected_capabilities
 
         return RuntimeResult(
             status="OK",
             employee_id=employee.employee_id,
             work_item_id=work_item.work_item_id,
             phase="EXECUTING",
-            metadata={},
+            metadata={
+                "selected_capabilities": selected_capabilities,
+            },
         )
 
     def execute(
