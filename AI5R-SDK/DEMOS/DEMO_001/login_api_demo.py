@@ -5,6 +5,7 @@ from WORKFORCE.work_board import WorkBoard
 from WORKFORCE.employee_runtime import EmployeeRuntime
 from WORKFORCE.workforce_manufacturing_adapter import WorkforceManufacturingAdapter
 from MANUFACTURING.ORDERS import ManufacturingOrderPriority
+from DEMOS.DEMO_001.production_plan import Demo001ProductionPlan
 
 
 def run_demo():
@@ -63,12 +64,17 @@ def run_demo():
 
     logs.append("✓ Canonical Manufacturing Order created")
     logs.append(f"✓ Order ID: {order.order_id}")
+    plan = Demo001ProductionPlan().create_from_order(order)
+    logs.append("✓ Product Blueprint resolved")
+    logs.append("✓ Production Plan created")
+    logs.append(f"✓ Planned artifacts: {len(plan['artifacts'])}")
     logs.append("✓ DEMO-001 READY FOR FACTORY EXECUTION")
 
     return {
         "status": "DEMO_001_COMPLETED",
         "logs": logs,
         "order": order,
+        "production_plan": plan,
     }
 
 
