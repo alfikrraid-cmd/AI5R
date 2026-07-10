@@ -17,6 +17,7 @@ from typing import Any
 
 from .manufacturing_dispatcher import ManufacturingDispatcher
 from .manufacturing_scheduler import ManufacturingScheduler
+from .manufacturing_worker import ManufacturingWorker
 
 
 class ManufacturingRuntime:
@@ -28,9 +29,11 @@ class ManufacturingRuntime:
         self,
         scheduler: ManufacturingScheduler | None = None,
         dispatcher: ManufacturingDispatcher | None = None,
+        worker: ManufacturingWorker | None = None,
     ) -> None:
         self.scheduler = scheduler or ManufacturingScheduler()
         self.dispatcher = dispatcher or ManufacturingDispatcher()
+        self.worker = worker or ManufacturingWorker()
 
     def run(self, execution_graph: Any) -> list[dict[str, Any]]:
         """
