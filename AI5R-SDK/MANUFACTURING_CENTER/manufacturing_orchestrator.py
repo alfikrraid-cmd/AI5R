@@ -11,7 +11,6 @@ from MANUFACTURING.ORDERS import ManufacturingOrder
 
 from .manufacturing_context import ManufacturingContext
 from .manufacturing_execution_adapter import ManufacturingExecutionAdapter
-from .manufacturing_execution_graph import ManufacturingExecutionGraph
 from .manufacturing_result import ManufacturingResult
 from .manufacturing_session import ManufacturingSession
 from .manufacturing_status import ManufacturingStatus
@@ -86,41 +85,9 @@ class ManufacturingOrchestrator:
         )
         session.start()
 
-        raw_dependencies = line.metadata.get("dependencies", {})
-        if not isinstance(raw_dependencies, dict):
-            raise TypeError(
-                "line.metadata['dependencies'] must be a dictionary"
-            )
-
-        dependencies: dict[str, tuple[str, ...]] = {}
-
-        for capability_id, values in raw_dependencies.items():
-            if not isinstance(capability_id, str):
-                raise TypeError("dependency capability id must be a string")
-
-            if isinstance(values, str):
-                dependencies[capability_id] = (values,)
-            elif isinstance(values, (list, tuple)):
-                if not all(isinstance(value, str) for value in values):
-                    raise TypeError(
-                        "dependency entries must be strings"
-                    )
-                dependencies[capability_id] = tuple(values)
-            else:
-                raise TypeError(
-                    "dependency values must be a string, list, or tuple"
-                )
-
-        execution_graph = ManufacturingExecutionGraph.from_line(
-            line,
-            dependencies=dependencies,
-        )
-        ordered_capability_ids = execution_graph.execution_order()
-
         steps = self._create_steps(
             line=line,
             order=order,
-            capability_ids=ordered_capability_ids,
         )
 
         payload: dict[str, Any] = {
@@ -200,14 +167,11 @@ class ManufacturingOrchestrator:
         *,
         line: ProductionLine,
         order: ManufacturingOrder,
-        capability_ids: tuple[str, ...] | None = None,
     ) -> list[ManufacturingStep]:
         steps: list[ManufacturingStep] = []
 
-        ordered_ids = capability_ids or line.execution_ids()
-
         for index, capability_id in enumerate(
-            ordered_ids,
+            line.execution_ids(),
             start=1,
         ):
             steps.append(
@@ -224,7 +188,7 @@ class ManufacturingOrchestrator:
                         "factory_id": self.factory.factory_id,
                         "factory_name": self.factory.factory_name,
                         "sequence": index,
-                        "total_steps": len(ordered_ids),
+                        "total_steps": line.execution_count(),
                     },
                 )
             )
