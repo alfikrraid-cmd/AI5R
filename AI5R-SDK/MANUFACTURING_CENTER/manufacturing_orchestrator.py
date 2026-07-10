@@ -12,6 +12,9 @@ from MANUFACTURING.ORDERS import ManufacturingOrder
 from .manufacturing_context import ManufacturingContext
 from .manufacturing_execution_adapter import ManufacturingExecutionAdapter
 from .manufacturing_execution_graph import ManufacturingExecutionGraph
+from .manufacturing_parallel_executor import ManufacturingParallelExecutor
+from .manufacturing_parallel_plan import ManufacturingParallelPlan
+from .manufacturing_payload_merger import ManufacturingPayloadMerger
 from .manufacturing_result import ManufacturingResult
 from .manufacturing_session import ManufacturingSession
 from .manufacturing_status import ManufacturingStatus
@@ -145,32 +148,86 @@ class ManufacturingOrchestrator:
         }
 
         total_steps = len(steps)
+        completed_steps = 0
 
-        for index, step in enumerate(steps, start=1):
+        steps_by_capability = {
+            step.capability_id: step
+            for step in steps
+        }
+
+        parallel_plan = ManufacturingParallelPlan(
+            graph=execution_graph,
+        )
+        parallel_executor = ManufacturingParallelExecutor()
+        payload_merger = ManufacturingPayloadMerger()
+        execution_levels = parallel_plan.execution_levels()
+
+        for level in execution_levels:
             progress = max(
                 session.progress,
-                int(((index - 1) / total_steps) * 90),
+                int((completed_steps / total_steps) * 90),
             )
 
             session.transition(
                 ManufacturingStatus.MANUFACTURING,
-                stage=step.capability_id,
+                stage=" + ".join(level),
                 progress=progress,
             )
 
-            response = self._execute_step(
-                step=step,
-                payload=payload,
-                metadata=runtime_metadata,
+            # Semua capability dalam level menerima snapshot
+            # payload yang sama.
+            level_payload = dict(payload)
+
+            def run_capability(capability_id: str):
+                step = steps_by_capability[capability_id]
+
+                return self._execute_step(
+                    step=step,
+                    payload=level_payload,
+                    metadata=runtime_metadata,
+                )
+
+            responses = parallel_executor.execute_level(
+                level,
+                run_capability,
             )
 
-            if response.status.value == "FAILED":
-                error = response.error or "Runtime capability failed"
-                step.fail(error)
-                return session.fail(error)
+            level_outputs: dict[str, dict[str, Any]] = {}
+            first_error: str | None = None
 
-            step.complete(response.output)
-            payload = dict(response.output)
+            # Proses hasil secara deterministik mengikuti urutan level.
+            for capability_id in level:
+                step = steps_by_capability[capability_id]
+                response = responses[capability_id]
+
+                if response.status.value == "FAILED":
+                    error = (
+                        response.error
+                        or "Runtime capability failed"
+                    )
+
+                    if not step.is_terminal:
+                        step.fail(error)
+
+                    if first_error is None:
+                        first_error = error
+
+                    continue
+
+                step.complete(response.output)
+                level_outputs[capability_id] = dict(
+                    response.output
+                )
+
+            if first_error is not None:
+                return session.fail(first_error)
+
+            payload = payload_merger.merge(
+                base=payload,
+                results=level_outputs,
+            )
+
+            completed_steps += len(level)
 
         session.transition(
             ManufacturingStatus.TESTING,
@@ -183,6 +240,12 @@ class ManufacturingOrchestrator:
         result.metadata["runtime_profile"] = self.factory.profile
         result.metadata["runtime_definition"] = steps[-1].capability_id
         result.metadata["runtime_metadata"] = dict(runtime_metadata)
+        result.metadata["execution_levels"] = [
+            list(level) for level in execution_levels
+        ]
+        result.metadata["max_parallelism"] = (
+            parallel_plan.max_parallelism()
+        )
 
         artifacts = payload.get("artifacts", [])
         if isinstance(artifacts, str):
