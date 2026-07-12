@@ -35,8 +35,8 @@
       "position": [540, 0],
       "credentials": {
         "postgres": {
-          "id": "REPLACE_WITH_POSTGRES_CREDENTIAL_ID",
-          "name": "LTSA Brain PostgreSQL"
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
         }
       }
     },

@@ -2,7 +2,7 @@
   "product": {
     "name": "LTSA-BRAIN",
     "display_name": "LTSA Brain",
-    "version": "1.0.0",
+    "version": "0.1.0-dev",
     "description": "Industrial Asset Reliability Platform",
     "company": "AI5R",
     "type": "saas"
@@ -11,23 +11,33 @@
   "modules": [
     {
       "name": "customer",
-      "enabled": true
+      "enabled": true,
+      "status": "partial"
     },
     {
       "name": "pump",
-      "enabled": true
+      "enabled": true,
+      "status": "partial"
+    },
+    {
+      "name": "seal",
+      "enabled": true,
+      "status": "partial"
     },
     {
       "name": "asset",
-      "enabled": true
+      "enabled": true,
+      "status": "missing"
     },
     {
       "name": "inspection",
-      "enabled": true
+      "enabled": true,
+      "status": "missing"
     },
     {
       "name": "maintenance",
-      "enabled": true
+      "enabled": true,
+      "status": "missing"
     }
   ],
 
@@ -39,6 +49,16 @@
     "manifest": true,
     "readme": true,
     "release": true
+  },
+
+  "implementation_status": {
+    "_meta": "Added by MWO-P-002 / IR-004 (Manifest Reconciliation) on top of the MWO-P-001 audit and the IR-001/IR-002/IR-003 recovery actions. Status values: implemented | partial | missing. See ENGINEERING/MWO/IR-004-Manifest-Report.md for the full comparison against runtime, modules, API, and release evidence. This section is additive documentation; it does not change module enablement or artifact flags above.",
+    "customer": "partial - database schema is canonical (DATABASE/MIGRATIONS/005_create_customer_registry.sql); all 5 documented workflow operations have files but none has real query logic (5 stubs in BUILD-PACKS/BP-005, 6 empty shells in BUILD-PACKS/BP-007/OUTPUTS)",
+    "pump": "partial - database schema is canonical (MODULES/PUMP/DATABASE/001_create_pumps.sql, ltsa_pumps); create (MODULES/PUMP/WORKFLOWS) and detail (BUILD-PACKS/BP-007/OUTPUTS) have real, credentialed logic; list/update/delete exist only as non-functional stubs in BUILD-PACKS/BP-PUMP",
+    "seal": "partial - not previously listed in this manifest despite having real artifacts; database schema and REGISTRIES/SEAL.json are mutually consistent; all 5 workflows in BUILD-PACKS/BP-SEAL are non-functional stubs",
+    "asset": "missing - no database, API, or workflow artifact exists anywhere in the product",
+    "inspection": "missing - no database, API, or workflow artifact exists anywhere in the product",
+    "maintenance": "missing - no database, API, or workflow artifact exists anywhere in the product"
   }
 }
 

@@ -1,9 +1,22 @@
 import json
+import os
 from pathlib import Path
 
 BASE_DIR = Path(__file__).parent
 SPEC_FILE = BASE_DIR / "SPECS" / "workflow_generator_spec.json"
 OUTPUT_DIR = BASE_DIR / "OUTPUTS"
+
+# MWO-P-002 / IR-003: credential id/name are read from environment/config at
+# generation time instead of being hardcoded, so generated workflows are not
+# committed with an unresolved placeholder. Falls back to the same
+# placeholder as before when unset, so behavior is unchanged until the
+# environment variable is provided by whoever runs the generator.
+POSTGRES_CREDENTIAL_ID = os.environ.get(
+    "LTSA_BRAIN_POSTGRES_CREDENTIAL_ID", "REPLACE_WITH_POSTGRES_CREDENTIAL_ID"
+)
+POSTGRES_CREDENTIAL_NAME = os.environ.get(
+    "LTSA_BRAIN_POSTGRES_CREDENTIAL_NAME", "Postgres account"
+)
 
 def load_spec():
     with open(SPEC_FILE, "r") as f:
@@ -51,8 +64,8 @@ def make_postgres_node(table, operation):
         "position": [260, 0],
         "credentials": {
             "postgres": {
-                "id": "REPLACE_WITH_POSTGRES_CREDENTIAL_ID",
-                "name": "Postgres account"
+                "id": POSTGRES_CREDENTIAL_ID,
+                "name": POSTGRES_CREDENTIAL_NAME
             }
         }
     }
