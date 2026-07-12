@@ -3,41 +3,85 @@
   "nodes": [
     {
       "parameters": {
+        "httpMethod": "GET",
         "path": "ltsa/seal/list",
         "responseMode": "responseNode",
         "options": {}
       },
       "id": "webhook-seal-list",
-      "name": "Webhook",
+      "name": "GET /ltsa/seal/list",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [
-        260,
-        300
-      ],
-      "webhookId": "ltsa-brain-seal-list-001"
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT *\nFROM seal_registry\nORDER BY created_at DESC;"
+      },
+      "id": "list-seals-postgres",
+      "name": "List Seals",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [260, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(item => item.json);\n\nreturn [{\n  json: {\n    success: true,\n    message: 'Seal list retrieved',\n    count: rows.length,\n    data: rows\n  }\n}];"
+      },
+      "id": "build-seal-list-response",
+      "name": "Build Seal List Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 0]
     },
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "{\"success\": true, \"product\": \"LTSA-BRAIN\", \"module\": \"SEAL\", \"operation\": \"LIST\", \"table\": \"seal_registry\", \"primary_key\": \"seal_code\"}"
+        "responseBody": "={{ { success: $json.success, message: $json.message, count: $json.count, data: $json.data } }}",
+        "options": {}
       },
-      "id": "response-seal-list",
-      "name": "Respond to Webhook",
+      "id": "respond-seal-list",
+      "name": "Respond Seal List",
       "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1,
-      "position": [
-        520,
-        300
-      ]
+      "typeVersion": 1.1,
+      "position": [780, 0]
     }
   ],
   "connections": {
-    "Webhook": {
+    "GET /ltsa/seal/list": {
       "main": [
         [
           {
-            "node": "Respond to Webhook",
+            "node": "List Seals",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Seals": {
+      "main": [
+        [
+          {
+            "node": "Build Seal List Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Seal List Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Seal List",
             "type": "main",
             "index": 0
           }
@@ -45,51 +89,9 @@
       ]
     }
   },
+  "active": false,
   "settings": {
-    "executionOrder": "v1",
-    "registry": {
-      "table": "seal_registry",
-      "primary_key": "seal_code",
-      "fields": [
-        {
-          "name": "seal_code",
-          "type": "string",
-          "required": true
-        },
-        {
-          "name": "seal_name",
-          "type": "string",
-          "required": true
-        },
-        {
-          "name": "manufacturer",
-          "type": "string"
-        },
-        {
-          "name": "model",
-          "type": "string"
-        },
-        {
-          "name": "shaft_size",
-          "type": "number"
-        },
-        {
-          "name": "material",
-          "type": "string"
-        },
-        {
-          "name": "temperature_limit",
-          "type": "number"
-        },
-        {
-          "name": "pressure_limit",
-          "type": "number"
-        },
-        {
-          "name": "status",
-          "type": "string"
-        }
-      ]
-    }
-  }
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
 }

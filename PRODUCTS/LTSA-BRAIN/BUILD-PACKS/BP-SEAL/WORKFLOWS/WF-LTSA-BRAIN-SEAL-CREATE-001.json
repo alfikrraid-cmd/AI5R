@@ -3,41 +3,203 @@
   "nodes": [
     {
       "parameters": {
+        "httpMethod": "POST",
         "path": "ltsa/seal/create",
         "responseMode": "responseNode",
         "options": {}
       },
       "id": "webhook-seal-create",
-      "name": "Webhook",
+      "name": "Webhook Create Seal",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [
-        260,
-        300
-      ],
-      "webhookId": "ltsa-brain-seal-create-001"
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || $json;\n\nif (!body.seal_code) {\n  throw new Error('seal_code is required');\n}\n\nif (!body.seal_name) {\n  throw new Error('seal_name is required');\n}\n\nreturn [\n  {\n    json: {\n      seal_code: body.seal_code,\n      seal_name: body.seal_name,\n      manufacturer: body.manufacturer || null,\n      model: body.model || null,\n      shaft_size: body.shaft_size || null,\n      material: body.material || null,\n      temperature_limit: body.temperature_limit || null,\n      pressure_limit: body.pressure_limit || null,\n      status: body.status || null\n    }\n  }\n];"
+      },
+      "id": "validate-seal-input",
+      "name": "Validate Seal Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT seal_code\nFROM seal_registry\nWHERE seal_code = $1\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ [$json.seal_code] }}"
+        }
+      },
+      "id": "check-existing-seal",
+      "name": "Check Existing Seal",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [520, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const existing = $input.first()?.json;\nconst input = $('Validate Seal Input').first().json;\n\nreturn [{\n  json: {\n    ...input,\n    _conflict: !!(existing && existing.seal_code)\n  }\n}];"
+      },
+      "id": "check-seal-conflict",
+      "name": "Check Seal Conflict",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [780, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "conflict-check",
+              "leftValue": "={{ $json._conflict }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-seal-conflict",
+      "name": "IF Seal Code Exists",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1040, 0]
     },
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "{\"success\": true, \"product\": \"LTSA-BRAIN\", \"module\": \"SEAL\", \"operation\": \"CREATE\", \"table\": \"seal_registry\", \"primary_key\": \"seal_code\"}"
+        "responseBody": "={{ { success: false, message: \"seal_code already exists: \" + $json.seal_code } }}",
+        "options": {
+          "responseCode": 409
+        }
       },
-      "id": "response-seal-create",
-      "name": "Respond to Webhook",
+      "id": "respond-seal-conflict",
+      "name": "Respond Conflict",
       "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1,
-      "position": [
-        520,
-        300
-      ]
+      "typeVersion": 1.1,
+      "position": [1300, 140]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO seal_registry (\n  seal_code,\n  seal_name,\n  manufacturer,\n  model,\n  shaft_size,\n  material,\n  temperature_limit,\n  pressure_limit,\n  status\n)\nVALUES (\n  $1, $2, $3, $4, $5, $6, $7, $8, $9\n)\nRETURNING *;",
+        "options": {
+          "queryReplacement": "={{ [$json.seal_code, $json.seal_name, $json.manufacturer, $json.model, $json.shaft_size, $json.material, $json.temperature_limit, $json.pressure_limit, $json.status] }}"
+        }
+      },
+      "id": "insert-seal-postgres",
+      "name": "Insert Seal to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1300, -140],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, message: \"Seal created successfully\", data: $json } }}",
+        "options": {}
+      },
+      "id": "response-seal-success",
+      "name": "Response Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1560, -140]
     }
   ],
   "connections": {
-    "Webhook": {
+    "Webhook Create Seal": {
       "main": [
         [
           {
-            "node": "Respond to Webhook",
+            "node": "Validate Seal Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Seal Input": {
+      "main": [
+        [
+          {
+            "node": "Check Existing Seal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Existing Seal": {
+      "main": [
+        [
+          {
+            "node": "Check Seal Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Seal Conflict": {
+      "main": [
+        [
+          {
+            "node": "IF Seal Code Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Seal Code Exists": {
+      "main": [
+        [
+          {
+            "node": "Respond Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Insert Seal to PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Seal to PostgreSQL": {
+      "main": [
+        [
+          {
+            "node": "Response Success",
             "type": "main",
             "index": 0
           }
@@ -45,51 +207,9 @@
       ]
     }
   },
+  "active": false,
   "settings": {
-    "executionOrder": "v1",
-    "registry": {
-      "table": "seal_registry",
-      "primary_key": "seal_code",
-      "fields": [
-        {
-          "name": "seal_code",
-          "type": "string",
-          "required": true
-        },
-        {
-          "name": "seal_name",
-          "type": "string",
-          "required": true
-        },
-        {
-          "name": "manufacturer",
-          "type": "string"
-        },
-        {
-          "name": "model",
-          "type": "string"
-        },
-        {
-          "name": "shaft_size",
-          "type": "number"
-        },
-        {
-          "name": "material",
-          "type": "string"
-        },
-        {
-          "name": "temperature_limit",
-          "type": "number"
-        },
-        {
-          "name": "pressure_limit",
-          "type": "number"
-        },
-        {
-          "name": "status",
-          "type": "string"
-        }
-      ]
-    }
-  }
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
 }

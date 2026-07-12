@@ -3,41 +3,174 @@
   "nodes": [
     {
       "parameters": {
+        "httpMethod": "GET",
         "path": "ltsa/seal/detail",
         "responseMode": "responseNode",
         "options": {}
       },
       "id": "webhook-seal-detail",
-      "name": "Webhook",
+      "name": "GET /ltsa/seal/detail",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [
-        260,
-        300
-      ],
-      "webhookId": "ltsa-brain-seal-detail-001"
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const seal_code = $json.query?.seal_code;\n\nreturn [{\n  json: {\n    seal_code,\n    valid: !!seal_code\n  }\n}];"
+      },
+      "id": "parse-seal-code",
+      "name": "Parse Seal Code",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "valid-seal-code-check",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-valid-seal-code",
+      "name": "IF Valid Seal Code",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [520, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT *\nFROM seal_registry\nWHERE seal_code = $1\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ [$json.seal_code] }}"
+        }
+      },
+      "id": "get-seal-detail",
+      "name": "Get Seal Detail",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [780, -120],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first()?.json;\n\nif (!row || !row.seal_code) {\n  return [{\n    json: {\n      statusCode: 404,\n      success: false,\n      message: 'Seal not found',\n      data: null\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    statusCode: 200,\n    success: true,\n    message: 'Seal detail found',\n    data: row\n  }\n}];"
+      },
+      "id": "build-seal-detail-response",
+      "name": "Build Seal Detail Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, -120]
     },
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "{\"success\": true, \"product\": \"LTSA-BRAIN\", \"module\": \"SEAL\", \"operation\": \"DETAIL\", \"table\": \"seal_registry\", \"primary_key\": \"seal_code\"}"
+        "responseBody": "={{ { success: $json.success, message: $json.message, data: $json.data } }}",
+        "options": {
+          "responseCode": "={{ $json.statusCode }}"
+        }
       },
-      "id": "response-seal-detail",
-      "name": "Respond to Webhook",
+      "id": "respond-seal-detail",
+      "name": "Respond Seal Detail",
       "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1,
-      "position": [
-        520,
-        300
-      ]
+      "typeVersion": 1.1,
+      "position": [1300, -120]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, message: 'seal_code query parameter is required' } }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "respond-seal-400",
+      "name": "Respond 400",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [780, 200]
     }
   ],
   "connections": {
-    "Webhook": {
+    "GET /ltsa/seal/detail": {
       "main": [
         [
           {
-            "node": "Respond to Webhook",
+            "node": "Parse Seal Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Seal Code": {
+      "main": [
+        [
+          {
+            "node": "IF Valid Seal Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Valid Seal Code": {
+      "main": [
+        [
+          {
+            "node": "Get Seal Detail",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 400",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Seal Detail": {
+      "main": [
+        [
+          {
+            "node": "Build Seal Detail Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Seal Detail Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Seal Detail",
             "type": "main",
             "index": 0
           }
@@ -45,51 +178,9 @@
       ]
     }
   },
+  "active": false,
   "settings": {
-    "executionOrder": "v1",
-    "registry": {
-      "table": "seal_registry",
-      "primary_key": "seal_code",
-      "fields": [
-        {
-          "name": "seal_code",
-          "type": "string",
-          "required": true
-        },
-        {
-          "name": "seal_name",
-          "type": "string",
-          "required": true
-        },
-        {
-          "name": "manufacturer",
-          "type": "string"
-        },
-        {
-          "name": "model",
-          "type": "string"
-        },
-        {
-          "name": "shaft_size",
-          "type": "number"
-        },
-        {
-          "name": "material",
-          "type": "string"
-        },
-        {
-          "name": "temperature_limit",
-          "type": "number"
-        },
-        {
-          "name": "pressure_limit",
-          "type": "number"
-        },
-        {
-          "name": "status",
-          "type": "string"
-        }
-      ]
-    }
-  }
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
 }
