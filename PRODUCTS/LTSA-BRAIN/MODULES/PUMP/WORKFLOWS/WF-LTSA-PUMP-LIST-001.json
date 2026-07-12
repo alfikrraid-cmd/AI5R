@@ -1,0 +1,97 @@
+{
+  "name": "WF-LTSA-PUMP-LIST-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "ltsa/pump/list",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-pump-list",
+      "name": "GET /ltsa/pump/list",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT *\nFROM ltsa_pumps\nORDER BY created_at DESC;"
+      },
+      "id": "list-pumps-postgres",
+      "name": "List Pumps",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [260, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(item => item.json);\n\nreturn [{\n  json: {\n    success: true,\n    message: 'Pump list retrieved',\n    count: rows.length,\n    data: rows\n  }\n}];"
+      },
+      "id": "build-pump-list-response",
+      "name": "Build Pump List Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: $json.success, message: $json.message, count: $json.count, data: $json.data } }}",
+        "options": {}
+      },
+      "id": "respond-pump-list",
+      "name": "Respond Pump List",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [780, 0]
+    }
+  ],
+  "connections": {
+    "GET /ltsa/pump/list": {
+      "main": [
+        [
+          {
+            "node": "List Pumps",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Pumps": {
+      "main": [
+        [
+          {
+            "node": "Build Pump List Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Pump List Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Pump List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}
