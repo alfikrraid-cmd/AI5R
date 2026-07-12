@@ -5,22 +5,182 @@
       "parameters": {
         "httpMethod": "GET",
         "path": "ltsa/customer/get",
-        "responseMode": "lastNode",
+        "responseMode": "responseNode",
         "options": {}
       },
       "id": "webhook-ltsa-customer-get",
-      "name": "Webhook",
+      "name": "GET /ltsa/customer/get",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [
-        0,
-        0
-      ]
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const id = $json.query?.id;\n\nreturn [{\n  json: {\n    id,\n    valid: !!id\n  }\n}];"
+      },
+      "id": "parse-customer-id",
+      "name": "Parse Customer ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "valid-id-check",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-valid-customer-id",
+      "name": "IF Valid ID",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [520, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT *\nFROM customer_registry\nWHERE id = $1\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ [$json.id] }}"
+        }
+      },
+      "id": "get-customer-detail",
+      "name": "Get Customer Detail",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [780, -120],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first()?.json;\n\nif (!row || !row.id) {\n  return [{\n    json: {\n      statusCode: 404,\n      success: false,\n      message: 'Customer not found',\n      data: null\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    statusCode: 200,\n    success: true,\n    message: 'Customer detail found',\n    data: row\n  }\n}];"
+      },
+      "id": "build-customer-detail-response",
+      "name": "Build Customer Detail Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, -120]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: $json.success, message: $json.message, data: $json.data } }}",
+        "options": {
+          "responseCode": "={{ $json.statusCode }}"
+        }
+      },
+      "id": "respond-customer-detail",
+      "name": "Respond Customer Detail",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1300, -120]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, message: 'id query parameter is required' } }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "respond-customer-400",
+      "name": "Respond 400",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [780, 200]
     }
   ],
-  "connections": {},
+  "connections": {
+    "GET /ltsa/customer/get": {
+      "main": [
+        [
+          {
+            "node": "Parse Customer ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Customer ID": {
+      "main": [
+        [
+          {
+            "node": "IF Valid ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Valid ID": {
+      "main": [
+        [
+          {
+            "node": "Get Customer Detail",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 400",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Customer Detail": {
+      "main": [
+        [
+          {
+            "node": "Build Customer Detail Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Customer Detail Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Customer Detail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
   "settings": {
     "executionOrder": "v1"
   },
-  "active": false
+  "versionId": "1.0.0"
 }

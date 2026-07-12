@@ -5,22 +5,93 @@
       "parameters": {
         "httpMethod": "GET",
         "path": "ltsa/customer/list",
-        "responseMode": "lastNode",
+        "responseMode": "responseNode",
         "options": {}
       },
       "id": "webhook-ltsa-customer-list",
-      "name": "Webhook",
+      "name": "GET /ltsa/customer/list",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [
-        0,
-        0
-      ]
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT *\nFROM customer_registry\nORDER BY created_at DESC;"
+      },
+      "id": "list-customers-postgres",
+      "name": "List Customers",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [260, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(item => item.json);\n\nreturn [{\n  json: {\n    success: true,\n    message: 'Customer list retrieved',\n    count: rows.length,\n    data: rows\n  }\n}];"
+      },
+      "id": "build-customer-list-response",
+      "name": "Build Customer List Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: $json.success, message: $json.message, count: $json.count, data: $json.data } }}",
+        "options": {}
+      },
+      "id": "respond-customer-list",
+      "name": "Respond Customer List",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [780, 0]
     }
   ],
-  "connections": {},
+  "connections": {
+    "GET /ltsa/customer/list": {
+      "main": [
+        [
+          {
+            "node": "List Customers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Customers": {
+      "main": [
+        [
+          {
+            "node": "Build Customer List Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Customer List Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Customer List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
   "settings": {
     "executionOrder": "v1"
   },
-  "active": false
+  "versionId": "1.0.0"
 }

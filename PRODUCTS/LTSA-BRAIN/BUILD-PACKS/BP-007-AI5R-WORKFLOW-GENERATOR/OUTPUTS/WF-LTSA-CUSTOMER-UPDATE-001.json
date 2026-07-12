@@ -4,5 +4,9 @@
   "connections": {},
   "settings": {},
   "staticData": null,
-  "pinData": {}
+  "pinData": {},
+  "_deprecated": true,
+  "_deprecatedBy": "MWO-P-003 / WP-000 / WP-004",
+  "_deprecatedReason": "Superseded by BUILD-PACKS/BP-005-CUSTOMER-REGISTRY/WORKFLOWS/WF-LTSA-CUSTOMER-UPDATE-001.json. Empty generator shell, never wired to the documented contract. Do not import into n8n.",
+  "_canonicalReplacement": "PRODUCTS/LTSA-BRAIN/BUILD-PACKS/BP-005-CUSTOMER-REGISTRY/WORKFLOWS/WF-LTSA-CUSTOMER-UPDATE-001.json"
 }

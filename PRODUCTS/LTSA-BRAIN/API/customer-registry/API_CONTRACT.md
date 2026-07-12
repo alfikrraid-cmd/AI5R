@@ -9,7 +9,10 @@ POST /webhook/ltsa/customer/create
 GET /webhook/ltsa/customer/list  
 GET /webhook/ltsa/customer/get?id={id}  
 PUT /webhook/ltsa/customer/update  
-DELETE /webhook/ltsa/customer/delete?id={id}
+DELETE /webhook/ltsa/customer/delete?id={id}  
+GET /webhook/ltsa/customer/by-code?code={customer_code}
+
+`by-code` documented in MWO-P-003 / WP-006: implemented at `BUILD-PACKS/BP-007-AI5R-WORKFLOW-GENERATOR/OUTPUTS/WF-LTSA-CUSTOMER-BY-CODE-001.json`, previously an undocumented orphan artifact (see `IR-002-Workflow-Report.md`). Returns the same record shape as `get`, looked up by `customer_code` instead of `id`.
 
 ## Required Fields
 
@@ -36,4 +39,5 @@ DELETE /webhook/ltsa/customer/delete?id={id}
 - Get customer by id works
 - Update customer works
 - Delete customer works
+- Get customer by code works
 

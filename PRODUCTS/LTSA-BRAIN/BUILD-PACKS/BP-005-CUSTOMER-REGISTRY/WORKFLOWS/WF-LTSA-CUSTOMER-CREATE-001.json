@@ -5,22 +5,211 @@
       "parameters": {
         "httpMethod": "POST",
         "path": "ltsa/customer/create",
-        "responseMode": "lastNode",
+        "responseMode": "responseNode",
         "options": {}
       },
       "id": "webhook-ltsa-customer-create",
-      "name": "Webhook",
+      "name": "Webhook Create Customer",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [
-        0,
-        0
-      ]
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || $json;\n\nif (!body.customer_code) {\n  throw new Error('customer_code is required');\n}\n\nif (!body.customer_name) {\n  throw new Error('customer_name is required');\n}\n\nreturn [\n  {\n    json: {\n      customer_code: body.customer_code,\n      customer_name: body.customer_name,\n      customer_type: body.customer_type || 'company',\n      industry: body.industry || null,\n      tax_id: body.tax_id || null,\n      billing_email: body.billing_email || null,\n      phone: body.phone || null,\n      address: body.address || null,\n      city: body.city || null,\n      province: body.province || null,\n      country: body.country || 'Indonesia',\n      status: body.status || 'active',\n      notes: body.notes || null\n    }\n  }\n];"
+      },
+      "id": "validate-customer-input",
+      "name": "Validate Customer Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id\nFROM customer_registry\nWHERE customer_code = $1\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ [$json.customer_code] }}"
+        }
+      },
+      "id": "check-existing-customer",
+      "name": "Check Existing Customer",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [520, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const existing = $input.first()?.json;\nconst input = $('Validate Customer Input').first().json;\n\nreturn [{\n  json: {\n    ...input,\n    _conflict: !!(existing && existing.id)\n  }\n}];"
+      },
+      "id": "check-customer-conflict",
+      "name": "Check Customer Conflict",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [780, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "conflict-check",
+              "leftValue": "={{ $json._conflict }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-customer-conflict",
+      "name": "IF Customer Code Exists",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1040, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, message: \"customer_code already exists: \" + $json.customer_code } }}",
+        "options": {
+          "responseCode": 409
+        }
+      },
+      "id": "respond-customer-conflict",
+      "name": "Respond Conflict",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1300, 140]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO customer_registry (\n  customer_code,\n  customer_name,\n  customer_type,\n  industry,\n  tax_id,\n  billing_email,\n  phone,\n  address,\n  city,\n  province,\n  country,\n  status,\n  notes\n)\nVALUES (\n  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13\n)\nRETURNING *;",
+        "options": {
+          "queryReplacement": "={{ [$json.customer_code, $json.customer_name, $json.customer_type, $json.industry, $json.tax_id, $json.billing_email, $json.phone, $json.address, $json.city, $json.province, $json.country, $json.status, $json.notes] }}"
+        }
+      },
+      "id": "insert-customer-postgres",
+      "name": "Insert Customer to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1300, -140],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, message: \"Customer created successfully\", data: $json } }}",
+        "options": {}
+      },
+      "id": "response-customer-success",
+      "name": "Response Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1560, -140]
     }
   ],
-  "connections": {},
+  "connections": {
+    "Webhook Create Customer": {
+      "main": [
+        [
+          {
+            "node": "Validate Customer Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Customer Input": {
+      "main": [
+        [
+          {
+            "node": "Check Existing Customer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Existing Customer": {
+      "main": [
+        [
+          {
+            "node": "Check Customer Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Customer Conflict": {
+      "main": [
+        [
+          {
+            "node": "IF Customer Code Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Customer Code Exists": {
+      "main": [
+        [
+          {
+            "node": "Respond Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Insert Customer to PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Customer to PostgreSQL": {
+      "main": [
+        [
+          {
+            "node": "Response Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
   "settings": {
     "executionOrder": "v1"
   },
-  "active": false
+  "versionId": "1.0.0"
 }

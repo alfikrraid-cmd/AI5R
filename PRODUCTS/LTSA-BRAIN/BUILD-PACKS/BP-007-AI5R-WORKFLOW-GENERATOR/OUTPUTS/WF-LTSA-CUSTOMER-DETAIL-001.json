@@ -4,5 +4,9 @@
   "connections": {},
   "settings": {},
   "staticData": null,
-  "pinData": {}
+  "pinData": {},
+  "_deprecated": true,
+  "_deprecatedBy": "MWO-P-003 / WP-000 / WP-002",
+  "_deprecatedReason": "Superseded by BUILD-PACKS/BP-005-CUSTOMER-REGISTRY/WORKFLOWS/WF-LTSA-CUSTOMER-GET-001.json (documented as 'get' in API_CONTRACT.md/README.md). Empty generator shell, never wired to the documented contract, and named 'DETAIL' where the product documents 'get' -- naming split resolved in favor of the documented name. Do not import into n8n.",
+  "_canonicalReplacement": "PRODUCTS/LTSA-BRAIN/BUILD-PACKS/BP-005-CUSTOMER-REGISTRY/WORKFLOWS/WF-LTSA-CUSTOMER-GET-001.json"
 }
