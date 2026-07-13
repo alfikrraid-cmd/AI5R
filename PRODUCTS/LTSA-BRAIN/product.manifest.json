@@ -1,11 +1,13 @@
 {
   "product": {
     "name": "LTSA-BRAIN",
-    "display_name": "LTSA Brain",
-    "version": "0.1.0-dev",
-    "description": "Industrial Asset Reliability Platform",
+    "display_name": "OSA Maintenance",
+    "version": "0.1.0",
+    "description": "Industrial Asset Reliability Platform -- manufactured as OSA Maintenance v0.1 under Manufacturing Order MO-001",
     "company": "AI5R",
-    "type": "saas"
+    "type": "saas",
+    "customer": "CV Razzan Teknik Mandiri",
+    "manufacturing_order": "MO-001"
   },
 
   "modules": [
@@ -27,7 +29,32 @@
     {
       "name": "asset",
       "enabled": true,
-      "status": "missing"
+      "status": "partial"
+    },
+    {
+      "name": "soot_blower",
+      "enabled": true,
+      "status": "partial"
+    },
+    {
+      "name": "work_order",
+      "enabled": true,
+      "status": "partial"
+    },
+    {
+      "name": "maintenance_history",
+      "enabled": true,
+      "status": "partial"
+    },
+    {
+      "name": "dashboard",
+      "enabled": true,
+      "status": "partial"
+    },
+    {
+      "name": "ai_assistant",
+      "enabled": true,
+      "status": "partial"
     },
     {
       "name": "inspection",
@@ -37,7 +64,13 @@
     {
       "name": "maintenance",
       "enabled": true,
-      "status": "missing"
+      "status": "partial",
+      "note": "Composed of the work_order and maintenance_history modules above under MO-001, not a separate standalone implementation."
+    },
+    {
+      "name": "organization",
+      "enabled": true,
+      "status": "partial"
     }
   ],
 
@@ -52,13 +85,19 @@
   },
 
   "implementation_status": {
-    "_meta": "Added by MWO-P-002 / IR-004 (Manifest Reconciliation) on top of the MWO-P-001 audit and the IR-001/IR-002/IR-003 recovery actions. Status values: implemented | partial | missing. See ENGINEERING/MWO/IR-004-Manifest-Report.md for the full comparison against runtime, modules, API, and release evidence. This section is additive documentation; it does not change module enablement or artifact flags above.",
-    "customer": "partial - database schema is canonical (DATABASE/MIGRATIONS/005_create_customer_registry.sql); all 5 documented workflow operations have files but none has real query logic (5 stubs in BUILD-PACKS/BP-005, 6 empty shells in BUILD-PACKS/BP-007/OUTPUTS)",
-    "pump": "partial - database schema is canonical (MODULES/PUMP/DATABASE/001_create_pumps.sql, ltsa_pumps); create (MODULES/PUMP/WORKFLOWS) and detail (BUILD-PACKS/BP-007/OUTPUTS) have real, credentialed logic; list/update/delete exist only as non-functional stubs in BUILD-PACKS/BP-PUMP",
-    "seal": "partial - not previously listed in this manifest despite having real artifacts; database schema and REGISTRIES/SEAL.json are mutually consistent; all 5 workflows in BUILD-PACKS/BP-SEAL are non-functional stubs",
-    "asset": "missing - no database, API, or workflow artifact exists anywhere in the product",
-    "inspection": "missing - no database, API, or workflow artifact exists anywhere in the product",
-    "maintenance": "missing - no database, API, or workflow artifact exists anywhere in the product"
+    "_meta": "Added by MWO-P-002 / IR-004 (Manifest Reconciliation); extended by MO-001 (OSA Maintenance v0.1 manufacturing order). Status values: implemented | partial | missing. See ENGINEERING/MWO/IR-004-Manifest-Report.md for the pre-MO-001 comparison, and MANUFACTURING/MO-001/MO-001-MANUFACTURING-REPORT.md for this order's own validation results. This section is additive documentation; it does not change module enablement or artifact flags above.",
+    "customer": "partial - database schema is canonical (DATABASE/MIGRATIONS/005_create_customer_registry.sql); all 5 documented workflow operations have files but none has real query logic (5 stubs in BUILD-PACKS/BP-005, 6 empty shells in BUILD-PACKS/BP-007/OUTPUTS). Unchanged by MO-001.",
+    "pump": "partial - database schema is canonical (MODULES/PUMP/DATABASE/001_create_pumps.sql, ltsa_pumps); create (MODULES/PUMP/WORKFLOWS) and detail (BUILD-PACKS/BP-007/OUTPUTS) have real, credentialed logic; list/update/delete exist only as non-functional stubs in BUILD-PACKS/BP-PUMP. Unchanged by MO-001.",
+    "seal": "partial - database schema and REGISTRIES/SEAL.json are mutually consistent; all 5 workflows in BUILD-PACKS/BP-SEAL have real embedded SQL (MWO-P-005). Unchanged by MO-001.",
+    "asset": "partial - manufactured under MO-001 (BUILD-PACKS/BP-ASSET). Canonical asset_registry table; all 5 workflows have real embedded SQL following the BP-SEAL conflict-check pattern. Structurally validated; runtime verification blocked on the same standing no-credentialed-database condition as every other n8n/Postgres module in this product.",
+    "soot_blower": "partial - manufactured under MO-001 (BUILD-PACKS/BP-SOOT-BLOWER). Same pattern and validation status as asset.",
+    "work_order": "partial - manufactured under MO-001 (BUILD-PACKS/BP-WORK-ORDER). References customer_code and a polymorphic (asset_code, asset_type) pair by convention, not a DB foreign key (documented in BP-WORK-ORDER/DATABASE/001_create_table.sql). Same validation status as asset.",
+    "maintenance_history": "partial - manufactured under MO-001 (BUILD-PACKS/BP-MAINTENANCE-HISTORY). Same validation status as asset.",
+    "dashboard": "partial - manufactured under MO-001 (BUILD-PACKS/BP-DASHBOARD). One real aggregation workflow (UNION ALL across all six registries plus open work orders) and one static demo HTML page; deliberately not a framework application (see BP-DASHBOARD/README.md).",
+    "ai_assistant": "partial - manufactured under MO-001 (PRODUCTS/LTSA-BRAIN/AI-ASSISTANT). Reuses AI5R-SDK/BRAIN's EnterpriseCognitivePipeline unmodified. Unlike every n8n/Postgres module in this product, this module was actually executed end-to-end during manufacturing (see MO-001-MANUFACTURING-REPORT.md) -- a real PASS, not a structural-only claim -- after a real defect (BRAIN's UnderstandingEngine requiring a non-empty source_object_id) was found by running it and fixed in this module's own reality-dict construction, not in BRAIN.",
+    "inspection": "missing - no database, API, or workflow artifact exists anywhere in the product. Not in MO-001's required module list.",
+    "maintenance": "partial - composed of the work_order and maintenance_history modules above under MO-001; not a separate standalone implementation.",
+    "organization": "partial - manufactured under MWO-004 (CORE-SERVICES/API/organization_api.py). Composes the existing, unmodified AI5R-SDK/PRODUCT_RUNTIME.ProductRuntime and AI5R-SDK/OSA/ORGANIZATION_RUNTIME.OrganizationRuntime, via the same MultiAgentCoordinator/DigitalEmployeeOrchestrator pattern already proven in CORE-SERVICES/API/integration_runtime_api.py. No HTTP server exists yet anywhere in this repository (a pre-existing gap, not introduced here); the composition function is real and tested directly (via an isolated tmp_path root, not the live repo), verified to write real artifacts (product_artifact.json, assembly_manifest.py, product_manifest.py, runtime_state.json) under a PRODUCTS/LTSA-BRAIN/ path matching this product's own directory naming exactly -- ProductRuntime.load() preserves the product name as-is for artifact writes; normalization only applies to its in-memory lookup keys (start/stop/status/run_goal), not the write path. Has not yet been run against the live repository root."
   }
 }
 
