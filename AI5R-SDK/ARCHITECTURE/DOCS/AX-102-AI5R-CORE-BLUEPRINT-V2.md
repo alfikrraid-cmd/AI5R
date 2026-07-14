@@ -609,3 +609,180 @@ Review
 
 Required before implementation
 
+
+---
+
+# AI5R Core Freeze Workflow
+
+AI5R Core Architecture shall follow an Architecture-First development process.
+
+No implementation shall begin before the Core Architecture has been reviewed and frozen.
+
+Workflow
+
+Phase 0
+
+Architecture Consolidation
+
+Purpose
+
+Consolidate all existing AI5R architectural assets.
+
+Deliverable
+
+Unified Architecture Baseline
+
+---
+
+Phase 1
+
+Gap Analysis
+
+Purpose
+
+Validate that the AI5R Core Blueprint represents every important architectural concept already existing within AI5R.
+
+This phase does not redesign the architecture.
+
+This phase only identifies missing or duplicated concepts.
+
+Deliverable
+
+Gap Analysis Report
+
+---
+
+Phase 2
+
+Blueprint Revision
+
+Purpose
+
+Update the AI5R Core Blueprint based on approved findings from the Gap Analysis.
+
+Only architectural corrections are allowed.
+
+No new concepts shall be introduced unless required to resolve an architectural issue.
+
+Deliverable
+
+Revised AI5R Core Blueprint
+
+---
+
+Phase 3
+
+Architecture Review
+
+Purpose
+
+Review the Blueprint for consistency, completeness and compliance with AI5R Design Principles.
+
+Review Areas
+
+- Repository Design
+- Relationships
+- Lifecycle
+- Governance
+- Extension Rules
+- Compatibility
+- Domain Independence
+
+Deliverable
+
+Architecture Review Report
+
+---
+
+Phase 4
+
+Architecture Freeze
+
+Purpose
+
+Freeze the AI5R Core Architecture.
+
+After this milestone
+
+- Core architecture becomes stable.
+- Factory Packs shall adapt to the Core.
+- Core shall not adapt to Factory Packs.
+
+Core modifications are only permitted when a documented architectural defect has been approved.
+
+Deliverable
+
+AI5R Core Architecture v2.0 Frozen
+
+---
+
+Phase 5
+
+Repository Contracts
+
+Purpose
+
+Design repository contracts based on the frozen architecture.
+
+Repositories
+
+- Knowledge Repository
+- Capability Repository
+- Worker Repository
+- Mission Repository
+
+Deliverable
+
+Repository Contract Specifications
+
+---
+
+Phase 6
+
+Implementation
+
+Purpose
+
+Implement the frozen architecture.
+
+Activities
+
+- Coding
+- Testing
+- Validation
+- Integration
+- Release
+
+No architectural redesign is permitted during implementation.
+
+---
+
+# Gap Analysis Scope
+
+The following architectural concepts shall be reviewed before Architecture Freeze.
+
+| Component | Classification | Status |
+|-----------|----------------|--------|
+| Reality | Review | Pending |
+| Experience | Review | Pending |
+| Memory | Review | Pending |
+| Knowledge | Repository | Defined |
+| Capability | Repository | Defined |
+| Worker | Repository | Defined |
+| Mission | Repository | Defined |
+| Decision | Review | Pending |
+| Planning | Review | Pending |
+| Learning | Review | Pending |
+| Runtime | Review | Pending |
+
+Objective
+
+Determine whether each component belongs to
+
+- AI5R Core
+- Core Service
+- Runtime
+- Factory Pack
+
+without redesigning existing architecture.
+
