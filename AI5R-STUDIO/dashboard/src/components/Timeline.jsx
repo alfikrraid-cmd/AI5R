@@ -1,46 +1,29 @@
-export default function Timeline(){
+export default function Timeline({ events }) {
+  return (
+    <div style={{ marginTop: 40 }}>
+      <h2>Organization Timeline</h2>
 
-    const activities = [
+      {events.map((event, index) => (
+        <div
+          key={index}
+          style={{
+            borderLeft: "3px solid #4f46e5",
+            paddingLeft: 20,
+            marginBottom: 20,
+          }}
+        >
+          <div
+            style={{
+              fontWeight: 700,
+              color: "#4f46e5",
+            }}
+          >
+            {event.time}
+          </div>
 
-        "10:01 👁 Reality detected",
-
-        "10:02 🧠 Brain analyzed",
-
-        "10:03 🤖 Employee assigned",
-
-        "10:04 ⚡ Action executed",
-
-        "10:05 💾 Experience stored",
-
-        "10:06 🌱 Learning updated"
-
-    ];
-
-
-    return (
-
-        <div className="card">
-
-            <h2>
-                Realtime Timeline
-            </h2>
-
-
-            {
-                activities.map(
-                    (activity,index)=>(
-
-                        <p key={index}>
-                            {activity}
-                        </p>
-
-                    )
-                )
-            }
-
-
+          <div>{event.message}</div>
         </div>
-
-    );
-
+      ))}
+    </div>
+  );
 }

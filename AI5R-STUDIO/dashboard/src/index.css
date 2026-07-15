@@ -1,45 +1,10 @@
-body {
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-    margin:0;
-
-    font-family:
-    Arial,
-    sans-serif;
-
-    background:#0b1020;
-
-    color:white;
-
-}
-
-
-.dashboard {
-
-    padding:30px;
-
-}
-
-
-.grid {
-
-    display:grid;
-
-    grid-template-columns:
-    repeat(4,1fr);
-
-    gap:20px;
-
-}
-
-
-.card {
-
-    background:#151c33;
-
-    padding:20px;
-
-    border-radius:12px;
-
-    margin-top:20px;
-
+body{
+  margin:0;
+  background:#0B1020;
+  color:white;
+  font-family:Inter,sans-serif;
 }

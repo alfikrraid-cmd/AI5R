@@ -1,0 +1,69 @@
+import { useState } from "react";
+import "./App.css";
+
+export default function App() {
+  const [phase, setPhase] = useState("welcome");
+
+  return (
+    <main className="app">
+      {phase === "welcome" && (
+        <section className="panel">
+          <h1>🌳 OSA System by AI5R</h1>
+          <h2>Selamat datang, Chief.</h2>
+
+          <p>
+            Saya Raid, Chief Executive Officer AI5R.
+          </p>
+
+          <p>
+            Di sini, Chief tidak bekerja sendirian. Executive Board dan
+            Digital Employees siap berkolaborasi untuk membangun, menjalankan,
+            dan mengembangkan perusahaan digital Chief.
+          </p>
+
+          <button onClick={() => setPhase("briefing")}>
+            Masuk ke Headquarters
+          </button>
+        </section>
+      )}
+
+      {phase === "briefing" && (
+        <section className="panel">
+          <h1>Good Evening, Chief.</h1>
+          <h2>Daily Executive Briefing</h2>
+
+          <div className="grid">
+            <div className="card">🟢 8 Executives Online</div>
+            <div className="card">🟢 147 Digital Employees Ready</div>
+            <div className="card">📌 3 Decisions Waiting</div>
+            <div className="card">🧠 18 Knowledge Objects Updated</div>
+          </div>
+
+          <p>
+            Semalam organisasi kita dalam kondisi sehat. Tidak ada critical
+            issue. Nova menemukan peluang campaign baru, Graham melihat potensi
+            penghematan biaya, dan Maya siap memulai sprint berikutnya.
+          </p>
+
+          <button onClick={() => setPhase("mission")}>
+            Mulai Kolaborasi Hari Ini
+          </button>
+        </section>
+      )}
+
+      {phase === "mission" && (
+        <section className="panel">
+          <h1>Apa yang bisa kita kolaborasikan hari ini?</h1>
+
+          <textarea
+            defaultValue="Saya ingin membangun sistem untuk UMKM saya."
+          />
+
+          <button>
+            Kirim ke Raid
+          </button>
+        </section>
+      )}
+    </main>
+  );
+}

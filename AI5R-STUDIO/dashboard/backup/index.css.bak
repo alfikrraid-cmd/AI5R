@@ -1,0 +1,45 @@
+body {
+
+    margin:0;
+
+    font-family:
+    Arial,
+    sans-serif;
+
+    background:#0b1020;
+
+    color:white;
+
+}
+
+
+.dashboard {
+
+    padding:30px;
+
+}
+
+
+.grid {
+
+    display:grid;
+
+    grid-template-columns:
+    repeat(4,1fr);
+
+    gap:20px;
+
+}
+
+
+.card {
+
+    background:#151c33;
+
+    padding:20px;
+
+    border-radius:12px;
+
+    margin-top:20px;
+
+}
