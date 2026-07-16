@@ -25,7 +25,7 @@ export default function Topbar() {
                         fontSize: 18,
                     }}
                 >
-                    LTSA Engineering
+                    AI5R Studio
                 </div>
 
                 <div
@@ -35,7 +35,7 @@ export default function Topbar() {
                         marginTop: 2,
                     }}
                 >
-                    AI5R Studio / LTSA / Dashboard
+                    Digital Factory Shell
                 </div>
             </div>
 

@@ -1,6 +1,28 @@
 # AI5R Studio — Workspace Engine: Current State
 
-_Last updated: UI-011 (2026-07-16)_
+_Last updated: UI-012 (2026-07-16)_
+
+## Shell chrome (as of UI-012)
+
+- `design-system/layout/{Topbar,Sidebar,Breadcrumb,StatusBar}.jsx` are the live shell
+  chrome, rendered by `src/layouts/MainLayout.jsx` (the app's actual routed layout).
+  All four now share one palette (`#0F172A` background, `#1E293B` borders, `#2563EB`
+  accent) matching the workspace-tabs CSS in `index.css`.
+- `design-system/layout/Workspace.jsx`, `design-system/layout/WorkspaceTabs.jsx`, and
+  `design-system/layout/MainLayout.backup.jsx` no longer exist — they were dead
+  placeholder prototypes, not the real engine.
+- `src/layouts/MainLayout.jsx` does **not** render `WorkspaceTabs`/`WorkspaceLayout` and
+  should not — see "Per-module workspace runtimes" below.
+
+## Per-module workspace runtimes (as of UI-012)
+
+- The `WorkspaceProvider` mounted in `app/providers.jsx` wraps the whole app but has
+  nothing registered to it — it is effectively inert at the app level.
+- `modules/ltsa/pages/LTSA.jsx` mounts its **own** nested `WorkspaceProvider` +
+  `WorkspaceTabs` + `WorkspaceLayout`, registers its own workspace descriptors
+  (`modules/ltsa/workspace.js`), and is the only real, working consumer of the engine
+  today. This is intentional: "Workspace = Application Runtime" means each Factory Pack
+  / module owns its own workspace runtime instance, not a shared app-wide one.
 
 ## Location
 

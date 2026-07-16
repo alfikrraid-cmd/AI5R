@@ -7,14 +7,20 @@
 - UI-009 Stabilize workspace integration
 - UI-010 Add workspace lifecycle
 - UI-011 Workspace persistence
+- UI-012 Workspace shell upgrade
 
 ## Next milestones
 
-- UI-012 Workspace ordering/pinning — persist explicit tab order instead of
+Note: these were previously numbered UI-012–UI-014; renumbered to UI-013–UI-015 to
+avoid colliding with the now-completed UI-012 (Workspace Shell Upgrade).
+
+- UI-013 Workspace ordering/pinning — persist explicit tab order instead of
   registration/open order.
-- UI-013 Multi-consumer workspace support — generalize the
+- UI-014 Multi-consumer workspace support — generalize the
   `hasSavedState()` / restore-before-default-open contract so any module
   (not just LTSA) adopting the workspace engine gets correct persistence
   by construction, rather than by convention.
-- UI-014 Workspace storage versioning/migration — guard against stale
+- UI-015 Workspace storage versioning/migration — guard against stale
   `localStorage` shapes if the persisted schema changes again.
+- UI-016 Clarify/remove the inert app-level `WorkspaceProvider` in
+  `app/providers.jsx` (see `TECHNICAL_DEBT.md`, found in UI-012).

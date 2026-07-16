@@ -3,8 +3,8 @@ export default function StatusBar() {
         <footer
             style={{
                 height: 28,
-                background: "#151C33",
-                borderTop: "1px solid #2A3558",
+                background: "#0F172A",
+                borderTop: "1px solid #1E293B",
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "center",

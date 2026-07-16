@@ -9,7 +9,7 @@ export default function Breadcrumb({
                 alignItems: "center",
                 gap: 8,
                 padding: "0 24px",
-                background: "#111827",
+                background: "#0F172A",
                 borderBottom: "1px solid #1E293B",
                 color: "#94A3B8",
                 fontSize: 13,
