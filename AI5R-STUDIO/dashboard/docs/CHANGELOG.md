@@ -1,5 +1,18 @@
 # AI5R Studio — UI Track Changelog
 
+## UI-014 — Docking System v1 (2026-07-16)
+
+- Added `design-system/docking/`: `DockRegistry.js`, `DockManager.js`,
+  `DockPanel.jsx`, `DockLayout.jsx`, `index.js`. A generic docking capability with
+  four fixed areas (`left`/`center`/`right`/`bottom`); no drag-drop, no persistence.
+- `DockManager` tracks open/active panels per area independently, mirroring
+  `WorkspaceManager`'s open/close/activate shape but scoped per area instead of
+  globally.
+- `DockLayout` builds its own `DockRegistry`/`DockManager` privately via `useRef`
+  (not exposed through context/provider) and collapses left/right/bottom regions to
+  nothing when no panel is open in them; center always renders.
+- No consumer wiring yet — purely additive to the design system.
+
 ## UI-013 — Panel Framework (2026-07-16)
 
 - Added `design-system/panels/`: `Panel.jsx`, `PanelHeader.jsx`, `PanelContainer.jsx`,

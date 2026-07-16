@@ -134,3 +134,60 @@ Not changed:
 - No wiring into any consumer yet (e.g. `modules/ltsa/components/Panel.jsx` still exists
   and is unrelated/untouched) — that migration is a future MWO's job, not this one's.
 
+---
+
+## UI-014 — Docking System v1
+
+Status:
+✅ Completed
+
+Objective:
+
+Add a generic, design-system-level docking capability supporting four fixed dock
+areas (`left`, `center`, `right`, `bottom`), with no drag-drop and no persistence —
+a deliberately minimal first cut.
+
+Scope:
+
+- `design-system/docking/**` (new)
+
+Implemented:
+
+- `DockRegistry.js` — plain class, mirrors `WorkspaceRegistry`. Exports
+  `DOCK_AREAS = ["left", "center", "right", "bottom"]`; `register()` validates a
+  descriptor's `area` against this list.
+- `DockManager.js` — plain class, mirrors `WorkspaceManager`. Tracks open/active
+  panels **per area independently** (each area behaves like its own tab strip). A
+  panel's area is fixed at registration — there is no "move to another area" API,
+  since there is no drag-drop yet. No persistence (no `WorkspaceStorage` equivalent).
+- `DockPanel.jsx` — presentational. Renders a tab strip (title + optional close `×`)
+  for the panels open in one area, plus the active panel's `component`. Renders
+  `null` when nothing is open in that area, so the layout can collapse it.
+- `DockLayout.jsx` — consumer-facing entry point. Takes a flat `panels` descriptor
+  array (`{ id, title, area, component, closable?, defaultOpen? }`), builds its own
+  `DockRegistry`/`DockManager` internally via `useRef` (same idiom as
+  `design-system/panels/Panel.jsx` and `WorkspaceProvider`'s ref-init pattern) —
+  these instances are **not** exposed to children via context/provider, per explicit
+  instruction for this MWO. Registers + opens `defaultOpen` panels on mount. Lays out
+  left/right as fixed-width columns and bottom as a fixed-height row, all three
+  collapsing to nothing when empty; center always renders and flexes to fill the
+  remaining space.
+- `index.js` — barrel export of `DockManager`, `DockRegistry`, `DOCK_AREAS`,
+  `DockLayout`, `DockPanel`.
+- Styled with the same studio palette from UI-012/UI-013
+  (`#0F172A` background / `#1E293B` border / `#2563EB` active-tab accent).
+
+Verified via a component/unit test (removed after passing, per this repo's convention
+of not committing throwaway smoke tests): `DOCK_AREAS` shape, `DockRegistry` rejects
+an invalid area, `DockManager` tracks open/active state per area independently
+(closing the active tab in one area doesn't affect another area), `DockLayout` renders
+all four areas with `defaultOpen` panels, collapses areas with nothing open, and
+switches the active tab within an area on click.
+
+Not changed:
+
+- Workspace Engine, `modules/ltsa`, `design-system/panels`, `CORE-SERVICES`,
+  `PRODUCTS`, `AI5R-SDK` — untouched.
+- No drag-drop (panel↔area reassignment), no persistence, no context/provider exposing
+  the manager — all explicitly deferred past v1.
+

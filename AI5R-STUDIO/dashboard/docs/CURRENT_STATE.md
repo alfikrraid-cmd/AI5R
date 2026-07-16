@@ -1,6 +1,19 @@
 # AI5R Studio — Workspace Engine: Current State
 
-_Last updated: UI-013 (2026-07-16)_
+_Last updated: UI-014 (2026-07-16)_
+
+## Docking System (as of UI-014)
+
+- `design-system/docking/` — `DockRegistry.js`, `DockManager.js`, `DockPanel.jsx`,
+  `DockLayout.jsx`, `index.js`. Pure design-system, v1: no Workspace Engine
+  dependency, no Factory Pack / module dependency, no persistence, no drag-drop.
+- Four fixed areas: `left`, `center`, `right`, `bottom` (exported as `DOCK_AREAS`). A
+  panel's area is fixed at registration; `DockManager` tracks open/active state per
+  area independently (like an isolated tab strip per area).
+- `DockLayout` owns its `DockRegistry`/`DockManager` privately via `useRef` — they are
+  **not** exposed through a context/provider (no `DockProvider`/`useDock` exists yet,
+  unlike the Workspace Engine's `WorkspaceProvider`/`useWorkspace`).
+- Not yet wired into any consumer or page.
 
 ## Panel Framework (as of UI-013)
 
