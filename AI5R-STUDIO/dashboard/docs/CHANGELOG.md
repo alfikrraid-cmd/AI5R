@@ -1,5 +1,18 @@
 # AI5R Studio — UI Track Changelog
 
+## UI-017 — Command Toolbar Framework v1 (2026-07-16)
+
+- Added `design-system/toolbar/`: `Toolbar.jsx`, `ToolbarButton.jsx`,
+  `ToolbarGroup.jsx`, `ToolbarSeparator.jsx`, `index.js`. A generic command toolbar:
+  grouped buttons with icons, disabled state, action callbacks.
+- All four components are fully stateless (no `useState`, no context) — the
+  consumer owns which button is active/disabled and what each action does.
+- `ToolbarButton` is icon-library-agnostic: `icon` is a plain ReactNode the consumer
+  supplies (e.g. a `lucide-react` icon), not a hardcoded dependency.
+- Self-contained: no import from `design-system/panels`, `design-system/docking`,
+  `design-system/inspector`, or `design-system/datagrid`.
+- No consumer wiring yet — purely additive to the design system.
+
 ## UI-016 — DataGrid Framework v1 (2026-07-16)
 
 - Added `design-system/datagrid/`: `DataGrid.jsx`, `DataGridHeader.jsx`,

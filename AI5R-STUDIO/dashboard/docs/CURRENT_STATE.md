@@ -1,6 +1,18 @@
 # AI5R Studio — Workspace Engine: Current State
 
-_Last updated: UI-016 (2026-07-16)_
+_Last updated: UI-017 (2026-07-16)_
+
+## Command Toolbar Framework (as of UI-017)
+
+- `design-system/toolbar/` — `Toolbar.jsx`, `ToolbarGroup.jsx`,
+  `ToolbarSeparator.jsx`, `ToolbarButton.jsx`, `index.js`. Pure design-system, v1:
+  no Workspace/Docking/Panels/Inspector/DataGrid dependency, no Factory Pack /
+  module dependency, no business logic.
+- Fully stateless — no `useState`/context anywhere in this module. The consumer
+  owns `active`/`disabled` state and what `onClick` does.
+- `ToolbarButton` is icon-library-agnostic: `icon` is any ReactNode the caller
+  supplies.
+- Not yet wired into any consumer.
 
 ## DataGrid Framework (as of UI-016)
 

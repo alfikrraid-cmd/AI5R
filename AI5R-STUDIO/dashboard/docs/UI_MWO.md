@@ -307,3 +307,57 @@ Not changed:
 - No controlled state/provider/context, no server-side sort/page hooks, no column
   resize/reorder — all explicitly deferred past v1.
 
+---
+
+## UI-017 — Command Toolbar Framework v1
+
+Status:
+✅ Completed
+
+Objective:
+
+Add a generic, design-system-level command toolbar: grouped buttons with icons,
+disabled state, and action callbacks — fully stateless, since a toolbar's state
+(which button is active/disabled, what an action does) is the consumer's concern,
+not the framework's.
+
+Scope:
+
+- `design-system/toolbar/**` (new)
+
+Implemented:
+
+- `Toolbar.jsx` — outer container. Props: `children` only (groups/buttons/
+  separators). Purely a styled flex-row wrapper, no state.
+- `ToolbarGroup.jsx` — visual clustering of related buttons (tighter internal gap
+  than the outer toolbar). Props: `children` only.
+- `ToolbarSeparator.jsx` — a vertical divider between groups. No props.
+- `ToolbarButton.jsx` — the button. Props: `icon` (ReactNode, optional — the
+  framework is icon-library-agnostic; the consumer renders their own icon, e.g. a
+  `lucide-react` icon), `label` (string, optional — icon-only button when omitted),
+  `onClick`, `disabled` (default `false`, native `<button disabled>`), `active`
+  (default `false`, accent-background "pressed" styling for toggle-style buttons),
+  `title` (native tooltip).
+- `index.js` — barrel export of `Toolbar`, `ToolbarButton`, `ToolbarGroup`,
+  `ToolbarSeparator`.
+- Styled with the same studio palette from UI-012–UI-016.
+- All four components are fully stateless (no `useState`, no context) — the simplest
+  tier of this design-system track, unlike the stateful `Panel`/`InspectorSection`/
+  `DataGrid`, because a toolbar has no internal UI state of its own to own.
+- Self-contained: no imports from `design-system/panels`, `design-system/docking`,
+  `design-system/inspector`, or `design-system/datagrid`. No business logic, no
+  Factory Pack dependency.
+
+Verified via a component-render test (removed after passing, per this repo's
+convention of not committing throwaway smoke tests): groups/separators/icons/labels
+render together, `onClick` fires on an enabled button, a `disabled` button's native
+`disabled` attribute is set and its `onClick` never fires, icon-only buttons render
+without a label, and `active` applies the accent-background styling.
+
+Not changed:
+
+- Workspace Engine, Docking System, Inspector Framework, DataGrid Framework, Panel
+  Framework, `modules/ltsa`, `CORE-SERVICES`, `PRODUCTS`, `AI5R-SDK` — untouched.
+- No dropdown/menu buttons, no keyboard-shortcut display, no right-aligned slot on
+  `Toolbar` — all explicitly deferred past v1.
+

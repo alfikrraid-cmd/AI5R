@@ -7,11 +7,11 @@
   the engine enforces this — a new module that copies the old (pre-UI-011) pattern
   will silently reintroduce the persistence bug. Consider a higher-level
   `bootstrapWorkspaces(descriptors, workspace)` helper in the engine itself so the
-  correct order isn't left to each consumer to rediscover (tracked as UI-018).
+  correct order isn't left to each consumer to rediscover (tracked as UI-019).
 - **No storage schema versioning.** `WorkspaceStorage` reads/writes a fixed shape
   (`{ openedWorkspaces, activeWorkspace }`) with no version tag. If the shape changes
   again, old `localStorage` entries could be misread rather than cleanly migrated or
-  discarded (tracked as UI-019).
+  discarded (tracked as UI-020).
 - **No persisted tab order.** `openedWorkspaces` order reflects open/registration
   order, not any user-driven reordering (no reordering UI exists yet either).
 - **Single global storage key.** `ai5r.workspace.state` is shared process-wide; if two

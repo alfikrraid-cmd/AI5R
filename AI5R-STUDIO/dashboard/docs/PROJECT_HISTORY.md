@@ -12,6 +12,7 @@
 | UI-014 | Docking system v1 | Added `design-system/docking/` (`DockRegistry`, `DockManager`, `DockPanel`, `DockLayout`) supporting fixed `left`/`center`/`right`/`bottom` areas. No drag-drop, no persistence, no consumer wiring yet. |
 | UI-015 | Inspector framework v1 | Added `design-system/inspector/` (`Inspector`, `InspectorHeader`, `InspectorSection`, `InspectorField`) — a titled panel with an action slot and collapsible sections of label/value fields. Read-only, no consumer wiring yet. |
 | UI-016 | DataGrid framework v1 | Added `design-system/datagrid/` (`DataGrid`, `DataGridHeader`, `DataGridRow`, `DataGridCell`, `DataGridPagination`) — columns/rows rendering with sorting, row selection, and pagination as uncontrolled UI-only state. Domain-agnostic, no consumer wiring yet. |
+| UI-017 | Command toolbar framework v1 | Added `design-system/toolbar/` (`Toolbar`, `ToolbarGroup`, `ToolbarSeparator`, `ToolbarButton`) — grouped buttons with icons, disabled state, and action callbacks. Fully stateless, icon-library-agnostic, no consumer wiring yet. |
 
 Each row is a milestone in the Workspace Engine's evolution; see `CHANGELOG.md` for
 change-level detail and `CURRENT_STATE.md` for the engine's present shape.
