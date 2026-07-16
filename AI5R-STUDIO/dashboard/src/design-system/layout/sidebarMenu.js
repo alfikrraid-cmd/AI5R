@@ -7,20 +7,21 @@ export const sidebarMenu = [
     },
 
     {
-        section: "DIGITAL FACTORIES",
+        section: "LTSA",
         items: [
-            { title: "LTSA", path: "/ltsa" },
-            { title: "Auditor OS", path: "/auditor" },
-            { title: "UMKM OS", path: "/umkm" },
+            { title: "LTSA Dashboard", path: "/ltsa" },
+            { title: "Pump Registry", path: "/ltsa/pump" },
+            { title: "Seal Registry", path: "/ltsa/seal" },
+            { title: "Runtime", path: "/ltsa/runtime" },
+            { title: "Knowledge", path: "/ltsa/knowledge" },
         ],
     },
 
     {
-        section: "PLATFORM",
+        section: "DIGITAL FACTORIES",
         items: [
-            { title: "Runtime", path: "/runtime" },
-            { title: "AI Workforce", path: "/workforce" },
-            { title: "Analytics", path: "/analytics" },
+            { title: "Auditor OS", path: "/auditor" },
+            { title: "UMKM OS", path: "/umkm" },
         ],
     },
 
