@@ -14,7 +14,6 @@ export default function MainLayout() {
                 display: "flex",
                 height: "100vh",
                 background: "#070B18",
-                overflow: "hidden",
             }}
         >
             <Sidebar />
@@ -24,7 +23,6 @@ export default function MainLayout() {
                     flex: 1,
                     display: "flex",
                     flexDirection: "column",
-                    minWidth: 0,
                 }}
             >
                 <Topbar />

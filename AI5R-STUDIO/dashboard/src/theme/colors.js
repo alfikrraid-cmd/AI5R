@@ -1,49 +1,29 @@
-// =======================================================
-// AI5R Studio Theme
-// colors.js
-// UI-MWO-001A
-// =======================================================
-
 const colors = {
-  primary: "#16C784",
-  primaryHover: "#14B874",
 
-  background: "#0B1220",
-  surface: "#111827",
-  card: "#151C2F",
+    background:"#0B1020",
 
-  border: "#283244",
+    surface:"#121826",
 
-  text: "#F8FAFC",
-  muted: "#94A3B8",
+    surface2:"#1A2235",
 
-  success: "#22C55E",
-  warning: "#F59E0B",
-  danger: "#EF4444",
-  info: "#3B82F6",
+    border:"#28324A",
 
-  white: "#FFFFFF",
-  black: "#000000",
+    primary:"#00D084",
 
-  divider: "#1E293B",
+    blue:"#3B82F6",
 
-  sidebar: "#0F172A",
-  header: "#111827",
+    yellow:"#F59E0B",
 
-  employee: {
-    online: "#22C55E",
-    working: "#3B82F6",
-    waiting: "#F59E0B",
-    offline: "#64748B",
-    error: "#EF4444",
-  },
+    red:"#EF4444",
 
-  factory: {
-    running: "#3B82F6",
-    completed: "#22C55E",
-    pending: "#F59E0B",
-    failed: "#EF4444",
-  },
-};
+    purple:"#8B5CF6",
+
+    white:"#FFFFFF",
+
+    text:"#CBD5E1",
+
+    textMuted:"#94A3B8"
+
+}
 
 export default colors;
