@@ -1,6 +1,17 @@
 # AI5R Studio — Workspace Engine: Current State
 
-_Last updated: UI-012 (2026-07-16)_
+_Last updated: UI-013 (2026-07-16)_
+
+## Panel Framework (as of UI-013)
+
+- `design-system/panels/` — `Panel.jsx`, `PanelHeader.jsx`, `PanelContainer.jsx`,
+  `index.js`. Pure design-system primitives: no Workspace Engine dependency, no
+  Factory Pack / module dependency, no persistence.
+- `Panel` supports `title`, `children`, and optional `collapsible`/`defaultCollapsed`.
+  Styled with the UI-012 studio palette.
+- Not yet wired into any consumer. `modules/ltsa/components/Panel.jsx` (an older,
+  module-local, non-collapsible card with a different palette) still exists separately
+  and is unaffected — migrating LTSA to the design-system `Panel` is a future MWO.
 
 ## Shell chrome (as of UI-012)
 

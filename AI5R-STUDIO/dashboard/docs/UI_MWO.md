@@ -91,3 +91,46 @@ Not changed:
 
 See `TECHNICAL_DEBT.md` for the follow-up item this investigation surfaced.
 
+---
+
+## UI-013 — Panel Framework
+
+Status:
+✅ Completed
+
+Objective:
+
+Add a reusable, business-logic-free Panel primitive to the design system for
+consuming modules to build page content with.
+
+Scope:
+
+- `design-system/panels/**` (new)
+
+Implemented:
+
+- `Panel.jsx` — card container. Props: `title` (optional), `children`, `collapsible`
+  (default `false`), `defaultCollapsed` (default `false`). Owns its own collapse state
+  (uncontrolled). Renders `PanelHeader` only when `title` is given; otherwise renders a
+  body-only card.
+- `PanelHeader.jsx` — presentational title bar with an optional collapse chevron
+  (`lucide-react` `ChevronUp`/`ChevronDown`). No internal state; driven entirely by
+  props (`title`, `collapsible`, `collapsed`, `onToggle`).
+- `PanelContainer.jsx` — layout wrapper for arranging multiple panels: single-column
+  flex stack by default, or a CSS grid when `columns` is given. Props: `children`,
+  `columns` (optional), `gap` (default `20`).
+- `index.js` — barrel export of `Panel`, `PanelHeader`, `PanelContainer`.
+- Styled with the same studio palette established in UI-012
+  (`#0F172A` background / `#1E293B` border / `#F1F5F9` title text).
+
+Verified via a component-render test (removed after passing, per this repo's
+convention of not committing throwaway smoke tests): title+children render, title-less
+body-only card, collapse/expand toggle, `defaultCollapsed`, and `PanelContainer`
+arranging multiple panels.
+
+Not changed:
+
+- Workspace Engine, `modules/ltsa`, `CORE-SERVICES`, `PRODUCTS`, `AI5R-SDK` — untouched.
+- No wiring into any consumer yet (e.g. `modules/ltsa/components/Panel.jsx` still exists
+  and is unrelated/untouched) — that migration is a future MWO's job, not this one's.
+

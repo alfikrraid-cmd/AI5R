@@ -1,5 +1,17 @@
 # AI5R Studio — UI Track Changelog
 
+## UI-013 — Panel Framework (2026-07-16)
+
+- Added `design-system/panels/`: `Panel.jsx`, `PanelHeader.jsx`, `PanelContainer.jsx`,
+  `index.js`. A reusable, business-logic-free card primitive with optional collapse,
+  styled to the UI-012 studio palette (`#0F172A`/`#1E293B`).
+- `Panel` owns its own (uncontrolled) collapse state; `PanelHeader` is a pure
+  presentational title bar; `PanelContainer` is a stack/grid layout wrapper for
+  arranging multiple panels.
+- No consumer wiring yet — `modules/ltsa/components/Panel.jsx` (the existing
+  module-local card) is untouched; migrating it to the design-system version is a
+  future MWO.
+
 ## UI-012 — Workspace Shell Upgrade (2026-07-16)
 
 - Deleted dead legacy layout code: `design-system/layout/Workspace.jsx`,
