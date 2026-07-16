@@ -191,3 +191,57 @@ Not changed:
 - No drag-drop (panel↔area reassignment), no persistence, no context/provider exposing
   the manager — all explicitly deferred past v1.
 
+---
+
+## UI-015 — Inspector Framework v1
+
+Status:
+✅ Completed
+
+Objective:
+
+Add a generic, design-system-level property-inspector capability: a titled panel
+with an action slot, containing collapsible sections of label/value fields.
+
+Scope:
+
+- `design-system/inspector/**` (new)
+
+Implemented:
+
+- `Inspector.jsx` — outer card. Props: `title`, `actions` (ReactNode, the action
+  slot), `children` (sections). Renders `InspectorHeader` then a scrollable body.
+  Owns layout only — no state of its own.
+- `InspectorHeader.jsx` — presentational title bar with an action slot on the right
+  (mirrors `Topbar`'s left-title/right-actions layout). No internal state.
+- `InspectorSection.jsx` — a labeled, optionally-collapsible group of fields. Props:
+  `title` (optional), `children`, `collapsible` (default `false`), `defaultCollapsed`
+  (default `false`). Owns its own collapse state locally (same uncontrolled pattern
+  as `design-system/panels/Panel.jsx`) — independent per section, so collapsing one
+  section has no effect on others.
+- `InspectorField.jsx` — a single label/value row. Props: `label`, `value`
+  (string/number, optional), `children` (optional — overrides `value` rendering for
+  custom content, e.g. a control instead of plain text).
+- `index.js` — barrel export of `Inspector`, `InspectorHeader`, `InspectorSection`,
+  `InspectorField`.
+- Styled with the same studio palette from UI-012–UI-014
+  (`#0F172A` background / `#1E293B` border / `#F1F5F9` primary text / `#94A3B8`
+  secondary text).
+- Self-contained: does not import from `design-system/panels` or
+  `design-system/docking` despite conceptual similarity to `Panel`/`PanelHeader` —
+  kept independent per this repo's established pattern of each design-system MWO
+  being strictly additive/isolated.
+
+Verified via a component-render test (removed after passing, per this repo's
+convention of not committing throwaway smoke tests): title/action-slot/sections/
+fields render together, `InspectorField` children override `value`, sections
+collapse/expand independently of each other, `defaultCollapsed` starts collapsed,
+and a section renders correctly with no title (body-only).
+
+Not changed:
+
+- Workspace Engine, Docking System, `design-system/panels`, `modules/ltsa`,
+  `CORE-SERVICES`, `PRODUCTS`, `AI5R-SDK` — untouched.
+- No business logic, no Factory Pack dependency, no field editing/`onChange` (v1 is
+  read-only display) — all explicitly deferred past v1.
+

@@ -1,6 +1,18 @@
 # AI5R Studio — Workspace Engine: Current State
 
-_Last updated: UI-014 (2026-07-16)_
+_Last updated: UI-015 (2026-07-16)_
+
+## Inspector Framework (as of UI-015)
+
+- `design-system/inspector/` — `Inspector.jsx`, `InspectorHeader.jsx`,
+  `InspectorSection.jsx`, `InspectorField.jsx`, `index.js`. Pure design-system, v1:
+  read-only display, no Workspace/Docking/Panels dependency, no Factory Pack /
+  module dependency, no business logic.
+- `Inspector` supports `title`, an `actions` slot (ReactNode, rendered in the
+  header), and `children` (sections). `InspectorSection` supports `collapsible`/
+  `defaultCollapsed`, each section collapsing independently. `InspectorField`
+  supports `label`/`value`, with `children` overriding `value` for custom content.
+- Not yet wired into any consumer.
 
 ## Docking System (as of UI-014)
 

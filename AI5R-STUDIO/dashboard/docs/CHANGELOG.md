@@ -1,5 +1,18 @@
 # AI5R Studio — UI Track Changelog
 
+## UI-015 — Inspector Framework v1 (2026-07-16)
+
+- Added `design-system/inspector/`: `Inspector.jsx`, `InspectorHeader.jsx`,
+  `InspectorSection.jsx`, `InspectorField.jsx`, `index.js`. A generic property-
+  inspector: titled panel + action slot, collapsible sections of label/value fields.
+- `InspectorSection` owns its own (uncontrolled) collapse state, independent per
+  section; `InspectorHeader` and `InspectorField` are pure presentational; `Inspector`
+  only owns layout.
+- `InspectorField` supports `children` to override `value` rendering for custom
+  content (v1 is read-only display — no editing/`onChange`).
+- Self-contained: no import from `design-system/panels` or `design-system/docking`.
+- No consumer wiring yet — purely additive to the design system.
+
 ## UI-014 — Docking System v1 (2026-07-16)
 
 - Added `design-system/docking/`: `DockRegistry.js`, `DockManager.js`,
