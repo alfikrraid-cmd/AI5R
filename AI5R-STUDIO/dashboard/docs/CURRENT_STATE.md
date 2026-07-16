@@ -1,6 +1,30 @@
 # AI5R Studio — Workspace Engine: Current State
 
-_Last updated: UI-018 (2026-07-16)_
+_Last updated: UI-019 (2026-07-16)_
+
+## Overlay Engine (as of UI-019)
+
+- `design-system/overlay/` — `OverlayContext.jsx`, `OverlayRegistry.jsx`,
+  `OverlayManager.jsx`, `OverlayProvider.jsx`, `index.js`, plus 8 renderer folders
+  (`modal/`, `drawer/`, `dialog/`, `popover/`, `tooltip/`, `context-menu/`,
+  `loading/`, `wizard/`). No Factory Pack dependency, no new npm dependencies.
+- **`OverlayManager` is the sole runtime controller** (stack, z-index, portal via
+  `createPortal`, Escape, click-outside, focus restore, backdrop rendering), exposed
+  imperatively via `forwardRef`/`useImperativeHandle`. **`OverlayRegistry` is pure**
+  — just `type → { type, component }`, no runtime/behavior metadata. **`OverlayProvider`
+  is a thin wrapper** — holds the manager ref, exposes its methods as context value,
+  owns no state itself.
+- New overlay types (e.g. a future `CommandPalette`, `ColorPicker`, `DatePicker`)
+  are addable via `OverlayRegistry.register(type, Component)` from anywhere —
+  `OverlayManager` never needs to change for a new type.
+- `overlay.open({ type?, component?, props?, options? })` returns an `id`;
+  `close(id?)`/`isOpen(id?)` treat a missing `id` as "topmost"/"anything open".
+  `options` (`dismissible`, `backdrop`, `closeOnEscape`, `closeOnOutside`,
+  `restoreFocus`) are per-instance only — no registry-level defaults.
+- `loading/Loading.jsx` composes `design-system/feedback`'s `LoadingState` — the
+  one deliberate exception to this track's "self-contained per MWO" convention
+  (explicitly requested for this case).
+- Not yet wired into any consumer (no app-level `<OverlayProvider>` mounted yet).
 
 ## Feedback System (as of UI-018)
 

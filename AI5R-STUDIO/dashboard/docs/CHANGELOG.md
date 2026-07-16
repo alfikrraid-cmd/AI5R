@@ -1,5 +1,31 @@
 # AI5R Studio — UI Track Changelog
 
+## UI-019 — Overlay Engine v1 (2026-07-16)
+
+- Added `design-system/overlay/`: `OverlayContext.jsx` (context + `useOverlay()`
+  hook), `OverlayRegistry.jsx` (pure `type → { type, component }` map,
+  `register`/`unregister`/`has`/`get`, dynamically extensible), `OverlayManager.jsx`
+  (`forwardRef` + `useImperativeHandle` — the sole runtime controller: stack,
+  z-index, portal, Escape, click-outside, focus restore, backdrop rendering),
+  `OverlayProvider.jsx` (thin context wrapper delegating to the manager ref), and 8
+  built-in renderers: `modal/Modal.jsx`, `drawer/Drawer.jsx`, `dialog/Dialog.jsx`,
+  `popover/Popover.jsx`, `tooltip/Tooltip.jsx`, `context-menu/ContextMenu.jsx`,
+  `loading/Loading.jsx`, `wizard/Wizard.jsx`, `index.js`.
+- Full imperative API: `overlay.open({ type?, component?, props?, options? })`,
+  `close(id?)`, `closeAll()`, `replace(id, descriptor)`, `update(id, props)`,
+  `isOpen(id?)`. `options`: `dismissible`/`backdrop`/`closeOnEscape`/
+  `closeOnOutside`/`restoreFocus`, all per-instance (no registry-level runtime
+  defaults, per explicit direction).
+- New overlay types are addable via `OverlayRegistry.register(type, Component)`
+  from anywhere, with zero changes to `OverlayManager` — verified with a
+  runtime-registered `"command-palette"` type in the test suite.
+- `Loading` composes `design-system/feedback`'s `LoadingState` rather than
+  duplicating a spinner — the first deliberate cross-import between two sibling
+  design-system leaf modules in this track (every prior one stayed self-contained;
+  this exception was explicitly requested, not a default to repeat elsewhere).
+- No new npm dependencies — portals use the existing `react-dom` `createPortal`.
+- No consumer wiring yet — purely additive to the design system.
+
 ## UI-018 — Feedback System v1 (2026-07-16)
 
 - Added `design-system/feedback/`: `Toast.jsx`, `Notification.jsx`,
