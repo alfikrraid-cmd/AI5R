@@ -1,6 +1,18 @@
 # AI5R Studio — Workspace Engine: Current State
 
-_Last updated: UI-017 (2026-07-16)_
+_Last updated: UI-018 (2026-07-16)_
+
+## Feedback System (as of UI-018)
+
+- `design-system/feedback/` — `Toast.jsx`, `Notification.jsx`, `LoadingState.jsx`,
+  `EmptyState.jsx`, `ErrorState.jsx`, `index.js`. Pure design-system, v1: no
+  Workspace/Docking/Panels/Inspector/DataGrid/Toolbar dependency, no Factory Pack /
+  module dependency, no business logic.
+- Fully stateless — no `useState`/context/timers/API calls/navigation/global state
+  anywhere in this module. No Provider/queue for `Toast` — stacking, positioning,
+  and dismissal timing are the consumer's responsibility.
+- `Toast`/`Notification` support `variant` = `success | warning | error | info`.
+- Not yet wired into any consumer.
 
 ## Command Toolbar Framework (as of UI-017)
 

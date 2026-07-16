@@ -361,3 +361,72 @@ Not changed:
 - No dropdown/menu buttons, no keyboard-shortcut display, no right-aligned slot on
   `Toolbar` — all explicitly deferred past v1.
 
+---
+
+## UI-018 — Feedback System v1
+
+Status:
+✅ Completed
+
+Objective:
+
+Add a generic, design-system-level feedback capability: success/warning/error/info
+messaging plus loading/empty/error placeholder states. Fully stateless — no
+Provider/Context, no timers, no API calls, no navigation, no global state. Every
+component renders UI purely from its props.
+
+Scope:
+
+- `design-system/feedback/**` (new)
+
+Implemented:
+
+- `Toast.jsx` — a small message card (positioning/stacking/auto-dismiss timing is
+  left to the consumer — no queue/manager here). Props: `variant`
+  (`"success" | "warning" | "error" | "info"`, default `"info"`), `message`, `icon`
+  (optional override), `onClose` (optional — renders a `×` button when given).
+- `Notification.jsx` — a wider inline banner/alert for in-page persistent messages
+  (vs. `Toast`'s floating-popup feel). Props: `variant`, `title` (optional),
+  `message`, `icon` (optional override), `actions` (ReactNode, optional action
+  slot), `onClose` (optional).
+- Both `Toast` and `Notification` map `variant` to an icon/color locally (duplicated
+  small lookup per file, not a shared util — consistent with keeping each file
+  self-contained): success → `CheckCircle` `#22C55E` (matches the existing "Runtime
+  Online" green in `Topbar.jsx`), warning → `AlertTriangle` `#F59E0B`, error →
+  `XCircle` `#EF4444`, info → `Info` `#38BDF8`.
+- `LoadingState.jsx` — centered spinner + message. Props: `message` (default
+  `"Loading..."`), `size` (default `24`). Uses a `lucide-react` `Loader2` icon with
+  a CSS `@keyframes` spin declared via a scoped inline `<style>` tag inside the
+  component itself (no JS-driven animation state; and no other file, e.g.
+  `index.css`, was touched — out of scope).
+- `EmptyState.jsx` — centered "nothing here" placeholder. Props: `icon` (ReactNode,
+  optional, no forced default since context varies), `title`, `description`
+  (optional), `action` (ReactNode, optional).
+- `ErrorState.jsx` — centered failure placeholder. Props: `title` (default
+  `"Something went wrong"`), `description` (optional), `action` (ReactNode,
+  optional), `icon` (optional override; defaults to `AlertTriangle` since "error"
+  has one canonical visual identity, unlike `EmptyState`).
+- `index.js` — barrel export of `Toast`, `Notification`, `LoadingState`,
+  `EmptyState`, `ErrorState`.
+- Styled with the same studio palette from UI-012–UI-017.
+- All five components are fully stateless (no `useState`, no context, no timers, no
+  API calls, no navigation, no global state) — same tier as `design-system/toolbar`.
+- Self-contained: no imports from `design-system/panels`, `design-system/docking`,
+  `design-system/inspector`, `design-system/datagrid`, or `design-system/toolbar`.
+
+Verified via a component-render test (removed after passing, per this repo's
+convention of not committing throwaway smoke tests): `Toast` renders its message and
+fires `onClose` when clicked, and renders with no close button when `onClose` is
+omitted; `Notification` renders title/message/actions slot together;
+`LoadingState` renders its default and a custom message; `EmptyState` renders
+title/description/action; `ErrorState` renders its default title plus a custom
+description/action.
+
+Not changed:
+
+- Workspace Engine, Docking System, Inspector Framework, DataGrid Framework,
+  Toolbar Framework, Panel Framework, `modules/ltsa`, `CORE-SERVICES`, `PRODUCTS`,
+  `AI5R-SDK` — untouched.
+- No Provider/Context, no auto-dismiss timers, no toast stacking/manager — all
+  explicitly deferred past v1.
+

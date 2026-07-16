@@ -1,5 +1,22 @@
 # AI5R Studio — UI Track Changelog
 
+## UI-018 — Feedback System v1 (2026-07-16)
+
+- Added `design-system/feedback/`: `Toast.jsx`, `Notification.jsx`,
+  `LoadingState.jsx`, `EmptyState.jsx`, `ErrorState.jsx`, `index.js`. Generic
+  success/warning/error/info messaging (`Toast`, `Notification`) plus
+  loading/empty/error placeholders.
+- `Toast`/`Notification` share a locally-duplicated `variant` → icon/color mapping
+  (success `#22C55E`, warning `#F59E0B`, error `#EF4444`, info `#38BDF8`) — no
+  Provider/queue/manager, positioning and dismissal timing are the consumer's job.
+- `LoadingState`'s spinner uses a scoped inline `<style>` `@keyframes` (no external
+  CSS file touched).
+- All five components are fully stateless: no `useState`, no context, no timers, no
+  API calls, no navigation, no global state.
+- Self-contained: no import from `design-system/panels`, `design-system/docking`,
+  `design-system/inspector`, `design-system/datagrid`, or `design-system/toolbar`.
+- No consumer wiring yet — purely additive to the design system.
+
 ## UI-017 — Command Toolbar Framework v1 (2026-07-16)
 
 - Added `design-system/toolbar/`: `Toolbar.jsx`, `ToolbarButton.jsx`,
