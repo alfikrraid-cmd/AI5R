@@ -245,3 +245,65 @@ Not changed:
 - No business logic, no Factory Pack dependency, no field editing/`onChange` (v1 is
   read-only display) — all explicitly deferred past v1.
 
+---
+
+## UI-016 — DataGrid Framework v1
+
+Status:
+✅ Completed
+
+Objective:
+
+Add a generic, design-system-level tabular data capability: columns/rows rendering
+with sorting, row selection, and pagination — all as UI-only internal state, with
+no domain-specific behavior of any kind.
+
+Scope:
+
+- `design-system/datagrid/**` (new)
+
+Implemented:
+
+- `DataGrid.jsx` — orchestrator. Props: `columns`, `rows`, `rowKey` (default `"id"`),
+  `selectable` (default `false`), `pageSize` (optional — omitting it disables
+  pagination), `onSortChange`/`onSelectionChange` (optional observer callbacks; state
+  is owned internally and uncontrolled, no provider/context in v1). Owns `sort`
+  (`{ key, direction }`, cycles asc→desc→none per column click), `selectedIds`
+  (`Set`, toggle row / select-all-on-current-page), and `page` (0-indexed) as local
+  `useState`. Default sort comparator is numeric-or-`localeCompare`; a column may
+  override via `column.sortFn(rowA, rowB)`. Renders a `<table>` wrapping
+  `DataGridHeader` + `DataGridRow`s, and `DataGridPagination` only when `pageSize`
+  is given.
+- `DataGridHeader.jsx` — presentational `<thead>`. Column titles, click-to-sort with
+  a chevron indicator (`lucide-react`), select-all checkbox when `selectable`. Driven
+  entirely by props.
+- `DataGridRow.jsx` — presentational `<tr>`. Row-selection checkbox (if `selectable`)
+  + one `DataGridCell` per column.
+- `DataGridCell.jsx` — presentational `<td>`. Renders `column.render(row)` if given,
+  else `row[column.key]`, respecting `column.align`.
+- `DataGridPagination.jsx` — presentational footer: total row count, "Page X of Y",
+  prev/next buttons.
+- `index.js` — barrel export of `DataGrid`, `DataGridHeader`, `DataGridRow`,
+  `DataGridCell`, `DataGridPagination`.
+- Styled with the same studio palette from UI-012–UI-015.
+- Self-contained: no imports from `design-system/panels`, `design-system/docking`, or
+  `design-system/inspector`, matching this repo's pattern of each design-system MWO
+  being strictly additive/isolated. No Pump/Invoice/Product-specific logic anywhere —
+  columns are opaque `{ key, title, sortable?, align?, render?, sortFn? }`
+  descriptors, rows are opaque objects.
+
+Verified via a component-render test (removed after passing, per this repo's
+convention of not committing throwaway smoke tests): columns/rows render, the
+asc→desc→none sort cycle reorders rows correctly on repeated header clicks, row
+selection + select-all-on-current-page work and report ids via
+`onSelectionChange`, pagination slices rows and navigates between pages (Next
+disabled on the last page), and no pagination footer renders when `pageSize` is
+omitted.
+
+Not changed:
+
+- Workspace Engine, Docking System, Inspector Framework, Panel Framework,
+  `modules/ltsa`, `CORE-SERVICES`, `PRODUCTS`, `AI5R-SDK` — untouched.
+- No controlled state/provider/context, no server-side sort/page hooks, no column
+  resize/reorder — all explicitly deferred past v1.
+

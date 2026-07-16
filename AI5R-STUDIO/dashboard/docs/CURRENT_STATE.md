@@ -1,6 +1,19 @@
 # AI5R Studio — Workspace Engine: Current State
 
-_Last updated: UI-015 (2026-07-16)_
+_Last updated: UI-016 (2026-07-16)_
+
+## DataGrid Framework (as of UI-016)
+
+- `design-system/datagrid/` — `DataGrid.jsx`, `DataGridHeader.jsx`,
+  `DataGridRow.jsx`, `DataGridCell.jsx`, `DataGridPagination.jsx`, `index.js`. Pure
+  design-system, v1: no Workspace/Docking/Panels/Inspector dependency, no Factory
+  Pack / module dependency, no business logic — columns/rows are opaque.
+- `DataGrid` owns sort/selection/pagination state internally (uncontrolled): sort
+  cycles asc→desc→none, selection is a `Set` with select-all scoped to the current
+  page, pagination is optional via `pageSize` (0-indexed page state).
+- No controlled-state/provider/context mode exists yet (same v1 scoping choice as
+  Docking's `DockLayout`).
+- Not yet wired into any consumer.
 
 ## Inspector Framework (as of UI-015)
 

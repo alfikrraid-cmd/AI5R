@@ -1,5 +1,22 @@
 # AI5R Studio — UI Track Changelog
 
+## UI-016 — DataGrid Framework v1 (2026-07-16)
+
+- Added `design-system/datagrid/`: `DataGrid.jsx`, `DataGridHeader.jsx`,
+  `DataGridRow.jsx`, `DataGridCell.jsx`, `DataGridPagination.jsx`, `index.js`. A
+  generic tabular data capability: columns/rows, sorting, row selection, pagination.
+- `DataGrid` owns all state internally (uncontrolled): sort cycles asc→desc→none per
+  column click (default numeric/`localeCompare` comparator, overridable via
+  `column.sortFn`), row selection is a `Set` with select-all scoped to the current
+  page, pagination is 0-indexed with `pageSize` optional (omit = no pagination).
+- `DataGridHeader`/`DataGridRow`/`DataGridCell`/`DataGridPagination` are pure
+  presentational, driven entirely by props.
+- Domain-agnostic: columns/rows are opaque descriptors/objects — no Pump/Invoice/
+  Product-specific logic anywhere in the framework.
+- Self-contained: no import from `design-system/panels`, `design-system/docking`, or
+  `design-system/inspector`.
+- No consumer wiring yet — purely additive to the design system.
+
 ## UI-015 — Inspector Framework v1 (2026-07-16)
 
 - Added `design-system/inspector/`: `Inspector.jsx`, `InspectorHeader.jsx`,
