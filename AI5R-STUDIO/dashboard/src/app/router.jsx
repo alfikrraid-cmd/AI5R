@@ -8,6 +8,8 @@ import Seal from "../modules/ltsa/pages/Seal";
 import Runtime from "../modules/ltsa/pages/Runtime";
 import Knowledge from "../modules/ltsa/pages/Knowledge";
 
+import LTSA from "../modules/ltsa/pages/LTSA";
+
 export default function Router() {
     return (
         <BrowserRouter>
@@ -22,7 +24,7 @@ export default function Router() {
 
                     <Route
                         path="/ltsa"
-                        element={<Dashboard />}
+                        element={<LTSA />}
                     />
 
                     <Route

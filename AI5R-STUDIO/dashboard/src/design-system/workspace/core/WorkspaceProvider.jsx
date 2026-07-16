@@ -1,68 +1,92 @@
-import { useMemo, useState } from "react";
+import { useState, useRef } from "react";
 
 import WorkspaceContext from "./WorkspaceContext";
-import WorkspaceRegistry from "./WorkspaceRegistry";
 import WorkspaceManager from "./WorkspaceManager";
+import WorkspaceRegistry from "./WorkspaceRegistry";
+
 
 export default function WorkspaceProvider({ children }) {
-    const registry = useMemo(() => new WorkspaceRegistry(), []);
-
-    const manager = useMemo(
-        () => new WorkspaceManager(registry),
-        [registry]
-    );
 
     const [, forceUpdate] = useState(0);
 
-    const refresh = () => {
+
+    const registryRef = useRef(null);
+    const managerRef = useRef(null);
+
+
+    if (!registryRef.current) {
+        registryRef.current = new WorkspaceRegistry();
+    }
+
+
+    if (!managerRef.current) {
+        managerRef.current =
+            new WorkspaceManager(registryRef.current);
+    }
+
+
+    const registry = registryRef.current;
+    const manager = managerRef.current;
+
+
+
+    function registerWorkspace(workspace) {
+
+        if (!registry.has(workspace.id)) {
+            registry.register(workspace);
+        }
+
         forceUpdate(value => value + 1);
-    };
+    }
+
+
+
+    function openWorkspace(id) {
+
+        manager.openWorkspace(id);
+
+        forceUpdate(value => value + 1);
+    }
+
+
+
+    function closeWorkspace(id) {
+
+        manager.closeWorkspace(id);
+
+        forceUpdate(value => value + 1);
+    }
+
+
+
+    function activateWorkspace(id) {
+
+        manager.activateWorkspace(id);
+
+        forceUpdate(value => value + 1);
+    }
+
+
 
     const value = {
-        registry,
-        manager,
 
-        registerWorkspace(descriptor) {
-            registry.register(descriptor);
-            refresh();
-        },
+        workspaces:
+            registry.getAll(),
 
-        unregisterWorkspace(id) {
-            registry.unregister(id);
-            refresh();
-        },
+        activeWorkspace:
+            manager.getActiveWorkspace(),
 
-        openWorkspace(id) {
-            manager.openWorkspace(id);
-            refresh();
-        },
 
-        closeWorkspace(id) {
-            manager.closeWorkspace(id);
-            refresh();
-        },
+        registerWorkspace,
 
-        activateWorkspace(id) {
-            manager.activateWorkspace(id);
-            refresh();
-        },
+        openWorkspace,
 
-        getWorkspace(id) {
-            return registry.get(id);
-        },
+        closeWorkspace,
 
-        getWorkspaces() {
-            return registry.getAll();
-        },
+        activateWorkspace,
 
-        getOpenedWorkspaces() {
-            return manager.getOpenedWorkspaces();
-        },
-
-        getActiveWorkspace() {
-            return manager.getActiveWorkspace();
-        },
     };
+
 
     return (
         <WorkspaceContext.Provider value={value}>

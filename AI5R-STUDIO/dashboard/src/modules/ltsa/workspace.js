@@ -1,24 +1,48 @@
-import { useWorkspace } from "@/design-system/workspace";
+import Dashboard from "./pages/Dashboard";
+import Pump from "./pages/Pump";
+import Seal from "./pages/Seal";
+import Runtime from "./pages/Runtime";
+import Knowledge from "./pages/Knowledge";
 
-import PumpPage from "./pages/PumpPage";
-// nanti ditambah:
-// import OverviewPage from "./pages/OverviewPage";
-// import SealPage from "./pages/SealPage";
 
-export function registerLTSAWorkspaces() {
-    const {
-        registerWorkspace,
-        openWorkspace,
-    } = useWorkspace();
+const workspaces = [
 
-    registerWorkspace({
-        id: "pump",
-        title: "Pump Registry",
-        component: PumpPage,
-        order: 1,
-        closable: false,
+    {
+        id: "dashboard",
+        title: "Dashboard",
+        component: Dashboard,
         defaultOpen: true,
-    });
+    },
 
-    openWorkspace("pump");
-}
+    {
+        id: "pump",
+        title: "Pump",
+        component: Pump,
+        defaultOpen: true,
+    },
+
+    {
+        id: "seal",
+        title: "Seal",
+        component: Seal,
+        defaultOpen: true,
+    },
+
+    {
+        id: "runtime",
+        title: "Runtime",
+        component: Runtime,
+        defaultOpen: true,
+    },
+
+    {
+        id: "knowledge",
+        title: "Knowledge",
+        component: Knowledge,
+        defaultOpen: true,
+    },
+
+];
+
+
+export default workspaces;

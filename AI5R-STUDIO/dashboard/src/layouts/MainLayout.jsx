@@ -3,9 +3,8 @@ import { Outlet } from "react-router-dom";
 import Sidebar from "../design-system/layout/Sidebar";
 import Topbar from "../design-system/layout/Topbar";
 import Breadcrumb from "../design-system/layout/Breadcrumb";
-import WorkspaceTabs from "../design-system/layout/WorkspaceTabs";
-import Workspace from "../design-system/layout/Workspace";
 import StatusBar from "../design-system/layout/StatusBar";
+
 
 export default function MainLayout() {
     return (
@@ -17,6 +16,7 @@ export default function MainLayout() {
                 overflow: "hidden",
             }}
         >
+
             <Sidebar />
 
             <div
@@ -27,18 +27,25 @@ export default function MainLayout() {
                     minWidth: 0,
                 }}
             >
+
                 <Topbar />
 
                 <Breadcrumb />
 
-                <WorkspaceTabs />
-
-                <Workspace>
+                <main
+                    style={{
+                        flex: 1,
+                        overflow: "auto",
+                    }}
+                >
                     <Outlet />
-                </Workspace>
+                </main>
+
 
                 <StatusBar />
+
             </div>
+
         </div>
     );
 }

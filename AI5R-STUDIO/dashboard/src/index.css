@@ -8,3 +8,57 @@ body{
   color:white;
   font-family:Inter,sans-serif;
 }
+
+
+.workspace-tabs {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+
+    height: 36px;
+
+    padding: 0 12px;
+
+    background: #0f172a;
+
+    border-bottom: 1px solid #1e293b;
+}
+
+
+.workspace-tabs button {
+
+    background: transparent;
+
+    border: none;
+
+    color: #94a3b8;
+
+    padding: 8px 16px;
+
+    cursor: pointer;
+
+    font-size: 13px;
+
+    font-weight: 500;
+
+    border-radius: 6px;
+
+}
+
+
+.workspace-tabs button:hover {
+
+    background: #1e293b;
+
+    color:white;
+
+}
+
+
+.workspace-tabs button.active {
+
+    background:#2563eb;
+
+    color:white;
+
+}
