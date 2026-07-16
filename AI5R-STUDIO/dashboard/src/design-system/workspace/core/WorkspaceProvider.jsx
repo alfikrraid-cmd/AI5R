@@ -21,7 +21,9 @@ export default function WorkspaceProvider({ children }) {
 
     if (!managerRef.current) {
         managerRef.current =
-            new WorkspaceManager(registryRef.current);
+            new WorkspaceManager(
+                registryRef.current
+            );
     }
 
 
@@ -33,7 +35,9 @@ export default function WorkspaceProvider({ children }) {
     function registerWorkspace(workspace) {
 
         if (!registry.has(workspace.id)) {
+
             registry.register(workspace);
+
         }
 
         forceUpdate(value => value + 1);
@@ -70,11 +74,16 @@ export default function WorkspaceProvider({ children }) {
 
     const value = {
 
+        // HANYA workspace yang sedang terbuka
+        // tampil sebagai tab
         workspaces:
-            registry.getAll(),
+            manager.getOpenedWorkspaces(),
 
+
+        // workspace aktif
         activeWorkspace:
             manager.getActiveWorkspace(),
+
 
 
         registerWorkspace,
@@ -88,9 +97,14 @@ export default function WorkspaceProvider({ children }) {
     };
 
 
+
     return (
+
         <WorkspaceContext.Provider value={value}>
+
             {children}
+
         </WorkspaceContext.Provider>
+
     );
 }
