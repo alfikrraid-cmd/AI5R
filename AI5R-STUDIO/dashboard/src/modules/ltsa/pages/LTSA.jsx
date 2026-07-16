@@ -15,7 +15,10 @@ function LTSAContent() {
     const {
         registerWorkspace,
         openWorkspace,
+        restoreWorkspace,
+        hasSavedState,
     } = useWorkspace();
+
 
 
     useEffect(() => {
@@ -23,9 +26,15 @@ function LTSAContent() {
         bootstrapLTSA({
             registerWorkspace,
             openWorkspace,
+            hasSavedState,
         });
 
+
+        restoreWorkspace();
+
+
     }, []);
+
 
 
     return (
@@ -38,6 +47,7 @@ function LTSAContent() {
 }
 
 
+
 export default function LTSA() {
 
     return (
@@ -47,4 +57,5 @@ export default function LTSA() {
 
         </WorkspaceProvider>
     );
+
 }
