@@ -1,0 +1,215 @@
+{
+  "name": "WF-LTSA-BRAIN-PDF-DOCUMENT-CREATE-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ltsa/pdf-document/create",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-pdf-document-create",
+      "name": "Webhook Create PDF Document",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || $json;\nconst ALLOWED_TYPES = [\n  'INSTALLATION_REPORT', 'SERVICE_REPORT', 'INSPECTION_REPORT', 'FAILURE_REPORT',\n  'JOHN_CRANE_DRAWING', 'DATASHEET', 'MAINTENANCE_MANUAL', 'SERVICE_BULLETIN',\n  'ENGINEERING_SPECIFICATION', 'CALIBRATION_REPORT', 'HYDROTEST_REPORT'\n];\n\nif (!body.pdf_document_id) {\n  throw new Error('pdf_document_id is required');\n}\n\nif (!body.knowledge_source_id) {\n  throw new Error('knowledge_source_id is required');\n}\n\nif (!body.document_name) {\n  throw new Error('document_name is required');\n}\n\nif (!body.document_type || !ALLOWED_TYPES.includes(body.document_type)) {\n  throw new Error('document_type must be one of: ' + ALLOWED_TYPES.join(', '));\n}\n\nif (body.page_count !== undefined && body.page_count !== null && (typeof body.page_count !== 'number' || body.page_count < 0)) {\n  throw new Error('page_count must be a non-negative number');\n}\n\nif (body.file_size !== undefined && body.file_size !== null && (typeof body.file_size !== 'number' || body.file_size < 0)) {\n  throw new Error('file_size must be a non-negative number');\n}\n\nreturn [\n  {\n    json: {\n      pdf_document_id: body.pdf_document_id,\n      knowledge_source_id: body.knowledge_source_id,\n      document_name: body.document_name,\n      document_type: body.document_type,\n      file_name: body.file_name || null,\n      page_count: body.page_count ?? null,\n      file_size: body.file_size ?? null,\n      file_hash: body.file_hash || null,\n      status: body.status || null\n    }\n  }\n];"
+      },
+      "id": "validate-pdf-document-input",
+      "name": "Validate PDF Document Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT pdf_document_id\nFROM pdf_document\nWHERE pdf_document_id = $1\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ [$json.pdf_document_id] }}"
+        }
+      },
+      "id": "check-existing-pdf-document",
+      "name": "Check Existing PDF Document",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [520, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const existing = $input.first()?.json;\nconst input = $('Validate PDF Document Input').first().json;\n\nreturn [{\n  json: {\n    ...input,\n    _conflict: !!(existing && existing.pdf_document_id)\n  }\n}];"
+      },
+      "id": "check-pdf-document-conflict",
+      "name": "Check PDF Document Conflict",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [780, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "conflict-check",
+              "leftValue": "={{ $json._conflict }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-pdf-document-conflict",
+      "name": "IF PDF Document Exists",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1040, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, message: \"pdf_document_id already exists: \" + $json.pdf_document_id } }}",
+        "options": {
+          "responseCode": 409
+        }
+      },
+      "id": "respond-pdf-document-conflict",
+      "name": "Respond Conflict",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1300, 140]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO pdf_document (\n  pdf_document_id,\n  knowledge_source_id,\n  document_name,\n  document_type,\n  file_name,\n  page_count,\n  file_size,\n  file_hash,\n  status\n)\nVALUES (\n  $1, $2, $3, $4, $5, $6, $7, $8, $9\n)\nRETURNING *;",
+        "options": {
+          "queryReplacement": "={{ [$json.pdf_document_id, $json.knowledge_source_id, $json.document_name, $json.document_type, $json.file_name, $json.page_count, $json.file_size, $json.file_hash, $json.status] }}"
+        }
+      },
+      "id": "insert-pdf-document-postgres",
+      "name": "Insert PDF Document to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1300, -140],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, message: \"PDF Document created successfully\", data: $json } }}",
+        "options": {}
+      },
+      "id": "response-pdf-document-success",
+      "name": "Response Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1560, -140]
+    }
+  ],
+  "connections": {
+    "Webhook Create PDF Document": {
+      "main": [
+        [
+          {
+            "node": "Validate PDF Document Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate PDF Document Input": {
+      "main": [
+        [
+          {
+            "node": "Check Existing PDF Document",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Existing PDF Document": {
+      "main": [
+        [
+          {
+            "node": "Check PDF Document Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check PDF Document Conflict": {
+      "main": [
+        [
+          {
+            "node": "IF PDF Document Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF PDF Document Exists": {
+      "main": [
+        [
+          {
+            "node": "Respond Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Insert PDF Document to PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert PDF Document to PostgreSQL": {
+      "main": [
+        [
+          {
+            "node": "Response Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

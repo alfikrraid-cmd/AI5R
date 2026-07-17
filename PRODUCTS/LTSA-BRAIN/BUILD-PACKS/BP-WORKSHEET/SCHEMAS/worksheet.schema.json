@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "WORKSHEET",
+  "type": "object",
+  "properties": {
+    "worksheet_id": {
+      "type": "string"
+    },
+    "workbook_id": {
+      "type": "string"
+    },
+    "worksheet_name": {
+      "type": "string"
+    },
+    "row_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "column_count": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "required": [
+    "worksheet_id",
+    "workbook_id",
+    "worksheet_name"
+  ]
+}

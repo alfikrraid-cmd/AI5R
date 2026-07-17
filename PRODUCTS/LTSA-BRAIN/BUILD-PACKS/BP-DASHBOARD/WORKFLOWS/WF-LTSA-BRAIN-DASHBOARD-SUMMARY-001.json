@@ -1,0 +1,97 @@
+{
+  "name": "WF-LTSA-BRAIN-DASHBOARD-SUMMARY-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "ltsa/dashboard/summary",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-dashboard-summary",
+      "name": "GET /ltsa/dashboard/summary",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT 'customer' AS module, count(*) AS total FROM customer_registry\nUNION ALL\nSELECT 'pump' AS module, count(*) AS total FROM ltsa_pumps\nUNION ALL\nSELECT 'seal' AS module, count(*) AS total FROM seal_registry\nUNION ALL\nSELECT 'asset' AS module, count(*) AS total FROM asset_registry\nUNION ALL\nSELECT 'soot_blower' AS module, count(*) AS total FROM soot_blower_registry\nUNION ALL\nSELECT 'work_order' AS module, count(*) AS total FROM work_order\nUNION ALL\nSELECT 'maintenance_history' AS module, count(*) AS total FROM maintenance_history\nUNION ALL\nSELECT 'work_order_open' AS module, count(*) AS total FROM work_order WHERE status = 'OPEN';"
+      },
+      "id": "aggregate-dashboard-counts",
+      "name": "Aggregate Module Counts",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [260, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(item => item.json);\n\nconst counts = {};\nfor (const row of rows) {\n  counts[row.module] = Number(row.total);\n}\n\nreturn [{\n  json: {\n    success: true,\n    message: 'Dashboard summary retrieved',\n    generated_at: new Date().toISOString(),\n    counts\n  }\n}];"
+      },
+      "id": "build-dashboard-summary-response",
+      "name": "Build Dashboard Summary Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: $json.success, message: $json.message, generated_at: $json.generated_at, counts: $json.counts } }}",
+        "options": {}
+      },
+      "id": "respond-dashboard-summary",
+      "name": "Respond Dashboard Summary",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [780, 0]
+    }
+  ],
+  "connections": {
+    "GET /ltsa/dashboard/summary": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Module Counts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Module Counts": {
+      "main": [
+        [
+          {
+            "node": "Build Dashboard Summary Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Dashboard Summary Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Dashboard Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

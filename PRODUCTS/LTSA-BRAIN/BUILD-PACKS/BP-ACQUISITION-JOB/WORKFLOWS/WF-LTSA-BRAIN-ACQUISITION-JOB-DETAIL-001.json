@@ -1,0 +1,186 @@
+{
+  "name": "WF-LTSA-BRAIN-ACQUISITION-JOB-DETAIL-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "ltsa/acquisition-job/detail",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-acquisition-job-detail",
+      "name": "GET /ltsa/acquisition-job/detail",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const acquisition_job_id = $json.query?.acquisition_job_id;\n\nreturn [{\n  json: {\n    acquisition_job_id,\n    valid: !!acquisition_job_id\n  }\n}];"
+      },
+      "id": "parse-acquisition-job-id",
+      "name": "Parse Acquisition Job ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "valid-acquisition-job-id-check",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-valid-acquisition-job-id",
+      "name": "IF Valid Acquisition Job ID",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [520, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT *\nFROM acquisition_job\nWHERE acquisition_job_id = $1\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ [$json.acquisition_job_id] }}"
+        }
+      },
+      "id": "get-acquisition-job-detail",
+      "name": "Get Acquisition Job Detail",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [780, -120],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first()?.json;\n\nif (!row || !row.acquisition_job_id) {\n  return [{\n    json: {\n      statusCode: 404,\n      success: false,\n      message: 'Acquisition job not found',\n      data: null\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    statusCode: 200,\n    success: true,\n    message: 'Acquisition job detail found',\n    data: row\n  }\n}];"
+      },
+      "id": "build-acquisition-job-detail-response",
+      "name": "Build Acquisition Job Detail Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, -120]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: $json.success, message: $json.message, data: $json.data } }}",
+        "options": {
+          "responseCode": "={{ $json.statusCode }}"
+        }
+      },
+      "id": "respond-acquisition-job-detail",
+      "name": "Respond Acquisition Job Detail",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1300, -120]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, message: 'acquisition_job_id query parameter is required' } }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "respond-acquisition-job-400",
+      "name": "Respond 400",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [780, 200]
+    }
+  ],
+  "connections": {
+    "GET /ltsa/acquisition-job/detail": {
+      "main": [
+        [
+          {
+            "node": "Parse Acquisition Job ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Acquisition Job ID": {
+      "main": [
+        [
+          {
+            "node": "IF Valid Acquisition Job ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Valid Acquisition Job ID": {
+      "main": [
+        [
+          {
+            "node": "Get Acquisition Job Detail",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 400",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Acquisition Job Detail": {
+      "main": [
+        [
+          {
+            "node": "Build Acquisition Job Detail Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Acquisition Job Detail Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Acquisition Job Detail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

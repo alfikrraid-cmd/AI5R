@@ -1,0 +1,98 @@
+{
+  "name": "WF-LTSA-BRAIN-MEDIA-ACQUISITION-JOB-LIST-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "ltsa/media-acquisition-job/list",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-media-acquisition-job-list",
+      "name": "GET /ltsa/media-acquisition-job/list",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM media_acquisition_job;",
+        "options": {}
+      },
+      "id": "list-media-acquisition-job",
+      "name": "List Media Acquisition Jobs",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [260, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    success: true,\n    message: 'Media Acquisition Job list retrieved',\n    data: $input.all().map(item => item.json)\n  }\n}];"
+      },
+      "id": "build-media-acquisition-job-list-response",
+      "name": "Build Media Acquisition Job List Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: $json.success, message: $json.message, data: $json.data } }}",
+        "options": {}
+      },
+      "id": "respond-media-acquisition-job-list",
+      "name": "Respond Media Acquisition Job List",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [780, 0]
+    }
+  ],
+  "connections": {
+    "GET /ltsa/media-acquisition-job/list": {
+      "main": [
+        [
+          {
+            "node": "List Media Acquisition Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Media Acquisition Jobs": {
+      "main": [
+        [
+          {
+            "node": "Build Media Acquisition Job List Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Media Acquisition Job List Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Media Acquisition Job List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

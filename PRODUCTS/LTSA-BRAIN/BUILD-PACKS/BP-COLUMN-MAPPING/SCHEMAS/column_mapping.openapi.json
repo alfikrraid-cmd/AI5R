@@ -1,0 +1,14 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "COLUMN_MAPPING",
+    "version": "1.0.0"
+  },
+  "components": {
+    "schemas": {
+      "COLUMN_MAPPING": {
+        "type": "object"
+      }
+    }
+  }
+}

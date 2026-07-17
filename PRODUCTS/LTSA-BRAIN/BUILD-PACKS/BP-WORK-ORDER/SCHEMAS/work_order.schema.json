@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "WORK_ORDER",
+  "type": "object",
+  "properties": {
+    "work_order_code": {
+      "type": "string"
+    },
+    "customer_code": {
+      "type": "string"
+    },
+    "asset_code": {
+      "type": "string"
+    },
+    "asset_type": {
+      "type": "string",
+      "description": "Which registry asset_code belongs to: pump | seal | asset | soot_blower"
+    },
+    "description": {
+      "type": "string"
+    },
+    "priority": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "assigned_to": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "work_order_code",
+    "description"
+  ]
+}

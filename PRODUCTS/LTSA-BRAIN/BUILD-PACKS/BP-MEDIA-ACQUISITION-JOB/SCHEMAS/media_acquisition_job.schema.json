@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MEDIA_ACQUISITION_JOB",
+  "type": "object",
+  "properties": {
+    "media_acquisition_job_id": {
+      "type": "string"
+    },
+    "knowledge_source_id": {
+      "type": "string"
+    },
+    "engineering_media_id": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["PENDING", "IN_PROGRESS", "COMPLETED", "FAILED"]
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "finished_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "validation_errors": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "media_acquisition_job_id",
+    "knowledge_source_id",
+    "engineering_media_id"
+  ]
+}

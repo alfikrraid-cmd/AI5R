@@ -1,0 +1,97 @@
+{
+  "name": "WF-LTSA-BRAIN-MAINTENANCE-HISTORY-LIST-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "ltsa/maintenance-history/list",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-maintenance-history-list",
+      "name": "GET /ltsa/maintenance-history/list",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT *\nFROM maintenance_history\nORDER BY performed_at DESC;"
+      },
+      "id": "list-maintenance-history-postgres",
+      "name": "List Maintenance History",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [260, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(item => item.json);\n\nreturn [{\n  json: {\n    success: true,\n    message: 'Maintenance history list retrieved',\n    count: rows.length,\n    data: rows\n  }\n}];"
+      },
+      "id": "build-maintenance-history-list-response",
+      "name": "Build Maintenance History List Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: $json.success, message: $json.message, count: $json.count, data: $json.data } }}",
+        "options": {}
+      },
+      "id": "respond-maintenance-history-list",
+      "name": "Respond Maintenance History List",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [780, 0]
+    }
+  ],
+  "connections": {
+    "GET /ltsa/maintenance-history/list": {
+      "main": [
+        [
+          {
+            "node": "List Maintenance History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Maintenance History": {
+      "main": [
+        [
+          {
+            "node": "Build Maintenance History List Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Maintenance History List Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Maintenance History List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

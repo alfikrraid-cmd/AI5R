@@ -1,0 +1,186 @@
+{
+  "name": "WF-LTSA-BRAIN-WORK-ORDER-DETAIL-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "ltsa/work-order/detail",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-work-order-detail",
+      "name": "GET /ltsa/work-order/detail",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const work_order_code = $json.query?.work_order_code;\n\nreturn [{\n  json: {\n    work_order_code,\n    valid: !!work_order_code\n  }\n}];"
+      },
+      "id": "parse-work-order-code",
+      "name": "Parse Work Order Code",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "valid-work-order-code-check",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-valid-work-order-code",
+      "name": "IF Valid Work Order Code",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [520, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT *\nFROM work_order\nWHERE work_order_code = $1\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ [$json.work_order_code] }}"
+        }
+      },
+      "id": "get-work-order-detail",
+      "name": "Get Work Order Detail",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [780, -120],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first()?.json;\n\nif (!row || !row.work_order_code) {\n  return [{\n    json: {\n      statusCode: 404,\n      success: false,\n      message: 'Work order not found',\n      data: null\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    statusCode: 200,\n    success: true,\n    message: 'Work order detail found',\n    data: row\n  }\n}];"
+      },
+      "id": "build-work-order-detail-response",
+      "name": "Build Work Order Detail Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, -120]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: $json.success, message: $json.message, data: $json.data } }}",
+        "options": {
+          "responseCode": "={{ $json.statusCode }}"
+        }
+      },
+      "id": "respond-work-order-detail",
+      "name": "Respond Work Order Detail",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1300, -120]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, message: 'work_order_code query parameter is required' } }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "respond-work-order-400",
+      "name": "Respond 400",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [780, 200]
+    }
+  ],
+  "connections": {
+    "GET /ltsa/work-order/detail": {
+      "main": [
+        [
+          {
+            "node": "Parse Work Order Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Work Order Code": {
+      "main": [
+        [
+          {
+            "node": "IF Valid Work Order Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Valid Work Order Code": {
+      "main": [
+        [
+          {
+            "node": "Get Work Order Detail",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 400",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Work Order Detail": {
+      "main": [
+        [
+          {
+            "node": "Build Work Order Detail Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Work Order Detail Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Work Order Detail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

@@ -1,0 +1,12 @@
+{
+    "recipe_id": "RECIPE-PUMP-001",
+    "recipe_version": "1",
+    "object_type": "PUMP",
+    "identity_key": "tag_number",
+    "relationship_keys": [
+        "seal_type"
+    ],
+    "stations": [
+        "PumpManufacturingStation"
+    ]
+}

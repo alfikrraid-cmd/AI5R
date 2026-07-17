@@ -1,0 +1,215 @@
+{
+  "name": "WF-LTSA-BRAIN-MEDIA-CLASSIFICATION-CREATE-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ltsa/media-classification/create",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-media-classification-create",
+      "name": "Webhook Create Media Classification",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || $json;\nconst ALLOWED_TYPES = [\n  'PHOTO', 'VIDEO', 'AUDIO', 'THERMAL_IMAGE', 'INFRARED_IMAGE',\n  'INSPECTION_IMAGE', 'CCTV_RECORDING', 'DRONE_RECORDING', 'OTHER'\n];\n\nif (!body.media_classification_id) {\n  throw new Error('media_classification_id is required');\n}\n\nif (!body.engineering_media_id) {\n  throw new Error('engineering_media_id is required');\n}\n\nif (!body.classification_type || !ALLOWED_TYPES.includes(body.classification_type)) {\n  throw new Error('classification_type must be one of: ' + ALLOWED_TYPES.join(', '));\n}\n\nif (body.confidence !== undefined && body.confidence !== null && typeof body.confidence !== 'number') {\n  throw new Error('confidence must be a number');\n}\n\nreturn [\n  {\n    json: {\n      media_classification_id: body.media_classification_id,\n      engineering_media_id: body.engineering_media_id,\n      classification_type: body.classification_type,\n      classification_version: body.classification_version || null,\n      confidence: body.confidence ?? null,\n      status: body.status || null\n    }\n  }\n];"
+      },
+      "id": "validate-media-classification-input",
+      "name": "Validate Media Classification Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT media_classification_id\nFROM media_classification\nWHERE media_classification_id = $1\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ [$json.media_classification_id] }}"
+        }
+      },
+      "id": "check-existing-media-classification",
+      "name": "Check Existing Media Classification",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [520, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const existing = $input.first()?.json;\nconst input = $('Validate Media Classification Input').first().json;\n\nreturn [{\n  json: {\n    ...input,\n    _conflict: !!(existing && existing.media_classification_id)\n  }\n}];"
+      },
+      "id": "check-media-classification-conflict",
+      "name": "Check Media Classification Conflict",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [780, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "conflict-check",
+              "leftValue": "={{ $json._conflict }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-media-classification-conflict",
+      "name": "IF Media Classification Exists",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1040, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, message: \"media_classification_id already exists: \" + $json.media_classification_id } }}",
+        "options": {
+          "responseCode": 409
+        }
+      },
+      "id": "respond-media-classification-conflict",
+      "name": "Respond Conflict",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1300, 140]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO media_classification (\n  media_classification_id,\n  engineering_media_id,\n  classification_type,\n  classification_version,\n  confidence,\n  status\n)\nVALUES (\n  $1, $2, $3, $4, $5, $6\n)\nRETURNING *;",
+        "options": {
+          "queryReplacement": "={{ [$json.media_classification_id, $json.engineering_media_id, $json.classification_type, $json.classification_version, $json.confidence, $json.status] }}"
+        }
+      },
+      "id": "insert-media-classification-postgres",
+      "name": "Insert Media Classification to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1300, -140],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, message: \"Media Classification created successfully\", data: $json } }}",
+        "options": {}
+      },
+      "id": "response-media-classification-success",
+      "name": "Response Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1560, -140]
+    }
+  ],
+  "connections": {
+    "Webhook Create Media Classification": {
+      "main": [
+        [
+          {
+            "node": "Validate Media Classification Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Media Classification Input": {
+      "main": [
+        [
+          {
+            "node": "Check Existing Media Classification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Existing Media Classification": {
+      "main": [
+        [
+          {
+            "node": "Check Media Classification Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Media Classification Conflict": {
+      "main": [
+        [
+          {
+            "node": "IF Media Classification Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Media Classification Exists": {
+      "main": [
+        [
+          {
+            "node": "Respond Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Insert Media Classification to PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Media Classification to PostgreSQL": {
+      "main": [
+        [
+          {
+            "node": "Response Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

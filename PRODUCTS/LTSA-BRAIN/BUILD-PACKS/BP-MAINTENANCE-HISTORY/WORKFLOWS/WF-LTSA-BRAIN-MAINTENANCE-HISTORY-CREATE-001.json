@@ -1,0 +1,215 @@
+{
+  "name": "WF-LTSA-BRAIN-MAINTENANCE-HISTORY-CREATE-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ltsa/maintenance-history/create",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-maintenance-history-create",
+      "name": "Webhook Create Maintenance History",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || $json;\n\nif (!body.maintenance_record_code) {\n  throw new Error('maintenance_record_code is required');\n}\n\nif (!body.action_taken) {\n  throw new Error('action_taken is required');\n}\n\nreturn [\n  {\n    json: {\n      maintenance_record_code: body.maintenance_record_code,\n      work_order_code: body.work_order_code || null,\n      asset_code: body.asset_code || null,\n      asset_type: body.asset_type || null,\n      action_taken: body.action_taken,\n      performed_by: body.performed_by || null,\n      notes: body.notes || null\n    }\n  }\n];"
+      },
+      "id": "validate-maintenance-history-input",
+      "name": "Validate Maintenance History Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT maintenance_record_code\nFROM maintenance_history\nWHERE maintenance_record_code = $1\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ [$json.maintenance_record_code] }}"
+        }
+      },
+      "id": "check-existing-maintenance-history",
+      "name": "Check Existing Maintenance History",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [520, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const existing = $input.first()?.json;\nconst input = $('Validate Maintenance History Input').first().json;\n\nreturn [{\n  json: {\n    ...input,\n    _conflict: !!(existing && existing.maintenance_record_code)\n  }\n}];"
+      },
+      "id": "check-maintenance-history-conflict",
+      "name": "Check Maintenance History Conflict",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [780, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "conflict-check",
+              "leftValue": "={{ $json._conflict }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-maintenance-history-conflict",
+      "name": "IF Maintenance Record Code Exists",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1040, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, message: \"maintenance_record_code already exists: \" + $json.maintenance_record_code } }}",
+        "options": {
+          "responseCode": 409
+        }
+      },
+      "id": "respond-maintenance-history-conflict",
+      "name": "Respond Conflict",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1300, 140]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO maintenance_history (\n  maintenance_record_code,\n  work_order_code,\n  asset_code,\n  asset_type,\n  action_taken,\n  performed_by,\n  notes\n)\nVALUES (\n  $1, $2, $3, $4, $5, $6, $7\n)\nRETURNING *;",
+        "options": {
+          "queryReplacement": "={{ [$json.maintenance_record_code, $json.work_order_code, $json.asset_code, $json.asset_type, $json.action_taken, $json.performed_by, $json.notes] }}"
+        }
+      },
+      "id": "insert-maintenance-history-postgres",
+      "name": "Insert Maintenance History to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1300, -140],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, message: \"Maintenance history record created successfully\", data: $json } }}",
+        "options": {}
+      },
+      "id": "response-maintenance-history-success",
+      "name": "Response Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1560, -140]
+    }
+  ],
+  "connections": {
+    "Webhook Create Maintenance History": {
+      "main": [
+        [
+          {
+            "node": "Validate Maintenance History Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Maintenance History Input": {
+      "main": [
+        [
+          {
+            "node": "Check Existing Maintenance History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Existing Maintenance History": {
+      "main": [
+        [
+          {
+            "node": "Check Maintenance History Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Maintenance History Conflict": {
+      "main": [
+        [
+          {
+            "node": "IF Maintenance Record Code Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Maintenance Record Code Exists": {
+      "main": [
+        [
+          {
+            "node": "Respond Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Insert Maintenance History to PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Maintenance History to PostgreSQL": {
+      "main": [
+        [
+          {
+            "node": "Response Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

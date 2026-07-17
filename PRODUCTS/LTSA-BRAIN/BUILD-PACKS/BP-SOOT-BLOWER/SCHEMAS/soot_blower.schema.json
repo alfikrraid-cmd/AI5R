@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SOOT_BLOWER",
+  "type": "object",
+  "properties": {
+    "soot_blower_code": {
+      "type": "string"
+    },
+    "soot_blower_name": {
+      "type": "string"
+    },
+    "boiler_area": {
+      "type": "string"
+    },
+    "blower_type": {
+      "type": "string"
+    },
+    "manufacturer": {
+      "type": "string"
+    },
+    "model": {
+      "type": "string"
+    },
+    "steam_pressure": {
+      "type": "number"
+    },
+    "status": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "soot_blower_code",
+    "soot_blower_name"
+  ]
+}

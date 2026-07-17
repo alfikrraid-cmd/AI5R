@@ -1,0 +1,215 @@
+{
+  "name": "WF-LTSA-BRAIN-WORKBOOK-CREATE-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ltsa/workbook/create",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-workbook-create",
+      "name": "Webhook Create Workbook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || $json;\nconst ALLOWED_TYPES = [\n  'PUMP_MASTER', 'MECHANICAL_SEAL_MASTER', 'SEAL_STOCK', 'SEAL_INTERCHANGE',\n  'PUMP_COMPATIBILITY', 'INSTALLATION_HISTORY', 'MAINTENANCE_HISTORY',\n  'ENGINEER_MASTER', 'CUSTOMER_MASTER', 'VENDOR_MASTER', 'BILL_OF_MATERIAL'\n];\n\nif (!body.workbook_id) {\n  throw new Error('workbook_id is required');\n}\n\nif (!body.knowledge_source_id) {\n  throw new Error('knowledge_source_id is required');\n}\n\nif (!body.workbook_type || !ALLOWED_TYPES.includes(body.workbook_type)) {\n  throw new Error('workbook_type must be one of: ' + ALLOWED_TYPES.join(', '));\n}\n\nif (!body.workbook_name) {\n  throw new Error('workbook_name is required');\n}\n\nif (body.sheet_count !== undefined && body.sheet_count !== null && (typeof body.sheet_count !== 'number' || body.sheet_count < 0)) {\n  throw new Error('sheet_count must be a non-negative number');\n}\n\nreturn [\n  {\n    json: {\n      workbook_id: body.workbook_id,\n      knowledge_source_id: body.knowledge_source_id,\n      workbook_type: body.workbook_type,\n      workbook_name: body.workbook_name,\n      workbook_version: body.workbook_version || null,\n      sheet_count: body.sheet_count ?? null,\n      created_date: body.created_date || null,\n      imported_date: body.imported_date || null,\n      uploaded_by: body.uploaded_by || null\n    }\n  }\n];"
+      },
+      "id": "validate-workbook-input",
+      "name": "Validate Workbook Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT workbook_id\nFROM workbook\nWHERE workbook_id = $1\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ [$json.workbook_id] }}"
+        }
+      },
+      "id": "check-existing-workbook",
+      "name": "Check Existing Workbook",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [520, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const existing = $input.first()?.json;\nconst input = $('Validate Workbook Input').first().json;\n\nreturn [{\n  json: {\n    ...input,\n    _conflict: !!(existing && existing.workbook_id)\n  }\n}];"
+      },
+      "id": "check-workbook-conflict",
+      "name": "Check Workbook Conflict",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [780, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "conflict-check",
+              "leftValue": "={{ $json._conflict }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-workbook-conflict",
+      "name": "IF Workbook Exists",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1040, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, message: \"workbook_id already exists: \" + $json.workbook_id } }}",
+        "options": {
+          "responseCode": 409
+        }
+      },
+      "id": "respond-workbook-conflict",
+      "name": "Respond Conflict",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1300, 140]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO workbook (\n  workbook_id,\n  knowledge_source_id,\n  workbook_type,\n  workbook_name,\n  workbook_version,\n  sheet_count,\n  created_date,\n  imported_date,\n  uploaded_by\n)\nVALUES (\n  $1, $2, $3, $4, $5, $6, $7, $8, $9\n)\nRETURNING *;",
+        "options": {
+          "queryReplacement": "={{ [$json.workbook_id, $json.knowledge_source_id, $json.workbook_type, $json.workbook_name, $json.workbook_version, $json.sheet_count, $json.created_date, $json.imported_date, $json.uploaded_by] }}"
+        }
+      },
+      "id": "insert-workbook-postgres",
+      "name": "Insert Workbook to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1300, -140],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, message: \"Workbook created successfully\", data: $json } }}",
+        "options": {}
+      },
+      "id": "response-workbook-success",
+      "name": "Response Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1560, -140]
+    }
+  ],
+  "connections": {
+    "Webhook Create Workbook": {
+      "main": [
+        [
+          {
+            "node": "Validate Workbook Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Workbook Input": {
+      "main": [
+        [
+          {
+            "node": "Check Existing Workbook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Existing Workbook": {
+      "main": [
+        [
+          {
+            "node": "Check Workbook Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Workbook Conflict": {
+      "main": [
+        [
+          {
+            "node": "IF Workbook Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Workbook Exists": {
+      "main": [
+        [
+          {
+            "node": "Respond Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Insert Workbook to PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Workbook to PostgreSQL": {
+      "main": [
+        [
+          {
+            "node": "Response Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

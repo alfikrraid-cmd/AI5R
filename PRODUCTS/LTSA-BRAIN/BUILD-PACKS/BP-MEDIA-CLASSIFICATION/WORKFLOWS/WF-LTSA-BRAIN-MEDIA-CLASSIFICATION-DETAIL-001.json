@@ -1,0 +1,186 @@
+{
+  "name": "WF-LTSA-BRAIN-MEDIA-CLASSIFICATION-DETAIL-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "ltsa/media-classification/detail",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-media-classification-detail",
+      "name": "GET /ltsa/media-classification/detail",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const media_classification_id = $json.query?.media_classification_id;\n\nreturn [{\n  json: {\n    media_classification_id,\n    valid: !!media_classification_id\n  }\n}];"
+      },
+      "id": "parse-media-classification-id",
+      "name": "Parse Media Classification ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "valid-media-classification-id-check",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-valid-media-classification-id",
+      "name": "IF Valid Media Classification ID",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [520, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT *\nFROM media_classification\nWHERE media_classification_id = $1\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ [$json.media_classification_id] }}"
+        }
+      },
+      "id": "get-media-classification-detail",
+      "name": "Get Media Classification Detail",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [780, -120],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first()?.json;\n\nif (!row || !row.media_classification_id) {\n  return [{\n    json: {\n      statusCode: 404,\n      success: false,\n      message: 'Media Classification not found',\n      data: null\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    statusCode: 200,\n    success: true,\n    message: 'Media Classification detail found',\n    data: row\n  }\n}];"
+      },
+      "id": "build-media-classification-detail-response",
+      "name": "Build Media Classification Detail Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, -120]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: $json.success, message: $json.message, data: $json.data } }}",
+        "options": {
+          "responseCode": "={{ $json.statusCode }}"
+        }
+      },
+      "id": "respond-media-classification-detail",
+      "name": "Respond Media Classification Detail",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1300, -120]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, message: 'media_classification_id query parameter is required' } }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "respond-media-classification-400",
+      "name": "Respond 400",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [780, 200]
+    }
+  ],
+  "connections": {
+    "GET /ltsa/media-classification/detail": {
+      "main": [
+        [
+          {
+            "node": "Parse Media Classification ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Media Classification ID": {
+      "main": [
+        [
+          {
+            "node": "IF Valid Media Classification ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Valid Media Classification ID": {
+      "main": [
+        [
+          {
+            "node": "Get Media Classification Detail",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 400",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Media Classification Detail": {
+      "main": [
+        [
+          {
+            "node": "Build Media Classification Detail Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Media Classification Detail Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Media Classification Detail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

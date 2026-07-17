@@ -1,0 +1,215 @@
+{
+  "name": "WF-LTSA-BRAIN-COLUMN-MAPPING-CREATE-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ltsa/column-mapping/create",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-column-mapping-create",
+      "name": "Webhook Create Column Mapping",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || $json;\n\nif (!body.column_mapping_id) {\n  throw new Error('column_mapping_id is required');\n}\n\nif (!body.mapping_profile_id) {\n  throw new Error('mapping_profile_id is required');\n}\n\nif (!body.source_column) {\n  throw new Error('source_column is required');\n}\n\nif (!body.canonical_attribute) {\n  throw new Error('canonical_attribute is required');\n}\n\nreturn [\n  {\n    json: {\n      column_mapping_id: body.column_mapping_id,\n      mapping_profile_id: body.mapping_profile_id,\n      source_column: body.source_column,\n      canonical_attribute: body.canonical_attribute,\n      is_mandatory: body.is_mandatory ?? false\n    }\n  }\n];"
+      },
+      "id": "validate-column-mapping-input",
+      "name": "Validate Column Mapping Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT column_mapping_id\nFROM column_mapping\nWHERE column_mapping_id = $1\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ [$json.column_mapping_id] }}"
+        }
+      },
+      "id": "check-existing-column-mapping",
+      "name": "Check Existing Column Mapping",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [520, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const existing = $input.first()?.json;\nconst input = $('Validate Column Mapping Input').first().json;\n\nreturn [{\n  json: {\n    ...input,\n    _conflict: !!(existing && existing.column_mapping_id)\n  }\n}];"
+      },
+      "id": "check-column-mapping-conflict",
+      "name": "Check Column Mapping Conflict",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [780, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "conflict-check",
+              "leftValue": "={{ $json._conflict }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-column-mapping-conflict",
+      "name": "IF Column Mapping Exists",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1040, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, message: \"column_mapping_id already exists: \" + $json.column_mapping_id } }}",
+        "options": {
+          "responseCode": 409
+        }
+      },
+      "id": "respond-column-mapping-conflict",
+      "name": "Respond Conflict",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1300, 140]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO column_mapping (\n  column_mapping_id,\n  mapping_profile_id,\n  source_column,\n  canonical_attribute,\n  is_mandatory\n)\nVALUES (\n  $1, $2, $3, $4, $5\n)\nRETURNING *;",
+        "options": {
+          "queryReplacement": "={{ [$json.column_mapping_id, $json.mapping_profile_id, $json.source_column, $json.canonical_attribute, $json.is_mandatory] }}"
+        }
+      },
+      "id": "insert-column-mapping-postgres",
+      "name": "Insert Column Mapping to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1300, -140],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, message: \"Column mapping created successfully\", data: $json } }}",
+        "options": {}
+      },
+      "id": "response-column-mapping-success",
+      "name": "Response Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1560, -140]
+    }
+  ],
+  "connections": {
+    "Webhook Create Column Mapping": {
+      "main": [
+        [
+          {
+            "node": "Validate Column Mapping Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Column Mapping Input": {
+      "main": [
+        [
+          {
+            "node": "Check Existing Column Mapping",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Existing Column Mapping": {
+      "main": [
+        [
+          {
+            "node": "Check Column Mapping Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Column Mapping Conflict": {
+      "main": [
+        [
+          {
+            "node": "IF Column Mapping Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Column Mapping Exists": {
+      "main": [
+        [
+          {
+            "node": "Respond Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Insert Column Mapping to PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Column Mapping to PostgreSQL": {
+      "main": [
+        [
+          {
+            "node": "Response Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

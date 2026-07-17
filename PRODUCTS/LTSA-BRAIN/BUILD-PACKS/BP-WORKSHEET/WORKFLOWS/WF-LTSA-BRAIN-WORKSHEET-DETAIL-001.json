@@ -1,0 +1,186 @@
+{
+  "name": "WF-LTSA-BRAIN-WORKSHEET-DETAIL-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "ltsa/worksheet/detail",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-worksheet-detail",
+      "name": "GET /ltsa/worksheet/detail",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const worksheet_id = $json.query?.worksheet_id;\n\nreturn [{\n  json: {\n    worksheet_id,\n    valid: !!worksheet_id\n  }\n}];"
+      },
+      "id": "parse-worksheet-id",
+      "name": "Parse Worksheet ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "valid-worksheet-id-check",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-valid-worksheet-id",
+      "name": "IF Valid Worksheet ID",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [520, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT *\nFROM worksheet\nWHERE worksheet_id = $1\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ [$json.worksheet_id] }}"
+        }
+      },
+      "id": "get-worksheet-detail",
+      "name": "Get Worksheet Detail",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [780, -120],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first()?.json;\n\nif (!row || !row.worksheet_id) {\n  return [{\n    json: {\n      statusCode: 404,\n      success: false,\n      message: 'Worksheet not found',\n      data: null\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    statusCode: 200,\n    success: true,\n    message: 'Worksheet detail found',\n    data: row\n  }\n}];"
+      },
+      "id": "build-worksheet-detail-response",
+      "name": "Build Worksheet Detail Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, -120]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: $json.success, message: $json.message, data: $json.data } }}",
+        "options": {
+          "responseCode": "={{ $json.statusCode }}"
+        }
+      },
+      "id": "respond-worksheet-detail",
+      "name": "Respond Worksheet Detail",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1300, -120]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, message: 'worksheet_id query parameter is required' } }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "respond-worksheet-400",
+      "name": "Respond 400",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [780, 200]
+    }
+  ],
+  "connections": {
+    "GET /ltsa/worksheet/detail": {
+      "main": [
+        [
+          {
+            "node": "Parse Worksheet ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Worksheet ID": {
+      "main": [
+        [
+          {
+            "node": "IF Valid Worksheet ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Valid Worksheet ID": {
+      "main": [
+        [
+          {
+            "node": "Get Worksheet Detail",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 400",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Worksheet Detail": {
+      "main": [
+        [
+          {
+            "node": "Build Worksheet Detail Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Worksheet Detail Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Worksheet Detail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

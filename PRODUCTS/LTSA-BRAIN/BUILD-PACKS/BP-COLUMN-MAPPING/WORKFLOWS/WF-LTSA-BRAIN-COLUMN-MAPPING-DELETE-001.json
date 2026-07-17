@@ -1,0 +1,186 @@
+{
+  "name": "WF-LTSA-BRAIN-COLUMN-MAPPING-DELETE-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "DELETE",
+        "path": "ltsa/column-mapping/delete",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-column-mapping-delete",
+      "name": "DELETE /ltsa/column-mapping/delete",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const column_mapping_id = $json.query?.column_mapping_id;\n\nreturn [{\n  json: {\n    column_mapping_id,\n    valid: !!column_mapping_id\n  }\n}];"
+      },
+      "id": "parse-delete-column-mapping-id",
+      "name": "Parse Column Mapping ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "valid-column-mapping-id-check",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-valid-delete-column-mapping-id",
+      "name": "IF Valid Column Mapping ID",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [520, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "DELETE FROM column_mapping\nWHERE column_mapping_id = $1\nRETURNING *;",
+        "options": {
+          "queryReplacement": "={{ [$json.column_mapping_id] }}"
+        }
+      },
+      "id": "delete-column-mapping-postgres",
+      "name": "Delete Column Mapping",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [780, -120],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first()?.json;\n\nif (!row || !row.column_mapping_id) {\n  return [{\n    json: {\n      statusCode: 404,\n      success: false,\n      message: 'Column mapping not found',\n      data: null\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    statusCode: 200,\n    success: true,\n    message: 'Column mapping deleted successfully',\n    data: row\n  }\n}];"
+      },
+      "id": "check-column-mapping-delete-result",
+      "name": "Check Delete Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, -120]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: $json.success, message: $json.message, data: $json.data } }}",
+        "options": {
+          "responseCode": "={{ $json.statusCode }}"
+        }
+      },
+      "id": "respond-column-mapping-delete",
+      "name": "Respond Delete",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1300, -120]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, message: 'column_mapping_id query parameter is required' } }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "respond-column-mapping-delete-400",
+      "name": "Respond 400",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [780, 200]
+    }
+  ],
+  "connections": {
+    "DELETE /ltsa/column-mapping/delete": {
+      "main": [
+        [
+          {
+            "node": "Parse Column Mapping ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Column Mapping ID": {
+      "main": [
+        [
+          {
+            "node": "IF Valid Column Mapping ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Valid Column Mapping ID": {
+      "main": [
+        [
+          {
+            "node": "Delete Column Mapping",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 400",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete Column Mapping": {
+      "main": [
+        [
+          {
+            "node": "Check Delete Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Delete Result": {
+      "main": [
+        [
+          {
+            "node": "Respond Delete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

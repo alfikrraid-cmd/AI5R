@@ -1,0 +1,215 @@
+{
+  "name": "WF-LTSA-BRAIN-SEAL-ENGINEERING-DOCUMENT-CREATE-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ltsa/seal-engineering-document/create",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-seal-engineering-document-create",
+      "name": "Webhook Create Engineering Document",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || $json;\nconst ALLOWED_TYPES = [\n  'DRAWING', 'DATASHEET', 'INSTALLATION_GUIDE', 'INSPECTION_SHEET',\n  'MAINTENANCE_MANUAL', 'SERVICE_BULLETIN', 'ENGINEERING_SPECIFICATION'\n];\n\nif (!body.document_code) {\n  throw new Error('document_code is required');\n}\n\nif (!body.seal_code) {\n  throw new Error('seal_code is required');\n}\n\nif (!body.knowledge_source_id) {\n  throw new Error('knowledge_source_id is required');\n}\n\nif (!body.document_type || !ALLOWED_TYPES.includes(body.document_type)) {\n  throw new Error('document_type must be one of: ' + ALLOWED_TYPES.join(', '));\n}\n\nif (!body.title) {\n  throw new Error('title is required');\n}\n\nif (body.page_count !== undefined && body.page_count !== null && (typeof body.page_count !== 'number' || body.page_count < 0)) {\n  throw new Error('page_count must be a non-negative number');\n}\n\nreturn [\n  {\n    json: {\n      document_code: body.document_code,\n      seal_code: body.seal_code,\n      knowledge_source_id: body.knowledge_source_id,\n      document_type: body.document_type,\n      document_number: body.document_number || null,\n      title: body.title,\n      revision: body.revision || null,\n      issue_date: body.issue_date || null,\n      manufacturer: body.manufacturer || null,\n      language: body.language || null,\n      description: body.description || null,\n      file_reference: body.file_reference || null,\n      file_name: body.file_name || null,\n      file_format: body.file_format || null,\n      page_count: body.page_count ?? null,\n      status: body.status || null\n    }\n  }\n];"
+      },
+      "id": "validate-seal-engineering-document-input",
+      "name": "Validate Engineering Document Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT document_code\nFROM seal_engineering_document\nWHERE document_code = $1\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ [$json.document_code] }}"
+        }
+      },
+      "id": "check-existing-seal-engineering-document",
+      "name": "Check Existing Engineering Document",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [520, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const existing = $input.first()?.json;\nconst input = $('Validate Engineering Document Input').first().json;\n\nreturn [{\n  json: {\n    ...input,\n    _conflict: !!(existing && existing.document_code)\n  }\n}];"
+      },
+      "id": "check-seal-engineering-document-conflict",
+      "name": "Check Engineering Document Conflict",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [780, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "conflict-check",
+              "leftValue": "={{ $json._conflict }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-seal-engineering-document-conflict",
+      "name": "IF Engineering Document Exists",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1040, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, message: \"document_code already exists: \" + $json.document_code } }}",
+        "options": {
+          "responseCode": 409
+        }
+      },
+      "id": "respond-seal-engineering-document-conflict",
+      "name": "Respond Conflict",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1300, 140]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO seal_engineering_document (\n  document_code,\n  seal_code,\n  knowledge_source_id,\n  document_type,\n  document_number,\n  title,\n  revision,\n  issue_date,\n  manufacturer,\n  language,\n  description,\n  file_reference,\n  file_name,\n  file_format,\n  page_count,\n  status\n)\nVALUES (\n  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16\n)\nRETURNING *;",
+        "options": {
+          "queryReplacement": "={{ [$json.document_code, $json.seal_code, $json.knowledge_source_id, $json.document_type, $json.document_number, $json.title, $json.revision, $json.issue_date, $json.manufacturer, $json.language, $json.description, $json.file_reference, $json.file_name, $json.file_format, $json.page_count, $json.status] }}"
+        }
+      },
+      "id": "insert-seal-engineering-document-postgres",
+      "name": "Insert Engineering Document to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1300, -140],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, message: \"Engineering document created successfully\", data: $json } }}",
+        "options": {}
+      },
+      "id": "response-seal-engineering-document-success",
+      "name": "Response Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1560, -140]
+    }
+  ],
+  "connections": {
+    "Webhook Create Engineering Document": {
+      "main": [
+        [
+          {
+            "node": "Validate Engineering Document Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Engineering Document Input": {
+      "main": [
+        [
+          {
+            "node": "Check Existing Engineering Document",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Existing Engineering Document": {
+      "main": [
+        [
+          {
+            "node": "Check Engineering Document Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Engineering Document Conflict": {
+      "main": [
+        [
+          {
+            "node": "IF Engineering Document Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Engineering Document Exists": {
+      "main": [
+        [
+          {
+            "node": "Respond Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Insert Engineering Document to PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Engineering Document to PostgreSQL": {
+      "main": [
+        [
+          {
+            "node": "Response Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

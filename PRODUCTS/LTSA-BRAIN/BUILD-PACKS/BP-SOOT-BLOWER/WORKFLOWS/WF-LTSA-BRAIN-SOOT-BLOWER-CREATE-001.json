@@ -1,0 +1,215 @@
+{
+  "name": "WF-LTSA-BRAIN-SOOT-BLOWER-CREATE-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ltsa/soot-blower/create",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-soot-blower-create",
+      "name": "Webhook Create Soot Blower",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || $json;\n\nif (!body.soot_blower_code) {\n  throw new Error('soot_blower_code is required');\n}\n\nif (!body.soot_blower_name) {\n  throw new Error('soot_blower_name is required');\n}\n\nreturn [\n  {\n    json: {\n      soot_blower_code: body.soot_blower_code,\n      soot_blower_name: body.soot_blower_name,\n      boiler_area: body.boiler_area || null,\n      blower_type: body.blower_type || null,\n      manufacturer: body.manufacturer || null,\n      model: body.model || null,\n      steam_pressure: body.steam_pressure || null,\n      status: body.status || null\n    }\n  }\n];"
+      },
+      "id": "validate-soot-blower-input",
+      "name": "Validate Soot Blower Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT soot_blower_code\nFROM soot_blower_registry\nWHERE soot_blower_code = $1\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ [$json.soot_blower_code] }}"
+        }
+      },
+      "id": "check-existing-soot-blower",
+      "name": "Check Existing Soot Blower",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [520, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const existing = $input.first()?.json;\nconst input = $('Validate Soot Blower Input').first().json;\n\nreturn [{\n  json: {\n    ...input,\n    _conflict: !!(existing && existing.soot_blower_code)\n  }\n}];"
+      },
+      "id": "check-soot-blower-conflict",
+      "name": "Check Soot Blower Conflict",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [780, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "conflict-check",
+              "leftValue": "={{ $json._conflict }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-soot-blower-conflict",
+      "name": "IF Soot Blower Code Exists",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1040, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, message: \"soot_blower_code already exists: \" + $json.soot_blower_code } }}",
+        "options": {
+          "responseCode": 409
+        }
+      },
+      "id": "respond-soot-blower-conflict",
+      "name": "Respond Conflict",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1300, 140]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO soot_blower_registry (\n  soot_blower_code,\n  soot_blower_name,\n  boiler_area,\n  blower_type,\n  manufacturer,\n  model,\n  steam_pressure,\n  status\n)\nVALUES (\n  $1, $2, $3, $4, $5, $6, $7, $8\n)\nRETURNING *;",
+        "options": {
+          "queryReplacement": "={{ [$json.soot_blower_code, $json.soot_blower_name, $json.boiler_area, $json.blower_type, $json.manufacturer, $json.model, $json.steam_pressure, $json.status] }}"
+        }
+      },
+      "id": "insert-soot-blower-postgres",
+      "name": "Insert Soot Blower to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1300, -140],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, message: \"Soot blower created successfully\", data: $json } }}",
+        "options": {}
+      },
+      "id": "response-soot-blower-success",
+      "name": "Response Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1560, -140]
+    }
+  ],
+  "connections": {
+    "Webhook Create Soot Blower": {
+      "main": [
+        [
+          {
+            "node": "Validate Soot Blower Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Soot Blower Input": {
+      "main": [
+        [
+          {
+            "node": "Check Existing Soot Blower",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Existing Soot Blower": {
+      "main": [
+        [
+          {
+            "node": "Check Soot Blower Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Soot Blower Conflict": {
+      "main": [
+        [
+          {
+            "node": "IF Soot Blower Code Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Soot Blower Code Exists": {
+      "main": [
+        [
+          {
+            "node": "Respond Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Insert Soot Blower to PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Soot Blower to PostgreSQL": {
+      "main": [
+        [
+          {
+            "node": "Response Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

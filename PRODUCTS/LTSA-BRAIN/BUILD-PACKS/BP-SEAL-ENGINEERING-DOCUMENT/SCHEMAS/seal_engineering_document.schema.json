@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SEAL_ENGINEERING_DOCUMENT",
+  "type": "object",
+  "properties": {
+    "document_code": {
+      "type": "string"
+    },
+    "seal_code": {
+      "type": "string"
+    },
+    "knowledge_source_id": {
+      "type": "string"
+    },
+    "document_type": {
+      "type": "string",
+      "enum": [
+        "DRAWING", "DATASHEET", "INSTALLATION_GUIDE", "INSPECTION_SHEET",
+        "MAINTENANCE_MANUAL", "SERVICE_BULLETIN", "ENGINEERING_SPECIFICATION"
+      ]
+    },
+    "document_number": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "revision": {
+      "type": "string"
+    },
+    "issue_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "manufacturer": {
+      "type": "string"
+    },
+    "language": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "file_reference": {
+      "type": "string"
+    },
+    "file_name": {
+      "type": "string"
+    },
+    "file_format": {
+      "type": "string"
+    },
+    "page_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "status": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "document_code",
+    "seal_code",
+    "knowledge_source_id",
+    "document_type",
+    "title"
+  ]
+}

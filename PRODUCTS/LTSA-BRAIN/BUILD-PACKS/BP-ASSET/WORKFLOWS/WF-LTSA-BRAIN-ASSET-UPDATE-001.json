@@ -1,0 +1,144 @@
+{
+  "name": "WF-LTSA-BRAIN-ASSET-UPDATE-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "PUT",
+        "path": "ltsa/asset/update",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-asset-update",
+      "name": "PUT /ltsa/asset/update",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || $json;\n\nif (!body.asset_code) {\n  throw new Error('asset_code is required');\n}\n\nconst updatable = [\n  'asset_name', 'asset_type', 'area', 'manufacturer', 'model', 'status'\n];\n\nconst fields = {};\nfor (const key of updatable) {\n  if (body[key] !== undefined) {\n    fields[key] = body[key];\n  }\n}\n\nif (Object.keys(fields).length === 0) {\n  throw new Error('at least one updatable field is required');\n}\n\nreturn [{\n  json: {\n    asset_code: body.asset_code,\n    fields\n  }\n}];"
+      },
+      "id": "validate-asset-update-input",
+      "name": "Validate Update Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const { asset_code, fields } = $json;\nconst keys = Object.keys(fields);\n\nconst setClauses = keys.map((key, idx) => `${key} = $${idx + 1}`);\nsetClauses.push('updated_at = NOW()');\n\nconst params = keys.map((key) => fields[key]);\nparams.push(asset_code);\n\nconst query = `UPDATE asset_registry SET ${setClauses.join(', ')} WHERE asset_code = $${params.length} RETURNING *;`;\n\nreturn [{\n  json: {\n    asset_code,\n    query,\n    params\n  }\n}];"
+      },
+      "id": "build-asset-update-statement",
+      "name": "Build Update Statement",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.query }}",
+        "options": {
+          "queryReplacement": "={{ $json.params }}"
+        }
+      },
+      "id": "update-asset-postgres",
+      "name": "Update Asset",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [780, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first()?.json;\n\nif (!row || !row.asset_code) {\n  return [{\n    json: {\n      statusCode: 404,\n      success: false,\n      message: 'Asset not found',\n      data: null\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    statusCode: 200,\n    success: true,\n    message: 'Asset updated successfully',\n    data: row\n  }\n}];"
+      },
+      "id": "check-asset-update-result",
+      "name": "Check Update Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: $json.success, message: $json.message, data: $json.data } }}",
+        "options": {
+          "responseCode": "={{ $json.statusCode }}"
+        }
+      },
+      "id": "respond-asset-update",
+      "name": "Respond Update",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1300, 0]
+    }
+  ],
+  "connections": {
+    "PUT /ltsa/asset/update": {
+      "main": [
+        [
+          {
+            "node": "Validate Update Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Update Input": {
+      "main": [
+        [
+          {
+            "node": "Build Update Statement",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Update Statement": {
+      "main": [
+        [
+          {
+            "node": "Update Asset",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Asset": {
+      "main": [
+        [
+          {
+            "node": "Check Update Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Update Result": {
+      "main": [
+        [
+          {
+            "node": "Respond Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

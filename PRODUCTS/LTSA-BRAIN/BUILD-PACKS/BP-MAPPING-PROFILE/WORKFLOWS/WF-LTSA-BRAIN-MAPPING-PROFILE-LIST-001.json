@@ -1,0 +1,98 @@
+{
+  "name": "WF-LTSA-BRAIN-MAPPING-PROFILE-LIST-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "ltsa/mapping-profile/list",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-mapping-profile-list",
+      "name": "GET /ltsa/mapping-profile/list",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM mapping_profile;",
+        "options": {}
+      },
+      "id": "list-mapping-profile",
+      "name": "List Mapping Profiles",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [260, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    success: true,\n    message: 'Mapping profile list retrieved',\n    data: $input.all().map(item => item.json)\n  }\n}];"
+      },
+      "id": "build-mapping-profile-list-response",
+      "name": "Build Mapping Profile List Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: $json.success, message: $json.message, data: $json.data } }}",
+        "options": {}
+      },
+      "id": "respond-mapping-profile-list",
+      "name": "Respond Mapping Profile List",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [780, 0]
+    }
+  ],
+  "connections": {
+    "GET /ltsa/mapping-profile/list": {
+      "main": [
+        [
+          {
+            "node": "List Mapping Profiles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Mapping Profiles": {
+      "main": [
+        [
+          {
+            "node": "Build Mapping Profile List Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Mapping Profile List Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Mapping Profile List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

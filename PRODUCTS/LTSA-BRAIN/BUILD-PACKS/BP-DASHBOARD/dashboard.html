@@ -1,0 +1,54 @@
+<meta charset="utf-8">
+<!-- OSA Maintenance v0.1 — Demo Dashboard
+     MO-001 / BP-DASHBOARD.
+     Deliberately a single static page with no build step and no framework:
+     no frontend framework exists anywhere in this repository to reuse
+     (MODULES/PUMP/UI/*.tsx are 0-byte placeholders), and introducing one
+     would be new architecture, out of MO-001's scope. This page calls the
+     already-manufactured GET /ltsa/dashboard/summary workflow directly.
+     meta charset is required here because the static file server used to
+     preview this page (python -m http.server) does not send a charset in
+     its Content-Type header, which otherwise mojibakes the em dashes below
+     -- found by actually rendering this page in a browser, not assumed. -->
+<div id="osa-maintenance-dashboard" style="font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto;">
+  <h1>OSA Maintenance v0.1 — CV Razzan Teknik Mandiri</h1>
+  <p>
+    <label for="endpoint">n8n base URL:</label>
+    <input id="endpoint" type="text" value="http://localhost:5678/webhook" style="width: 100%;" />
+  </p>
+  <button id="load-summary">Load Summary</button>
+  <table id="summary-table" border="1" cellpadding="6" style="border-collapse: collapse; margin-top: 1rem; width: 100%;">
+    <thead>
+      <tr><th>Module</th><th>Count</th></tr>
+    </thead>
+    <tbody id="summary-body">
+      <tr><td colspan="2">Not loaded yet — click "Load Summary".</td></tr>
+    </tbody>
+  </table>
+  <p id="summary-status" style="color: #666;"></p>
+</div>
+<script>
+  document.getElementById('load-summary').addEventListener('click', async () => {
+    const base = document.getElementById('endpoint').value.replace(/\/$/, '');
+    const status = document.getElementById('summary-status');
+    const body = document.getElementById('summary-body');
+    status.textContent = 'Loading...';
+    try {
+      const response = await fetch(base + '/ltsa/dashboard/summary');
+      const payload = await response.json();
+      if (!payload.success) {
+        status.textContent = 'Error: ' + (payload.message || 'unknown error');
+        return;
+      }
+      body.innerHTML = '';
+      for (const [module, count] of Object.entries(payload.counts)) {
+        const row = document.createElement('tr');
+        row.innerHTML = '<td>' + module + '</td><td>' + count + '</td>';
+        body.appendChild(row);
+      }
+      status.textContent = 'Loaded at ' + payload.generated_at;
+    } catch (err) {
+      status.textContent = 'Request failed: ' + err.message + ' (is n8n running and reachable at the URL above?)';
+    }
+  });
+</script>

@@ -1,0 +1,186 @@
+{
+  "name": "WF-LTSA-BRAIN-SEAL-INTERCHANGE-COMPATIBILITY-DETAIL-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "ltsa/seal-interchange-compatibility/detail",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-seal-interchange-compatibility-detail",
+      "name": "GET /ltsa/seal-interchange-compatibility/detail",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const seal_code = $json.query?.seal_code;\nconst compatible_seal_code = $json.query?.compatible_seal_code;\n\nreturn [{\n  json: {\n    seal_code,\n    compatible_seal_code,\n    valid: !!(seal_code && compatible_seal_code)\n  }\n}];"
+      },
+      "id": "parse-seal-interchange-compatibility-key",
+      "name": "Parse Compatibility Key",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "valid-compatibility-key-check",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-valid-seal-interchange-compatibility-key",
+      "name": "IF Valid Compatibility Key",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [520, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT *\nFROM seal_interchange_compatibility\nWHERE seal_code = $1 AND compatible_seal_code = $2\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ [$json.seal_code, $json.compatible_seal_code] }}"
+        }
+      },
+      "id": "get-seal-interchange-compatibility-detail",
+      "name": "Get Interchange Compatibility Detail",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [780, -120],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first()?.json;\n\nif (!row || !row.seal_code) {\n  return [{\n    json: {\n      statusCode: 404,\n      success: false,\n      message: 'Interchange compatibility not found',\n      data: null\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    statusCode: 200,\n    success: true,\n    message: 'Interchange compatibility detail found',\n    data: row\n  }\n}];"
+      },
+      "id": "build-seal-interchange-compatibility-detail-response",
+      "name": "Build Interchange Compatibility Detail Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, -120]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: $json.success, message: $json.message, data: $json.data } }}",
+        "options": {
+          "responseCode": "={{ $json.statusCode }}"
+        }
+      },
+      "id": "respond-seal-interchange-compatibility-detail",
+      "name": "Respond Interchange Compatibility Detail",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1300, -120]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, message: 'seal_code and compatible_seal_code query parameters are required' } }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "respond-seal-interchange-compatibility-400",
+      "name": "Respond 400",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [780, 200]
+    }
+  ],
+  "connections": {
+    "GET /ltsa/seal-interchange-compatibility/detail": {
+      "main": [
+        [
+          {
+            "node": "Parse Compatibility Key",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Compatibility Key": {
+      "main": [
+        [
+          {
+            "node": "IF Valid Compatibility Key",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Valid Compatibility Key": {
+      "main": [
+        [
+          {
+            "node": "Get Interchange Compatibility Detail",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 400",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Interchange Compatibility Detail": {
+      "main": [
+        [
+          {
+            "node": "Build Interchange Compatibility Detail Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Interchange Compatibility Detail Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Interchange Compatibility Detail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

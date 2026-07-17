@@ -1,0 +1,215 @@
+{
+  "name": "WF-LTSA-BRAIN-MAPPING-PROFILE-CREATE-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ltsa/mapping-profile/create",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-mapping-profile-create",
+      "name": "Webhook Create Mapping Profile",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || $json;\nconst ALLOWED_TYPES = [\n  'PUMP_MASTER', 'MECHANICAL_SEAL_MASTER', 'SEAL_STOCK', 'SEAL_INTERCHANGE',\n  'PUMP_COMPATIBILITY', 'INSTALLATION_HISTORY', 'MAINTENANCE_HISTORY',\n  'ENGINEER_MASTER', 'CUSTOMER_MASTER', 'VENDOR_MASTER', 'BILL_OF_MATERIAL'\n];\n\nif (!body.mapping_profile_id) {\n  throw new Error('mapping_profile_id is required');\n}\n\nif (!body.profile_name) {\n  throw new Error('profile_name is required');\n}\n\nif (!body.workbook_type || !ALLOWED_TYPES.includes(body.workbook_type)) {\n  throw new Error('workbook_type must be one of: ' + ALLOWED_TYPES.join(', '));\n}\n\nreturn [\n  {\n    json: {\n      mapping_profile_id: body.mapping_profile_id,\n      profile_name: body.profile_name,\n      workbook_type: body.workbook_type,\n      customer: body.customer || null,\n      description: body.description || null,\n      status: body.status || null\n    }\n  }\n];"
+      },
+      "id": "validate-mapping-profile-input",
+      "name": "Validate Mapping Profile Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT mapping_profile_id\nFROM mapping_profile\nWHERE mapping_profile_id = $1\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ [$json.mapping_profile_id] }}"
+        }
+      },
+      "id": "check-existing-mapping-profile",
+      "name": "Check Existing Mapping Profile",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [520, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const existing = $input.first()?.json;\nconst input = $('Validate Mapping Profile Input').first().json;\n\nreturn [{\n  json: {\n    ...input,\n    _conflict: !!(existing && existing.mapping_profile_id)\n  }\n}];"
+      },
+      "id": "check-mapping-profile-conflict",
+      "name": "Check Mapping Profile Conflict",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [780, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "conflict-check",
+              "leftValue": "={{ $json._conflict }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-mapping-profile-conflict",
+      "name": "IF Mapping Profile Exists",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1040, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, message: \"mapping_profile_id already exists: \" + $json.mapping_profile_id } }}",
+        "options": {
+          "responseCode": 409
+        }
+      },
+      "id": "respond-mapping-profile-conflict",
+      "name": "Respond Conflict",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1300, 140]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO mapping_profile (\n  mapping_profile_id,\n  profile_name,\n  workbook_type,\n  customer,\n  description,\n  status\n)\nVALUES (\n  $1, $2, $3, $4, $5, $6\n)\nRETURNING *;",
+        "options": {
+          "queryReplacement": "={{ [$json.mapping_profile_id, $json.profile_name, $json.workbook_type, $json.customer, $json.description, $json.status] }}"
+        }
+      },
+      "id": "insert-mapping-profile-postgres",
+      "name": "Insert Mapping Profile to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1300, -140],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, message: \"Mapping profile created successfully\", data: $json } }}",
+        "options": {}
+      },
+      "id": "response-mapping-profile-success",
+      "name": "Response Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1560, -140]
+    }
+  ],
+  "connections": {
+    "Webhook Create Mapping Profile": {
+      "main": [
+        [
+          {
+            "node": "Validate Mapping Profile Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Mapping Profile Input": {
+      "main": [
+        [
+          {
+            "node": "Check Existing Mapping Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Existing Mapping Profile": {
+      "main": [
+        [
+          {
+            "node": "Check Mapping Profile Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Mapping Profile Conflict": {
+      "main": [
+        [
+          {
+            "node": "IF Mapping Profile Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Mapping Profile Exists": {
+      "main": [
+        [
+          {
+            "node": "Respond Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Insert Mapping Profile to PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Mapping Profile to PostgreSQL": {
+      "main": [
+        [
+          {
+            "node": "Response Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

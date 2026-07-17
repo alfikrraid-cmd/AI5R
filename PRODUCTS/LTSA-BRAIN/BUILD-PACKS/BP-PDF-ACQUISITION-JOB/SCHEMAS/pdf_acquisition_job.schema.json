@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PDF_ACQUISITION_JOB",
+  "type": "object",
+  "properties": {
+    "pdf_acquisition_job_id": {
+      "type": "string"
+    },
+    "knowledge_source_id": {
+      "type": "string"
+    },
+    "pdf_document_id": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["PENDING", "IN_PROGRESS", "COMPLETED", "FAILED"]
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "finished_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "validation_errors": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "pdf_acquisition_job_id",
+    "knowledge_source_id",
+    "pdf_document_id"
+  ]
+}

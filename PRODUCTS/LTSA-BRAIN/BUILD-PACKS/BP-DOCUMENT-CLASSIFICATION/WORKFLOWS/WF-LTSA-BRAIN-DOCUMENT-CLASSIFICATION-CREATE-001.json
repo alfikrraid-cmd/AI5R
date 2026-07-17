@@ -1,0 +1,215 @@
+{
+  "name": "WF-LTSA-BRAIN-DOCUMENT-CLASSIFICATION-CREATE-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ltsa/document-classification/create",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-document-classification-create",
+      "name": "Webhook Create Document Classification",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || $json;\nconst ALLOWED_TYPES = [\n  'INSTALLATION_REPORT', 'SERVICE_REPORT', 'INSPECTION_REPORT', 'FAILURE_REPORT',\n  'JOHN_CRANE_DRAWING', 'DATASHEET', 'MAINTENANCE_MANUAL', 'SERVICE_BULLETIN',\n  'ENGINEERING_SPECIFICATION', 'CALIBRATION_REPORT', 'HYDROTEST_REPORT'\n];\n\nif (!body.document_classification_id) {\n  throw new Error('document_classification_id is required');\n}\n\nif (!body.pdf_document_id) {\n  throw new Error('pdf_document_id is required');\n}\n\nif (!body.classification_type || !ALLOWED_TYPES.includes(body.classification_type)) {\n  throw new Error('classification_type must be one of: ' + ALLOWED_TYPES.join(', '));\n}\n\nif (body.confidence !== undefined && body.confidence !== null && typeof body.confidence !== 'number') {\n  throw new Error('confidence must be a number');\n}\n\nreturn [\n  {\n    json: {\n      document_classification_id: body.document_classification_id,\n      pdf_document_id: body.pdf_document_id,\n      classification_type: body.classification_type,\n      classification_version: body.classification_version || null,\n      confidence: body.confidence ?? null,\n      status: body.status || null\n    }\n  }\n];"
+      },
+      "id": "validate-document-classification-input",
+      "name": "Validate Document Classification Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT document_classification_id\nFROM document_classification\nWHERE document_classification_id = $1\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ [$json.document_classification_id] }}"
+        }
+      },
+      "id": "check-existing-document-classification",
+      "name": "Check Existing Document Classification",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [520, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const existing = $input.first()?.json;\nconst input = $('Validate Document Classification Input').first().json;\n\nreturn [{\n  json: {\n    ...input,\n    _conflict: !!(existing && existing.document_classification_id)\n  }\n}];"
+      },
+      "id": "check-document-classification-conflict",
+      "name": "Check Document Classification Conflict",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [780, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "conflict-check",
+              "leftValue": "={{ $json._conflict }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-document-classification-conflict",
+      "name": "IF Document Classification Exists",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1040, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, message: \"document_classification_id already exists: \" + $json.document_classification_id } }}",
+        "options": {
+          "responseCode": 409
+        }
+      },
+      "id": "respond-document-classification-conflict",
+      "name": "Respond Conflict",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1300, 140]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO document_classification (\n  document_classification_id,\n  pdf_document_id,\n  classification_type,\n  classification_version,\n  confidence,\n  status\n)\nVALUES (\n  $1, $2, $3, $4, $5, $6\n)\nRETURNING *;",
+        "options": {
+          "queryReplacement": "={{ [$json.document_classification_id, $json.pdf_document_id, $json.classification_type, $json.classification_version, $json.confidence, $json.status] }}"
+        }
+      },
+      "id": "insert-document-classification-postgres",
+      "name": "Insert Document Classification to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1300, -140],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, message: \"Document Classification created successfully\", data: $json } }}",
+        "options": {}
+      },
+      "id": "response-document-classification-success",
+      "name": "Response Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1560, -140]
+    }
+  ],
+  "connections": {
+    "Webhook Create Document Classification": {
+      "main": [
+        [
+          {
+            "node": "Validate Document Classification Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Document Classification Input": {
+      "main": [
+        [
+          {
+            "node": "Check Existing Document Classification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Existing Document Classification": {
+      "main": [
+        [
+          {
+            "node": "Check Document Classification Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Document Classification Conflict": {
+      "main": [
+        [
+          {
+            "node": "IF Document Classification Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Document Classification Exists": {
+      "main": [
+        [
+          {
+            "node": "Respond Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Insert Document Classification to PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Document Classification to PostgreSQL": {
+      "main": [
+        [
+          {
+            "node": "Response Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

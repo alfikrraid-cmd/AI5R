@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "WORKBOOK",
+  "type": "object",
+  "properties": {
+    "workbook_id": {
+      "type": "string"
+    },
+    "knowledge_source_id": {
+      "type": "string"
+    },
+    "workbook_type": {
+      "type": "string",
+      "enum": [
+        "PUMP_MASTER", "MECHANICAL_SEAL_MASTER", "SEAL_STOCK", "SEAL_INTERCHANGE",
+        "PUMP_COMPATIBILITY", "INSTALLATION_HISTORY", "MAINTENANCE_HISTORY",
+        "ENGINEER_MASTER", "CUSTOMER_MASTER", "VENDOR_MASTER", "BILL_OF_MATERIAL"
+      ]
+    },
+    "workbook_name": {
+      "type": "string"
+    },
+    "workbook_version": {
+      "type": "string"
+    },
+    "sheet_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "created_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "imported_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "uploaded_by": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "workbook_id",
+    "knowledge_source_id",
+    "workbook_type",
+    "workbook_name"
+  ]
+}

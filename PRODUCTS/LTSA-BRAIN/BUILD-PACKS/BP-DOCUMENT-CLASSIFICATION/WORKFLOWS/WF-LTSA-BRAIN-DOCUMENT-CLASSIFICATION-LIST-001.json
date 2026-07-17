@@ -1,0 +1,98 @@
+{
+  "name": "WF-LTSA-BRAIN-DOCUMENT-CLASSIFICATION-LIST-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "ltsa/document-classification/list",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-document-classification-list",
+      "name": "GET /ltsa/document-classification/list",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM document_classification;",
+        "options": {}
+      },
+      "id": "list-document-classification",
+      "name": "List Document Classifications",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [260, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    success: true,\n    message: 'Document Classification list retrieved',\n    data: $input.all().map(item => item.json)\n  }\n}];"
+      },
+      "id": "build-document-classification-list-response",
+      "name": "Build Document Classification List Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: $json.success, message: $json.message, data: $json.data } }}",
+        "options": {}
+      },
+      "id": "respond-document-classification-list",
+      "name": "Respond Document Classification List",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [780, 0]
+    }
+  ],
+  "connections": {
+    "GET /ltsa/document-classification/list": {
+      "main": [
+        [
+          {
+            "node": "List Document Classifications",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Document Classifications": {
+      "main": [
+        [
+          {
+            "node": "Build Document Classification List Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Document Classification List Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Document Classification List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

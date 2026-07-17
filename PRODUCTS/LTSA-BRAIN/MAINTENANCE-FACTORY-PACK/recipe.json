@@ -1,0 +1,14 @@
+{
+    "recipe_id": "RECIPE-MAINTENANCE-001",
+    "recipe_version": "1",
+    "object_types": ["WORK_ORDER", "MAINTENANCE_RECORD"],
+    "identity_keys": {
+        "WORK_ORDER": "work_order_code",
+        "MAINTENANCE_RECORD": "maintenance_record_code"
+    },
+    "relationship_keys": {
+        "WORK_ORDER": ["asset_code", "asset_type"],
+        "MAINTENANCE_RECORD": ["asset_code", "asset_type", "work_order_code"]
+    },
+    "stations": ["MaintenanceManufacturingStation"]
+}

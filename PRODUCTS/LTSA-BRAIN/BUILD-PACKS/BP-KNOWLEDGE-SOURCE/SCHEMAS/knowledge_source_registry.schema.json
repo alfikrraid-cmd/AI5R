@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "KNOWLEDGE_SOURCE_REGISTRY",
+  "type": "object",
+  "properties": {
+    "knowledge_source_id": {
+      "type": "string"
+    },
+    "source_type": {
+      "type": "string",
+      "enum": [
+        "INSTALLATION_REPORT", "SERVICE_REPORT", "INSPECTION_REPORT", "FAILURE_REPORT",
+        "DRAWING", "DATASHEET", "BILL_OF_MATERIAL", "MAINTENANCE_HISTORY",
+        "PUMP_MASTER_EXCEL", "STOCK_EXCEL", "INSTALLATION_HISTORY_EXCEL",
+        "PHOTO", "VIDEO", "ENGINEER_NOTE", "CUSTOMER_NOTE"
+      ]
+    },
+    "source_name": {
+      "type": "string"
+    },
+    "original_file_name": {
+      "type": "string"
+    },
+    "source_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "customer": {
+      "type": "string"
+    },
+    "site": {
+      "type": "string"
+    },
+    "unit": {
+      "type": "string"
+    },
+    "uploaded_by": {
+      "type": "string"
+    },
+    "upload_timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source_url": {
+      "type": "string"
+    },
+    "verification_status": {
+      "type": "string",
+      "enum": ["DRAFT", "UNDER_REVIEW", "VERIFIED", "CANONICAL"]
+    },
+    "confidence_level": {
+      "type": "number"
+    },
+    "file_hash": {
+      "type": "string"
+    },
+    "file_size": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "media_type": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "knowledge_source_id",
+    "source_type",
+    "source_name"
+  ]
+}

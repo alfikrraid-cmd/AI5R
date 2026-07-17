@@ -1,0 +1,14 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "SEAL_PUMP_COMPATIBILITY",
+    "version": "1.0.0"
+  },
+  "components": {
+    "schemas": {
+      "SEAL_PUMP_COMPATIBILITY": {
+        "type": "object"
+      }
+    }
+  }
+}

@@ -1,0 +1,98 @@
+{
+  "name": "WF-LTSA-BRAIN-WORKSHEET-LIST-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "ltsa/worksheet/list",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-worksheet-list",
+      "name": "GET /ltsa/worksheet/list",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM worksheet;",
+        "options": {}
+      },
+      "id": "list-worksheet",
+      "name": "List Worksheets",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [260, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    success: true,\n    message: 'Worksheet list retrieved',\n    data: $input.all().map(item => item.json)\n  }\n}];"
+      },
+      "id": "build-worksheet-list-response",
+      "name": "Build Worksheet List Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: $json.success, message: $json.message, data: $json.data } }}",
+        "options": {}
+      },
+      "id": "respond-worksheet-list",
+      "name": "Respond Worksheet List",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [780, 0]
+    }
+  ],
+  "connections": {
+    "GET /ltsa/worksheet/list": {
+      "main": [
+        [
+          {
+            "node": "List Worksheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Worksheets": {
+      "main": [
+        [
+          {
+            "node": "Build Worksheet List Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Worksheet List Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Worksheet List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

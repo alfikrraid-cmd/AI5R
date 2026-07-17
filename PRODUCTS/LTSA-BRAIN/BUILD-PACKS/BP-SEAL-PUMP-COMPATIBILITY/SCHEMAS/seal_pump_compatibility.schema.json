@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SEAL_PUMP_COMPATIBILITY",
+  "type": "object",
+  "properties": {
+    "seal_code": {
+      "type": "string"
+    },
+    "pump_tag_number": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "seal_code",
+    "pump_tag_number"
+  ]
+}

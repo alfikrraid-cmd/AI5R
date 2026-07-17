@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SEAL_STOCK",
+  "type": "object",
+  "properties": {
+    "seal_code": {
+      "type": "string"
+    },
+    "quantity_on_hand": {
+      "type": "number"
+    },
+    "reorder_point": {
+      "type": "number"
+    },
+    "location": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "seal_code"
+  ]
+}

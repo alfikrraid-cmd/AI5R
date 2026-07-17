@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ACQUISITION_JOB",
+  "type": "object",
+  "properties": {
+    "acquisition_job_id": {
+      "type": "string"
+    },
+    "workbook_id": {
+      "type": "string"
+    },
+    "mapping_profile_id": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["PENDING", "IN_PROGRESS", "READY_FOR_MANUFACTURING", "FAILED"]
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "rows_processed": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "rows_valid": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "rows_invalid": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "error_summary": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "acquisition_job_id",
+    "workbook_id",
+    "mapping_profile_id"
+  ]
+}

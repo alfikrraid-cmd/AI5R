@@ -1,0 +1,186 @@
+{
+  "name": "WF-LTSA-BRAIN-ENGINEERING-MEDIA-DETAIL-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "ltsa/engineering-media/detail",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-engineering-media-detail",
+      "name": "GET /ltsa/engineering-media/detail",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const engineering_media_id = $json.query?.engineering_media_id;\n\nreturn [{\n  json: {\n    engineering_media_id,\n    valid: !!engineering_media_id\n  }\n}];"
+      },
+      "id": "parse-engineering-media-id",
+      "name": "Parse Engineering Media ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "valid-engineering-media-id-check",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-valid-engineering-media-id",
+      "name": "IF Valid Engineering Media ID",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [520, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT *\nFROM engineering_media\nWHERE engineering_media_id = $1\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ [$json.engineering_media_id] }}"
+        }
+      },
+      "id": "get-engineering-media-detail",
+      "name": "Get Engineering Media Detail",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [780, -120],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first()?.json;\n\nif (!row || !row.engineering_media_id) {\n  return [{\n    json: {\n      statusCode: 404,\n      success: false,\n      message: 'Engineering Media not found',\n      data: null\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    statusCode: 200,\n    success: true,\n    message: 'Engineering Media detail found',\n    data: row\n  }\n}];"
+      },
+      "id": "build-engineering-media-detail-response",
+      "name": "Build Engineering Media Detail Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, -120]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: $json.success, message: $json.message, data: $json.data } }}",
+        "options": {
+          "responseCode": "={{ $json.statusCode }}"
+        }
+      },
+      "id": "respond-engineering-media-detail",
+      "name": "Respond Engineering Media Detail",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1300, -120]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, message: 'engineering_media_id query parameter is required' } }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "respond-engineering-media-400",
+      "name": "Respond 400",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [780, 200]
+    }
+  ],
+  "connections": {
+    "GET /ltsa/engineering-media/detail": {
+      "main": [
+        [
+          {
+            "node": "Parse Engineering Media ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Engineering Media ID": {
+      "main": [
+        [
+          {
+            "node": "IF Valid Engineering Media ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Valid Engineering Media ID": {
+      "main": [
+        [
+          {
+            "node": "Get Engineering Media Detail",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 400",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Engineering Media Detail": {
+      "main": [
+        [
+          {
+            "node": "Build Engineering Media Detail Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Engineering Media Detail Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Engineering Media Detail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

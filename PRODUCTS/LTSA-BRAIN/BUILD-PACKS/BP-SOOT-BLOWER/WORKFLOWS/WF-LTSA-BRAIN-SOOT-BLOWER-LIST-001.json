@@ -1,0 +1,97 @@
+{
+  "name": "WF-LTSA-BRAIN-SOOT-BLOWER-LIST-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "ltsa/soot-blower/list",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-soot-blower-list",
+      "name": "GET /ltsa/soot-blower/list",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT *\nFROM soot_blower_registry\nORDER BY created_at DESC;"
+      },
+      "id": "list-soot-blowers-postgres",
+      "name": "List Soot Blowers",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [260, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(item => item.json);\n\nreturn [{\n  json: {\n    success: true,\n    message: 'Soot blower list retrieved',\n    count: rows.length,\n    data: rows\n  }\n}];"
+      },
+      "id": "build-soot-blower-list-response",
+      "name": "Build Soot Blower List Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: $json.success, message: $json.message, count: $json.count, data: $json.data } }}",
+        "options": {}
+      },
+      "id": "respond-soot-blower-list",
+      "name": "Respond Soot Blower List",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [780, 0]
+    }
+  ],
+  "connections": {
+    "GET /ltsa/soot-blower/list": {
+      "main": [
+        [
+          {
+            "node": "List Soot Blowers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Soot Blowers": {
+      "main": [
+        [
+          {
+            "node": "Build Soot Blower List Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Soot Blower List Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Soot Blower List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

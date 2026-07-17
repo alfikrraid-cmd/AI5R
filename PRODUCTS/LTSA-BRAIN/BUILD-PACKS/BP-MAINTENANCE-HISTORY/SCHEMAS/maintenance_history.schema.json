@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MAINTENANCE_HISTORY",
+  "type": "object",
+  "properties": {
+    "maintenance_record_code": {
+      "type": "string"
+    },
+    "work_order_code": {
+      "type": "string"
+    },
+    "asset_code": {
+      "type": "string"
+    },
+    "asset_type": {
+      "type": "string"
+    },
+    "action_taken": {
+      "type": "string"
+    },
+    "performed_by": {
+      "type": "string"
+    },
+    "performed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "maintenance_record_code",
+    "action_taken"
+  ]
+}

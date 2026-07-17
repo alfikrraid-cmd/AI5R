@@ -1,176 +1,129 @@
 {
   "product": "LTSA-BRAIN",
-  "version": "1.0.0",
   "entities": [
     {
       "name": "customer",
-      "fields": [
-        {
-          "name": "id",
-          "type": "integer",
-          "primary_key": true
-        },
-        {
-          "name": "code",
-          "type": "string",
-          "required": true,
-          "unique": true
-        },
-        {
-          "name": "name",
-          "type": "string",
-          "required": true
-        },
-        {
-          "name": "status",
-          "type": "string",
-          "default": "active"
-        },
-        {
-          "name": "created_at",
-          "type": "datetime"
-        },
-        {
-          "name": "updated_at",
-          "type": "datetime"
-        }
-      ]
+      "fields": []
     },
     {
       "name": "pump",
-      "fields": [
-        {
-          "name": "id",
-          "type": "integer",
-          "primary_key": true
-        },
-        {
-          "name": "code",
-          "type": "string",
-          "required": true,
-          "unique": true
-        },
-        {
-          "name": "name",
-          "type": "string",
-          "required": true
-        },
-        {
-          "name": "status",
-          "type": "string",
-          "default": "active"
-        },
-        {
-          "name": "created_at",
-          "type": "datetime"
-        },
-        {
-          "name": "updated_at",
-          "type": "datetime"
-        }
-      ]
+      "fields": []
+    },
+    {
+      "name": "seal",
+      "fields": []
+    },
+    {
+      "name": "seal_stock",
+      "fields": []
+    },
+    {
+      "name": "seal_pump_compatibility",
+      "fields": []
+    },
+    {
+      "name": "seal_interchange_compatibility",
+      "fields": []
+    },
+    {
+      "name": "seal_engineering_document",
+      "fields": []
+    },
+    {
+      "name": "knowledge_source_registry",
+      "fields": []
+    },
+    {
+      "name": "workbook",
+      "fields": []
+    },
+    {
+      "name": "worksheet",
+      "fields": []
+    },
+    {
+      "name": "worksheet_table",
+      "fields": []
+    },
+    {
+      "name": "mapping_profile",
+      "fields": []
+    },
+    {
+      "name": "column_mapping",
+      "fields": []
+    },
+    {
+      "name": "acquisition_job",
+      "fields": []
+    },
+    {
+      "name": "pdf_document",
+      "fields": []
+    },
+    {
+      "name": "pdf_metadata",
+      "fields": []
+    },
+    {
+      "name": "document_classification",
+      "fields": []
+    },
+    {
+      "name": "pdf_acquisition_job",
+      "fields": []
+    },
+    {
+      "name": "engineering_media",
+      "fields": []
+    },
+    {
+      "name": "media_metadata",
+      "fields": []
+    },
+    {
+      "name": "media_classification",
+      "fields": []
+    },
+    {
+      "name": "media_acquisition_job",
+      "fields": []
     },
     {
       "name": "asset",
-      "fields": [
-        {
-          "name": "id",
-          "type": "integer",
-          "primary_key": true
-        },
-        {
-          "name": "code",
-          "type": "string",
-          "required": true,
-          "unique": true
-        },
-        {
-          "name": "name",
-          "type": "string",
-          "required": true
-        },
-        {
-          "name": "status",
-          "type": "string",
-          "default": "active"
-        },
-        {
-          "name": "created_at",
-          "type": "datetime"
-        },
-        {
-          "name": "updated_at",
-          "type": "datetime"
-        }
-      ]
+      "fields": []
+    },
+    {
+      "name": "soot_blower",
+      "fields": []
+    },
+    {
+      "name": "work_order",
+      "fields": []
+    },
+    {
+      "name": "maintenance_history",
+      "fields": []
+    },
+    {
+      "name": "dashboard",
+      "fields": []
+    },
+    {
+      "name": "ai_assistant",
+      "fields": []
     },
     {
       "name": "inspection",
-      "fields": [
-        {
-          "name": "id",
-          "type": "integer",
-          "primary_key": true
-        },
-        {
-          "name": "code",
-          "type": "string",
-          "required": true,
-          "unique": true
-        },
-        {
-          "name": "name",
-          "type": "string",
-          "required": true
-        },
-        {
-          "name": "status",
-          "type": "string",
-          "default": "active"
-        },
-        {
-          "name": "created_at",
-          "type": "datetime"
-        },
-        {
-          "name": "updated_at",
-          "type": "datetime"
-        }
-      ]
+      "fields": []
     },
     {
       "name": "maintenance",
-      "fields": [
-        {
-          "name": "id",
-          "type": "integer",
-          "primary_key": true
-        },
-        {
-          "name": "code",
-          "type": "string",
-          "required": true,
-          "unique": true
-        },
-        {
-          "name": "name",
-          "type": "string",
-          "required": true
-        },
-        {
-          "name": "status",
-          "type": "string",
-          "default": "active"
-        },
-        {
-          "name": "created_at",
-          "type": "datetime"
-        },
-        {
-          "name": "updated_at",
-          "type": "datetime"
-        }
-      ]
+      "fields": []
+    },
+    {
+      "name": "organization",
+      "fields": []
     }
   ]
 }

@@ -1,0 +1,123 @@
+{
+  "name": "WF-LTSA-BRAIN-SEAL-PUMP-COMPATIBILITY-UPDATE-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "PUT",
+        "path": "ltsa/seal-pump-compatibility/update",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-seal-pump-compatibility-update",
+      "name": "PUT /ltsa/seal-pump-compatibility/update",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || $json;\n\nif (!body.seal_code) {\n  throw new Error('seal_code is required');\n}\n\nif (!body.pump_tag_number) {\n  throw new Error('pump_tag_number is required');\n}\n\n// The composite key itself (seal_code, pump_tag_number) is not mutable --\n// only notes describes an existing compatibility relationship.\nif (body.notes === undefined) {\n  throw new Error('notes is required (the only updatable field for a compatibility record)');\n}\n\nreturn [{\n  json: {\n    seal_code: body.seal_code,\n    pump_tag_number: body.pump_tag_number,\n    notes: body.notes\n  }\n}];"
+      },
+      "id": "validate-seal-pump-compatibility-update-input",
+      "name": "Validate Update Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE seal_pump_compatibility\nSET notes = $1\nWHERE seal_code = $2 AND pump_tag_number = $3\nRETURNING *;",
+        "options": {
+          "queryReplacement": "={{ [$json.notes, $json.seal_code, $json.pump_tag_number] }}"
+        }
+      },
+      "id": "update-seal-pump-compatibility-postgres",
+      "name": "Update Pump Compatibility",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [520, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first()?.json;\n\nif (!row || !row.seal_code) {\n  return [{\n    json: {\n      statusCode: 404,\n      success: false,\n      message: 'Pump compatibility not found',\n      data: null\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    statusCode: 200,\n    success: true,\n    message: 'Pump compatibility updated successfully',\n    data: row\n  }\n}];"
+      },
+      "id": "check-seal-pump-compatibility-update-result",
+      "name": "Check Update Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [780, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: $json.success, message: $json.message, data: $json.data } }}",
+        "options": {
+          "responseCode": "={{ $json.statusCode }}"
+        }
+      },
+      "id": "respond-seal-pump-compatibility-update",
+      "name": "Respond Update",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1040, 0]
+    }
+  ],
+  "connections": {
+    "PUT /ltsa/seal-pump-compatibility/update": {
+      "main": [
+        [
+          {
+            "node": "Validate Update Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Update Input": {
+      "main": [
+        [
+          {
+            "node": "Update Pump Compatibility",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Pump Compatibility": {
+      "main": [
+        [
+          {
+            "node": "Check Update Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Update Result": {
+      "main": [
+        [
+          {
+            "node": "Respond Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

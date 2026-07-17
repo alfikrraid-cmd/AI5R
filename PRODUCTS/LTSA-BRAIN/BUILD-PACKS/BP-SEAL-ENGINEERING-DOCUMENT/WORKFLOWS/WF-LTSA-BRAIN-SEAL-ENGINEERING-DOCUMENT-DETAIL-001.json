@@ -1,0 +1,186 @@
+{
+  "name": "WF-LTSA-BRAIN-SEAL-ENGINEERING-DOCUMENT-DETAIL-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "ltsa/seal-engineering-document/detail",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-seal-engineering-document-detail",
+      "name": "GET /ltsa/seal-engineering-document/detail",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const document_code = $json.query?.document_code;\n\nreturn [{\n  json: {\n    document_code,\n    valid: !!document_code\n  }\n}];"
+      },
+      "id": "parse-seal-engineering-document-code",
+      "name": "Parse Document Code",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "valid-document-code-check",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-valid-seal-engineering-document-code",
+      "name": "IF Valid Document Code",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [520, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT *\nFROM seal_engineering_document\nWHERE document_code = $1\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ [$json.document_code] }}"
+        }
+      },
+      "id": "get-seal-engineering-document-detail",
+      "name": "Get Engineering Document Detail",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [780, -120],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first()?.json;\n\nif (!row || !row.document_code) {\n  return [{\n    json: {\n      statusCode: 404,\n      success: false,\n      message: 'Engineering document not found',\n      data: null\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    statusCode: 200,\n    success: true,\n    message: 'Engineering document detail found',\n    data: row\n  }\n}];"
+      },
+      "id": "build-seal-engineering-document-detail-response",
+      "name": "Build Engineering Document Detail Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, -120]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: $json.success, message: $json.message, data: $json.data } }}",
+        "options": {
+          "responseCode": "={{ $json.statusCode }}"
+        }
+      },
+      "id": "respond-seal-engineering-document-detail",
+      "name": "Respond Engineering Document Detail",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1300, -120]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, message: 'document_code query parameter is required' } }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "respond-seal-engineering-document-400",
+      "name": "Respond 400",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [780, 200]
+    }
+  ],
+  "connections": {
+    "GET /ltsa/seal-engineering-document/detail": {
+      "main": [
+        [
+          {
+            "node": "Parse Document Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Document Code": {
+      "main": [
+        [
+          {
+            "node": "IF Valid Document Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Valid Document Code": {
+      "main": [
+        [
+          {
+            "node": "Get Engineering Document Detail",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 400",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Engineering Document Detail": {
+      "main": [
+        [
+          {
+            "node": "Build Engineering Document Detail Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Engineering Document Detail Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Engineering Document Detail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

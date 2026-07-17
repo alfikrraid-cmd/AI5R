@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PDF_DOCUMENT",
+  "type": "object",
+  "properties": {
+    "pdf_document_id": {
+      "type": "string"
+    },
+    "knowledge_source_id": {
+      "type": "string"
+    },
+    "document_name": {
+      "type": "string"
+    },
+    "document_type": {
+      "type": "string",
+      "enum": [
+        "INSTALLATION_REPORT", "SERVICE_REPORT", "INSPECTION_REPORT", "FAILURE_REPORT",
+        "JOHN_CRANE_DRAWING", "DATASHEET", "MAINTENANCE_MANUAL", "SERVICE_BULLETIN",
+        "ENGINEERING_SPECIFICATION", "CALIBRATION_REPORT", "HYDROTEST_REPORT"
+      ]
+    },
+    "file_name": {
+      "type": "string"
+    },
+    "page_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "file_size": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "file_hash": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "pdf_document_id",
+    "knowledge_source_id",
+    "document_name",
+    "document_type"
+  ]
+}

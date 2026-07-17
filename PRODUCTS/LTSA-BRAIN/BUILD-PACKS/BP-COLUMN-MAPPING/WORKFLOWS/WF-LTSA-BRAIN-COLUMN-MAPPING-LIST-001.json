@@ -1,0 +1,98 @@
+{
+  "name": "WF-LTSA-BRAIN-COLUMN-MAPPING-LIST-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "ltsa/column-mapping/list",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-column-mapping-list",
+      "name": "GET /ltsa/column-mapping/list",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM column_mapping;",
+        "options": {}
+      },
+      "id": "list-column-mapping",
+      "name": "List Column Mappings",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [260, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    success: true,\n    message: 'Column mapping list retrieved',\n    data: $input.all().map(item => item.json)\n  }\n}];"
+      },
+      "id": "build-column-mapping-list-response",
+      "name": "Build Column Mapping List Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: $json.success, message: $json.message, data: $json.data } }}",
+        "options": {}
+      },
+      "id": "respond-column-mapping-list",
+      "name": "Respond Column Mapping List",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [780, 0]
+    }
+  ],
+  "connections": {
+    "GET /ltsa/column-mapping/list": {
+      "main": [
+        [
+          {
+            "node": "List Column Mappings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Column Mappings": {
+      "main": [
+        [
+          {
+            "node": "Build Column Mapping List Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Column Mapping List Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Column Mapping List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

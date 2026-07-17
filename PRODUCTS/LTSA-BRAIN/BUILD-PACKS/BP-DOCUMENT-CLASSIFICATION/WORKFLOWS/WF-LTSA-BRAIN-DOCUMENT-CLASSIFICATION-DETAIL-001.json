@@ -1,0 +1,186 @@
+{
+  "name": "WF-LTSA-BRAIN-DOCUMENT-CLASSIFICATION-DETAIL-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "ltsa/document-classification/detail",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-document-classification-detail",
+      "name": "GET /ltsa/document-classification/detail",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const document_classification_id = $json.query?.document_classification_id;\n\nreturn [{\n  json: {\n    document_classification_id,\n    valid: !!document_classification_id\n  }\n}];"
+      },
+      "id": "parse-document-classification-id",
+      "name": "Parse Document Classification ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "valid-document-classification-id-check",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-valid-document-classification-id",
+      "name": "IF Valid Document Classification ID",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [520, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT *\nFROM document_classification\nWHERE document_classification_id = $1\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ [$json.document_classification_id] }}"
+        }
+      },
+      "id": "get-document-classification-detail",
+      "name": "Get Document Classification Detail",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [780, -120],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first()?.json;\n\nif (!row || !row.document_classification_id) {\n  return [{\n    json: {\n      statusCode: 404,\n      success: false,\n      message: 'Document Classification not found',\n      data: null\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    statusCode: 200,\n    success: true,\n    message: 'Document Classification detail found',\n    data: row\n  }\n}];"
+      },
+      "id": "build-document-classification-detail-response",
+      "name": "Build Document Classification Detail Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, -120]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: $json.success, message: $json.message, data: $json.data } }}",
+        "options": {
+          "responseCode": "={{ $json.statusCode }}"
+        }
+      },
+      "id": "respond-document-classification-detail",
+      "name": "Respond Document Classification Detail",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1300, -120]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, message: 'document_classification_id query parameter is required' } }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "respond-document-classification-400",
+      "name": "Respond 400",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [780, 200]
+    }
+  ],
+  "connections": {
+    "GET /ltsa/document-classification/detail": {
+      "main": [
+        [
+          {
+            "node": "Parse Document Classification ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Document Classification ID": {
+      "main": [
+        [
+          {
+            "node": "IF Valid Document Classification ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Valid Document Classification ID": {
+      "main": [
+        [
+          {
+            "node": "Get Document Classification Detail",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 400",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Document Classification Detail": {
+      "main": [
+        [
+          {
+            "node": "Build Document Classification Detail Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Document Classification Detail Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Document Classification Detail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

@@ -1,0 +1,215 @@
+{
+  "name": "WF-LTSA-BRAIN-PDF-METADATA-CREATE-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ltsa/pdf-metadata/create",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-pdf-metadata-create",
+      "name": "Webhook Create PDF Metadata",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || $json;\n\nif (!body.pdf_metadata_id) {\n  throw new Error('pdf_metadata_id is required');\n}\n\nif (!body.pdf_document_id) {\n  throw new Error('pdf_document_id is required');\n}\n\nreturn [\n  {\n    json: {\n      pdf_metadata_id: body.pdf_metadata_id,\n      pdf_document_id: body.pdf_document_id,\n      title: body.title || null,\n      author: body.author || null,\n      producer: body.producer || null,\n      creation_date: body.creation_date || null,\n      modification_date: body.modification_date || null,\n      pdf_version: body.pdf_version || null\n    }\n  }\n];"
+      },
+      "id": "validate-pdf-metadata-input",
+      "name": "Validate PDF Metadata Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT pdf_metadata_id\nFROM pdf_metadata\nWHERE pdf_metadata_id = $1\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ [$json.pdf_metadata_id] }}"
+        }
+      },
+      "id": "check-existing-pdf-metadata",
+      "name": "Check Existing PDF Metadata",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [520, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const existing = $input.first()?.json;\nconst input = $('Validate PDF Metadata Input').first().json;\n\nreturn [{\n  json: {\n    ...input,\n    _conflict: !!(existing && existing.pdf_metadata_id)\n  }\n}];"
+      },
+      "id": "check-pdf-metadata-conflict",
+      "name": "Check PDF Metadata Conflict",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [780, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "conflict-check",
+              "leftValue": "={{ $json._conflict }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-pdf-metadata-conflict",
+      "name": "IF PDF Metadata Exists",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1040, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, message: \"pdf_metadata_id already exists: \" + $json.pdf_metadata_id } }}",
+        "options": {
+          "responseCode": 409
+        }
+      },
+      "id": "respond-pdf-metadata-conflict",
+      "name": "Respond Conflict",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1300, 140]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO pdf_metadata (\n  pdf_metadata_id,\n  pdf_document_id,\n  title,\n  author,\n  producer,\n  creation_date,\n  modification_date,\n  pdf_version\n)\nVALUES (\n  $1, $2, $3, $4, $5, $6, $7, $8\n)\nRETURNING *;",
+        "options": {
+          "queryReplacement": "={{ [$json.pdf_metadata_id, $json.pdf_document_id, $json.title, $json.author, $json.producer, $json.creation_date, $json.modification_date, $json.pdf_version] }}"
+        }
+      },
+      "id": "insert-pdf-metadata-postgres",
+      "name": "Insert PDF Metadata to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1300, -140],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, message: \"PDF Metadata created successfully\", data: $json } }}",
+        "options": {}
+      },
+      "id": "response-pdf-metadata-success",
+      "name": "Response Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1560, -140]
+    }
+  ],
+  "connections": {
+    "Webhook Create PDF Metadata": {
+      "main": [
+        [
+          {
+            "node": "Validate PDF Metadata Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate PDF Metadata Input": {
+      "main": [
+        [
+          {
+            "node": "Check Existing PDF Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Existing PDF Metadata": {
+      "main": [
+        [
+          {
+            "node": "Check PDF Metadata Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check PDF Metadata Conflict": {
+      "main": [
+        [
+          {
+            "node": "IF PDF Metadata Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF PDF Metadata Exists": {
+      "main": [
+        [
+          {
+            "node": "Respond Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Insert PDF Metadata to PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert PDF Metadata to PostgreSQL": {
+      "main": [
+        [
+          {
+            "node": "Response Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

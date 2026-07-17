@@ -1,0 +1,14 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "PDF_ACQUISITION_JOB",
+    "version": "1.0.0"
+  },
+  "components": {
+    "schemas": {
+      "PDF_ACQUISITION_JOB": {
+        "type": "object"
+      }
+    }
+  }
+}

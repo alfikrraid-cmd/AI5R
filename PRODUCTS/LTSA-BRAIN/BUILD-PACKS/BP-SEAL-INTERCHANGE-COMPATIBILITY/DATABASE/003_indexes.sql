@@ -1,0 +1,5 @@
+CREATE INDEX IF NOT EXISTS idx_seal_interchange_compatibility_seal_code
+ON public.seal_interchange_compatibility (seal_code);
+
+CREATE INDEX IF NOT EXISTS idx_seal_interchange_compatibility_compatible_seal_code
+ON public.seal_interchange_compatibility (compatible_seal_code);

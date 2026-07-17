@@ -1,0 +1,16 @@
+{
+    "pack_code": "FP-MAINTENANCE-001",
+    "pack_name": "Maintenance Factory Pack",
+    "product_type": "MAINTENANCE",
+    "capabilities": [
+        "IDENTITY_RESOLUTION",
+        "RELATIONSHIP_RESOLUTION",
+        "CANONICAL_OBJECT_MANUFACTURING"
+    ],
+    "recipe_path": "PRODUCTS/LTSA-BRAIN/MAINTENANCE-FACTORY-PACK/recipe.json",
+    "metadata": {
+        "version": "1.0",
+        "mwo": "MWO-LTSA-054-WP-001",
+        "object_types": ["WORK_ORDER", "MAINTENANCE_RECORD"]
+    }
+}

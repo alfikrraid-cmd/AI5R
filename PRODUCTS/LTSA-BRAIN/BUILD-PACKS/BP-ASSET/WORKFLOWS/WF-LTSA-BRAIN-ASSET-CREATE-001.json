@@ -1,0 +1,215 @@
+{
+  "name": "WF-LTSA-BRAIN-ASSET-CREATE-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ltsa/asset/create",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-asset-create",
+      "name": "Webhook Create Asset",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || $json;\n\nif (!body.asset_code) {\n  throw new Error('asset_code is required');\n}\n\nif (!body.asset_name) {\n  throw new Error('asset_name is required');\n}\n\nreturn [\n  {\n    json: {\n      asset_code: body.asset_code,\n      asset_name: body.asset_name,\n      asset_type: body.asset_type || null,\n      area: body.area || null,\n      manufacturer: body.manufacturer || null,\n      model: body.model || null,\n      status: body.status || null\n    }\n  }\n];"
+      },
+      "id": "validate-asset-input",
+      "name": "Validate Asset Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT asset_code\nFROM asset_registry\nWHERE asset_code = $1\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ [$json.asset_code] }}"
+        }
+      },
+      "id": "check-existing-asset",
+      "name": "Check Existing Asset",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [520, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const existing = $input.first()?.json;\nconst input = $('Validate Asset Input').first().json;\n\nreturn [{\n  json: {\n    ...input,\n    _conflict: !!(existing && existing.asset_code)\n  }\n}];"
+      },
+      "id": "check-asset-conflict",
+      "name": "Check Asset Conflict",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [780, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "conflict-check",
+              "leftValue": "={{ $json._conflict }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-asset-conflict",
+      "name": "IF Asset Code Exists",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1040, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, message: \"asset_code already exists: \" + $json.asset_code } }}",
+        "options": {
+          "responseCode": 409
+        }
+      },
+      "id": "respond-asset-conflict",
+      "name": "Respond Conflict",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1300, 140]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO asset_registry (\n  asset_code,\n  asset_name,\n  asset_type,\n  area,\n  manufacturer,\n  model,\n  status\n)\nVALUES (\n  $1, $2, $3, $4, $5, $6, $7\n)\nRETURNING *;",
+        "options": {
+          "queryReplacement": "={{ [$json.asset_code, $json.asset_name, $json.asset_type, $json.area, $json.manufacturer, $json.model, $json.status] }}"
+        }
+      },
+      "id": "insert-asset-postgres",
+      "name": "Insert Asset to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1300, -140],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, message: \"Asset created successfully\", data: $json } }}",
+        "options": {}
+      },
+      "id": "response-asset-success",
+      "name": "Response Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1560, -140]
+    }
+  ],
+  "connections": {
+    "Webhook Create Asset": {
+      "main": [
+        [
+          {
+            "node": "Validate Asset Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Asset Input": {
+      "main": [
+        [
+          {
+            "node": "Check Existing Asset",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Existing Asset": {
+      "main": [
+        [
+          {
+            "node": "Check Asset Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Asset Conflict": {
+      "main": [
+        [
+          {
+            "node": "IF Asset Code Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Asset Code Exists": {
+      "main": [
+        [
+          {
+            "node": "Respond Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Insert Asset to PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Asset to PostgreSQL": {
+      "main": [
+        [
+          {
+            "node": "Response Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

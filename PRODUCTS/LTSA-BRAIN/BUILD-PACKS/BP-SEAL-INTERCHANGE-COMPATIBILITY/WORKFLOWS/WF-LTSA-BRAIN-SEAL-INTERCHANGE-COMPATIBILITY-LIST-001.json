@@ -1,0 +1,98 @@
+{
+  "name": "WF-LTSA-BRAIN-SEAL-INTERCHANGE-COMPATIBILITY-LIST-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "ltsa/seal-interchange-compatibility/list",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-seal-interchange-compatibility-list",
+      "name": "GET /ltsa/seal-interchange-compatibility/list",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM seal_interchange_compatibility;",
+        "options": {}
+      },
+      "id": "list-seal-interchange-compatibility",
+      "name": "List Interchange Compatibility",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [260, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    success: true,\n    message: 'Interchange compatibility list retrieved',\n    data: $input.all().map(item => item.json)\n  }\n}];"
+      },
+      "id": "build-seal-interchange-compatibility-list-response",
+      "name": "Build Interchange Compatibility List Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: $json.success, message: $json.message, data: $json.data } }}",
+        "options": {}
+      },
+      "id": "respond-seal-interchange-compatibility-list",
+      "name": "Respond Interchange Compatibility List",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [780, 0]
+    }
+  ],
+  "connections": {
+    "GET /ltsa/seal-interchange-compatibility/list": {
+      "main": [
+        [
+          {
+            "node": "List Interchange Compatibility",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Interchange Compatibility": {
+      "main": [
+        [
+          {
+            "node": "Build Interchange Compatibility List Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Interchange Compatibility List Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Interchange Compatibility List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

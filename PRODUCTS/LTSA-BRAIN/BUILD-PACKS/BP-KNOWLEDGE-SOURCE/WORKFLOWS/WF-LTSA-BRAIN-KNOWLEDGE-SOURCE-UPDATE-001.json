@@ -1,0 +1,144 @@
+{
+  "name": "WF-LTSA-BRAIN-KNOWLEDGE-SOURCE-UPDATE-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "PUT",
+        "path": "ltsa/knowledge-source/update",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-knowledge-source-update",
+      "name": "PUT /ltsa/knowledge-source/update",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || $json;\nconst ALLOWED_SOURCE_TYPES = [\n  'INSTALLATION_REPORT', 'SERVICE_REPORT', 'INSPECTION_REPORT', 'FAILURE_REPORT',\n  'DRAWING', 'DATASHEET', 'BILL_OF_MATERIAL', 'MAINTENANCE_HISTORY',\n  'PUMP_MASTER_EXCEL', 'STOCK_EXCEL', 'INSTALLATION_HISTORY_EXCEL',\n  'PHOTO', 'VIDEO', 'ENGINEER_NOTE', 'CUSTOMER_NOTE'\n];\nconst ALLOWED_VERIFICATION_STATUSES = ['DRAFT', 'UNDER_REVIEW', 'VERIFIED', 'CANONICAL'];\n\nif (!body.knowledge_source_id) {\n  throw new Error('knowledge_source_id is required');\n}\n\nif (body.source_type !== undefined && !ALLOWED_SOURCE_TYPES.includes(body.source_type)) {\n  throw new Error('source_type must be one of: ' + ALLOWED_SOURCE_TYPES.join(', '));\n}\n\nif (body.verification_status !== undefined && !ALLOWED_VERIFICATION_STATUSES.includes(body.verification_status)) {\n  throw new Error('verification_status must be one of: ' + ALLOWED_VERIFICATION_STATUSES.join(', '));\n}\n\nif (body.file_size !== undefined && body.file_size !== null && (typeof body.file_size !== 'number' || body.file_size < 0)) {\n  throw new Error('file_size must be a non-negative number');\n}\n\n// knowledge_source_id is immutable (Business Rule; Architecture Decision) --\n// intentionally excluded from the updatable set below.\nconst updatable = [\n  'source_type', 'source_name', 'original_file_name', 'source_date',\n  'customer', 'site', 'unit', 'uploaded_by', 'upload_timestamp', 'source_url',\n  'verification_status', 'confidence_level', 'file_hash', 'file_size',\n  'media_type', 'description'\n];\n\nconst fields = {};\nfor (const key of updatable) {\n  if (body[key] !== undefined) {\n    fields[key] = body[key];\n  }\n}\n\nif (Object.keys(fields).length === 0) {\n  throw new Error('at least one updatable field is required');\n}\n\nreturn [{\n  json: {\n    knowledge_source_id: body.knowledge_source_id,\n    fields\n  }\n}];"
+      },
+      "id": "validate-knowledge-source-update-input",
+      "name": "Validate Update Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const { knowledge_source_id, fields } = $json;\nconst keys = Object.keys(fields);\n\nconst setClauses = keys.map((key, idx) => `${key} = $${idx + 1}`);\nsetClauses.push('updated_at = NOW()');\n\nconst params = keys.map((key) => fields[key]);\nparams.push(knowledge_source_id);\n\nconst query = `UPDATE knowledge_source_registry SET ${setClauses.join(', ')} WHERE knowledge_source_id = $${params.length} RETURNING *;`;\n\nreturn [{\n  json: {\n    knowledge_source_id,\n    query,\n    params\n  }\n}];"
+      },
+      "id": "build-knowledge-source-update-statement",
+      "name": "Build Update Statement",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.query }}",
+        "options": {
+          "queryReplacement": "={{ $json.params }}"
+        }
+      },
+      "id": "update-knowledge-source-postgres",
+      "name": "Update Knowledge Source",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [780, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first()?.json;\n\nif (!row || !row.knowledge_source_id) {\n  return [{\n    json: {\n      statusCode: 404,\n      success: false,\n      message: 'Knowledge source not found',\n      data: null\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    statusCode: 200,\n    success: true,\n    message: 'Knowledge source updated successfully',\n    data: row\n  }\n}];"
+      },
+      "id": "check-knowledge-source-update-result",
+      "name": "Check Update Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: $json.success, message: $json.message, data: $json.data } }}",
+        "options": {
+          "responseCode": "={{ $json.statusCode }}"
+        }
+      },
+      "id": "respond-knowledge-source-update",
+      "name": "Respond Update",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1300, 0]
+    }
+  ],
+  "connections": {
+    "PUT /ltsa/knowledge-source/update": {
+      "main": [
+        [
+          {
+            "node": "Validate Update Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Update Input": {
+      "main": [
+        [
+          {
+            "node": "Build Update Statement",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Update Statement": {
+      "main": [
+        [
+          {
+            "node": "Update Knowledge Source",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Knowledge Source": {
+      "main": [
+        [
+          {
+            "node": "Check Update Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Update Result": {
+      "main": [
+        [
+          {
+            "node": "Respond Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

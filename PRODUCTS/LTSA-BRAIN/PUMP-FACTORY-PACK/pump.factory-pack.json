@@ -1,0 +1,15 @@
+{
+    "pack_code": "FP-PUMP-001",
+    "pack_name": "Pump Factory Pack",
+    "product_type": "PUMP",
+    "capabilities": [
+        "IDENTITY_RESOLUTION",
+        "RELATIONSHIP_RESOLUTION",
+        "CANONICAL_OBJECT_MANUFACTURING"
+    ],
+    "recipe_path": "PRODUCTS/LTSA-BRAIN/PUMP-FACTORY-PACK/recipe.json",
+    "metadata": {
+        "version": "1.0",
+        "mwo": "MWO-LTSA-050-WP-001"
+    }
+}

@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MEDIA_METADATA",
+  "type": "object",
+  "properties": {
+    "media_metadata_id": {
+      "type": "string"
+    },
+    "engineering_media_id": {
+      "type": "string"
+    },
+    "resolution": {
+      "type": "string"
+    },
+    "duration": {
+      "type": "number"
+    },
+    "width": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "height": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "frame_rate": {
+      "type": "number"
+    },
+    "audio_channels": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "gps_location": {
+      "type": "string"
+    },
+    "camera_device": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "media_metadata_id",
+    "engineering_media_id"
+  ]
+}

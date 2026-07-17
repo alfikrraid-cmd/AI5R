@@ -1,0 +1,186 @@
+{
+  "name": "WF-LTSA-BRAIN-SEAL-PUMP-COMPATIBILITY-DELETE-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "DELETE",
+        "path": "ltsa/seal-pump-compatibility/delete",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-seal-pump-compatibility-delete",
+      "name": "DELETE /ltsa/seal-pump-compatibility/delete",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const seal_code = $json.query?.seal_code;\nconst pump_tag_number = $json.query?.pump_tag_number;\n\nreturn [{\n  json: {\n    seal_code,\n    pump_tag_number,\n    valid: !!(seal_code && pump_tag_number)\n  }\n}];"
+      },
+      "id": "parse-delete-seal-pump-compatibility-key",
+      "name": "Parse Compatibility Key",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "valid-compatibility-key-check",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-valid-delete-seal-pump-compatibility-key",
+      "name": "IF Valid Compatibility Key",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [520, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "DELETE FROM seal_pump_compatibility\nWHERE seal_code = $1 AND pump_tag_number = $2\nRETURNING *;",
+        "options": {
+          "queryReplacement": "={{ [$json.seal_code, $json.pump_tag_number] }}"
+        }
+      },
+      "id": "delete-seal-pump-compatibility-postgres",
+      "name": "Delete Pump Compatibility",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [780, -120],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first()?.json;\n\nif (!row || !row.seal_code) {\n  return [{\n    json: {\n      statusCode: 404,\n      success: false,\n      message: 'Pump compatibility not found',\n      data: null\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    statusCode: 200,\n    success: true,\n    message: 'Pump compatibility deleted successfully',\n    data: row\n  }\n}];"
+      },
+      "id": "check-seal-pump-compatibility-delete-result",
+      "name": "Check Delete Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, -120]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: $json.success, message: $json.message, data: $json.data } }}",
+        "options": {
+          "responseCode": "={{ $json.statusCode }}"
+        }
+      },
+      "id": "respond-seal-pump-compatibility-delete",
+      "name": "Respond Delete",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1300, -120]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, message: 'seal_code and pump_tag_number query parameters are required' } }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "respond-seal-pump-compatibility-delete-400",
+      "name": "Respond 400",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [780, 200]
+    }
+  ],
+  "connections": {
+    "DELETE /ltsa/seal-pump-compatibility/delete": {
+      "main": [
+        [
+          {
+            "node": "Parse Compatibility Key",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Compatibility Key": {
+      "main": [
+        [
+          {
+            "node": "IF Valid Compatibility Key",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Valid Compatibility Key": {
+      "main": [
+        [
+          {
+            "node": "Delete Pump Compatibility",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 400",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete Pump Compatibility": {
+      "main": [
+        [
+          {
+            "node": "Check Delete Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Delete Result": {
+      "main": [
+        [
+          {
+            "node": "Respond Delete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

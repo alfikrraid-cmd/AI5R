@@ -1,0 +1,215 @@
+{
+  "name": "WF-LTSA-BRAIN-ENGINEERING-MEDIA-CREATE-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ltsa/engineering-media/create",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-engineering-media-create",
+      "name": "Webhook Create Engineering Media",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || $json;\nconst ALLOWED_TYPES = [\n  'PHOTO', 'VIDEO', 'AUDIO', 'THERMAL_IMAGE', 'INFRARED_IMAGE',\n  'INSPECTION_IMAGE', 'CCTV_RECORDING', 'DRONE_RECORDING', 'OTHER'\n];\n\nif (!body.engineering_media_id) {\n  throw new Error('engineering_media_id is required');\n}\n\nif (!body.knowledge_source_id) {\n  throw new Error('knowledge_source_id is required');\n}\n\nif (!body.media_name) {\n  throw new Error('media_name is required');\n}\n\nif (!body.media_type || !ALLOWED_TYPES.includes(body.media_type)) {\n  throw new Error('media_type must be one of: ' + ALLOWED_TYPES.join(', '));\n}\n\nif (body.file_size !== undefined && body.file_size !== null && (typeof body.file_size !== 'number' || body.file_size < 0)) {\n  throw new Error('file_size must be a non-negative number');\n}\n\nreturn [\n  {\n    json: {\n      engineering_media_id: body.engineering_media_id,\n      knowledge_source_id: body.knowledge_source_id,\n      media_name: body.media_name,\n      media_type: body.media_type,\n      file_name: body.file_name || null,\n      file_size: body.file_size ?? null,\n      file_hash: body.file_hash || null,\n      status: body.status || null\n    }\n  }\n];"
+      },
+      "id": "validate-engineering-media-input",
+      "name": "Validate Engineering Media Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT engineering_media_id\nFROM engineering_media\nWHERE engineering_media_id = $1\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ [$json.engineering_media_id] }}"
+        }
+      },
+      "id": "check-existing-engineering-media",
+      "name": "Check Existing Engineering Media",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [520, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const existing = $input.first()?.json;\nconst input = $('Validate Engineering Media Input').first().json;\n\nreturn [{\n  json: {\n    ...input,\n    _conflict: !!(existing && existing.engineering_media_id)\n  }\n}];"
+      },
+      "id": "check-engineering-media-conflict",
+      "name": "Check Engineering Media Conflict",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [780, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "conflict-check",
+              "leftValue": "={{ $json._conflict }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-engineering-media-conflict",
+      "name": "IF Engineering Media Exists",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1040, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, message: \"engineering_media_id already exists: \" + $json.engineering_media_id } }}",
+        "options": {
+          "responseCode": 409
+        }
+      },
+      "id": "respond-engineering-media-conflict",
+      "name": "Respond Conflict",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1300, 140]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO engineering_media (\n  engineering_media_id,\n  knowledge_source_id,\n  media_name,\n  media_type,\n  file_name,\n  file_size,\n  file_hash,\n  status\n)\nVALUES (\n  $1, $2, $3, $4, $5, $6, $7, $8\n)\nRETURNING *;",
+        "options": {
+          "queryReplacement": "={{ [$json.engineering_media_id, $json.knowledge_source_id, $json.media_name, $json.media_type, $json.file_name, $json.file_size, $json.file_hash, $json.status] }}"
+        }
+      },
+      "id": "insert-engineering-media-postgres",
+      "name": "Insert Engineering Media to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1300, -140],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, message: \"Engineering Media created successfully\", data: $json } }}",
+        "options": {}
+      },
+      "id": "response-engineering-media-success",
+      "name": "Response Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1560, -140]
+    }
+  ],
+  "connections": {
+    "Webhook Create Engineering Media": {
+      "main": [
+        [
+          {
+            "node": "Validate Engineering Media Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Engineering Media Input": {
+      "main": [
+        [
+          {
+            "node": "Check Existing Engineering Media",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Existing Engineering Media": {
+      "main": [
+        [
+          {
+            "node": "Check Engineering Media Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Engineering Media Conflict": {
+      "main": [
+        [
+          {
+            "node": "IF Engineering Media Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Engineering Media Exists": {
+      "main": [
+        [
+          {
+            "node": "Respond Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Insert Engineering Media to PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Engineering Media to PostgreSQL": {
+      "main": [
+        [
+          {
+            "node": "Response Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

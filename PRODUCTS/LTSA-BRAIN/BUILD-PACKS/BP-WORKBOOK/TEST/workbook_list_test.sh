@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# Functional test for WF-LTSA-BRAIN-WORKBOOK-LIST-001 (Workbook List).
+# MWO-LTSA-040C (Universal Tabular Data Acquisition).
+#
+# Exercises the workflow's actual SQL logic directly against a real,
+# controllable PostgreSQL instance. Does not depend on any external host.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../../../VERIFICATION/lib/psql_common.sh
+source "$SCRIPT_DIR/../../../VERIFICATION/lib/psql_common.sh"
+
+TEST_KS_ID="TEST-KS-WB-LIST-$$"
+TEST_ID="TEST-WB-LIST-$$"
+
+cleanup() {
+  psql_run -c "DELETE FROM workbook WHERE workbook_id = '${TEST_ID}';" >/dev/null 2>&1 || true
+  psql_run -c "DELETE FROM knowledge_source_registry WHERE knowledge_source_id = '${TEST_KS_ID}';" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
+echo "[setup] Parent knowledge_source_registry row"
+psql_run -c "INSERT INTO knowledge_source_registry (knowledge_source_id, source_type, source_name) VALUES ('${TEST_KS_ID}', 'STOCK_EXCEL', 'TEST SOURCE FOR WORKBOOK LIST');"
+
+echo "[1/2] Row count increases by exactly 1 after insert"
+BEFORE=$(psql_run -tAc "SELECT count(*) FROM workbook;")
+psql_run -c "INSERT INTO workbook (workbook_id, knowledge_source_id, workbook_type, workbook_name) VALUES ('${TEST_ID}', '${TEST_KS_ID}', 'SEAL_STOCK', 'TEST WORKBOOK LIST');"
+AFTER=$(psql_run -tAc "SELECT count(*) FROM workbook;")
+if [ "$((AFTER - BEFORE))" -ne 1 ]; then
+  echo "FAIL: expected row count to increase by 1, went from ${BEFORE} to ${AFTER}"
+  exit 1
+fi
+echo "PASS: 'List Workbooks' node's unfiltered SELECT * FROM workbook reflects the fixture row"
+
+echo "[2/2] Listed row includes the expected fields"
+FOUND_TYPE=$(psql_run -tAc "SELECT workbook_type FROM workbook WHERE workbook_id = '${TEST_ID}';")
+if [ "${FOUND_TYPE}" != "SEAL_STOCK" ]; then
+  echo "FAIL: expected workbook_type 'SEAL_STOCK', got '${FOUND_TYPE}'"
+  exit 1
+fi
+echo "PASS: row shape matches what 'List Workbooks' would return for this table"
+
+echo "ALL DB-LEVEL CHECKS COMPLETE for WF-LTSA-BRAIN-WORKBOOK-LIST-001"

@@ -1,0 +1,186 @@
+{
+  "name": "WF-LTSA-BRAIN-PDF-ACQUISITION-JOB-DETAIL-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "ltsa/pdf-acquisition-job/detail",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-pdf-acquisition-job-detail",
+      "name": "GET /ltsa/pdf-acquisition-job/detail",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const pdf_acquisition_job_id = $json.query?.pdf_acquisition_job_id;\n\nreturn [{\n  json: {\n    pdf_acquisition_job_id,\n    valid: !!pdf_acquisition_job_id\n  }\n}];"
+      },
+      "id": "parse-pdf-acquisition-job-id",
+      "name": "Parse PDF Acquisition Job ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "valid-pdf-acquisition-job-id-check",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-valid-pdf-acquisition-job-id",
+      "name": "IF Valid PDF Acquisition Job ID",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [520, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT *\nFROM pdf_acquisition_job\nWHERE pdf_acquisition_job_id = $1\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ [$json.pdf_acquisition_job_id] }}"
+        }
+      },
+      "id": "get-pdf-acquisition-job-detail",
+      "name": "Get PDF Acquisition Job Detail",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [780, -120],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first()?.json;\n\nif (!row || !row.pdf_acquisition_job_id) {\n  return [{\n    json: {\n      statusCode: 404,\n      success: false,\n      message: 'PDF Acquisition Job not found',\n      data: null\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    statusCode: 200,\n    success: true,\n    message: 'PDF Acquisition Job detail found',\n    data: row\n  }\n}];"
+      },
+      "id": "build-pdf-acquisition-job-detail-response",
+      "name": "Build PDF Acquisition Job Detail Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, -120]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: $json.success, message: $json.message, data: $json.data } }}",
+        "options": {
+          "responseCode": "={{ $json.statusCode }}"
+        }
+      },
+      "id": "respond-pdf-acquisition-job-detail",
+      "name": "Respond PDF Acquisition Job Detail",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1300, -120]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, message: 'pdf_acquisition_job_id query parameter is required' } }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "respond-pdf-acquisition-job-400",
+      "name": "Respond 400",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [780, 200]
+    }
+  ],
+  "connections": {
+    "GET /ltsa/pdf-acquisition-job/detail": {
+      "main": [
+        [
+          {
+            "node": "Parse PDF Acquisition Job ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse PDF Acquisition Job ID": {
+      "main": [
+        [
+          {
+            "node": "IF Valid PDF Acquisition Job ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Valid PDF Acquisition Job ID": {
+      "main": [
+        [
+          {
+            "node": "Get PDF Acquisition Job Detail",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 400",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get PDF Acquisition Job Detail": {
+      "main": [
+        [
+          {
+            "node": "Build PDF Acquisition Job Detail Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build PDF Acquisition Job Detail Response": {
+      "main": [
+        [
+          {
+            "node": "Respond PDF Acquisition Job Detail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

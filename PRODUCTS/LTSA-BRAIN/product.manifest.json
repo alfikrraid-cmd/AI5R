@@ -27,6 +27,101 @@
       "status": "partial"
     },
     {
+      "name": "seal_stock",
+      "enabled": true,
+      "status": "partial"
+    },
+    {
+      "name": "seal_pump_compatibility",
+      "enabled": true,
+      "status": "partial"
+    },
+    {
+      "name": "seal_interchange_compatibility",
+      "enabled": true,
+      "status": "partial"
+    },
+    {
+      "name": "seal_engineering_document",
+      "enabled": true,
+      "status": "partial"
+    },
+    {
+      "name": "knowledge_source_registry",
+      "enabled": true,
+      "status": "partial"
+    },
+    {
+      "name": "workbook",
+      "enabled": true,
+      "status": "partial"
+    },
+    {
+      "name": "worksheet",
+      "enabled": true,
+      "status": "partial"
+    },
+    {
+      "name": "worksheet_table",
+      "enabled": true,
+      "status": "partial"
+    },
+    {
+      "name": "mapping_profile",
+      "enabled": true,
+      "status": "partial"
+    },
+    {
+      "name": "column_mapping",
+      "enabled": true,
+      "status": "partial"
+    },
+    {
+      "name": "acquisition_job",
+      "enabled": true,
+      "status": "partial"
+    },
+    {
+      "name": "pdf_document",
+      "enabled": true,
+      "status": "partial"
+    },
+    {
+      "name": "pdf_metadata",
+      "enabled": true,
+      "status": "partial"
+    },
+    {
+      "name": "document_classification",
+      "enabled": true,
+      "status": "partial"
+    },
+    {
+      "name": "pdf_acquisition_job",
+      "enabled": true,
+      "status": "partial"
+    },
+    {
+      "name": "engineering_media",
+      "enabled": true,
+      "status": "partial"
+    },
+    {
+      "name": "media_metadata",
+      "enabled": true,
+      "status": "partial"
+    },
+    {
+      "name": "media_classification",
+      "enabled": true,
+      "status": "partial"
+    },
+    {
+      "name": "media_acquisition_job",
+      "enabled": true,
+      "status": "partial"
+    },
+    {
       "name": "asset",
       "enabled": true,
       "status": "partial"
@@ -85,10 +180,29 @@
   },
 
   "implementation_status": {
-    "_meta": "Added by MWO-P-002 / IR-004 (Manifest Reconciliation); extended by MO-001 (OSA Maintenance v0.1 manufacturing order). Status values: implemented | partial | missing. See ENGINEERING/MWO/IR-004-Manifest-Report.md for the pre-MO-001 comparison, and MANUFACTURING/MO-001/MO-001-MANUFACTURING-REPORT.md for this order's own validation results. This section is additive documentation; it does not change module enablement or artifact flags above.",
+    "_meta": "Added by MWO-P-002 / IR-004 (Manifest Reconciliation); extended by MO-001 (OSA Maintenance v0.1 manufacturing order), MWO-LTSA-030 (Mechanical Seal Knowledge Manufacturing), MWO-LTSA-040A (Knowledge Source Registry), MWO-LTSA-040B (Engineering Document Acquisition), and MWO-LTSA-040C (Universal Tabular Data Acquisition). Status values: implemented | partial | missing. See ENGINEERING/MWO/IR-004-Manifest-Report.md for the pre-MO-001 comparison, MANUFACTURING/MO-001/MO-001-MANUFACTURING-REPORT.md, ENGINEERING/MWO/MWO-LTSA-030-Completion-Report.md, ENGINEERING/MWO/MWO-LTSA-040A-Completion-Report.md, and ENGINEERING/MWO/MWO-LTSA-040B-Completion-Report.md for those orders' validation results, and ENGINEERING/MWO/MWO-LTSA-040C-Completion-Report.md for this order's. This section is additive documentation; it does not change module enablement or artifact flags above.",
     "customer": "partial - database schema is canonical (DATABASE/MIGRATIONS/005_create_customer_registry.sql); all 5 documented workflow operations have files but none has real query logic (5 stubs in BUILD-PACKS/BP-005, 6 empty shells in BUILD-PACKS/BP-007/OUTPUTS). Unchanged by MO-001.",
-    "pump": "partial - database schema is canonical (MODULES/PUMP/DATABASE/001_create_pumps.sql, ltsa_pumps); create (MODULES/PUMP/WORKFLOWS) and detail (BUILD-PACKS/BP-007/OUTPUTS) have real, credentialed logic; list/update/delete exist only as non-functional stubs in BUILD-PACKS/BP-PUMP. Unchanged by MO-001.",
-    "seal": "partial - database schema and REGISTRIES/SEAL.json are mutually consistent; all 5 workflows in BUILD-PACKS/BP-SEAL have real embedded SQL (MWO-P-005). Unchanged by MO-001.",
+    "pump": "partial - database schema is canonical (MODULES/PUMP/DATABASE/001_create_pumps.sql, ltsa_pumps); create (MODULES/PUMP/WORKFLOWS) and detail (BUILD-PACKS/BP-007/OUTPUTS) have real, credentialed logic; list/update/delete exist only as non-functional stubs in BUILD-PACKS/BP-PUMP. Unchanged by MO-001 and MWO-LTSA-030 -- MWO-LTSA-030's Pump Compatibility table references ltsa_pumps.tag_number by FK, read-only, per its Architecture Decision item 3 (never the deprecated BUILD-PACKS/BP-PUMP).",
+    "seal": "partial - database schema and REGISTRIES/SEAL.json are mutually consistent; all 5 workflows in BUILD-PACKS/BP-SEAL have real embedded SQL (MWO-P-005). Unchanged by MO-001 and MWO-LTSA-030 -- per MWO-LTSA-030's Architecture Decision item 4, seal_registry IS the canonical Mechanical Seal registry the new knowledge-model tables below reference by FK; it was not re-manufactured.",
+    "seal_stock": "partial - manufactured under MWO-LTSA-030 (BUILD-PACKS/BP-SEAL-STOCK). Canonical seal_stock table (PK seal_code, FK to seal_registry); all 5 workflows have real embedded SQL following the BP-SEAL conflict-check pattern. Structurally validated; runtime verification blocked on the same standing no-credentialed-database condition as every other n8n/Postgres module in this product.",
+    "seal_pump_compatibility": "partial - manufactured under MWO-LTSA-030 (BUILD-PACKS/BP-SEAL-PUMP-COMPATIBILITY). Canonical seal_pump_compatibility table (composite PK seal_code + pump_tag_number, FK'd to seal_registry and ltsa_pumps respectively); all 5 workflows have real embedded SQL, Detail/Update/Delete keyed on the full composite pair. Same validation status as seal_stock.",
+    "seal_interchange_compatibility": "partial - manufactured under MWO-LTSA-030 (BUILD-PACKS/BP-SEAL-INTERCHANGE-COMPATIBILITY). Canonical seal_interchange_compatibility table (composite PK seal_code + compatible_seal_code, self-referential FK to seal_registry on both sides, CHECK seal_code <> compatible_seal_code); all 5 workflows have real embedded SQL. Same validation status as seal_stock.",
+    "seal_engineering_document": "partial - manufactured under MWO-LTSA-030 (BUILD-PACKS/BP-SEAL-ENGINEERING-DOCUMENT); extended under MWO-LTSA-040B (Engineering Document Acquisition). Canonical seal_engineering_document table (PK document_code, immutable; FK to seal_registry and, since 040B, to knowledge_source_registry; document_type constrained to a 7-value closed set -- DRAWING/DATASHEET/INSTALLATION_GUIDE/INSPECTION_SHEET/MAINTENANCE_MANUAL/SERVICE_BULLETIN/ENGINEERING_SPECIFICATION -- at both the workflow and schema layer). Deliberately not generic document management -- file_reference is a pointer field, not a storage backend (Architecture Decision item 7, MWO-030). Engineering Documents are immutable (040B Business Rule): the Update workflow now permits changing only status; every other field, including title/revision/document_number, is fixed at Create time -- a new revision must be registered as a new document_code row. knowledge_source_id is required by Create's input validation but stored as a nullable FK column (not database NOT NULL), a deliberate migration-safety choice documented in MWO-LTSA-040B WP-000. All 5 workflows (Create/List/Detail/Update/Delete) have real embedded SQL. Same validation status as seal_stock.",
+    "knowledge_source_registry": "partial - manufactured under MWO-LTSA-040A (BUILD-PACKS/BP-KNOWLEDGE-SOURCE). Canonical knowledge_source_registry table (PK knowledge_source_id, immutable; source_type constrained to a 15-value closed set, verification_status to DRAFT/UNDER_REVIEW/VERIFIED/CANONICAL, both at the workflow and schema layer). Deliberately distinct from AI5R-SDK/KNOWLEDGE's frozen, AI5R-platform-level KnowledgeSource/KnowledgeSourceRegistry -- same name, unrelated artifact, not integrated with (Architecture Decision items 1-2). Only 4 workflows exist (Create/List/Detail/Update) -- no Delete, by design: the original engineering source must never be removed by Engineering Knowledge Acquisition (Business Rule; Architecture Decision item 9). Since MWO-LTSA-040B, seal_engineering_document.knowledge_source_id references this table by FK -- the physical linkage MWO-040A's own Architecture Decision item 6 deferred. Since MWO-LTSA-040C, workbook.knowledge_source_id references this table by FK too. Structurally validated; runtime verification blocked on the same standing no-credentialed-database condition as every other n8n/Postgres module in this product.",
+    "workbook": "partial - manufactured under MWO-LTSA-040C (BUILD-PACKS/BP-WORKBOOK), part of the Universal Acquisition Infrastructure. Canonical workbook table (PK workbook_id, immutable; FK to knowledge_source_registry; workbook_type constrained to the 11 Supported Workbook Types). Create/List/Detail only -- no Update or Delete, per \"Original Workbook must never be modified.\" Does not write to any canonical business-object table (Architecture Decision items 1/5/6). Same validation status as knowledge_source_registry.",
+    "worksheet": "partial - manufactured under MWO-LTSA-040C (BUILD-PACKS/BP-WORKSHEET). Canonical worksheet table (PK worksheet_id, immutable; FK to workbook). Create/List/Detail only, same immutability class as workbook. Same validation status as workbook.",
+    "worksheet_table": "partial - manufactured under MWO-LTSA-040C (BUILD-PACKS/BP-WORKSHEET-TABLE). Canonical worksheet_table table (PK worksheet_table_id, immutable; FK to worksheet). Attributes not specified by the original work order -- mirrors worksheet's own shape one level down. Create/List/Detail only. Same validation status as workbook.",
+    "mapping_profile": "partial - manufactured under MWO-LTSA-040C (BUILD-PACKS/BP-MAPPING-PROFILE). Canonical mapping_profile table (PK mapping_profile_id; workbook_type constrained to the same 11-value set as workbook; customer free text). The extension point for customer-specific column names (Architecture Decision item 8) -- full CRUD, a managed/reusable resource, not immutable. Same validation status as workbook.",
+    "column_mapping": "partial - manufactured under MWO-LTSA-040C (BUILD-PACKS/BP-COLUMN-MAPPING). Canonical column_mapping table (PK column_mapping_id; FK to mapping_profile; source_column/canonical_attribute pair; is_mandatory serves the original work order's \"Validate ... Missing Mandatory Values\" requirement generically). Full CRUD. Same validation status as workbook.",
+    "acquisition_job": "partial - manufactured under MWO-LTSA-040C (BUILD-PACKS/BP-ACQUISITION-JOB). Canonical acquisition_job table (PK acquisition_job_id; FK to workbook and mapping_profile; status constrained to PENDING/IN_PROGRESS/READY_FOR_MANUFACTURING/FAILED -- the status set is the one part of this table's design most likely to need revision once a future MWO builds a real acquisition workflow against it, flagged rather than hidden). Create/List/Detail/Update -- no Delete, so repeated attempts accumulate as new job rows rather than overwriting history. A READY_FOR_MANUFACTURING job has written no business object -- per Architecture Decision items 1/5/6/9/10, MWO-LTSA-040C manufactures only the acquisition infrastructure; future MWOs will consume acquisition_job to manufacture canonical business objects. Same validation status as workbook.",
+    "pdf_document": "partial - manufactured under MWO-LTSA-040D (BUILD-PACKS/BP-PDF-DOCUMENT), the Engineering PDF Acquisition layer. Canonical pdf_document table (PK pdf_document_id, immutable; FK to knowledge_source_registry; document_type constrained to the 11 Supported PDF Types). Parallel to, not an extension of, seal_engineering_document (MWO-LTSA-040B) -- this MWO's own Business Rule requires only a Knowledge Source link, not a Mechanical Seal link, and MWO-LTSA-040A's own roadmap already names '040D connects PDF Acquisition' as its own distinct connection, the same way MWO-LTSA-040C ('Excel Acquisition') built its own workbook family instead of retrofitting seal_engineering_document. Create/List/Detail only -- no Update or Delete, per 'Original PDF must never be modified.' Does not perform OCR, text/table/image extraction, AI, or write to any canonical business-object table. Same validation status as workbook.",
+    "pdf_metadata": "partial - manufactured under MWO-LTSA-040D (BUILD-PACKS/BP-PDF-METADATA). Canonical pdf_metadata table (PK pdf_metadata_id; FK to pdf_document, UNIQUE -- one row per PDF Document, since a single PDF file has exactly one set of container-level properties at a time). Stores title/author/producer/creation_date/modification_date/pdf_version -- standard PDF document properties, not extracted body content. Create/List/Detail only. Same validation status as workbook.",
+    "document_classification": "partial - manufactured under MWO-LTSA-040D (BUILD-PACKS/BP-DOCUMENT-CLASSIFICATION). Canonical document_classification table (PK document_classification_id; FK to pdf_document; classification_type reuses the same 11-value closed set as pdf_document.document_type -- no separate classification taxonomy was named in the original work order). Repeatable by design -- 'PDF Classification must be repeatable' (Business Rule) is satisfied by allowing multiple classification rows per PDF Document, not by mutating one row, the same reasoning as acquisition_job (040C). Create/List/Detail only -- no Update or Delete. Same validation status as workbook.",
+    "pdf_acquisition_job": "partial - manufactured under MWO-LTSA-040D (BUILD-PACKS/BP-PDF-ACQUISITION-JOB). Canonical pdf_acquisition_job table (PK pdf_acquisition_job_id; FK to knowledge_source_registry and pdf_document -- both named attributes of 'PDF Acquisition Job' in the original work order's own Business Objects section; status constrained to PENDING/IN_PROGRESS/COMPLETED/FAILED, adapted from acquisition_job/040C with READY_FOR_MANUFACTURING replaced by COMPLETED since this MWO's Out of Scope excludes 'Engineering Object Manufacturing' -- flagged as the label most likely to need revision, same caveat 040C raised for its own job-status set). Create/List/Detail/Update -- no Delete, so repeated attempts accumulate as new job rows. Same validation status as workbook.",
+    "engineering_media": "partial - manufactured under MWO-LTSA-040E (BUILD-PACKS/BP-ENGINEERING-MEDIA), the third canonical Acquisition Object alongside Workbook (040C) and PDF (040D), per ADR-004 (Engineering Acquisition Pattern). Canonical engineering_media table (PK engineering_media_id, immutable; FK to knowledge_source_registry; media_type constrained to the 9 Supported Media Types). media_name/file_name/file_size/file_hash/status complete this table's shape as a table-for-table clone of pdf_document, flagged in MWO-LTSA-040E's WP-000 addendum rather than silently assumed. Create/List/Detail only -- no Update or Delete, per 'Original media must never be modified.' Does not perform image recognition, object detection, OCR, speech recognition, video/audio analysis, AI, or write to any canonical business-object table. Same validation status as workbook.",
+    "media_metadata": "partial - manufactured under MWO-LTSA-040E (BUILD-PACKS/BP-MEDIA-METADATA). Canonical media_metadata table (PK media_metadata_id; FK to engineering_media, UNIQUE -- one row per Engineering Media asset, since a single media file has exactly one set of container-level technical properties at a time). Stores resolution/duration/width/height/frame_rate/audio_channels/gps_location/camera_device -- technical file properties, not analyzed content. Create/List/Detail only. Same validation status as workbook.",
+    "media_classification": "partial - manufactured under MWO-LTSA-040E (BUILD-PACKS/BP-MEDIA-CLASSIFICATION). Canonical media_classification table (PK media_classification_id; FK to engineering_media; classification_type reuses the same 9-value closed set as engineering_media.media_type -- no separate classification taxonomy was named in the original work order). Repeatable by design -- 'Media classification must be repeatable' (Business Rule) is satisfied by allowing multiple classification rows per Engineering Media asset, not by mutating one row, the same reasoning as document_classification (040D) and acquisition_job (040C). Create/List/Detail only -- no Update or Delete. Same validation status as workbook.",
+    "media_acquisition_job": "partial - manufactured under MWO-LTSA-040E (BUILD-PACKS/BP-MEDIA-ACQUISITION-JOB). Canonical media_acquisition_job table (PK media_acquisition_job_id; FK to knowledge_source_registry and engineering_media -- both named attributes of 'Media Acquisition Job' in the original work order's own Business Objects section; status constrained to PENDING/IN_PROGRESS/COMPLETED/FAILED, adapted from pdf_acquisition_job/040D with the same COMPLETED-not-READY_FOR_MANUFACTURING reasoning since this MWO's Out of Scope excludes 'Engineering Object Manufacturing'). Create/List/Detail/Update -- no Delete, so repeated attempts accumulate as new job rows. Same validation status as workbook.",
     "asset": "partial - manufactured under MO-001 (BUILD-PACKS/BP-ASSET). Canonical asset_registry table; all 5 workflows have real embedded SQL following the BP-SEAL conflict-check pattern. Structurally validated; runtime verification blocked on the same standing no-credentialed-database condition as every other n8n/Postgres module in this product.",
     "soot_blower": "partial - manufactured under MO-001 (BUILD-PACKS/BP-SOOT-BLOWER). Same pattern and validation status as asset.",
     "work_order": "partial - manufactured under MO-001 (BUILD-PACKS/BP-WORK-ORDER). References customer_code and a polymorphic (asset_code, asset_type) pair by convention, not a DB foreign key (documented in BP-WORK-ORDER/DATABASE/001_create_table.sql). Same validation status as asset.",

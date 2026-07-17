@@ -1,0 +1,215 @@
+{
+  "name": "WF-LTSA-BRAIN-WORKSHEET-TABLE-CREATE-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ltsa/worksheet-table/create",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-worksheet-table-create",
+      "name": "Webhook Create Worksheet Table",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || $json;\n\nif (!body.worksheet_table_id) {\n  throw new Error('worksheet_table_id is required');\n}\n\nif (!body.worksheet_id) {\n  throw new Error('worksheet_id is required');\n}\n\nif (body.row_count !== undefined && body.row_count !== null && (typeof body.row_count !== 'number' || body.row_count < 0)) {\n  throw new Error('row_count must be a non-negative number');\n}\n\nif (body.column_count !== undefined && body.column_count !== null && (typeof body.column_count !== 'number' || body.column_count < 0)) {\n  throw new Error('column_count must be a non-negative number');\n}\n\nreturn [\n  {\n    json: {\n      worksheet_table_id: body.worksheet_table_id,\n      worksheet_id: body.worksheet_id,\n      table_name: body.table_name || null,\n      row_count: body.row_count ?? null,\n      column_count: body.column_count ?? null\n    }\n  }\n];"
+      },
+      "id": "validate-worksheet-table-input",
+      "name": "Validate Worksheet Table Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT worksheet_table_id\nFROM worksheet_table\nWHERE worksheet_table_id = $1\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ [$json.worksheet_table_id] }}"
+        }
+      },
+      "id": "check-existing-worksheet-table",
+      "name": "Check Existing Worksheet Table",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [520, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const existing = $input.first()?.json;\nconst input = $('Validate Worksheet Table Input').first().json;\n\nreturn [{\n  json: {\n    ...input,\n    _conflict: !!(existing && existing.worksheet_table_id)\n  }\n}];"
+      },
+      "id": "check-worksheet-table-conflict",
+      "name": "Check Worksheet Table Conflict",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [780, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "conflict-check",
+              "leftValue": "={{ $json._conflict }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-worksheet-table-conflict",
+      "name": "IF Worksheet Table Exists",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1040, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, message: \"worksheet_table_id already exists: \" + $json.worksheet_table_id } }}",
+        "options": {
+          "responseCode": 409
+        }
+      },
+      "id": "respond-worksheet-table-conflict",
+      "name": "Respond Conflict",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1300, 140]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO worksheet_table (\n  worksheet_table_id,\n  worksheet_id,\n  table_name,\n  row_count,\n  column_count\n)\nVALUES (\n  $1, $2, $3, $4, $5\n)\nRETURNING *;",
+        "options": {
+          "queryReplacement": "={{ [$json.worksheet_table_id, $json.worksheet_id, $json.table_name, $json.row_count, $json.column_count] }}"
+        }
+      },
+      "id": "insert-worksheet-table-postgres",
+      "name": "Insert Worksheet Table to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1300, -140],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, message: \"Worksheet table created successfully\", data: $json } }}",
+        "options": {}
+      },
+      "id": "response-worksheet-table-success",
+      "name": "Response Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1560, -140]
+    }
+  ],
+  "connections": {
+    "Webhook Create Worksheet Table": {
+      "main": [
+        [
+          {
+            "node": "Validate Worksheet Table Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Worksheet Table Input": {
+      "main": [
+        [
+          {
+            "node": "Check Existing Worksheet Table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Existing Worksheet Table": {
+      "main": [
+        [
+          {
+            "node": "Check Worksheet Table Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Worksheet Table Conflict": {
+      "main": [
+        [
+          {
+            "node": "IF Worksheet Table Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Worksheet Table Exists": {
+      "main": [
+        [
+          {
+            "node": "Respond Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Insert Worksheet Table to PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Worksheet Table to PostgreSQL": {
+      "main": [
+        [
+          {
+            "node": "Response Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

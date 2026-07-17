@@ -1,0 +1,215 @@
+{
+  "name": "WF-LTSA-BRAIN-ACQUISITION-JOB-CREATE-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ltsa/acquisition-job/create",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-acquisition-job-create",
+      "name": "Webhook Create Acquisition Job",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || $json;\nconst ALLOWED_STATUSES = ['PENDING', 'IN_PROGRESS', 'READY_FOR_MANUFACTURING', 'FAILED'];\n\nif (!body.acquisition_job_id) {\n  throw new Error('acquisition_job_id is required');\n}\n\nif (!body.workbook_id) {\n  throw new Error('workbook_id is required');\n}\n\nif (!body.mapping_profile_id) {\n  throw new Error('mapping_profile_id is required');\n}\n\nconst status = body.status || 'PENDING';\nif (!ALLOWED_STATUSES.includes(status)) {\n  throw new Error('status must be one of: ' + ALLOWED_STATUSES.join(', '));\n}\n\nreturn [\n  {\n    json: {\n      acquisition_job_id: body.acquisition_job_id,\n      workbook_id: body.workbook_id,\n      mapping_profile_id: body.mapping_profile_id,\n      status\n    }\n  }\n];"
+      },
+      "id": "validate-acquisition-job-input",
+      "name": "Validate Acquisition Job Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT acquisition_job_id\nFROM acquisition_job\nWHERE acquisition_job_id = $1\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ [$json.acquisition_job_id] }}"
+        }
+      },
+      "id": "check-existing-acquisition-job",
+      "name": "Check Existing Acquisition Job",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [520, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const existing = $input.first()?.json;\nconst input = $('Validate Acquisition Job Input').first().json;\n\nreturn [{\n  json: {\n    ...input,\n    _conflict: !!(existing && existing.acquisition_job_id)\n  }\n}];"
+      },
+      "id": "check-acquisition-job-conflict",
+      "name": "Check Acquisition Job Conflict",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [780, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "conflict-check",
+              "leftValue": "={{ $json._conflict }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-acquisition-job-conflict",
+      "name": "IF Acquisition Job Exists",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1040, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, message: \"acquisition_job_id already exists: \" + $json.acquisition_job_id } }}",
+        "options": {
+          "responseCode": 409
+        }
+      },
+      "id": "respond-acquisition-job-conflict",
+      "name": "Respond Conflict",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1300, 140]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO acquisition_job (\n  acquisition_job_id,\n  workbook_id,\n  mapping_profile_id,\n  status\n)\nVALUES (\n  $1, $2, $3, $4\n)\nRETURNING *;",
+        "options": {
+          "queryReplacement": "={{ [$json.acquisition_job_id, $json.workbook_id, $json.mapping_profile_id, $json.status] }}"
+        }
+      },
+      "id": "insert-acquisition-job-postgres",
+      "name": "Insert Acquisition Job to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1300, -140],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, message: \"Acquisition job created successfully\", data: $json } }}",
+        "options": {}
+      },
+      "id": "response-acquisition-job-success",
+      "name": "Response Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1560, -140]
+    }
+  ],
+  "connections": {
+    "Webhook Create Acquisition Job": {
+      "main": [
+        [
+          {
+            "node": "Validate Acquisition Job Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Acquisition Job Input": {
+      "main": [
+        [
+          {
+            "node": "Check Existing Acquisition Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Existing Acquisition Job": {
+      "main": [
+        [
+          {
+            "node": "Check Acquisition Job Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Acquisition Job Conflict": {
+      "main": [
+        [
+          {
+            "node": "IF Acquisition Job Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Acquisition Job Exists": {
+      "main": [
+        [
+          {
+            "node": "Respond Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Insert Acquisition Job to PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Acquisition Job to PostgreSQL": {
+      "main": [
+        [
+          {
+            "node": "Response Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

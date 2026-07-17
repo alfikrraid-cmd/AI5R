@@ -1,0 +1,98 @@
+{
+  "name": "WF-LTSA-BRAIN-MEDIA-CLASSIFICATION-LIST-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "ltsa/media-classification/list",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-media-classification-list",
+      "name": "GET /ltsa/media-classification/list",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM media_classification;",
+        "options": {}
+      },
+      "id": "list-media-classification",
+      "name": "List Media Classifications",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [260, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    success: true,\n    message: 'Media Classification list retrieved',\n    data: $input.all().map(item => item.json)\n  }\n}];"
+      },
+      "id": "build-media-classification-list-response",
+      "name": "Build Media Classification List Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: $json.success, message: $json.message, data: $json.data } }}",
+        "options": {}
+      },
+      "id": "respond-media-classification-list",
+      "name": "Respond Media Classification List",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [780, 0]
+    }
+  ],
+  "connections": {
+    "GET /ltsa/media-classification/list": {
+      "main": [
+        [
+          {
+            "node": "List Media Classifications",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Media Classifications": {
+      "main": [
+        [
+          {
+            "node": "Build Media Classification List Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Media Classification List Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Media Classification List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

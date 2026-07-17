@@ -1,0 +1,98 @@
+{
+  "name": "WF-LTSA-BRAIN-MEDIA-METADATA-LIST-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "ltsa/media-metadata/list",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-media-metadata-list",
+      "name": "GET /ltsa/media-metadata/list",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM media_metadata;",
+        "options": {}
+      },
+      "id": "list-media-metadata",
+      "name": "List Media Metadata",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [260, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    success: true,\n    message: 'Media Metadata list retrieved',\n    data: $input.all().map(item => item.json)\n  }\n}];"
+      },
+      "id": "build-media-metadata-list-response",
+      "name": "Build Media Metadata List Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: $json.success, message: $json.message, data: $json.data } }}",
+        "options": {}
+      },
+      "id": "respond-media-metadata-list",
+      "name": "Respond Media Metadata List",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [780, 0]
+    }
+  ],
+  "connections": {
+    "GET /ltsa/media-metadata/list": {
+      "main": [
+        [
+          {
+            "node": "List Media Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Media Metadata": {
+      "main": [
+        [
+          {
+            "node": "Build Media Metadata List Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Media Metadata List Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Media Metadata List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

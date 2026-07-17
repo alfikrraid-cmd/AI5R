@@ -1,0 +1,14 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "KNOWLEDGE_SOURCE_REGISTRY",
+    "version": "1.0.0"
+  },
+  "components": {
+    "schemas": {
+      "KNOWLEDGE_SOURCE_REGISTRY": {
+        "type": "object"
+      }
+    }
+  }
+}

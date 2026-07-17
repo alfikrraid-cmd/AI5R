@@ -1,0 +1,215 @@
+{
+  "name": "WF-LTSA-BRAIN-WORK-ORDER-CREATE-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ltsa/work-order/create",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-work-order-create",
+      "name": "Webhook Create Work Order",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || $json;\n\nif (!body.work_order_code) {\n  throw new Error('work_order_code is required');\n}\n\nif (!body.description) {\n  throw new Error('description is required');\n}\n\nreturn [\n  {\n    json: {\n      work_order_code: body.work_order_code,\n      customer_code: body.customer_code || null,\n      asset_code: body.asset_code || null,\n      asset_type: body.asset_type || null,\n      description: body.description,\n      priority: body.priority || 'NORMAL',\n      status: body.status || 'OPEN',\n      assigned_to: body.assigned_to || null\n    }\n  }\n];"
+      },
+      "id": "validate-work-order-input",
+      "name": "Validate Work Order Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT work_order_code\nFROM work_order\nWHERE work_order_code = $1\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ [$json.work_order_code] }}"
+        }
+      },
+      "id": "check-existing-work-order",
+      "name": "Check Existing Work Order",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [520, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const existing = $input.first()?.json;\nconst input = $('Validate Work Order Input').first().json;\n\nreturn [{\n  json: {\n    ...input,\n    _conflict: !!(existing && existing.work_order_code)\n  }\n}];"
+      },
+      "id": "check-work-order-conflict",
+      "name": "Check Work Order Conflict",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [780, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "conflict-check",
+              "leftValue": "={{ $json._conflict }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-work-order-conflict",
+      "name": "IF Work Order Code Exists",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1040, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, message: \"work_order_code already exists: \" + $json.work_order_code } }}",
+        "options": {
+          "responseCode": 409
+        }
+      },
+      "id": "respond-work-order-conflict",
+      "name": "Respond Conflict",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1300, 140]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO work_order (\n  work_order_code,\n  customer_code,\n  asset_code,\n  asset_type,\n  description,\n  priority,\n  status,\n  assigned_to\n)\nVALUES (\n  $1, $2, $3, $4, $5, $6, $7, $8\n)\nRETURNING *;",
+        "options": {
+          "queryReplacement": "={{ [$json.work_order_code, $json.customer_code, $json.asset_code, $json.asset_type, $json.description, $json.priority, $json.status, $json.assigned_to] }}"
+        }
+      },
+      "id": "insert-work-order-postgres",
+      "name": "Insert Work Order to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1300, -140],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, message: \"Work order created successfully\", data: $json } }}",
+        "options": {}
+      },
+      "id": "response-work-order-success",
+      "name": "Response Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1560, -140]
+    }
+  ],
+  "connections": {
+    "Webhook Create Work Order": {
+      "main": [
+        [
+          {
+            "node": "Validate Work Order Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Work Order Input": {
+      "main": [
+        [
+          {
+            "node": "Check Existing Work Order",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Existing Work Order": {
+      "main": [
+        [
+          {
+            "node": "Check Work Order Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Work Order Conflict": {
+      "main": [
+        [
+          {
+            "node": "IF Work Order Code Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Work Order Code Exists": {
+      "main": [
+        [
+          {
+            "node": "Respond Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Insert Work Order to PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Work Order to PostgreSQL": {
+      "main": [
+        [
+          {
+            "node": "Response Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

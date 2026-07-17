@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MEDIA_CLASSIFICATION",
+  "type": "object",
+  "properties": {
+    "media_classification_id": {
+      "type": "string"
+    },
+    "engineering_media_id": {
+      "type": "string"
+    },
+    "classification_type": {
+      "type": "string",
+      "enum": [
+        "PHOTO", "VIDEO", "AUDIO", "THERMAL_IMAGE", "INFRARED_IMAGE",
+        "INSPECTION_IMAGE", "CCTV_RECORDING", "DRONE_RECORDING", "OTHER"
+      ]
+    },
+    "classification_version": {
+      "type": "string"
+    },
+    "confidence": {
+      "type": "number"
+    },
+    "status": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "media_classification_id",
+    "engineering_media_id",
+    "classification_type"
+  ]
+}

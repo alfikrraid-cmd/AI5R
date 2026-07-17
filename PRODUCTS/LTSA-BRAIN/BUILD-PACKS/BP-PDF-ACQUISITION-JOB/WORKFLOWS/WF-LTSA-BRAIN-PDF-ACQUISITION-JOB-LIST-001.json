@@ -1,0 +1,98 @@
+{
+  "name": "WF-LTSA-BRAIN-PDF-ACQUISITION-JOB-LIST-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "ltsa/pdf-acquisition-job/list",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-pdf-acquisition-job-list",
+      "name": "GET /ltsa/pdf-acquisition-job/list",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM pdf_acquisition_job;",
+        "options": {}
+      },
+      "id": "list-pdf-acquisition-job",
+      "name": "List PDF Acquisition Jobs",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [260, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    success: true,\n    message: 'PDF Acquisition Job list retrieved',\n    data: $input.all().map(item => item.json)\n  }\n}];"
+      },
+      "id": "build-pdf-acquisition-job-list-response",
+      "name": "Build PDF Acquisition Job List Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: $json.success, message: $json.message, data: $json.data } }}",
+        "options": {}
+      },
+      "id": "respond-pdf-acquisition-job-list",
+      "name": "Respond PDF Acquisition Job List",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [780, 0]
+    }
+  ],
+  "connections": {
+    "GET /ltsa/pdf-acquisition-job/list": {
+      "main": [
+        [
+          {
+            "node": "List PDF Acquisition Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List PDF Acquisition Jobs": {
+      "main": [
+        [
+          {
+            "node": "Build PDF Acquisition Job List Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build PDF Acquisition Job List Response": {
+      "main": [
+        [
+          {
+            "node": "Respond PDF Acquisition Job List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

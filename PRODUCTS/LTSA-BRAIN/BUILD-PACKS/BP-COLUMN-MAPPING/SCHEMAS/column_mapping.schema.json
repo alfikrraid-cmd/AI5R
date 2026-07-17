@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "COLUMN_MAPPING",
+  "type": "object",
+  "properties": {
+    "column_mapping_id": {
+      "type": "string"
+    },
+    "mapping_profile_id": {
+      "type": "string"
+    },
+    "source_column": {
+      "type": "string"
+    },
+    "canonical_attribute": {
+      "type": "string"
+    },
+    "is_mandatory": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "column_mapping_id",
+    "mapping_profile_id",
+    "source_column",
+    "canonical_attribute"
+  ]
+}

@@ -1,0 +1,98 @@
+{
+  "name": "WF-LTSA-BRAIN-WORKBOOK-LIST-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "ltsa/workbook/list",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-workbook-list",
+      "name": "GET /ltsa/workbook/list",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM workbook;",
+        "options": {}
+      },
+      "id": "list-workbook",
+      "name": "List Workbooks",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [260, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    success: true,\n    message: 'Workbook list retrieved',\n    data: $input.all().map(item => item.json)\n  }\n}];"
+      },
+      "id": "build-workbook-list-response",
+      "name": "Build Workbook List Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: $json.success, message: $json.message, data: $json.data } }}",
+        "options": {}
+      },
+      "id": "respond-workbook-list",
+      "name": "Respond Workbook List",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [780, 0]
+    }
+  ],
+  "connections": {
+    "GET /ltsa/workbook/list": {
+      "main": [
+        [
+          {
+            "node": "List Workbooks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Workbooks": {
+      "main": [
+        [
+          {
+            "node": "Build Workbook List Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Workbook List Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Workbook List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

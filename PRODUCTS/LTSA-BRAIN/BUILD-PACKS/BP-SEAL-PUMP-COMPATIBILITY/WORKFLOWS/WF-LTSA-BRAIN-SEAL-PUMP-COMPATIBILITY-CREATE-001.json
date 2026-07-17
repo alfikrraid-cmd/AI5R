@@ -1,0 +1,215 @@
+{
+  "name": "WF-LTSA-BRAIN-SEAL-PUMP-COMPATIBILITY-CREATE-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ltsa/seal-pump-compatibility/create",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-seal-pump-compatibility-create",
+      "name": "Webhook Create Pump Compatibility",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || $json;\n\nif (!body.seal_code) {\n  throw new Error('seal_code is required');\n}\n\nif (!body.pump_tag_number) {\n  throw new Error('pump_tag_number is required');\n}\n\nreturn [\n  {\n    json: {\n      seal_code: body.seal_code,\n      pump_tag_number: body.pump_tag_number,\n      notes: body.notes || null\n    }\n  }\n];"
+      },
+      "id": "validate-seal-pump-compatibility-input",
+      "name": "Validate Pump Compatibility Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT seal_code\nFROM seal_pump_compatibility\nWHERE seal_code = $1 AND pump_tag_number = $2\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ [$json.seal_code, $json.pump_tag_number] }}"
+        }
+      },
+      "id": "check-existing-seal-pump-compatibility",
+      "name": "Check Existing Pump Compatibility",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [520, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const existing = $input.first()?.json;\nconst input = $('Validate Pump Compatibility Input').first().json;\n\nreturn [{\n  json: {\n    ...input,\n    _conflict: !!(existing && existing.seal_code)\n  }\n}];"
+      },
+      "id": "check-seal-pump-compatibility-conflict",
+      "name": "Check Pump Compatibility Conflict",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [780, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "conflict-check",
+              "leftValue": "={{ $json._conflict }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-seal-pump-compatibility-conflict",
+      "name": "IF Pump Compatibility Exists",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1040, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, message: \"pump compatibility already exists for seal_code \" + $json.seal_code + \" and pump_tag_number \" + $json.pump_tag_number } }}",
+        "options": {
+          "responseCode": 409
+        }
+      },
+      "id": "respond-seal-pump-compatibility-conflict",
+      "name": "Respond Conflict",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1300, 140]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO seal_pump_compatibility (\n  seal_code,\n  pump_tag_number,\n  notes\n)\nVALUES (\n  $1, $2, $3\n)\nRETURNING *;",
+        "options": {
+          "queryReplacement": "={{ [$json.seal_code, $json.pump_tag_number, $json.notes] }}"
+        }
+      },
+      "id": "insert-seal-pump-compatibility-postgres",
+      "name": "Insert Pump Compatibility to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1300, -140],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, message: \"Pump compatibility created successfully\", data: $json } }}",
+        "options": {}
+      },
+      "id": "response-seal-pump-compatibility-success",
+      "name": "Response Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1560, -140]
+    }
+  ],
+  "connections": {
+    "Webhook Create Pump Compatibility": {
+      "main": [
+        [
+          {
+            "node": "Validate Pump Compatibility Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Pump Compatibility Input": {
+      "main": [
+        [
+          {
+            "node": "Check Existing Pump Compatibility",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Existing Pump Compatibility": {
+      "main": [
+        [
+          {
+            "node": "Check Pump Compatibility Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Pump Compatibility Conflict": {
+      "main": [
+        [
+          {
+            "node": "IF Pump Compatibility Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Pump Compatibility Exists": {
+      "main": [
+        [
+          {
+            "node": "Respond Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Insert Pump Compatibility to PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Pump Compatibility to PostgreSQL": {
+      "main": [
+        [
+          {
+            "node": "Response Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

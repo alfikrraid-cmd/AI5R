@@ -1,0 +1,215 @@
+{
+  "name": "WF-LTSA-BRAIN-SEAL-INTERCHANGE-COMPATIBILITY-CREATE-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ltsa/seal-interchange-compatibility/create",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-seal-interchange-compatibility-create",
+      "name": "Webhook Create Interchange Compatibility",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || $json;\n\nif (!body.seal_code) {\n  throw new Error('seal_code is required');\n}\n\nif (!body.compatible_seal_code) {\n  throw new Error('compatible_seal_code is required');\n}\n\nif (body.seal_code === body.compatible_seal_code) {\n  throw new Error('compatible_seal_code must differ from seal_code');\n}\n\nreturn [\n  {\n    json: {\n      seal_code: body.seal_code,\n      compatible_seal_code: body.compatible_seal_code,\n      notes: body.notes || null\n    }\n  }\n];"
+      },
+      "id": "validate-seal-interchange-compatibility-input",
+      "name": "Validate Interchange Compatibility Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT seal_code\nFROM seal_interchange_compatibility\nWHERE seal_code = $1 AND compatible_seal_code = $2\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ [$json.seal_code, $json.compatible_seal_code] }}"
+        }
+      },
+      "id": "check-existing-seal-interchange-compatibility",
+      "name": "Check Existing Interchange Compatibility",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [520, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const existing = $input.first()?.json;\nconst input = $('Validate Interchange Compatibility Input').first().json;\n\nreturn [{\n  json: {\n    ...input,\n    _conflict: !!(existing && existing.seal_code)\n  }\n}];"
+      },
+      "id": "check-seal-interchange-compatibility-conflict",
+      "name": "Check Interchange Compatibility Conflict",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [780, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "conflict-check",
+              "leftValue": "={{ $json._conflict }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-seal-interchange-compatibility-conflict",
+      "name": "IF Interchange Compatibility Exists",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1040, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, message: \"interchange compatibility already exists for seal_code \" + $json.seal_code + \" and compatible_seal_code \" + $json.compatible_seal_code } }}",
+        "options": {
+          "responseCode": 409
+        }
+      },
+      "id": "respond-seal-interchange-compatibility-conflict",
+      "name": "Respond Conflict",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1300, 140]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO seal_interchange_compatibility (\n  seal_code,\n  compatible_seal_code,\n  notes\n)\nVALUES (\n  $1, $2, $3\n)\nRETURNING *;",
+        "options": {
+          "queryReplacement": "={{ [$json.seal_code, $json.compatible_seal_code, $json.notes] }}"
+        }
+      },
+      "id": "insert-seal-interchange-compatibility-postgres",
+      "name": "Insert Interchange Compatibility to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1300, -140],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, message: \"Interchange compatibility created successfully\", data: $json } }}",
+        "options": {}
+      },
+      "id": "response-seal-interchange-compatibility-success",
+      "name": "Response Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1560, -140]
+    }
+  ],
+  "connections": {
+    "Webhook Create Interchange Compatibility": {
+      "main": [
+        [
+          {
+            "node": "Validate Interchange Compatibility Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Interchange Compatibility Input": {
+      "main": [
+        [
+          {
+            "node": "Check Existing Interchange Compatibility",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Existing Interchange Compatibility": {
+      "main": [
+        [
+          {
+            "node": "Check Interchange Compatibility Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Interchange Compatibility Conflict": {
+      "main": [
+        [
+          {
+            "node": "IF Interchange Compatibility Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Interchange Compatibility Exists": {
+      "main": [
+        [
+          {
+            "node": "Respond Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Insert Interchange Compatibility to PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Interchange Compatibility to PostgreSQL": {
+      "main": [
+        [
+          {
+            "node": "Response Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

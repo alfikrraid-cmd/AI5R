@@ -1,0 +1,215 @@
+{
+  "name": "WF-LTSA-BRAIN-MEDIA-ACQUISITION-JOB-CREATE-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ltsa/media-acquisition-job/create",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-media-acquisition-job-create",
+      "name": "Webhook Create Media Acquisition Job",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || $json;\nconst ALLOWED_STATUSES = ['PENDING', 'IN_PROGRESS', 'COMPLETED', 'FAILED'];\n\nif (!body.media_acquisition_job_id) {\n  throw new Error('media_acquisition_job_id is required');\n}\n\nif (!body.knowledge_source_id) {\n  throw new Error('knowledge_source_id is required');\n}\n\nif (!body.engineering_media_id) {\n  throw new Error('engineering_media_id is required');\n}\n\nconst status = body.status || 'PENDING';\nif (!ALLOWED_STATUSES.includes(status)) {\n  throw new Error('status must be one of: ' + ALLOWED_STATUSES.join(', '));\n}\n\nreturn [\n  {\n    json: {\n      media_acquisition_job_id: body.media_acquisition_job_id,\n      knowledge_source_id: body.knowledge_source_id,\n      engineering_media_id: body.engineering_media_id,\n      status\n    }\n  }\n];"
+      },
+      "id": "validate-media-acquisition-job-input",
+      "name": "Validate Media Acquisition Job Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT media_acquisition_job_id\nFROM media_acquisition_job\nWHERE media_acquisition_job_id = $1\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ [$json.media_acquisition_job_id] }}"
+        }
+      },
+      "id": "check-existing-media-acquisition-job",
+      "name": "Check Existing Media Acquisition Job",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [520, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const existing = $input.first()?.json;\nconst input = $('Validate Media Acquisition Job Input').first().json;\n\nreturn [{\n  json: {\n    ...input,\n    _conflict: !!(existing && existing.media_acquisition_job_id)\n  }\n}];"
+      },
+      "id": "check-media-acquisition-job-conflict",
+      "name": "Check Media Acquisition Job Conflict",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [780, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "conflict-check",
+              "leftValue": "={{ $json._conflict }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-media-acquisition-job-conflict",
+      "name": "IF Media Acquisition Job Exists",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1040, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, message: \"media_acquisition_job_id already exists: \" + $json.media_acquisition_job_id } }}",
+        "options": {
+          "responseCode": 409
+        }
+      },
+      "id": "respond-media-acquisition-job-conflict",
+      "name": "Respond Conflict",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1300, 140]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO media_acquisition_job (\n  media_acquisition_job_id,\n  knowledge_source_id,\n  engineering_media_id,\n  status\n)\nVALUES (\n  $1, $2, $3, $4\n)\nRETURNING *;",
+        "options": {
+          "queryReplacement": "={{ [$json.media_acquisition_job_id, $json.knowledge_source_id, $json.engineering_media_id, $json.status] }}"
+        }
+      },
+      "id": "insert-media-acquisition-job-postgres",
+      "name": "Insert Media Acquisition Job to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1300, -140],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, message: \"Media Acquisition Job created successfully\", data: $json } }}",
+        "options": {}
+      },
+      "id": "response-media-acquisition-job-success",
+      "name": "Response Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1560, -140]
+    }
+  ],
+  "connections": {
+    "Webhook Create Media Acquisition Job": {
+      "main": [
+        [
+          {
+            "node": "Validate Media Acquisition Job Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Media Acquisition Job Input": {
+      "main": [
+        [
+          {
+            "node": "Check Existing Media Acquisition Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Existing Media Acquisition Job": {
+      "main": [
+        [
+          {
+            "node": "Check Media Acquisition Job Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Media Acquisition Job Conflict": {
+      "main": [
+        [
+          {
+            "node": "IF Media Acquisition Job Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Media Acquisition Job Exists": {
+      "main": [
+        [
+          {
+            "node": "Respond Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Insert Media Acquisition Job to PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Media Acquisition Job to PostgreSQL": {
+      "main": [
+        [
+          {
+            "node": "Response Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

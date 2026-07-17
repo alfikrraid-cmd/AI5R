@@ -1,0 +1,98 @@
+{
+  "name": "WF-LTSA-BRAIN-WORKSHEET-TABLE-LIST-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "ltsa/worksheet-table/list",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-worksheet-table-list",
+      "name": "GET /ltsa/worksheet-table/list",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM worksheet_table;",
+        "options": {}
+      },
+      "id": "list-worksheet-table",
+      "name": "List Worksheet Tables",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [260, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    success: true,\n    message: 'Worksheet table list retrieved',\n    data: $input.all().map(item => item.json)\n  }\n}];"
+      },
+      "id": "build-worksheet-table-list-response",
+      "name": "Build Worksheet Table List Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: $json.success, message: $json.message, data: $json.data } }}",
+        "options": {}
+      },
+      "id": "respond-worksheet-table-list",
+      "name": "Respond Worksheet Table List",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [780, 0]
+    }
+  ],
+  "connections": {
+    "GET /ltsa/worksheet-table/list": {
+      "main": [
+        [
+          {
+            "node": "List Worksheet Tables",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Worksheet Tables": {
+      "main": [
+        [
+          {
+            "node": "Build Worksheet Table List Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Worksheet Table List Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Worksheet Table List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

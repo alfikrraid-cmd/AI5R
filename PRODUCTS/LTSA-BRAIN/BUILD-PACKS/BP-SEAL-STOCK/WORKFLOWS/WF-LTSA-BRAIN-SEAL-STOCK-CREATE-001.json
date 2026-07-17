@@ -1,0 +1,215 @@
+{
+  "name": "WF-LTSA-BRAIN-SEAL-STOCK-CREATE-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ltsa/seal-stock/create",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-seal-stock-create",
+      "name": "Webhook Create Seal Stock",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || $json;\n\nif (!body.seal_code) {\n  throw new Error('seal_code is required');\n}\n\nreturn [\n  {\n    json: {\n      seal_code: body.seal_code,\n      quantity_on_hand: body.quantity_on_hand ?? 0,\n      reorder_point: body.reorder_point || null,\n      location: body.location || null\n    }\n  }\n];"
+      },
+      "id": "validate-seal-stock-input",
+      "name": "Validate Seal Stock Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT seal_code\nFROM seal_stock\nWHERE seal_code = $1\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ [$json.seal_code] }}"
+        }
+      },
+      "id": "check-existing-seal-stock",
+      "name": "Check Existing Seal Stock",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [520, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const existing = $input.first()?.json;\nconst input = $('Validate Seal Stock Input').first().json;\n\nreturn [{\n  json: {\n    ...input,\n    _conflict: !!(existing && existing.seal_code)\n  }\n}];"
+      },
+      "id": "check-seal-stock-conflict",
+      "name": "Check Seal Stock Conflict",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [780, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "conflict-check",
+              "leftValue": "={{ $json._conflict }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-seal-stock-conflict",
+      "name": "IF Seal Stock Exists",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1040, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, message: \"seal_code already has a stock record: \" + $json.seal_code } }}",
+        "options": {
+          "responseCode": 409
+        }
+      },
+      "id": "respond-seal-stock-conflict",
+      "name": "Respond Conflict",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1300, 140]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO seal_stock (\n  seal_code,\n  quantity_on_hand,\n  reorder_point,\n  location\n)\nVALUES (\n  $1, $2, $3, $4\n)\nRETURNING *;",
+        "options": {
+          "queryReplacement": "={{ [$json.seal_code, $json.quantity_on_hand, $json.reorder_point, $json.location] }}"
+        }
+      },
+      "id": "insert-seal-stock-postgres",
+      "name": "Insert Seal Stock to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1300, -140],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, message: \"Seal stock created successfully\", data: $json } }}",
+        "options": {}
+      },
+      "id": "response-seal-stock-success",
+      "name": "Response Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1560, -140]
+    }
+  ],
+  "connections": {
+    "Webhook Create Seal Stock": {
+      "main": [
+        [
+          {
+            "node": "Validate Seal Stock Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Seal Stock Input": {
+      "main": [
+        [
+          {
+            "node": "Check Existing Seal Stock",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Existing Seal Stock": {
+      "main": [
+        [
+          {
+            "node": "Check Seal Stock Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Seal Stock Conflict": {
+      "main": [
+        [
+          {
+            "node": "IF Seal Stock Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Seal Stock Exists": {
+      "main": [
+        [
+          {
+            "node": "Respond Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Insert Seal Stock to PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Seal Stock to PostgreSQL": {
+      "main": [
+        [
+          {
+            "node": "Response Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

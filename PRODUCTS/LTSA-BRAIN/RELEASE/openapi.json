@@ -7,20 +7,14 @@
   "paths": {
     "/customers": {
       "get": {
-        "tags": [
-          "Customer"
-        ],
         "summary": "List customers",
         "responses": {
           "200": {
-            "description": "Successful response"
+            "description": "OK"
           }
         }
       },
       "post": {
-        "tags": [
-          "Customer"
-        ],
         "summary": "Create customer",
         "responses": {
           "201": {
@@ -31,94 +25,40 @@
     },
     "/customers/{id}": {
       "get": {
-        "tags": [
-          "Customer"
-        ],
-        "summary": "Get customer detail",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer"
-            }
-          }
-        ],
+        "summary": "Get customer",
         "responses": {
           "200": {
-            "description": "Successful response"
-          },
-          "404": {
-            "description": "Not found"
+            "description": "OK"
           }
         }
       },
       "put": {
-        "tags": [
-          "Customer"
-        ],
         "summary": "Update customer",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer"
-            }
-          }
-        ],
         "responses": {
           "200": {
-            "description": "Updated"
-          },
-          "404": {
-            "description": "Not found"
+            "description": "OK"
           }
         }
       },
       "delete": {
-        "tags": [
-          "Customer"
-        ],
         "summary": "Delete customer",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer"
-            }
-          }
-        ],
         "responses": {
-          "200": {
-            "description": "Deleted"
-          },
-          "404": {
-            "description": "Not found"
+          "204": {
+            "description": "No Content"
           }
         }
       }
     },
     "/pumps": {
       "get": {
-        "tags": [
-          "Pump"
-        ],
         "summary": "List pumps",
         "responses": {
           "200": {
-            "description": "Successful response"
+            "description": "OK"
           }
         }
       },
       "post": {
-        "tags": [
-          "Pump"
-        ],
         "summary": "Create pump",
         "responses": {
           "201": {
@@ -129,94 +69,920 @@
     },
     "/pumps/{id}": {
       "get": {
-        "tags": [
-          "Pump"
-        ],
-        "summary": "Get pump detail",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer"
-            }
-          }
-        ],
+        "summary": "Get pump",
         "responses": {
           "200": {
-            "description": "Successful response"
-          },
-          "404": {
-            "description": "Not found"
+            "description": "OK"
           }
         }
       },
       "put": {
-        "tags": [
-          "Pump"
-        ],
         "summary": "Update pump",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer"
-            }
-          }
-        ],
         "responses": {
           "200": {
-            "description": "Updated"
-          },
-          "404": {
-            "description": "Not found"
+            "description": "OK"
           }
         }
       },
       "delete": {
-        "tags": [
-          "Pump"
-        ],
         "summary": "Delete pump",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer"
-            }
+        "responses": {
+          "204": {
+            "description": "No Content"
           }
-        ],
+        }
+      }
+    },
+    "/seals": {
+      "get": {
+        "summary": "List seals",
         "responses": {
           "200": {
-            "description": "Deleted"
-          },
-          "404": {
-            "description": "Not found"
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create seal",
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/seals/{id}": {
+      "get": {
+        "summary": "Get seal",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update seal",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete seal",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/seal_stocks": {
+      "get": {
+        "summary": "List seal_stocks",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create seal_stock",
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/seal_stocks/{id}": {
+      "get": {
+        "summary": "Get seal_stock",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update seal_stock",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete seal_stock",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/seal_pump_compatibilitys": {
+      "get": {
+        "summary": "List seal_pump_compatibilitys",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create seal_pump_compatibility",
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/seal_pump_compatibilitys/{id}": {
+      "get": {
+        "summary": "Get seal_pump_compatibility",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update seal_pump_compatibility",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete seal_pump_compatibility",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/seal_interchange_compatibilitys": {
+      "get": {
+        "summary": "List seal_interchange_compatibilitys",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create seal_interchange_compatibility",
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/seal_interchange_compatibilitys/{id}": {
+      "get": {
+        "summary": "Get seal_interchange_compatibility",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update seal_interchange_compatibility",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete seal_interchange_compatibility",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/seal_engineering_documents": {
+      "get": {
+        "summary": "List seal_engineering_documents",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create seal_engineering_document",
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/seal_engineering_documents/{id}": {
+      "get": {
+        "summary": "Get seal_engineering_document",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update seal_engineering_document",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete seal_engineering_document",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/knowledge_source_registrys": {
+      "get": {
+        "summary": "List knowledge_source_registrys",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create knowledge_source_registry",
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/knowledge_source_registrys/{id}": {
+      "get": {
+        "summary": "Get knowledge_source_registry",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update knowledge_source_registry",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete knowledge_source_registry",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/workbooks": {
+      "get": {
+        "summary": "List workbooks",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create workbook",
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/workbooks/{id}": {
+      "get": {
+        "summary": "Get workbook",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update workbook",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete workbook",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/worksheets": {
+      "get": {
+        "summary": "List worksheets",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create worksheet",
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/worksheets/{id}": {
+      "get": {
+        "summary": "Get worksheet",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update worksheet",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete worksheet",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/worksheet_tables": {
+      "get": {
+        "summary": "List worksheet_tables",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create worksheet_table",
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/worksheet_tables/{id}": {
+      "get": {
+        "summary": "Get worksheet_table",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update worksheet_table",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete worksheet_table",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/mapping_profiles": {
+      "get": {
+        "summary": "List mapping_profiles",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create mapping_profile",
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/mapping_profiles/{id}": {
+      "get": {
+        "summary": "Get mapping_profile",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update mapping_profile",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete mapping_profile",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/column_mappings": {
+      "get": {
+        "summary": "List column_mappings",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create column_mapping",
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/column_mappings/{id}": {
+      "get": {
+        "summary": "Get column_mapping",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update column_mapping",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete column_mapping",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/acquisition_jobs": {
+      "get": {
+        "summary": "List acquisition_jobs",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create acquisition_job",
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/acquisition_jobs/{id}": {
+      "get": {
+        "summary": "Get acquisition_job",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update acquisition_job",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete acquisition_job",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/pdf_documents": {
+      "get": {
+        "summary": "List pdf_documents",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create pdf_document",
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/pdf_documents/{id}": {
+      "get": {
+        "summary": "Get pdf_document",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update pdf_document",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete pdf_document",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/pdf_metadatas": {
+      "get": {
+        "summary": "List pdf_metadatas",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create pdf_metadata",
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/pdf_metadatas/{id}": {
+      "get": {
+        "summary": "Get pdf_metadata",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update pdf_metadata",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete pdf_metadata",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/document_classifications": {
+      "get": {
+        "summary": "List document_classifications",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create document_classification",
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/document_classifications/{id}": {
+      "get": {
+        "summary": "Get document_classification",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update document_classification",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete document_classification",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/pdf_acquisition_jobs": {
+      "get": {
+        "summary": "List pdf_acquisition_jobs",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create pdf_acquisition_job",
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/pdf_acquisition_jobs/{id}": {
+      "get": {
+        "summary": "Get pdf_acquisition_job",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update pdf_acquisition_job",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete pdf_acquisition_job",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/engineering_medias": {
+      "get": {
+        "summary": "List engineering_medias",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create engineering_media",
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/engineering_medias/{id}": {
+      "get": {
+        "summary": "Get engineering_media",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update engineering_media",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete engineering_media",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/media_metadatas": {
+      "get": {
+        "summary": "List media_metadatas",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create media_metadata",
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/media_metadatas/{id}": {
+      "get": {
+        "summary": "Get media_metadata",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update media_metadata",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete media_metadata",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/media_classifications": {
+      "get": {
+        "summary": "List media_classifications",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create media_classification",
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/media_classifications/{id}": {
+      "get": {
+        "summary": "Get media_classification",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update media_classification",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete media_classification",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/media_acquisition_jobs": {
+      "get": {
+        "summary": "List media_acquisition_jobs",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create media_acquisition_job",
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/media_acquisition_jobs/{id}": {
+      "get": {
+        "summary": "Get media_acquisition_job",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update media_acquisition_job",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete media_acquisition_job",
+        "responses": {
+          "204": {
+            "description": "No Content"
           }
         }
       }
     },
     "/assets": {
       "get": {
-        "tags": [
-          "Asset"
-        ],
         "summary": "List assets",
         "responses": {
           "200": {
-            "description": "Successful response"
+            "description": "OK"
           }
         }
       },
       "post": {
-        "tags": [
-          "Asset"
-        ],
         "summary": "Create asset",
         "responses": {
           "201": {
@@ -227,94 +993,260 @@
     },
     "/assets/{id}": {
       "get": {
-        "tags": [
-          "Asset"
-        ],
-        "summary": "Get asset detail",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer"
-            }
-          }
-        ],
+        "summary": "Get asset",
         "responses": {
           "200": {
-            "description": "Successful response"
-          },
-          "404": {
-            "description": "Not found"
+            "description": "OK"
           }
         }
       },
       "put": {
-        "tags": [
-          "Asset"
-        ],
         "summary": "Update asset",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer"
-            }
-          }
-        ],
         "responses": {
           "200": {
-            "description": "Updated"
-          },
-          "404": {
-            "description": "Not found"
+            "description": "OK"
           }
         }
       },
       "delete": {
-        "tags": [
-          "Asset"
-        ],
         "summary": "Delete asset",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer"
-            }
+        "responses": {
+          "204": {
+            "description": "No Content"
           }
-        ],
+        }
+      }
+    },
+    "/soot_blowers": {
+      "get": {
+        "summary": "List soot_blowers",
         "responses": {
           "200": {
-            "description": "Deleted"
-          },
-          "404": {
-            "description": "Not found"
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create soot_blower",
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/soot_blowers/{id}": {
+      "get": {
+        "summary": "Get soot_blower",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update soot_blower",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete soot_blower",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/work_orders": {
+      "get": {
+        "summary": "List work_orders",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create work_order",
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/work_orders/{id}": {
+      "get": {
+        "summary": "Get work_order",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update work_order",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete work_order",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/maintenance_historys": {
+      "get": {
+        "summary": "List maintenance_historys",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create maintenance_history",
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/maintenance_historys/{id}": {
+      "get": {
+        "summary": "Get maintenance_history",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update maintenance_history",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete maintenance_history",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/dashboards": {
+      "get": {
+        "summary": "List dashboards",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create dashboard",
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/dashboards/{id}": {
+      "get": {
+        "summary": "Get dashboard",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update dashboard",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete dashboard",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/ai_assistants": {
+      "get": {
+        "summary": "List ai_assistants",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create ai_assistant",
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/ai_assistants/{id}": {
+      "get": {
+        "summary": "Get ai_assistant",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update ai_assistant",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete ai_assistant",
+        "responses": {
+          "204": {
+            "description": "No Content"
           }
         }
       }
     },
     "/inspections": {
       "get": {
-        "tags": [
-          "Inspection"
-        ],
         "summary": "List inspections",
         "responses": {
           "200": {
-            "description": "Successful response"
+            "description": "OK"
           }
         }
       },
       "post": {
-        "tags": [
-          "Inspection"
-        ],
         "summary": "Create inspection",
         "responses": {
           "201": {
@@ -325,94 +1257,40 @@
     },
     "/inspections/{id}": {
       "get": {
-        "tags": [
-          "Inspection"
-        ],
-        "summary": "Get inspection detail",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer"
-            }
-          }
-        ],
+        "summary": "Get inspection",
         "responses": {
           "200": {
-            "description": "Successful response"
-          },
-          "404": {
-            "description": "Not found"
+            "description": "OK"
           }
         }
       },
       "put": {
-        "tags": [
-          "Inspection"
-        ],
         "summary": "Update inspection",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer"
-            }
-          }
-        ],
         "responses": {
           "200": {
-            "description": "Updated"
-          },
-          "404": {
-            "description": "Not found"
+            "description": "OK"
           }
         }
       },
       "delete": {
-        "tags": [
-          "Inspection"
-        ],
         "summary": "Delete inspection",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer"
-            }
-          }
-        ],
         "responses": {
-          "200": {
-            "description": "Deleted"
-          },
-          "404": {
-            "description": "Not found"
+          "204": {
+            "description": "No Content"
           }
         }
       }
     },
     "/maintenances": {
       "get": {
-        "tags": [
-          "Maintenance"
-        ],
         "summary": "List maintenances",
         "responses": {
           "200": {
-            "description": "Successful response"
+            "description": "OK"
           }
         }
       },
       "post": {
-        "tags": [
-          "Maintenance"
-        ],
         "summary": "Create maintenance",
         "responses": {
           "201": {
@@ -423,74 +1301,70 @@
     },
     "/maintenances/{id}": {
       "get": {
-        "tags": [
-          "Maintenance"
-        ],
-        "summary": "Get maintenance detail",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer"
-            }
-          }
-        ],
+        "summary": "Get maintenance",
         "responses": {
           "200": {
-            "description": "Successful response"
-          },
-          "404": {
-            "description": "Not found"
+            "description": "OK"
           }
         }
       },
       "put": {
-        "tags": [
-          "Maintenance"
-        ],
         "summary": "Update maintenance",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer"
-            }
-          }
-        ],
         "responses": {
           "200": {
-            "description": "Updated"
-          },
-          "404": {
-            "description": "Not found"
+            "description": "OK"
           }
         }
       },
       "delete": {
-        "tags": [
-          "Maintenance"
-        ],
         "summary": "Delete maintenance",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer"
-            }
+        "responses": {
+          "204": {
+            "description": "No Content"
           }
-        ],
+        }
+      }
+    },
+    "/organizations": {
+      "get": {
+        "summary": "List organizations",
         "responses": {
           "200": {
-            "description": "Deleted"
-          },
-          "404": {
-            "description": "Not found"
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create organization",
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/organizations/{id}": {
+      "get": {
+        "summary": "Get organization",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update organization",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete organization",
+        "responses": {
+          "204": {
+            "description": "No Content"
           }
         }
       }

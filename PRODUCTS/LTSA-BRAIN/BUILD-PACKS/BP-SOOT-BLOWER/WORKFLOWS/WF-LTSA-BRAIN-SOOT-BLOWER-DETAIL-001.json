@@ -1,0 +1,186 @@
+{
+  "name": "WF-LTSA-BRAIN-SOOT-BLOWER-DETAIL-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "ltsa/soot-blower/detail",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-soot-blower-detail",
+      "name": "GET /ltsa/soot-blower/detail",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const soot_blower_code = $json.query?.soot_blower_code;\n\nreturn [{\n  json: {\n    soot_blower_code,\n    valid: !!soot_blower_code\n  }\n}];"
+      },
+      "id": "parse-soot-blower-code",
+      "name": "Parse Soot Blower Code",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "valid-soot-blower-code-check",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-valid-soot-blower-code",
+      "name": "IF Valid Soot Blower Code",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [520, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT *\nFROM soot_blower_registry\nWHERE soot_blower_code = $1\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ [$json.soot_blower_code] }}"
+        }
+      },
+      "id": "get-soot-blower-detail",
+      "name": "Get Soot Blower Detail",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [780, -120],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first()?.json;\n\nif (!row || !row.soot_blower_code) {\n  return [{\n    json: {\n      statusCode: 404,\n      success: false,\n      message: 'Soot blower not found',\n      data: null\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    statusCode: 200,\n    success: true,\n    message: 'Soot blower detail found',\n    data: row\n  }\n}];"
+      },
+      "id": "build-soot-blower-detail-response",
+      "name": "Build Soot Blower Detail Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, -120]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: $json.success, message: $json.message, data: $json.data } }}",
+        "options": {
+          "responseCode": "={{ $json.statusCode }}"
+        }
+      },
+      "id": "respond-soot-blower-detail",
+      "name": "Respond Soot Blower Detail",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1300, -120]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, message: 'soot_blower_code query parameter is required' } }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "respond-soot-blower-400",
+      "name": "Respond 400",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [780, 200]
+    }
+  ],
+  "connections": {
+    "GET /ltsa/soot-blower/detail": {
+      "main": [
+        [
+          {
+            "node": "Parse Soot Blower Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Soot Blower Code": {
+      "main": [
+        [
+          {
+            "node": "IF Valid Soot Blower Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Valid Soot Blower Code": {
+      "main": [
+        [
+          {
+            "node": "Get Soot Blower Detail",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 400",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Soot Blower Detail": {
+      "main": [
+        [
+          {
+            "node": "Build Soot Blower Detail Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Soot Blower Detail Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Soot Blower Detail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

@@ -1,0 +1,123 @@
+{
+  "name": "WF-LTSA-BRAIN-SEAL-INTERCHANGE-COMPATIBILITY-UPDATE-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "PUT",
+        "path": "ltsa/seal-interchange-compatibility/update",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-seal-interchange-compatibility-update",
+      "name": "PUT /ltsa/seal-interchange-compatibility/update",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || $json;\n\nif (!body.seal_code) {\n  throw new Error('seal_code is required');\n}\n\nif (!body.compatible_seal_code) {\n  throw new Error('compatible_seal_code is required');\n}\n\n// The composite key itself (seal_code, compatible_seal_code) is not\n// mutable -- only notes describes an existing interchange relationship.\nif (body.notes === undefined) {\n  throw new Error('notes is required (the only updatable field for an interchange compatibility record)');\n}\n\nreturn [{\n  json: {\n    seal_code: body.seal_code,\n    compatible_seal_code: body.compatible_seal_code,\n    notes: body.notes\n  }\n}];"
+      },
+      "id": "validate-seal-interchange-compatibility-update-input",
+      "name": "Validate Update Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE seal_interchange_compatibility\nSET notes = $1\nWHERE seal_code = $2 AND compatible_seal_code = $3\nRETURNING *;",
+        "options": {
+          "queryReplacement": "={{ [$json.notes, $json.seal_code, $json.compatible_seal_code] }}"
+        }
+      },
+      "id": "update-seal-interchange-compatibility-postgres",
+      "name": "Update Interchange Compatibility",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [520, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first()?.json;\n\nif (!row || !row.seal_code) {\n  return [{\n    json: {\n      statusCode: 404,\n      success: false,\n      message: 'Interchange compatibility not found',\n      data: null\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    statusCode: 200,\n    success: true,\n    message: 'Interchange compatibility updated successfully',\n    data: row\n  }\n}];"
+      },
+      "id": "check-seal-interchange-compatibility-update-result",
+      "name": "Check Update Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [780, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: $json.success, message: $json.message, data: $json.data } }}",
+        "options": {
+          "responseCode": "={{ $json.statusCode }}"
+        }
+      },
+      "id": "respond-seal-interchange-compatibility-update",
+      "name": "Respond Update",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1040, 0]
+    }
+  ],
+  "connections": {
+    "PUT /ltsa/seal-interchange-compatibility/update": {
+      "main": [
+        [
+          {
+            "node": "Validate Update Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Update Input": {
+      "main": [
+        [
+          {
+            "node": "Update Interchange Compatibility",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Interchange Compatibility": {
+      "main": [
+        [
+          {
+            "node": "Check Update Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Update Result": {
+      "main": [
+        [
+          {
+            "node": "Respond Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

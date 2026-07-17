@@ -1,0 +1,14 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "SEAL_ENGINEERING_DOCUMENT",
+    "version": "1.0.0"
+  },
+  "components": {
+    "schemas": {
+      "SEAL_ENGINEERING_DOCUMENT": {
+        "type": "object"
+      }
+    }
+  }
+}

@@ -1,0 +1,98 @@
+{
+  "name": "WF-LTSA-BRAIN-ENGINEERING-MEDIA-LIST-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "ltsa/engineering-media/list",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-engineering-media-list",
+      "name": "GET /ltsa/engineering-media/list",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM engineering_media;",
+        "options": {}
+      },
+      "id": "list-engineering-media",
+      "name": "List Engineering Media",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [260, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    success: true,\n    message: 'Engineering Media list retrieved',\n    data: $input.all().map(item => item.json)\n  }\n}];"
+      },
+      "id": "build-engineering-media-list-response",
+      "name": "Build Engineering Media List Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: $json.success, message: $json.message, data: $json.data } }}",
+        "options": {}
+      },
+      "id": "respond-engineering-media-list",
+      "name": "Respond Engineering Media List",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [780, 0]
+    }
+  ],
+  "connections": {
+    "GET /ltsa/engineering-media/list": {
+      "main": [
+        [
+          {
+            "node": "List Engineering Media",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Engineering Media": {
+      "main": [
+        [
+          {
+            "node": "Build Engineering Media List Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Engineering Media List Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Engineering Media List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

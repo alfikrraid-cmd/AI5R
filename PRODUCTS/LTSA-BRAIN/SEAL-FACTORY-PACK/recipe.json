@@ -1,0 +1,12 @@
+{
+    "recipe_id": "RECIPE-SEAL-001",
+    "recipe_version": "1",
+    "object_type": "SEAL",
+    "identity_key": "seal_code",
+    "relationship_keys": [
+        "compatible_seal_name"
+    ],
+    "stations": [
+        "SealManufacturingStation"
+    ]
+}

@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ENGINEERING_MEDIA",
+  "type": "object",
+  "properties": {
+    "engineering_media_id": {
+      "type": "string"
+    },
+    "knowledge_source_id": {
+      "type": "string"
+    },
+    "media_name": {
+      "type": "string"
+    },
+    "media_type": {
+      "type": "string",
+      "enum": [
+        "PHOTO", "VIDEO", "AUDIO", "THERMAL_IMAGE", "INFRARED_IMAGE",
+        "INSPECTION_IMAGE", "CCTV_RECORDING", "DRONE_RECORDING", "OTHER"
+      ]
+    },
+    "file_name": {
+      "type": "string"
+    },
+    "file_size": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "file_hash": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "engineering_media_id",
+    "knowledge_source_id",
+    "media_name",
+    "media_type"
+  ]
+}

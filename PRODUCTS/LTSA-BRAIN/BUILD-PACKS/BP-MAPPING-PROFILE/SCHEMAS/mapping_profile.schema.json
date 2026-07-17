@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MAPPING_PROFILE",
+  "type": "object",
+  "properties": {
+    "mapping_profile_id": {
+      "type": "string"
+    },
+    "profile_name": {
+      "type": "string"
+    },
+    "workbook_type": {
+      "type": "string",
+      "enum": [
+        "PUMP_MASTER", "MECHANICAL_SEAL_MASTER", "SEAL_STOCK", "SEAL_INTERCHANGE",
+        "PUMP_COMPATIBILITY", "INSTALLATION_HISTORY", "MAINTENANCE_HISTORY",
+        "ENGINEER_MASTER", "CUSTOMER_MASTER", "VENDOR_MASTER", "BILL_OF_MATERIAL"
+      ]
+    },
+    "customer": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "mapping_profile_id",
+    "profile_name",
+    "workbook_type"
+  ]
+}

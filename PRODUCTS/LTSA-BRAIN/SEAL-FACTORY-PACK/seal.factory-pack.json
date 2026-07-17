@@ -1,0 +1,15 @@
+{
+    "pack_code": "FP-SEAL-001",
+    "pack_name": "Mechanical Seal Factory Pack",
+    "product_type": "SEAL",
+    "capabilities": [
+        "IDENTITY_RESOLUTION",
+        "RELATIONSHIP_RESOLUTION",
+        "CANONICAL_OBJECT_MANUFACTURING"
+    ],
+    "recipe_path": "PRODUCTS/LTSA-BRAIN/SEAL-FACTORY-PACK/recipe.json",
+    "metadata": {
+        "version": "1.0",
+        "mwo": "MWO-LTSA-052-WP-001"
+    }
+}

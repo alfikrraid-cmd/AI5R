@@ -1,0 +1,215 @@
+{
+  "name": "WF-LTSA-BRAIN-MEDIA-METADATA-CREATE-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ltsa/media-metadata/create",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-media-metadata-create",
+      "name": "Webhook Create Media Metadata",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || $json;\n\nif (!body.media_metadata_id) {\n  throw new Error('media_metadata_id is required');\n}\n\nif (!body.engineering_media_id) {\n  throw new Error('engineering_media_id is required');\n}\n\nfor (const key of ['width', 'height', 'audio_channels']) {\n  const value = body[key];\n  if (value !== undefined && value !== null && (typeof value !== 'number' || value < 0)) {\n    throw new Error(key + ' must be a non-negative number');\n  }\n}\n\nreturn [\n  {\n    json: {\n      media_metadata_id: body.media_metadata_id,\n      engineering_media_id: body.engineering_media_id,\n      resolution: body.resolution || null,\n      duration: body.duration ?? null,\n      width: body.width ?? null,\n      height: body.height ?? null,\n      frame_rate: body.frame_rate ?? null,\n      audio_channels: body.audio_channels ?? null,\n      gps_location: body.gps_location || null,\n      camera_device: body.camera_device || null\n    }\n  }\n];"
+      },
+      "id": "validate-media-metadata-input",
+      "name": "Validate Media Metadata Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT media_metadata_id\nFROM media_metadata\nWHERE media_metadata_id = $1\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ [$json.media_metadata_id] }}"
+        }
+      },
+      "id": "check-existing-media-metadata",
+      "name": "Check Existing Media Metadata",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [520, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const existing = $input.first()?.json;\nconst input = $('Validate Media Metadata Input').first().json;\n\nreturn [{\n  json: {\n    ...input,\n    _conflict: !!(existing && existing.media_metadata_id)\n  }\n}];"
+      },
+      "id": "check-media-metadata-conflict",
+      "name": "Check Media Metadata Conflict",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [780, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "conflict-check",
+              "leftValue": "={{ $json._conflict }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-media-metadata-conflict",
+      "name": "IF Media Metadata Exists",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1040, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, message: \"media_metadata_id already exists: \" + $json.media_metadata_id } }}",
+        "options": {
+          "responseCode": 409
+        }
+      },
+      "id": "respond-media-metadata-conflict",
+      "name": "Respond Conflict",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1300, 140]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO media_metadata (\n  media_metadata_id,\n  engineering_media_id,\n  resolution,\n  duration,\n  width,\n  height,\n  frame_rate,\n  audio_channels,\n  gps_location,\n  camera_device\n)\nVALUES (\n  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10\n)\nRETURNING *;",
+        "options": {
+          "queryReplacement": "={{ [$json.media_metadata_id, $json.engineering_media_id, $json.resolution, $json.duration, $json.width, $json.height, $json.frame_rate, $json.audio_channels, $json.gps_location, $json.camera_device] }}"
+        }
+      },
+      "id": "insert-media-metadata-postgres",
+      "name": "Insert Media Metadata to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1300, -140],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, message: \"Media Metadata created successfully\", data: $json } }}",
+        "options": {}
+      },
+      "id": "response-media-metadata-success",
+      "name": "Response Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1560, -140]
+    }
+  ],
+  "connections": {
+    "Webhook Create Media Metadata": {
+      "main": [
+        [
+          {
+            "node": "Validate Media Metadata Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Media Metadata Input": {
+      "main": [
+        [
+          {
+            "node": "Check Existing Media Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Existing Media Metadata": {
+      "main": [
+        [
+          {
+            "node": "Check Media Metadata Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Media Metadata Conflict": {
+      "main": [
+        [
+          {
+            "node": "IF Media Metadata Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Media Metadata Exists": {
+      "main": [
+        [
+          {
+            "node": "Respond Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Insert Media Metadata to PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Media Metadata to PostgreSQL": {
+      "main": [
+        [
+          {
+            "node": "Response Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

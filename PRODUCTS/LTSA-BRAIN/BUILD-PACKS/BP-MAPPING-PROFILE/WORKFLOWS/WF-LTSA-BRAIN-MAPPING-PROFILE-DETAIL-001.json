@@ -1,0 +1,186 @@
+{
+  "name": "WF-LTSA-BRAIN-MAPPING-PROFILE-DETAIL-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "ltsa/mapping-profile/detail",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-mapping-profile-detail",
+      "name": "GET /ltsa/mapping-profile/detail",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const mapping_profile_id = $json.query?.mapping_profile_id;\n\nreturn [{\n  json: {\n    mapping_profile_id,\n    valid: !!mapping_profile_id\n  }\n}];"
+      },
+      "id": "parse-mapping-profile-id",
+      "name": "Parse Mapping Profile ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "valid-mapping-profile-id-check",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-valid-mapping-profile-id",
+      "name": "IF Valid Mapping Profile ID",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [520, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT *\nFROM mapping_profile\nWHERE mapping_profile_id = $1\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ [$json.mapping_profile_id] }}"
+        }
+      },
+      "id": "get-mapping-profile-detail",
+      "name": "Get Mapping Profile Detail",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [780, -120],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first()?.json;\n\nif (!row || !row.mapping_profile_id) {\n  return [{\n    json: {\n      statusCode: 404,\n      success: false,\n      message: 'Mapping profile not found',\n      data: null\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    statusCode: 200,\n    success: true,\n    message: 'Mapping profile detail found',\n    data: row\n  }\n}];"
+      },
+      "id": "build-mapping-profile-detail-response",
+      "name": "Build Mapping Profile Detail Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, -120]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: $json.success, message: $json.message, data: $json.data } }}",
+        "options": {
+          "responseCode": "={{ $json.statusCode }}"
+        }
+      },
+      "id": "respond-mapping-profile-detail",
+      "name": "Respond Mapping Profile Detail",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1300, -120]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, message: 'mapping_profile_id query parameter is required' } }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "respond-mapping-profile-400",
+      "name": "Respond 400",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [780, 200]
+    }
+  ],
+  "connections": {
+    "GET /ltsa/mapping-profile/detail": {
+      "main": [
+        [
+          {
+            "node": "Parse Mapping Profile ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Mapping Profile ID": {
+      "main": [
+        [
+          {
+            "node": "IF Valid Mapping Profile ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Valid Mapping Profile ID": {
+      "main": [
+        [
+          {
+            "node": "Get Mapping Profile Detail",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 400",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Mapping Profile Detail": {
+      "main": [
+        [
+          {
+            "node": "Build Mapping Profile Detail Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Mapping Profile Detail Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Mapping Profile Detail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

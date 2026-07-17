@@ -1,0 +1,14 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "SEAL_STOCK",
+    "version": "1.0.0"
+  },
+  "components": {
+    "schemas": {
+      "SEAL_STOCK": {
+        "type": "object"
+      }
+    }
+  }
+}

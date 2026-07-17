@@ -1,0 +1,186 @@
+{
+  "name": "WF-LTSA-BRAIN-PDF-METADATA-DETAIL-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "ltsa/pdf-metadata/detail",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-pdf-metadata-detail",
+      "name": "GET /ltsa/pdf-metadata/detail",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const pdf_metadata_id = $json.query?.pdf_metadata_id;\n\nreturn [{\n  json: {\n    pdf_metadata_id,\n    valid: !!pdf_metadata_id\n  }\n}];"
+      },
+      "id": "parse-pdf-metadata-id",
+      "name": "Parse PDF Metadata ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "valid-pdf-metadata-id-check",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-valid-pdf-metadata-id",
+      "name": "IF Valid PDF Metadata ID",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [520, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT *\nFROM pdf_metadata\nWHERE pdf_metadata_id = $1\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ [$json.pdf_metadata_id] }}"
+        }
+      },
+      "id": "get-pdf-metadata-detail",
+      "name": "Get PDF Metadata Detail",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [780, -120],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first()?.json;\n\nif (!row || !row.pdf_metadata_id) {\n  return [{\n    json: {\n      statusCode: 404,\n      success: false,\n      message: 'PDF Metadata not found',\n      data: null\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    statusCode: 200,\n    success: true,\n    message: 'PDF Metadata detail found',\n    data: row\n  }\n}];"
+      },
+      "id": "build-pdf-metadata-detail-response",
+      "name": "Build PDF Metadata Detail Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, -120]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: $json.success, message: $json.message, data: $json.data } }}",
+        "options": {
+          "responseCode": "={{ $json.statusCode }}"
+        }
+      },
+      "id": "respond-pdf-metadata-detail",
+      "name": "Respond PDF Metadata Detail",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1300, -120]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, message: 'pdf_metadata_id query parameter is required' } }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "respond-pdf-metadata-400",
+      "name": "Respond 400",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [780, 200]
+    }
+  ],
+  "connections": {
+    "GET /ltsa/pdf-metadata/detail": {
+      "main": [
+        [
+          {
+            "node": "Parse PDF Metadata ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse PDF Metadata ID": {
+      "main": [
+        [
+          {
+            "node": "IF Valid PDF Metadata ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Valid PDF Metadata ID": {
+      "main": [
+        [
+          {
+            "node": "Get PDF Metadata Detail",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 400",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get PDF Metadata Detail": {
+      "main": [
+        [
+          {
+            "node": "Build PDF Metadata Detail Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build PDF Metadata Detail Response": {
+      "main": [
+        [
+          {
+            "node": "Respond PDF Metadata Detail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

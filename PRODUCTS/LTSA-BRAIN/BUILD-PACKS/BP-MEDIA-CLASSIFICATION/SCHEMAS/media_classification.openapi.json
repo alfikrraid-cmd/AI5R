@@ -1,0 +1,14 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "MEDIA_CLASSIFICATION",
+    "version": "1.0.0"
+  },
+  "components": {
+    "schemas": {
+      "MEDIA_CLASSIFICATION": {
+        "type": "object"
+      }
+    }
+  }
+}
