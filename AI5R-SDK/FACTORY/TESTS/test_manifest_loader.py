@@ -24,7 +24,7 @@ def test_manifest_loader():
     assert "inspection" in entity_names
     assert "maintenance" in entity_names
 
-    assert unit.metadata["product"]["display_name"] == "LTSA Brain"
+    assert unit.metadata["product"]["display_name"] == "OSA Maintenance"
     assert unit.metadata["artifacts"]["database"] is True
 
     print("FM-100.2 Manifest Loader OK")

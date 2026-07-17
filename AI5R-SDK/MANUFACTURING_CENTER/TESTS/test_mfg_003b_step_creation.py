@@ -1,3 +1,4 @@
+import tempfile
 from pathlib import Path
 
 from MANUFACTURING import (
@@ -16,7 +17,7 @@ def test_create_steps_from_capabilities():
 
     orchestrator = ManufacturingOrchestrator(
         factory=factory,
-        workspace=Path("/tmp"),
+        workspace=Path(tempfile.gettempdir()),
     )
 
     order = ManufacturingOrder(

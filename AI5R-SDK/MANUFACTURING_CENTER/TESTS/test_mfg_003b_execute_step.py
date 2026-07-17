@@ -1,3 +1,4 @@
+import tempfile
 from pathlib import Path
 
 from MANUFACTURING import ManufacturingOrder
@@ -22,7 +23,7 @@ def test_execute_single_capability():
 
     orchestrator = ManufacturingOrchestrator(
         factory=factory,
-        workspace=Path("/tmp"),
+        workspace=Path(tempfile.gettempdir()),
     )
 
     order = ManufacturingOrder(

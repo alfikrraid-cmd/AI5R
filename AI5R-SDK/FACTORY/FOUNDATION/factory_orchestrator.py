@@ -11,6 +11,10 @@ except ImportError:
 class FactoryOrchestrator:
     """
     Orchestrates validation, compilation, and freeze for factory definitions.
+
+    `context` is additive (UMR-001, MWO-LTSA-049) -- passed through to the
+    compiler unchanged when supplied; omitting it preserves every
+    pre-existing caller's behavior exactly.
     """
 
     def __init__(
@@ -23,7 +27,7 @@ class FactoryOrchestrator:
         self.compiler = compiler
         self.freezer = freezer
 
-    def manufacture(self, definition: dict) -> dict:
+    def manufacture(self, definition: dict, context=None) -> dict:
         validation = self.validator.validate(definition)
 
         if validation["status"] != "VALID":
@@ -32,7 +36,7 @@ class FactoryOrchestrator:
                 "validation": validation,
             }
 
-        compiled = self.compiler.compile(definition)
+        compiled = self.compiler.compile(definition, context=context)
 
         frozen = self.freezer.freeze(
             product=definition["product"],
