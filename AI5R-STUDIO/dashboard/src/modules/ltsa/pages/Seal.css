@@ -1,0 +1,21 @@
+.seal-workspace-layout {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+}
+
+.seal-workspace-registry {
+  flex: 2;
+  min-width: 0;
+}
+
+.seal-workspace-detail {
+  flex: 1;
+  min-width: 280px;
+}
+
+@media (max-width: 768px) {
+  .seal-workspace-layout {
+    flex-direction: column;
+  }
+}

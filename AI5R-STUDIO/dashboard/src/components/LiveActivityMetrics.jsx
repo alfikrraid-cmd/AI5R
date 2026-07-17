@@ -1,4 +1,5 @@
 import { useLiveStream } from "../context/LiveStreamContext";
+import { Table } from "../design-system";
 
 const DEFAULT_METRICS = {
   events: 0,
@@ -50,34 +51,15 @@ function LiveActivityMetrics() {
     <section className="panel">
       <h2>Live Activity Metrics</h2>
 
-      <table>
-        <tbody>
-          <tr>
-            <td>Total Events</td>
-            <td>{metrics.events}</td>
-          </tr>
-
-          <tr>
-            <td>Task Events</td>
-            <td>{metrics.tasks}</td>
-          </tr>
-
-          <tr>
-            <td>Memory Events</td>
-            <td>{metrics.memories}</td>
-          </tr>
-
-          <tr>
-            <td>Reasoning Events</td>
-            <td>{metrics.reasoning}</td>
-          </tr>
-
-          <tr>
-            <td>Active Workers</td>
-            <td>{metrics.workers}</td>
-          </tr>
-        </tbody>
-      </table>
+      <Table
+        rows={[
+          { label: "Total Events", value: metrics.events },
+          { label: "Task Events", value: metrics.tasks },
+          { label: "Memory Events", value: metrics.memories },
+          { label: "Reasoning Events", value: metrics.reasoning },
+          { label: "Active Workers", value: metrics.workers },
+        ]}
+      />
     </section>
   );
 }

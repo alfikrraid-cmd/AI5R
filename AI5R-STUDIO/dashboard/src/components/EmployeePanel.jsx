@@ -1,3 +1,5 @@
+import { Card } from "../design-system";
+
 export default function EmployeePanel(){
 
     const employees = [
@@ -27,12 +29,7 @@ export default function EmployeePanel(){
 
     return (
 
-        <div className="card">
-
-            <h2>
-                Digital Employee Network
-            </h2>
-
+        <Card title="Digital Employee Network">
 
             {
                 employees.map(
@@ -53,7 +50,7 @@ export default function EmployeePanel(){
             }
 
 
-        </div>
+        </Card>
 
     );
 

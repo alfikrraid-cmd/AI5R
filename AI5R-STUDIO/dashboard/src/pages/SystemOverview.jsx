@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { MetricCard } from "../design-system";
 
 export default function SystemOverview() {
   const [status, setStatus] = useState({
@@ -25,24 +26,11 @@ export default function SystemOverview() {
       <h1>System Overview</h1>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
-        <Card label="Factory" value={status.factory} />
-        <Card label="Stations" value={status.stations} />
-        <Card label="Running" value={status.running} />
-        <Card label="Queue" value={status.queue} />
+        <MetricCard title="Factory" value={status.factory} />
+        <MetricCard title="Stations" value={status.stations} />
+        <MetricCard title="Running" value={status.running} />
+        <MetricCard title="Queue" value={status.queue} />
       </div>
-    </div>
-  );
-}
-
-function Card({ label, value }) {
-  return (
-    <div style={{
-      background: "white",
-      padding: 16,
-      borderRadius: 10
-    }}>
-      <div style={{ fontSize: 12 }}>{label}</div>
-      <div style={{ fontSize: 20, fontWeight: "bold" }}>{value}</div>
     </div>
   );
 }

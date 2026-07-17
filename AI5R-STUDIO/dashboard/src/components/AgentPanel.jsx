@@ -1,3 +1,5 @@
+import { Card } from "../design-system";
+
 export default function AgentPanel(){
 
     const agents = [
@@ -10,12 +12,7 @@ export default function AgentPanel(){
 
     return (
 
-        <div className="card">
-
-            <h2>
-                Digital Employees
-            </h2>
-
+        <Card title="Digital Employees">
 
             {
                 agents.map(
@@ -27,7 +24,7 @@ export default function AgentPanel(){
                 )
             }
 
-        </div>
+        </Card>
 
     );
 

@@ -7,7 +7,7 @@ import {
 
 import { LiveStreamProvider } from "./context/LiveStreamContext";
 
-import StatusCard from "./components/StatusCard";
+import { MetricCard, Timeline } from "./design-system";
 import AgentPanel from "./components/AgentPanel";
 import BrainActivity from "./components/BrainActivity";
 import MemoryPanel from "./components/MemoryPanel";
@@ -21,7 +21,6 @@ import LiveReasoningStream from "./components/LiveReasoningStream";
 import LiveActivityMetrics from "./components/LiveActivityMetrics";
 import BrainEventStream from "./components/BrainEventStream";
 import EmployeePanel from "./components/EmployeePanel";
-import Timeline from "./components/Timeline";
 import IntelligenceGraph from "./components/IntelligenceGraph";
 import CommandConsole from "./components/CommandConsole";
 import { UMKMOverview, UMKMAgents, UMKMInsight } from "./products/UMKM_OS";
@@ -44,10 +43,10 @@ function App(){
             <h1>🌳 AI5R OS COMMAND CENTER</h1>
 
             <div className="grid">
-                <StatusCard title="System" value={system.status} />
-                <StatusCard title="Service" value={system.service || "-"} />
-                <StatusCard title="Agents" value={dashboard.agents} />
-                <StatusCard title="Memory" value={dashboard.memories} />
+                <MetricCard title="System" value={system.status} />
+                <MetricCard title="Service" value={system.service || "-"} />
+                <MetricCard title="Agents" value={dashboard.agents} />
+                <MetricCard title="Memory" value={dashboard.memories} />
             </div>
 
             <AgentPanel />

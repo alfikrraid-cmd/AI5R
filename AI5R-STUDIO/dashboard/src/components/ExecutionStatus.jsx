@@ -1,3 +1,5 @@
+import { Card, StatusBadge } from "../design-system";
+
 function ExecutionStatus() {
     const modules = [
         "Brain",
@@ -8,18 +10,13 @@ function ExecutionStatus() {
     ];
 
     return (
-        <div className="card">
-            <h2>Execution Status</h2>
-
+        <Card title="Execution Status">
             <div className="status-grid">
                 {modules.map((module) => (
-                    <div key={module} className="status-pill">
-                        <span>{module}</span>
-                        <strong>ACTIVE</strong>
-                    </div>
+                    <StatusBadge key={module} label={module} status="ACTIVE" />
                 ))}
             </div>
-        </div>
+        </Card>
     );
 }
 

@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "osa-maintenance-dashboard",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8834", "--directory", "D:/PROJECT/AI5R/PRODUCTS/LTSA-BRAIN/BUILD-PACKS/BP-DASHBOARD"],
+      "port": 8834
+    }
+  ]
+}

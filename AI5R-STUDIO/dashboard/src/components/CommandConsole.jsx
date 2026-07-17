@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { sendCommand } from "../api/osaClient";
+import { Button, Card } from "../design-system";
 
 export default function CommandConsole() {
     const [command, setCommand] = useState("");
@@ -45,21 +46,16 @@ export default function CommandConsole() {
     }
 
     return (
-        <div className="card">
-            <h2>AI5R Command Console</h2>
-
+        <Card title="AI5R Command Console">
             <input
                 value={command}
                 onChange={(e) => setCommand(e.target.value)}
                 placeholder="Enter command..."
             />
 
-            <button
-                onClick={execute}
-                disabled={busy}
-            >
+            <Button onClick={execute} disabled={busy}>
                 {busy ? "Submitting..." : "Execute"}
-            </button>
+            </Button>
 
             <hr />
 
@@ -94,6 +90,6 @@ export default function CommandConsole() {
                     <hr />
                 </div>
             ))}
-        </div>
+        </Card>
     );
 }

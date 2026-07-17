@@ -1,0 +1,21 @@
+.pump-workspace-layout {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+}
+
+.pump-workspace-registry {
+  flex: 2;
+  min-width: 0;
+}
+
+.pump-workspace-detail {
+  flex: 1;
+  min-width: 280px;
+}
+
+@media (max-width: 768px) {
+  .pump-workspace-layout {
+    flex-direction: column;
+  }
+}

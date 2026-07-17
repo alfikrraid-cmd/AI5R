@@ -1,12 +1,10 @@
+import { Card } from "../design-system";
+
 export default function MemoryPanel(){
 
     return (
 
-        <div className="card">
-
-            <h2>
-                Memory System
-            </h2>
+        <Card title="Memory System">
 
             <p>
                 Experiences stored: 120
@@ -16,7 +14,7 @@ export default function MemoryPanel(){
                 Learning status: ACTIVE
             </p>
 
-        </div>
+        </Card>
 
     );
 

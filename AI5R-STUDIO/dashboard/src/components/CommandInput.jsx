@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Button, Card } from "../design-system";
 
 function CommandInput({ onExecute }) {
     const [prompt, setPrompt] = useState("");
@@ -15,9 +16,7 @@ function CommandInput({ onExecute }) {
     }
 
     return (
-        <div className="card">
-            <h2>Command</h2>
-
+        <Card title="Command">
             <form onSubmit={handleSubmit}>
                 <textarea
                     value={prompt}
@@ -26,11 +25,11 @@ function CommandInput({ onExecute }) {
                     rows="5"
                 />
 
-                <button type="submit">
+                <Button type="submit">
                     Execute
-                </button>
+                </Button>
             </form>
-        </div>
+        </Card>
     );
 }
 

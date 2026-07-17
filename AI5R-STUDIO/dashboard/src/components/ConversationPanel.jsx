@@ -1,8 +1,8 @@
+import { Card } from "../design-system";
+
 function ConversationPanel({ messages }) {
     return (
-        <div className="card">
-            <h2>Conversation</h2>
-
+        <Card title="Conversation">
             <div className="conversation-panel">
                 {messages.map((message, index) => (
                     <div key={index} className={`message ${message.sender.toLowerCase()}`}>
@@ -11,7 +11,7 @@ function ConversationPanel({ messages }) {
                     </div>
                 ))}
             </div>
-        </div>
+        </Card>
     );
 }
 
