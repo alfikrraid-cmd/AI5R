@@ -1,0 +1,219 @@
+{
+  "name": "WF-LTSA-DOCUMENT-UPLOAD-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ltsa/document/upload",
+        "responseMode": "responseNode",
+        "options": {
+          "binaryData": true
+        }
+      },
+      "id": "webhook-document-upload",
+      "name": "Webhook Upload Document",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst body = $json.body || $json;\nconst binary = $binary && $binary.data;\n\nconst ALLOWED_MIME = {\n  'application/pdf': 'PDF',\n  'image/jpeg': 'MEDIA',\n  'image/jpg': 'MEDIA',\n  'image/png': 'MEDIA'\n};\n\nif (!binary || !binary.data) {\n  throw new Error('No file uploaded (expected multipart field \"data\")');\n}\n\nconst mimeType = binary.mimeType;\nconst sourceDocumentType = ALLOWED_MIME[mimeType];\nif (!sourceDocumentType) {\n  throw new Error('Unsupported file type: ' + mimeType + '. Allowed: PDF, JPG, JPEG, PNG.');\n}\n\nif (!body.knowledge_source_id) {\n  throw new Error('knowledge_source_id is required');\n}\nif (!body.source_document_id) {\n  throw new Error('source_document_id is required');\n}\nif (!body.document_field_extraction_id) {\n  throw new Error('document_field_extraction_id is required');\n}\n\nconst buffer = Buffer.from(binary.data, 'base64');\nconst fileHash = crypto.createHash('sha256').update(buffer).digest('hex');\n\nreturn [\n  {\n    json: {\n      knowledge_source_id: body.knowledge_source_id,\n      source_document_id: body.source_document_id,\n      document_field_extraction_id: body.document_field_extraction_id,\n      source_document_type: sourceDocumentType,\n      mime_type: mimeType,\n      source_type: body.source_type || (sourceDocumentType === 'MEDIA' ? 'PHOTO' : 'DATASHEET'),\n      original_file_name: binary.fileName || null,\n      customer: body.customer || null,\n      site: body.site || null,\n      unit: body.unit || null,\n      uploaded_by: body.uploaded_by || null,\n      file_hash: fileHash,\n      file_size: buffer.length\n    },\n    binary: { data: binary }\n  }\n];"
+      },
+      "id": "validate-document-upload-input",
+      "name": "Validate Upload Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO knowledge_source_registry (\n  knowledge_source_id, source_type, source_name, original_file_name,\n  customer, site, unit, uploaded_by, verification_status, file_hash, file_size, media_type\n)\nVALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'DRAFT', $9, $10, $11)\nRETURNING knowledge_source_id;",
+        "options": {
+          "queryReplacement": "={{ [$json.knowledge_source_id, $json.source_type, $json.original_file_name || $json.knowledge_source_id, $json.original_file_name, $json.customer, $json.site, $json.unit, $json.uploaded_by, $json.file_hash, $json.file_size, $json.mime_type] }}"
+        }
+      },
+      "id": "insert-knowledge-source",
+      "name": "Insert Knowledge Source",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [520, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "is-pdf",
+              "leftValue": "={{ $('Validate Upload Input').first().json.source_document_type }}",
+              "rightValue": "PDF",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-source-is-pdf",
+      "name": "IF Source Is PDF",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [780, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO pdf_document (\n  pdf_document_id, knowledge_source_id, document_name, document_type,\n  file_name, file_size, file_hash, status\n)\nVALUES ($1, $2, $3, 'DATASHEET', $4, $5, $6, 'PENDING_EXTRACTION')\nRETURNING pdf_document_id;",
+        "options": {
+          "queryReplacement": "={{ [$('Validate Upload Input').first().json.source_document_id, $('Validate Upload Input').first().json.knowledge_source_id, $('Validate Upload Input').first().json.original_file_name || $('Validate Upload Input').first().json.source_document_id, $('Validate Upload Input').first().json.original_file_name, $('Validate Upload Input').first().json.file_size, $('Validate Upload Input').first().json.file_hash] }}"
+        }
+      },
+      "id": "insert-pdf-document",
+      "name": "Insert PDF Document",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1040, -140],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO engineering_media (\n  engineering_media_id, knowledge_source_id, media_name, media_type,\n  file_name, file_size, file_hash, status\n)\nVALUES ($1, $2, $3, 'PHOTO', $4, $5, $6, 'PENDING_EXTRACTION')\nRETURNING engineering_media_id;",
+        "options": {
+          "queryReplacement": "={{ [$('Validate Upload Input').first().json.source_document_id, $('Validate Upload Input').first().json.knowledge_source_id, $('Validate Upload Input').first().json.original_file_name || $('Validate Upload Input').first().json.source_document_id, $('Validate Upload Input').first().json.original_file_name, $('Validate Upload Input').first().json.file_size, $('Validate Upload Input').first().json.file_hash] }}"
+        }
+      },
+      "id": "insert-engineering-media",
+      "name": "Insert Engineering Media",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1040, 140],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\nconst os = require('os');\nconst path = require('path');\nconst input = $('Validate Upload Input').first();\nconst binary = input.binary.data;\nconst buffer = Buffer.from(binary.data, 'base64');\n\n// Temporary file only -- discarded at the end of this execution. This is NOT\n// a repository storage convention; per Chief Architect ruling, original-file\n// persistence is deferred to a future Platform Storage MWO.\nconst ext = input.json.source_document_type === 'PDF' ? '.pdf' : path.extname(binary.fileName || '') || '.bin';\nconst tempPath = path.join(os.tmpdir(), `ltsa-doc-upload-${input.json.document_field_extraction_id}${ext}`);\nfs.writeFileSync(tempPath, buffer);\n\nreturn [{ json: { ...input.json, temp_file_path: tempPath } }];"
+      },
+      "id": "write-temp-file",
+      "name": "Write Temp File",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1300, 0]
+    },
+    {
+      "parameters": {
+        "command": "={{ 'python \"PRODUCTS/LTSA-BRAIN/AI-EXTRACTION/cli.py\" \"' + $json.temp_file_path + '\" \"' + $json.mime_type + '\"' }}"
+      },
+      "id": "run-ai-extraction-capability",
+      "name": "Run AI Extraction Capability",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [1560, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\nconst prior = $('Write Temp File').first().json;\n\ntry {\n  fs.unlinkSync(prior.temp_file_path);\n} catch (e) {\n  // best-effort cleanup of the temporary file; not fatal\n}\n\nconst stdout = $json.stdout || '';\nlet extraction;\ntry {\n  extraction = JSON.parse(stdout);\n} catch (e) {\n  throw new Error('AI Extraction Capability did not return valid JSON: ' + stdout);\n}\n\nreturn [{\n  json: {\n    document_field_extraction_id: prior.document_field_extraction_id,\n    source_document_id: prior.source_document_id,\n    source_document_type: prior.source_document_type,\n    detected_document_type: extraction.document_type,\n    detected_document_type_confidence: extraction.document_type_confidence,\n    extraction_provider: extraction.provider || 'claude',\n    ocr_text: extraction.ocr_text || '',\n    extracted_fields: JSON.stringify(extraction.fields || {})\n  }\n}];"
+      },
+      "id": "parse-extraction-output",
+      "name": "Parse Extraction Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1820, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO document_field_extraction (\n  document_field_extraction_id, source_document_id, source_document_type,\n  detected_document_type, detected_document_type_confidence,\n  extraction_provider, ocr_text, extracted_fields, status\n)\nVALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, 'PENDING_REVIEW')\nRETURNING *;",
+        "options": {
+          "queryReplacement": "={{ [$json.document_field_extraction_id, $json.source_document_id, $json.source_document_type, $json.detected_document_type, $json.detected_document_type_confidence, $json.extraction_provider, $json.ocr_text, $json.extracted_fields] }}"
+        }
+      },
+      "id": "insert-document-field-extraction",
+      "name": "Insert Document Field Extraction",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2080, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, message: 'Document uploaded and extracted successfully', data: $json } }}",
+        "options": {}
+      },
+      "id": "response-upload-success",
+      "name": "Response Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [2340, 0]
+    }
+  ],
+  "connections": {
+    "Webhook Upload Document": {
+      "main": [[{ "node": "Validate Upload Input", "type": "main", "index": 0 }]]
+    },
+    "Validate Upload Input": {
+      "main": [[{ "node": "Insert Knowledge Source", "type": "main", "index": 0 }]]
+    },
+    "Insert Knowledge Source": {
+      "main": [[{ "node": "IF Source Is PDF", "type": "main", "index": 0 }]]
+    },
+    "IF Source Is PDF": {
+      "main": [
+        [{ "node": "Insert PDF Document", "type": "main", "index": 0 }],
+        [{ "node": "Insert Engineering Media", "type": "main", "index": 0 }]
+      ]
+    },
+    "Insert PDF Document": {
+      "main": [[{ "node": "Write Temp File", "type": "main", "index": 0 }]]
+    },
+    "Insert Engineering Media": {
+      "main": [[{ "node": "Write Temp File", "type": "main", "index": 0 }]]
+    },
+    "Write Temp File": {
+      "main": [[{ "node": "Run AI Extraction Capability", "type": "main", "index": 0 }]]
+    },
+    "Run AI Extraction Capability": {
+      "main": [[{ "node": "Parse Extraction Output", "type": "main", "index": 0 }]]
+    },
+    "Parse Extraction Output": {
+      "main": [[{ "node": "Insert Document Field Extraction", "type": "main", "index": 0 }]]
+    },
+    "Insert Document Field Extraction": {
+      "main": [[{ "node": "Response Success", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

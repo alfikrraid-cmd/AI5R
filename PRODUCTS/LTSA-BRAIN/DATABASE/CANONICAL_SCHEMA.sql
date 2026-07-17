@@ -779,3 +779,83 @@ CREATE TABLE IF NOT EXISTS public.media_acquisition_job (
     CONSTRAINT media_acquisition_job_status_check
         CHECK (status IN ('PENDING', 'IN_PROGRESS', 'COMPLETED', 'FAILED'))
 );
+
+-- ============================================================
+-- DOCUMENT FIELD EXTRACTION
+-- Manufactured under the LTSA-BRAIN Document Upload MVP (Engineering
+-- Document Upload Pipeline: Upload -> OCR -> AI Field Extraction -> Review
+-- -> Save).
+--
+-- Fulfils the extraction step BP-PDF-DOCUMENT (040D) and BP-ENGINEERING-
+-- MEDIA (040E) both explicitly deferred ("no OCR, text/table/image
+-- extraction, or AI reasoning is performed here... deferred to future
+-- MWOs"). Additive only -- knowledge_source_registry, pdf_document, and
+-- engineering_media are reused unmodified as the upload/provenance and
+-- acquisition-object records; this table adds the AI Extraction
+-- Capability's result against an already-registered document.
+--
+-- source_document_id / source_document_type is a polymorphic reference (no
+-- FK), the same pattern already used by work_order.asset_code / asset_type
+-- above -- a document may be a pdf_document (PDF upload) or an
+-- engineering_media asset (JPG/JPEG/PNG upload), two tables with no common
+-- supertype in this schema.
+--
+-- extracted_fields / reviewed_fields use JSONB (unlike every other table in
+-- this file) because the field set is genuinely provider- and document-
+-- type-dependent (the MVP's Minimum Fields: General/Pump/Mechanical
+-- Seal/Process), not a fixed business-object shape. extraction_provider
+-- records which AI Extraction Capability provider produced the result
+-- (Claude is the first and only provider implemented; the column exists so
+-- adding a future provider requires no schema change, per Chief Architect
+-- ruling: "Claude is the first provider, not the architecture").
+--
+-- pump_tag_number / seal_code are nullable, populated only at Save time by
+-- reusing PumpIdentityResolver / SealIdentityResolver (PUMP-FACTORY-PACK /
+-- SEAL-FACTORY-PACK) unmodified against the reviewed fields -- this table
+-- does not implement its own matching logic.
+--
+-- Per Chief Architect ruling, original-file persistence (the physical
+-- uploaded document) is explicitly OUT OF SCOPE for this MWO and deferred
+-- to a future Platform Storage MWO -- no file-path/storage column is added
+-- here.
+--
+-- Source: ../BUILD-PACKS/BP-DOCUMENT-EXTRACTION/DATABASE/001_create_table.sql
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS public.document_field_extraction (
+    document_field_extraction_id TEXT PRIMARY KEY NOT NULL,
+    source_document_id TEXT NOT NULL,
+    source_document_type TEXT NOT NULL,
+    detected_document_type TEXT NOT NULL,
+    detected_document_type_confidence NUMERIC,
+    extraction_provider TEXT NOT NULL DEFAULT 'claude',
+    ocr_text TEXT,
+    extracted_fields JSONB NOT NULL DEFAULT '{}'::jsonb,
+    reviewed_fields JSONB,
+    status TEXT NOT NULL DEFAULT 'PENDING_REVIEW',
+    pump_tag_number VARCHAR(100) REFERENCES public.ltsa_pumps(tag_number),
+    seal_code TEXT REFERENCES public.seal_registry(seal_code),
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    CONSTRAINT document_field_extraction_source_type_check
+        CHECK (source_document_type IN ('PDF', 'MEDIA')),
+    CONSTRAINT document_field_extraction_detected_type_check
+        CHECK (detected_document_type IN (
+            'MECHANICAL_SEAL_INSTALLATION_REPORT', 'PUMP_DATASHEET',
+            'MECHANICAL_SEAL_DRAWING', 'PUMP_DRAWING', 'NAMEPLATE', 'UNKNOWN'
+        )),
+    CONSTRAINT document_field_extraction_status_check
+        CHECK (status IN ('PENDING_REVIEW', 'REVIEWED', 'SAVED')),
+    CONSTRAINT document_field_extraction_confidence_check
+        CHECK (detected_document_type_confidence IS NULL
+            OR (detected_document_type_confidence >= 0 AND detected_document_type_confidence <= 1))
+);
+
+CREATE INDEX IF NOT EXISTS idx_document_field_extraction_source
+    ON public.document_field_extraction(source_document_id, source_document_type);
+CREATE INDEX IF NOT EXISTS idx_document_field_extraction_status
+    ON public.document_field_extraction(status);
+CREATE INDEX IF NOT EXISTS idx_document_field_extraction_pump_tag_number
+    ON public.document_field_extraction(pump_tag_number);
+CREATE INDEX IF NOT EXISTS idx_document_field_extraction_seal_code
+    ON public.document_field_extraction(seal_code);

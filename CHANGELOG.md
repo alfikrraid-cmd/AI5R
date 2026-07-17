@@ -33,6 +33,14 @@
 ## MWO-LTSA-040E
 - Engineering Media Acquisition: `engineering_media`, `media_metadata`, `media_classification`, `media_acquisition_job` — third canonical Acquisition Object, conforming to `ADR-004`
 
+## LTSA-BRAIN Document Upload MVP
+- Document Field Extraction (`document_field_extraction`) — fulfils the extraction step MWO-LTSA-040D/040E both explicitly deferred: Upload → OCR → AI Field Extraction → Review → Save pipeline for engineering documents (PDF/JPG/JPEG/PNG)
+- AI Extraction Capability (`PRODUCTS/LTSA-BRAIN/AI-EXTRACTION`) — reusable provider interface; Claude (`claude-opus-4-8`, structured outputs) is the first provider, isolated behind the interface per Chief Architect ruling
+- `resolve_identity_cli.py` — reuses `PumpIdentityResolver`/`SealIdentityResolver` (unmodified) at Save time instead of reimplementing registry-matching logic
+- `WF-LTSA-DOCUMENT-UPLOAD-001`, `WF-LTSA-DOCUMENT-SAVE-001` (n8n) — backend stays entirely within the existing n8n/Postgres pattern, no new REST API introduced, per Chief Architect ruling
+- Upload/Review pages added to `AI5R-STUDIO/osa-web` — presentation-only client of the LTSA workflows, no business logic in Studio
+- Original-file (binary) persistence explicitly deferred to a future Platform Storage MWO, per Chief Architect ruling — only OCR text and structured JSON are persisted in this MVP
+
 ## Governance
 - `ADR-004`: Engineering Acquisition Pattern — Acquisition Object → Metadata → Classification → Acquisition Job, now mandatory for every Acquisition Object type
 - `MWO-LTSA-040C-R1`: Workbook Acquisition Pattern Alignment retrofit — specification only, approved, not implemented

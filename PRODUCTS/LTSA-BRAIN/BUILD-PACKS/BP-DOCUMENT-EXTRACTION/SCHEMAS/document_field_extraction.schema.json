@@ -1,0 +1,80 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "document_field_extraction",
+  "type": "object",
+  "properties": {
+    "document_field_extraction_id": { "type": "string" },
+    "source_document_id": { "type": "string" },
+    "source_document_type": { "type": "string", "enum": ["PDF", "MEDIA"] },
+    "detected_document_type": {
+      "type": "string",
+      "enum": [
+        "MECHANICAL_SEAL_INSTALLATION_REPORT",
+        "PUMP_DATASHEET",
+        "MECHANICAL_SEAL_DRAWING",
+        "PUMP_DRAWING",
+        "NAMEPLATE",
+        "UNKNOWN"
+      ]
+    },
+    "detected_document_type_confidence": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+    "extraction_provider": { "type": "string" },
+    "ocr_text": { "type": ["string", "null"] },
+    "extracted_fields": { "$ref": "#/definitions/field_set" },
+    "reviewed_fields": {
+      "anyOf": [{ "$ref": "#/definitions/field_set" }, { "type": "null" }]
+    },
+    "status": { "type": "string", "enum": ["PENDING_REVIEW", "REVIEWED", "SAVED"] },
+    "pump_tag_number": { "type": ["string", "null"] },
+    "seal_code": { "type": ["string", "null"] },
+    "created_at": { "type": "string" },
+    "updated_at": { "type": "string" }
+  },
+  "required": [
+    "document_field_extraction_id",
+    "source_document_id",
+    "source_document_type",
+    "detected_document_type",
+    "extraction_provider",
+    "extracted_fields",
+    "status"
+  ],
+  "definitions": {
+    "field_entry": {
+      "type": "object",
+      "properties": {
+        "value": { "type": ["string", "number", "null"] },
+        "confidence": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }
+      },
+      "required": ["value", "confidence"]
+    },
+    "field_set": {
+      "type": "object",
+      "description": "Minimum Fields (MVP): document_type, customer, end_user, date, location, pump.*, mechanical_seal.*, process.*. Not all fields apply to every document_type -- keys not detected are simply absent.",
+      "properties": {
+        "customer": { "$ref": "#/definitions/field_entry" },
+        "end_user": { "$ref": "#/definitions/field_entry" },
+        "date": { "$ref": "#/definitions/field_entry" },
+        "location": { "$ref": "#/definitions/field_entry" },
+        "pump_manufacturer": { "$ref": "#/definitions/field_entry" },
+        "pump_model": { "$ref": "#/definitions/field_entry" },
+        "pump_size": { "$ref": "#/definitions/field_entry" },
+        "pump_speed": { "$ref": "#/definitions/field_entry" },
+        "pump_rotation": { "$ref": "#/definitions/field_entry" },
+        "pump_equipment_number": { "$ref": "#/definitions/field_entry" },
+        "seal_manufacturer": { "$ref": "#/definitions/field_entry" },
+        "seal_type": { "$ref": "#/definitions/field_entry" },
+        "seal_drawing_number": { "$ref": "#/definitions/field_entry" },
+        "seal_material_code": { "$ref": "#/definitions/field_entry" },
+        "seal_api_plan": { "$ref": "#/definitions/field_entry" },
+        "seal_location": { "$ref": "#/definitions/field_entry" },
+        "process_liquid": { "$ref": "#/definitions/field_entry" },
+        "process_temperature": { "$ref": "#/definitions/field_entry" },
+        "process_pressure": { "$ref": "#/definitions/field_entry" },
+        "process_specific_gravity": { "$ref": "#/definitions/field_entry" },
+        "process_viscosity": { "$ref": "#/definitions/field_entry" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

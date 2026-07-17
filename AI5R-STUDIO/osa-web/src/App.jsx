@@ -1,5 +1,7 @@
 import {useState} from "react";
 import Blueprint from "./components/Blueprint";
+import DocumentUpload from "./components/DocumentUpload";
+import DocumentReview from "./components/DocumentReview";
 import "./style.css";
 
 
@@ -7,6 +9,7 @@ function App(){
 
 
 const [blueprint,setBlueprint]=useState(null);
+const [extraction,setExtraction]=useState(null);
 
 
 
@@ -65,6 +68,16 @@ Generate Blueprint
 <Blueprint
 data={blueprint}
 />
+
+
+<hr />
+
+
+{
+extraction
+? <DocumentReview extraction={extraction} onSaved={() => setExtraction(null)} />
+: <DocumentUpload onExtracted={setExtraction} />
+}
 
 
 </div>

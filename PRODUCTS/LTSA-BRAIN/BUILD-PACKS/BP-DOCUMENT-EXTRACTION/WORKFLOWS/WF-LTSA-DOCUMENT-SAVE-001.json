@@ -1,0 +1,220 @@
+{
+  "name": "WF-LTSA-DOCUMENT-SAVE-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ltsa/document/save",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-document-save",
+      "name": "Webhook Save Document",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || $json;\n\nif (!body.document_field_extraction_id) {\n  throw new Error('document_field_extraction_id is required');\n}\nif (!body.reviewed_fields || typeof body.reviewed_fields !== 'object') {\n  throw new Error('reviewed_fields (object) is required');\n}\n\nreturn [\n  {\n    json: {\n      document_field_extraction_id: body.document_field_extraction_id,\n      reviewed_fields: JSON.stringify(body.reviewed_fields)\n    }\n  }\n];"
+      },
+      "id": "validate-save-input",
+      "name": "Validate Save Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE document_field_extraction\nSET reviewed_fields = $2::jsonb, status = 'REVIEWED', updated_at = NOW()\nWHERE document_field_extraction_id = $1\nRETURNING *;",
+        "options": {
+          "queryReplacement": "={{ [$json.document_field_extraction_id, $json.reviewed_fields] }}"
+        }
+      },
+      "id": "update-reviewed-fields",
+      "name": "Update Reviewed Fields",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [520, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first().json;\nconst reviewed = row.reviewed_fields || {};\n\nconst pumpEquipmentNumber = reviewed.pump_equipment_number?.value || null;\nconst sealType = reviewed.seal_type?.value || null;\n\nreturn [{ json: { ...row, pump_candidate: pumpEquipmentNumber, seal_candidate: sealType } }];"
+      },
+      "id": "build-identity-candidates",
+      "name": "Build Identity Candidates",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [780, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, tag_number FROM ltsa_pumps WHERE tag_number = $1;",
+        "options": {
+          "queryReplacement": "={{ [$json.pump_candidate] }}"
+        }
+      },
+      "id": "query-candidate-pumps",
+      "name": "Query Candidate Pumps",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1040, -140],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT seal_code FROM seal_registry WHERE seal_code = $1 OR seal_name = $1;",
+        "options": {
+          "queryReplacement": "={{ [$json.seal_candidate] }}"
+        }
+      },
+      "id": "query-candidate-seals",
+      "name": "Query Candidate Seals",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1040, 140],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const context = $('Build Identity Candidates').first().json;\nconst knownPumps = $('Query Candidate Pumps').all().map(item => item.json);\nconst knownSeals = $('Query Candidate Seals').all().map(item => item.json);\n\nconst escapeForShell = (s) => \"'\" + s.replace(/'/g, \"'\\\\''\") + \"'\";\n\nconst pumpPayload = JSON.stringify({\n  candidate_key: { tag_number: context.pump_candidate },\n  known: knownPumps\n});\nconst sealPayload = JSON.stringify({\n  candidate_key: { seal_code: context.seal_candidate },\n  known: knownSeals\n});\n\nreturn [{\n  json: {\n    document_field_extraction_id: context.document_field_extraction_id,\n    pump_resolve_command: `echo ${escapeForShell(pumpPayload)} | python \"PRODUCTS/LTSA-BRAIN/AI-EXTRACTION/resolve_identity_cli.py\" --object-type PUMP`,\n    seal_resolve_command: `echo ${escapeForShell(sealPayload)} | python \"PRODUCTS/LTSA-BRAIN/AI-EXTRACTION/resolve_identity_cli.py\" --object-type SEAL`\n  }\n}];"
+      },
+      "id": "build-resolve-commands",
+      "name": "Build Resolve Commands",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1300, 0]
+    },
+    {
+      "parameters": {
+        "command": "={{ $json.pump_resolve_command }}"
+      },
+      "id": "run-pump-identity-resolution",
+      "name": "Run Pump Identity Resolution",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [1560, -140]
+    },
+    {
+      "parameters": {
+        "command": "={{ $('Build Resolve Commands').first().json.seal_resolve_command }}"
+      },
+      "id": "run-seal-identity-resolution",
+      "name": "Run Seal Identity Resolution",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [1560, 140]
+    },
+    {
+      "parameters": {
+        "jsCode": "const pumpResult = JSON.parse(($('Run Pump Identity Resolution').first().json.stdout || '{}'));\nconst sealResult = JSON.parse(($('Run Seal Identity Resolution').first().json.stdout || '{}'));\nconst context = $('Build Resolve Commands').first().json;\n\nreturn [{\n  json: {\n    document_field_extraction_id: context.document_field_extraction_id,\n    pump_tag_number: pumpResult.matched ? $('Build Identity Candidates').first().json.pump_candidate : null,\n    seal_code: sealResult.matched ? sealResult.canonical_id : null\n  }\n}];"
+      },
+      "id": "merge-identity-results",
+      "name": "Merge Identity Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1820, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE document_field_extraction\nSET pump_tag_number = $2, seal_code = $3, status = 'SAVED', updated_at = NOW()\nWHERE document_field_extraction_id = $1\nRETURNING *;",
+        "options": {
+          "queryReplacement": "={{ [$json.document_field_extraction_id, $json.pump_tag_number, $json.seal_code] }}"
+        }
+      },
+      "id": "finalize-save",
+      "name": "Finalize Save",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2080, 0],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, message: 'Document saved successfully', data: $json } }}",
+        "options": {}
+      },
+      "id": "response-save-success",
+      "name": "Response Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [2340, 0]
+    }
+  ],
+  "connections": {
+    "Webhook Save Document": {
+      "main": [[{ "node": "Validate Save Input", "type": "main", "index": 0 }]]
+    },
+    "Validate Save Input": {
+      "main": [[{ "node": "Update Reviewed Fields", "type": "main", "index": 0 }]]
+    },
+    "Update Reviewed Fields": {
+      "main": [[{ "node": "Build Identity Candidates", "type": "main", "index": 0 }]]
+    },
+    "Build Identity Candidates": {
+      "main": [
+        [
+          { "node": "Query Candidate Pumps", "type": "main", "index": 0 },
+          { "node": "Query Candidate Seals", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Query Candidate Pumps": {
+      "main": [[{ "node": "Build Resolve Commands", "type": "main", "index": 0 }]]
+    },
+    "Query Candidate Seals": {
+      "main": [[{ "node": "Build Resolve Commands", "type": "main", "index": 0 }]]
+    },
+    "Build Resolve Commands": {
+      "main": [
+        [
+          { "node": "Run Pump Identity Resolution", "type": "main", "index": 0 },
+          { "node": "Run Seal Identity Resolution", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Run Pump Identity Resolution": {
+      "main": [[{ "node": "Merge Identity Results", "type": "main", "index": 0 }]]
+    },
+    "Run Seal Identity Resolution": {
+      "main": [[{ "node": "Merge Identity Results", "type": "main", "index": 0 }]]
+    },
+    "Merge Identity Results": {
+      "main": [[{ "node": "Finalize Save", "type": "main", "index": 0 }]]
+    },
+    "Finalize Save": {
+      "main": [[{ "node": "Response Success", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}
