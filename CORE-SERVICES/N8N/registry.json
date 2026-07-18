@@ -1,0 +1,52 @@
+﻿{
+    "version":  1,
+    "description":  "AI5R n8n Workflow Registry. Generated index aggregating every pack manifest under WORKFLOWS/. Regenerate with update-registry.bat -- do not hand-edit.",
+    "generatedAt":  "2026-07-18T09:52:08.9715646+07:00",
+    "packs":  {
+                  "AUDITOR":  {
+                                  "pack":  "AUDITOR",
+                                  "folder":  "AUDITOR",
+                                  "manifestPath":  "WORKFLOWS/AUDITOR/manifest.json",
+                                  "manifestVersion":  null,
+                                  "n8nTag":  "AUDITOR",
+                                  "workflowCount":  0,
+                                  "lastExportAt":  null
+                              },
+                  "COMMON":  {
+                                 "pack":  "COMMON",
+                                 "folder":  "COMMON",
+                                 "manifestPath":  "WORKFLOWS/COMMON/manifest.json",
+                                 "manifestVersion":  1,
+                                 "n8nTag":  "COMMON",
+                                 "workflowCount":  0,
+                                 "lastExportAt":  null
+                             },
+                  "LTSA":  {
+                               "pack":  "LTSA",
+                               "folder":  "LTSA",
+                               "manifestPath":  "WORKFLOWS/LTSA/manifest.json",
+                               "manifestVersion":  null,
+                               "n8nTag":  "LTSA",
+                               "workflowCount":  0,
+                               "lastExportAt":  null
+                           },
+                  "SCHOOL":  {
+                                 "pack":  "SCHOOL",
+                                 "folder":  "SCHOOL",
+                                 "manifestPath":  "WORKFLOWS/SCHOOL/manifest.json",
+                                 "manifestVersion":  null,
+                                 "n8nTag":  "SCHOOL",
+                                 "workflowCount":  0,
+                                 "lastExportAt":  null
+                             },
+                  "UMKM":  {
+                               "pack":  "UMKM",
+                               "folder":  "UMKM",
+                               "manifestPath":  "WORKFLOWS/UMKM/manifest.json",
+                               "manifestVersion":  null,
+                               "n8nTag":  "UMKM",
+                               "workflowCount":  0,
+                               "lastExportAt":  null
+                           }
+              }
+}
