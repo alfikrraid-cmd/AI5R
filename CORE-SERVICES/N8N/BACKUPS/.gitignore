@@ -1,0 +1,10 @@
+# Backup archives are host-specific and may contain credential data extracted
+# from the n8n_data volume (n8n encrypts credential values at rest using a key
+# stored in the same volume, so a .tar.gz of this volume can decrypt them).
+# Do not commit archives — only the folder structure is tracked.
+*.tar.gz
+*.tar
+*.zip
+
+!.gitkeep
+!.gitignore

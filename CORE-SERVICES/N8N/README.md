@@ -1,14 +1,18 @@
 # N8N — CORE-SERVICES
 
 n8n workflow automation service for AI5R. This folder is the **single
-canonical location** for n8n's Docker configuration, workflow packs, and the
-workflow registry — it follows the same per-module layout as every other
+canonical location** for n8n's Docker configuration, workflow exports, and
+backup tooling — it follows the same per-module layout as every other
 `CORE-SERVICES/<NAME>/` service in this repository.
 
 ```
 CORE-SERVICES/N8N/
 ├── docker-compose.yml       # container definition (existing, unchanged)
 ├── README.md                # this file
+├── credentials.example.md   # credential documentation template (no secrets)
+├── backup-workflows.bat     # full raw export (CLI) of every workflow to WORKFLOWS/
+├── backup-volume.bat        # snapshots the n8n data volume to BACKUPS/
+├── restore-volume.bat       # restores the n8n data volume from a snapshot
 ├── export-workflows.bat     # Pack Manager: export one pack via the n8n REST API
 ├── import-workflows.bat     # Pack Manager: import one pack via the n8n REST API
 ├── validate-workflows.bat   # Pack Manager: validate pack manifests offline
@@ -20,13 +24,14 @@ CORE-SERVICES/N8N/
 ├── list-workflows.ps1       # PowerShell implementation behind list-workflows.bat
 ├── update-registry.ps1      # PowerShell implementation behind update-registry.bat
 ├── registry.json            # Workflow Registry: generated index of all pack manifests
-└── WORKFLOWS/                # exported workflow JSON (committed to git)
-    ├── manifest.json          # Pack Manager root index (per-pack counts/timestamps)
-    ├── COMMON/manifest.json    # pack: shared workflows across products
-    ├── LTSA/manifest.json      # pack: LTSA product workflows
-    ├── AUDITOR/manifest.json   # pack: AUDITOR product workflows
-    ├── SCHOOL/manifest.json    # pack: SCHOOL product workflows
-    └── UMKM/manifest.json      # pack: UMKM product workflows
+├── WORKFLOWS/                # exported workflow JSON (committed to git)
+│   ├── manifest.json          # Pack Manager root index (per-pack counts/timestamps)
+│   ├── COMMON/manifest.json    # pack: shared workflows across products
+│   ├── LTSA/manifest.json      # pack: LTSA product workflows
+│   ├── AUDITOR/manifest.json   # pack: AUDITOR product workflows
+│   ├── SCHOOL/manifest.json    # pack: SCHOOL product workflows
+│   └── UMKM/manifest.json      # pack: UMKM product workflows
+└── BACKUPS/                  # volume archives (git-ignored, see BACKUPS/.gitignore)
 ```
 
 ## 1. Start Docker
@@ -53,8 +58,9 @@ workflow/credential data is preserved.)
 ## 2. First-time owner account
 
 On first launch with an empty volume, n8n shows an owner-account setup
-screen at http://localhost:5678. Complete it before using the Pack Manager
-or Workflow Registry below.
+screen at http://localhost:5678. See `credentials.example.md` for the
+template used to document (not store) that account and any per-workflow
+credentials.
 
 ## 3. Docker volume
 
@@ -71,13 +77,68 @@ To find the actual volume name on this machine:
 docker inspect ai5r-n8n --format "{{range .Mounts}}{{.Name}} -> {{.Destination}}{{end}}"
 ```
 
-## 4. Workflow Pack Manager
+`backup-volume.bat` and `restore-volume.bat` discover this name
+automatically at run time — you never need to hardcode it.
+
+## 4. Export workflows
+
+```bat
+backup-workflows.bat
+```
+
+Runs `n8n export:workflow --all --separate` inside the container and copies
+the resulting JSON files into `WORKFLOWS/`. These files are safe to commit —
+credentials are referenced by ID, not by decrypted value.
+
+## 5. Back up the volume
+
+```bat
+backup-volume.bat
+```
+
+Creates a timestamped `n8n_data_<timestamp>.tar.gz` in `BACKUPS/` containing
+the full contents of the n8n data volume (workflows, credentials, execution
+history, settings). This is a superset of a workflow export — use it before
+upgrades or migrations. Archives are git-ignored; copy them somewhere safe
+(encrypted storage / offsite) if they need to survive beyond this machine.
+
+## 6. Restore the volume
+
+```bat
+restore-volume.bat n8n_data_20260101_120000.tar.gz
+```
+
+Run with no arguments to list available backups in `BACKUPS/`. This is
+**destructive** — it replaces all current volume data with the archive's
+contents, and prompts for `YES` confirmation before proceeding. It stops the
+container, restores the data, then restarts the container.
+
+## 7. Deploy to a VPS
+
+1. Copy this entire `CORE-SERVICES/N8N/` folder to the VPS (or `git pull` the
+   repo there).
+2. Install Docker + Docker Compose on the VPS.
+3. Edit `docker-compose.yml` environment values for the public deployment:
+   - `N8N_PROTOCOL=https` (once TLS is in front of n8n)
+   - `WEBHOOK_URL=https://<your-domain>/`
+   - Put n8n behind a reverse proxy (nginx / Caddy / Traefik) that terminates
+     TLS and forwards to port `5678` — not covered by this compose file.
+4. Bring it up: `docker compose up -d`.
+5. If migrating existing data rather than starting fresh, copy a backup
+   archive from `BACKUPS/` to the VPS and run `restore-volume.bat`
+   (or the equivalent manual `docker run ... tar xzf ...` commands) **before**
+   pointing DNS/traffic at the new instance.
+6. Re-run `backup-workflows.bat` / `backup-volume.bat` on whatever schedule
+   fits (cron on the VPS, or a scheduled task) to keep backups current.
+
+## 8. Workflow Pack Manager
 
 A **pack** is a named group of workflows exported/imported together —
 `COMMON`, `LTSA`, `AUDITOR`, `SCHOOL`, or `UMKM` — each with its own folder
-under `WORKFLOWS/` and its own `manifest.json`. Unlike a full raw export of
-every workflow, the Pack Manager talks to the **n8n REST API** and lets you
-export/import one product line at a time.
+under `WORKFLOWS/` and its own `manifest.json`. Unlike `backup-workflows.bat`
+(a full raw CLI export of everything, used for disaster recovery), the Pack
+Manager talks to the **n8n REST API** and lets you export/import one product
+line at a time.
 
 **How packs are matched:** a workflow belongs to a pack if it has an n8n tag
 with the exact same name (e.g. tag a workflow `LTSA` in the n8n UI to include
@@ -124,7 +185,7 @@ only read the manifests on disk); `export-workflows.bat` and
 - These endpoints assume n8n's Public REST API v1 (`/api/v1/...`), available
   in recent n8n versions. If your image is older, the API paths may differ.
 
-## 5. Workflow Registry
+## 9. Workflow Registry
 
 `registry.json` (at the root of this folder) is a **generated, read-only
 index** aggregating every pack's `manifest.json` under `WORKFLOWS/`. Unlike
