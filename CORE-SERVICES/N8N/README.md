@@ -18,11 +18,13 @@ CORE-SERVICES/N8N/
 ├── validate-workflows.bat   # Pack Manager: validate pack manifests offline
 ├── list-workflows.bat       # Pack Manager: list pack contents offline
 ├── update-registry.bat      # Workflow Registry: scan + regenerate registry.json
+├── check-pack.bat           # Integrity Checker: full PASS/FAIL sweep across all packs
 ├── export-workflows.ps1     # PowerShell implementation behind export-workflows.bat
 ├── import-workflows.ps1     # PowerShell implementation behind import-workflows.bat
 ├── validate-workflows.ps1   # PowerShell implementation behind validate-workflows.bat
 ├── list-workflows.ps1       # PowerShell implementation behind list-workflows.bat
 ├── update-registry.ps1      # PowerShell implementation behind update-registry.bat
+├── check-pack.ps1           # PowerShell implementation behind check-pack.bat
 ├── registry.json            # Workflow Registry: generated index of all pack manifests
 ├── WORKFLOWS/                # exported workflow JSON (committed to git)
 │   ├── manifest.json          # Pack Manager root index (per-pack counts/timestamps)
@@ -212,6 +214,42 @@ partially overwritten) and the script exits non-zero — fix the offending
 manifest and re-run. `registry.json` is fully offline and does not call the
 n8n REST API; do not hand-edit it, since the next `update-registry.bat` run
 overwrites it.
+
+## 10. Workflow Pack Integrity Checker
+
+```bat
+check-pack.bat            REM check all packs
+check-pack.bat LTSA       REM check one pack (only narrows the Pack Manager section below)
+```
+
+Runs a full PASS/FAIL sweep and is **fully offline** (like `validate-workflows.bat`
+and `update-registry.bat`, it never calls the n8n REST API and never writes to
+the real `registry.json` — registry regeneration for the consistency check
+happens in a temp file only). It **delegates to the existing validators**
+rather than duplicating their checks:
+
+- `validate-workflows.ps1` → required per-pack files, referenced workflow
+  files exist, workflow JSON required keys
+- `update-registry.ps1` (dry-run into a temp file) → invalid `manifestVersion`,
+  duplicate pack names, duplicate workflow ids, malformed JSON
+
+and adds the checks neither of those already cover:
+
+- required top-level service files (`docker-compose.yml`, `README.md`,
+  `credentials.example.md`, `registry.json`, `WORKFLOWS/manifest.json`,
+  `BACKUPS/.gitignore`, `BACKUPS/.gitkeep`)
+- `manifest.json` top-level schema keys (`pack`, `n8nTag`, `lastExportAt`,
+  `workflows`)
+- `registry.json` consistency — diffs the committed `registry.json` against a
+  fresh regeneration (ignoring the `generatedAt` timestamp) to catch a stale
+  registry that was never refreshed after a manifest changed
+- `BACKUPS/` folder structure (`.gitignore` rules, `.gitkeep` present)
+- duplicate workflow **filenames** across packs — a same-file/different-id
+  collision that `update-registry.ps1`'s id-based dedup does not catch
+
+Prints a `[PASS]`/`[FAIL]` line per section plus an overall summary, and
+**fails closed**: any section failure — including a sub-validator that
+couldn't run at all — fails the whole check and exits non-zero.
 
 ## Notes
 
