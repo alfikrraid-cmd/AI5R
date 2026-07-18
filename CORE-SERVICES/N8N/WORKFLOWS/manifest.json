@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "description": "AI5R n8n Workflow Pack Manager index. One entry per pack folder under WORKFLOWS/.",
+  "packs": {
+    "COMMON": { "workflowCount": 0, "lastExportAt": null },
+    "LTSA": { "workflowCount": 0, "lastExportAt": null },
+    "AUDITOR": { "workflowCount": 0, "lastExportAt": null },
+    "SCHOOL": { "workflowCount": 0, "lastExportAt": null },
+    "UMKM": { "workflowCount": 0, "lastExportAt": null }
+  }
+}
