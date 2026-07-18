@@ -32,6 +32,7 @@ Claude owns: Repository Analysis, Evidence Collection, Implementation, Validatio
 
 ## Working Agreement
 
+- **Canonical document registry**: `ENGINEERING/CANONICAL_DOCUMENTS.md` — index of every canonical document that governs engineering work, and where each one lives.
 - **Full protocol**: `CONSTITUTION/13_ENGINEERING_EXECUTION_PROTOCOL.md` — mandatory, governs every engineering task in this repository. Read it in full before assuming any rule not restated here.
 - **Governance model** (which document type decides what): `ADR/ADR-000-Architecture-Governance.md`.
 - **Process standard** (how work is planned, reviewed, executed, validated, reported): `ENGINEERING/AI5R_ENGINEERING_STANDARD_v1.0.md`.

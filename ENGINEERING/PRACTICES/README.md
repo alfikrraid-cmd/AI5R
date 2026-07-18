@@ -17,6 +17,8 @@ These documents are considered the engineering handbook for AI5R.
 | EP-001 | Development Workspaces | Approved |
 | EP-002 | Git SSH Setup | Approved |
 | EP-003 | Branching Strategy | Approved |
+| EP-004 | Claude Code Workflow | Approved |
+| EP-005 | MWO Lifecycle | Approved |
 
 ---
 
@@ -24,8 +26,6 @@ These documents are considered the engineering handbook for AI5R.
 
 | ID | Title |
 |----|-------|
-| EP-004 | Claude Code Workflow |
-| EP-005 | Release Workflow |
 | EP-006 | Code Review |
 | EP-007 | Commit Message Standard |
 | EP-008 | Repository Hygiene |
