@@ -1,3 +1,17 @@
+###############################################################################
+# Engineering Practice
+###############################################################################
+
+ID            : EP-001
+Title         : Development Workspaces
+Status        : Approved
+Version       : 1.0
+Owner         : Engineering
+Created       : 2026-07-18
+Last Updated  : 2026-07-18
+
+###############################################################################
+
 # Development Workspaces
 
 **Status:** Approved Engineering Practice

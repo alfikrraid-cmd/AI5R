@@ -1,3 +1,17 @@
+###############################################################################
+# Engineering Practice
+###############################################################################
+
+ID            : EP-002
+Title         : Git SSH Setup
+Status        : Approved
+Version       : 1.0
+Owner         : Engineering
+Created       : 2026-07-18
+Last Updated  : 2026-07-18
+
+###############################################################################
+
 # Git SSH Setup
 
 **Status:** Approved Engineering Practice

@@ -1,3 +1,17 @@
+###############################################################################
+# Engineering Practice
+###############################################################################
+
+ID            : EP-003
+Title         : Branching Strategy
+Status        : Approved
+Version       : 1.0
+Owner         : Engineering
+Created       : 2026-07-18
+Last Updated  : 2026-07-18
+
+###############################################################################
+
 # EP-003 Branching Strategy
 
 **Status:** Approved Engineering Practice
