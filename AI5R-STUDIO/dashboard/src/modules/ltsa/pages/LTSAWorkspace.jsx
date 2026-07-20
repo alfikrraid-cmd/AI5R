@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Tabs } from "../../../design-system";
+import ExecutiveDashboard from "./ExecutiveDashboard";
 import Pump from "./Pump";
 import WorkOrder from "./WorkOrder";
 import PM from "./PM";
@@ -8,6 +9,7 @@ import MaintenanceHistory from "./MaintenanceHistory";
 import "./LTSAWorkspace.css";
 
 const TABS = [
+  { key: "dashboard", label: "Executive Dashboard" },
   { key: "pump", label: "Pump" },
   { key: "workorder", label: "Work Order" },
   { key: "pm", label: "Preventive Maintenance" },
@@ -16,6 +18,7 @@ const TABS = [
 ];
 
 const PAGES = {
+  dashboard: ExecutiveDashboard,
   pump: Pump,
   workorder: WorkOrder,
   pm: PM,
@@ -24,7 +27,7 @@ const PAGES = {
 };
 
 export default function LTSAWorkspace() {
-  const [activeKey, setActiveKey] = useState("pump");
+  const [activeKey, setActiveKey] = useState("dashboard");
   const ActivePage = PAGES[activeKey];
 
   return (
@@ -32,7 +35,7 @@ export default function LTSAWorkspace() {
       <Tabs items={TABS} activeKey={activeKey} onChange={setActiveKey} />
 
       <div className="ltsa-workspace-content">
-        <ActivePage />
+        <ActivePage onNavigate={setActiveKey} />
       </div>
     </div>
   );

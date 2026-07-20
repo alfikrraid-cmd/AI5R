@@ -6,6 +6,7 @@ describe("LTSAWorkspace navigation shell", () => {
   it("renders a tab for every LTSA workspace", () => {
     render(<LTSAWorkspace />);
 
+    expect(screen.getByRole("tab", { name: "Executive Dashboard" })).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Pump" })).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Work Order" })).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Preventive Maintenance" })).toBeTruthy();
@@ -13,11 +14,22 @@ describe("LTSAWorkspace navigation shell", () => {
     expect(screen.getByRole("tab", { name: "Maintenance History" })).toBeTruthy();
   });
 
-  it("defaults to the Pump workspace", () => {
+  it("defaults to the Executive Dashboard", () => {
     render(<LTSAWorkspace />);
 
-    expect(screen.getByRole("tab", { name: "Pump" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("tab", { name: "Executive Dashboard" }).getAttribute("aria-selected")).toBe(
+      "true"
+    );
+    expect(screen.getByRole("heading", { name: "Executive Dashboard" })).toBeTruthy();
+  });
+
+  it("switches to the Pump workspace when its tab is clicked", () => {
+    render(<LTSAWorkspace />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Pump" }));
+
     expect(screen.getByRole("heading", { name: "Pump Workspace" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Executive Dashboard" })).toBeNull();
   });
 
   it("switches to the Work Order workspace when its tab is clicked", () => {
@@ -26,7 +38,7 @@ describe("LTSAWorkspace navigation shell", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Work Order" }));
 
     expect(screen.getByRole("heading", { name: "Work Order Workspace" })).toBeTruthy();
-    expect(screen.queryByRole("heading", { name: "Pump Workspace" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Executive Dashboard" })).toBeNull();
   });
 
   it("switches to the Preventive Maintenance workspace when its tab is clicked", () => {

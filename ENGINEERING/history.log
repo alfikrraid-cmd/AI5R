@@ -622,3 +622,134 @@ Architecture file modified.
 
 Next:
 Await next Chief Architect directive (new MWO or further instruction).
+
+2026-07-20 14:00 |
+MWO-LTSA-063 |
+DONE |
+MWO-LTSA-063 (Executive Dashboard) created per Chief Architect
+directive — next available LTSA MWO number after 062. MWO document
+written with full Goal/Business Context/Scope/Implementation
+Requirements/Out-of-Scope/Definition-of-Done; CURRENT_MWO.md
+repointed to MWO-LTSA-063. No implementation performed — this entry
+documents MWO creation only, per instruction to stop immediately
+after creation.
+
+Files:
+ENGINEERING/MWO/MWO-LTSA-063-Executive-Dashboard.md (new)
+CURRENT_MWO.md (repointed to MWO-LTSA-063)
+
+Tests:
+Not applicable — no implementation in this step.
+
+Scope:
+Documentation / MWO lifecycle only. No source code, test, SDK, or
+Architecture file modified.
+
+Next:
+Await Chief Architect review of MWO-LTSA-063 before implementation begins.
+
+2026-07-20 14:30 |
+MWO-LTSA-063 |
+DONE |
+Executive Dashboard implemented for LTSA Demo v1, per Product Owner
+refinement guidance received before implementation began (guidance
+not written into the MWO document, per explicit instruction — applied
+directly to implementation). Answers "is our maintenance operation
+healthy today" via a fixed information hierarchy: Executive KPI Cards
+(Open Work Orders, Overdue PM, Upcoming PM, Open Corrective
+Maintenance, Critical Assets, Recent Maintenance Activity) ->
+Maintenance Health (PM Compliance sample calculation, Open vs Closed
+Work Orders, CM status breakdown) -> Assets Requiring Attention
+(high-criticality pumps in a concerning state or with an open work
+order, reusing buildAssetSummary/buildAssetTimeline from
+MWO-LTSA-062 across every pump) -> Upcoming Maintenance (PM schedules
+due soon or overdue) -> Recent Activities (plant-wide chronological
+feed) -> Quick Navigation (last, not first, per explicit guidance).
+New utils/executiveDashboard.js is the sole KPI/health/attention/
+upcoming aggregation layer, built entirely from existing sample data
+via pure functions (a fixed 2026-07-20 reference date anchors the
+"recent"/"upcoming" windows so the demo's numbers stay stable, not a
+live clock). maintenanceHistory.js was refactored (behavior-preserving
+— its existing tests pass unchanged) to extract shared per-type event
+mappers and add buildPlantTimeline()/isOpenWorkOrderStatus(), reused
+by both modules rather than duplicated. No chart library introduced;
+built entirely from existing design-system MetricCard/ProgressBar/
+Badge/Card/EmptyState. Wired into LTSAWorkspace.jsx as a new first tab
+("Executive Dashboard") and made the default active tab, so it is now
+the LTSA landing screen; Quick Navigation reuses LTSAWorkspace's
+existing tab-switching state via a plain onNavigate callback prop (no
+global state, no shared service introduced). No PM/CM/WO/Pump
+component, page, or sample data file was modified; App.jsx itself was
+not touched (only its test, since the LTSA tab's default sub-page
+changed).
+
+Files:
+AI5R-STUDIO/dashboard/src/modules/ltsa/utils/executiveDashboard.js (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/utils/executiveDashboard.test.js (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/KpiCardGrid.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/KpiCardGrid.test.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/MaintenanceHealthPanel.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/MaintenanceHealthPanel.test.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/AttentionAssetList.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/AttentionAssetList.test.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/UpcomingMaintenanceList.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/UpcomingMaintenanceList.test.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/RecentActivityFeed.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/RecentActivityFeed.test.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/QuickNavigationPanel.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/QuickNavigationPanel.test.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/pages/ExecutiveDashboard.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/pages/ExecutiveDashboard.css (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/pages/ExecutiveDashboard.test.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/pages/ExecutiveDashboard.responsive.test.js (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/utils/maintenanceHistory.js (modified — extracted shared mappers, added buildPlantTimeline/isOpenWorkOrderStatus)
+AI5R-STUDIO/dashboard/src/modules/ltsa/utils/maintenanceHistory.test.js (modified — new tests added)
+AI5R-STUDIO/dashboard/src/modules/ltsa/pages/LTSAWorkspace.jsx (modified — new default tab registered)
+AI5R-STUDIO/dashboard/src/modules/ltsa/pages/LTSAWorkspace.test.jsx (modified)
+AI5R-STUDIO/dashboard/src/App.test.jsx (modified — updated for new LTSA default tab)
+CURRENT_MWO.md (status updated)
+
+Tests:
+PASS (81 test files, 346 tests, all green — 311 baseline + 35 new)
+
+Scope:
+No PM/CM/WO/Pump component, page, or sample data file modified; App.jsx
+itself untouched; design-system/, Backend, API, Database, and
+Authentication untouched — confirmed by git status scoped to those
+paths (empty aside from the pre-existing, unrelated modules.json diff
+already flagged in the prior classification report). No new MWO
+created. MWO-LTSA-063 document itself not modified, per explicit
+Product Owner instruction — this refinement was applied directly to
+implementation only.
+
+Next:
+Await Chief Architect review of MWO-LTSA-063.
+
+2026-07-20 15:00 |
+MWO-LTSA-063 |
+DONE |
+Product Owner review approved. MWO-LTSA-063 (Executive Dashboard)
+closed — Definition of Done confirmed Met (Executive KPI Cards,
+Maintenance Health, Assets Requiring Attention, Upcoming Maintenance,
+Recent Activities, Quick Navigation; wired into LTSAWorkspace as the
+new landing tab), 346/346 tests passing. MWO document updated at
+closure with the Product Owner refinement guidance (previously withheld
+from the document per explicit instruction during implementation) and
+a full Delivered Capabilities record, then marked COMPLETED. No
+implementation changes made in this step; CURRENT_MWO.md updated to
+reflect closure. No successor MWO created — CURRENT_MWO.md now shows
+no active MWO, awaiting next Chief Architect directive.
+
+Files:
+ENGINEERING/MWO/MWO-LTSA-063-Executive-Dashboard.md (status updated to COMPLETED, Product Owner Refinement + Implementation + Closure sections added)
+CURRENT_MWO.md (updated — no active MWO)
+
+Tests:
+PASS (81 test files, 346 tests — unchanged from prior entry)
+
+Scope:
+Documentation / MWO lifecycle only. No source code, test, SDK, or
+Architecture file modified.
+
+Next:
+Await next Chief Architect directive (new MWO or further instruction).

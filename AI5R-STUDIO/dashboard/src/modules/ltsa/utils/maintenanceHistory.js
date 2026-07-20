@@ -95,49 +95,44 @@ function woEventDate(wo) {
   return wo.createdDate ?? null;
 }
 
-/**
- * Merge every PM schedule, CM report, and Work Order for a single piece of
- * equipment into one chronological (descending) timeline. Pure aggregation
- * over the existing sample data — no new data model, no persistence.
- */
-export function buildAssetTimeline(equipmentTag) {
-  const pmEvents = samplePMSchedules
-    .filter((pm) => pm.equipmentTag === equipmentTag)
-    .map((pm) => ({
-      id: pm.id,
-      type: "PM",
-      date: pmEventDate(pm),
-      title: pm.procedure,
-      status: pm.status,
-      assignedTechnician: pm.assignedTechnician,
-      raw: pm,
-    }));
+function mapPmEvent(pm) {
+  return {
+    id: pm.id,
+    type: "PM",
+    date: pmEventDate(pm),
+    title: pm.procedure,
+    status: pm.status,
+    assignedTechnician: pm.assignedTechnician,
+    raw: pm,
+  };
+}
 
-  const cmEvents = sampleCMReports
-    .filter((cm) => cm.equipmentTag === equipmentTag)
-    .map((cm) => ({
-      id: cm.id,
-      type: "CM",
-      date: cmEventDate(cm),
-      title: cm.failureDescription,
-      status: cm.status,
-      assignedTechnician: cm.assignedTechnician,
-      raw: cm,
-    }));
+function mapCmEvent(cm) {
+  return {
+    id: cm.id,
+    type: "CM",
+    date: cmEventDate(cm),
+    title: cm.failureDescription,
+    status: cm.status,
+    assignedTechnician: cm.assignedTechnician,
+    raw: cm,
+  };
+}
 
-  const woEvents = sampleWorkOrders
-    .filter((wo) => wo.equipmentTag === equipmentTag)
-    .map((wo) => ({
-      id: wo.id,
-      type: "WO",
-      date: woEventDate(wo),
-      title: wo.title,
-      status: wo.status,
-      assignedTechnician: wo.assignedTechnician,
-      raw: wo,
-    }));
+function mapWoEvent(wo) {
+  return {
+    id: wo.id,
+    type: "WO",
+    date: woEventDate(wo),
+    title: wo.title,
+    status: wo.status,
+    assignedTechnician: wo.assignedTechnician,
+    raw: wo,
+  };
+}
 
-  return [...pmEvents, ...cmEvents, ...woEvents].sort((a, b) => {
+function sortEventsDescending(events) {
+  return [...events].sort((a, b) => {
     if (a.date === b.date) {
       return 0;
     }
@@ -154,7 +149,39 @@ export function buildAssetTimeline(equipmentTag) {
   });
 }
 
-const OPEN_WORK_ORDER_STATUSES = new Set(["OPEN", "IN_PROGRESS", "ON_HOLD"]);
+/**
+ * Merge every PM schedule, CM report, and Work Order for a single piece of
+ * equipment into one chronological (descending) timeline. Pure aggregation
+ * over the existing sample data — no new data model, no persistence.
+ */
+export function buildAssetTimeline(equipmentTag) {
+  const pmEvents = samplePMSchedules.filter((pm) => pm.equipmentTag === equipmentTag).map(mapPmEvent);
+  const cmEvents = sampleCMReports.filter((cm) => cm.equipmentTag === equipmentTag).map(mapCmEvent);
+  const woEvents = sampleWorkOrders.filter((wo) => wo.equipmentTag === equipmentTag).map(mapWoEvent);
+
+  return sortEventsDescending([...pmEvents, ...cmEvents, ...woEvents]);
+}
+
+/**
+ * Merge every PM schedule, CM report, and Work Order across the entire
+ * plant (every asset) into one chronological (descending) timeline. Same
+ * event shape as `buildAssetTimeline`, just without the equipment filter —
+ * used by plant-wide views such as the Executive Dashboard's Recent
+ * Activities feed.
+ */
+export function buildPlantTimeline() {
+  const pmEvents = samplePMSchedules.map(mapPmEvent);
+  const cmEvents = sampleCMReports.map(mapCmEvent);
+  const woEvents = sampleWorkOrders.map(mapWoEvent);
+
+  return sortEventsDescending([...pmEvents, ...cmEvents, ...woEvents]);
+}
+
+export const OPEN_WORK_ORDER_STATUSES = new Set(["OPEN", "IN_PROGRESS", "ON_HOLD"]);
+
+export function isOpenWorkOrderStatus(status) {
+  return OPEN_WORK_ORDER_STATUSES.has(status);
+}
 
 /**
  * Derive the Asset Summary fields from a pump record and its already-built

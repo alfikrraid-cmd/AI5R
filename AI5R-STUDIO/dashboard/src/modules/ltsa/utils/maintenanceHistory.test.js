@@ -2,14 +2,19 @@ import { describe, expect, it } from "vitest";
 import {
   buildAssetSummary,
   buildAssetTimeline,
+  buildPlantTimeline,
   eventStatusBadgeVariant,
   eventStatusLabel,
   eventTypeBadgeVariant,
   eventTypeLabel,
   filterStatusLabel,
   findAssetByTag,
+  isOpenWorkOrderStatus,
   listAssets,
 } from "./maintenanceHistory";
+import samplePMSchedules from "../data/samplePMSchedules";
+import sampleCMReports from "../data/sampleCMReports";
+import sampleWorkOrders from "../data/sampleWorkOrders";
 
 describe("listAssets / findAssetByTag", () => {
   it("lists every sample pump sorted by tag", () => {
@@ -75,6 +80,41 @@ describe("filterStatusLabel", () => {
 
   it("falls back to the raw value for an unknown status", () => {
     expect(filterStatusLabel("UNKNOWN")).toBe("UNKNOWN");
+  });
+});
+
+describe("isOpenWorkOrderStatus", () => {
+  it("treats OPEN, IN_PROGRESS, and ON_HOLD as open", () => {
+    expect(isOpenWorkOrderStatus("OPEN")).toBe(true);
+    expect(isOpenWorkOrderStatus("IN_PROGRESS")).toBe(true);
+    expect(isOpenWorkOrderStatus("ON_HOLD")).toBe(true);
+  });
+
+  it("treats COMPLETED as not open", () => {
+    expect(isOpenWorkOrderStatus("COMPLETED")).toBe(false);
+  });
+});
+
+describe("buildPlantTimeline", () => {
+  it("merges every PM, CM, and Work Order sample record across the whole plant", () => {
+    const timeline = buildPlantTimeline();
+
+    expect(timeline).toHaveLength(
+      samplePMSchedules.length + sampleCMReports.length + sampleWorkOrders.length
+    );
+  });
+
+  it("sorts the plant-wide timeline in descending chronological order", () => {
+    const timeline = buildPlantTimeline();
+
+    for (let i = 1; i < timeline.length; i += 1) {
+      const previous = timeline[i - 1].date;
+      const current = timeline[i].date;
+
+      if (previous !== null && current !== null) {
+        expect(previous >= current).toBe(true);
+      }
+    }
   });
 });
 

@@ -24,7 +24,7 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: "LTSA" }));
 
-    expect(screen.getByRole("heading", { name: "Pump Workspace" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Executive Dashboard" })).toBeTruthy();
     expect(screen.queryByRole("heading", { level: 3, name: "System" })).toBeNull();
   });
 
@@ -35,6 +35,6 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("tab", { name: "OS Command Center" }));
 
     expect(screen.getByRole("heading", { level: 3, name: "System" })).toBeTruthy();
-    expect(screen.queryByRole("heading", { name: "Pump Workspace" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Executive Dashboard" })).toBeNull();
   });
 });
