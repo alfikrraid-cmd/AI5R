@@ -130,3 +130,80 @@ Architecture file modified.
 
 Next:
 Await next Chief Architect directive (new MWO or further instruction).
+
+2026-07-20 09:20 |
+MWO-LTSA-058 |
+DONE |
+MWO-LTSA-058 (Preventive Maintenance Workspace) created per Chief
+Architect directive — next available LTSA MWO number after 057.
+MWO document written with full Goal/Scope/Out-of-Scope/Definition-of-
+Done; CURRENT_MWO.md repointed to MWO-LTSA-058. No implementation
+performed — this entry documents MWO creation only, per instruction to
+stop immediately after creation.
+
+Files:
+ENGINEERING/MWO/MWO-LTSA-058-Preventive-Maintenance-Workspace.md (new)
+CURRENT_MWO.md (repointed to MWO-LTSA-058)
+
+Tests:
+Not applicable — no implementation in this step.
+
+Scope:
+Documentation / MWO lifecycle only. No source code, test, SDK, or
+Architecture file modified.
+
+Next:
+Await Chief Architect review of MWO-LTSA-058 before implementation begins.
+
+2026-07-20 09:40 |
+MWO-LTSA-058 |
+DONE |
+Preventive Maintenance Workspace implemented for LTSA Demo v1, following
+the Pump and Work Order module architecture exactly (page + FilterBar +
+list Table + DetailPanel + Create modal + module-local utils/data),
+reusing design-system components (PageHeader, SearchBox, Badge, Card,
+EmptyState, Modal, Timeline, Button) read-only — no design-system file
+modified. Delivered: PM Schedule List (PM ID, Equipment, Frequency,
+Next Due, Last Performed, Assigned Technician, Status), PM Detail
+(Equipment, Procedure, Frequency, Checklist, Last Performed, Next Due,
+Assigned Technician, Estimated Duration, Related Work Orders as a UI
+placeholder, Timeline), Create PM Schedule (UI-only modal: Equipment,
+Frequency, Trigger Type, Technician, Start Date, Estimated Duration,
+Checklist Template, Save button, no backend), Search, Status Filter,
+Responsive UI (two-column layout collapsing under 768px, matching
+Pump.css/WorkOrder.css), and 8-record sample data set covering all
+frequency/status/trigger-type combinations. PM.jsx is not wired into
+App.jsx routing, consistent with Pump.jsx/Seal.jsx/WorkOrder.jsx —
+Dashboard shell untouched.
+
+Files:
+AI5R-STUDIO/dashboard/src/modules/ltsa/data/samplePMSchedules.js (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/utils/pmStatus.js (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/utils/pmStatus.test.js (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/PMFilterBar.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/PMFilterBar.test.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/PMScheduleTable.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/PMScheduleTable.test.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/PMDetailPanel.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/PMDetailPanel.test.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/CreatePMScheduleModal.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/CreatePMScheduleModal.test.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/pages/PM.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/pages/PM.css (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/pages/PM.test.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/pages/PM.responsive.test.js (new)
+ENGINEERING/MWO/MWO-LTSA-058-Preventive-Maintenance-Workspace.md (updated with implementation record)
+CURRENT_MWO.md (status updated)
+
+Tests:
+PASS (54 test files, 196 tests, all green — 154 baseline + 42 new)
+
+Scope:
+Backend, API, Scheduler engine, Notifications, Authentication, Dashboard
+KPI/shell (App.jsx), Work Order Workspace, Pump Workspace, and
+design-system/ untouched — confirmed by git status scoped to those
+paths (empty aside from the pre-existing, unrelated modules.json diff
+already flagged in the prior classification report). No new MWO created.
+
+Next:
+Await Chief Architect review of MWO-LTSA-058.
