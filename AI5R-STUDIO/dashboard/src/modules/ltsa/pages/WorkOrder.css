@@ -1,0 +1,21 @@
+.workorder-workspace-layout {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+}
+
+.workorder-workspace-registry {
+  flex: 2;
+  min-width: 0;
+}
+
+.workorder-workspace-detail {
+  flex: 1;
+  min-width: 280px;
+}
+
+@media (max-width: 768px) {
+  .workorder-workspace-layout {
+    flex-direction: column;
+  }
+}

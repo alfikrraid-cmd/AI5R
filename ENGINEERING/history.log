@@ -1,0 +1,132 @@
+2026-07-18 23:44 | MWO-LTSA-056 | DONE | Pump Management UI Polish — empty-state added to Pump Registry table, Tag field added to Pump Detail Panel, dead status-modifier code removed, sample pump data expanded (PMP-001..010 -> PMP-001..013). 39 test files / 110 tests green (108 baseline + 2 new). Backend, Dashboard, Seal Workspace, API, and Architecture untouched, per scope.
+2026-07-18 23:53 | MWO-LTSA-056 | DONE | Phase 2 - Product Quality Redesign: Pump Registry redesigned to maintenance-oriented columns (Pump/Area/Health Score/Next PM/Open Work Orders/Status, color-coded, badged); Pump Detail Panel redesigned into Equipment Summary/Maintenance Summary/AI Recommendation/Quick Actions sections; sample data expanded with area/healthScore/availability/runtimeHours/lastPM/nextPM/openWO/criticality; status vocabulary changed ACTIVE/ALERT -> RUNNING (closed set: RUNNING/STANDBY/MAINTENANCE/FAULT). 40 test files / 121 tests green. Same MWO continued, no new MWO created. Backend, Dashboard, Seal Workspace, API, and Architecture untouched, per scope.
+
+2026-07-20 00:35 |
+MWO-MEM-001 |
+DONE |
+Enterprise Memory PoC completed. Installed Ollama; configured qwen3:8b and
+nomic-embed-text; verified Ollama runtime. Connected Graphiti Core 0.29.2 to
+Neo4j; verified Graphiti bootstrap; built Graphiti indices and constraints;
+successfully ingested episodic memory; verified entity extraction,
+relationship extraction, and semantic search via Graphiti.search(). Graphiti
+confirmed as the Enterprise Memory backend candidate for AI5R.
+
+Files:
+SANDBOX/GRAPHITI/bootstrap_graphiti.py
+SANDBOX/GRAPHITI/episode_demo.py
+SANDBOX/GRAPHITI/search_demo.py
+
+Tests:
+PASS
+
+Verified:
+Neo4j connectivity
+Ollama runtime
+Episode ingestion
+Entity extraction
+Relationship extraction
+Semantic retrieval
+
+Scope:
+Sandbox only. AI5R-SDK not modified. Architecture unchanged.
+
+Next:
+Implement AI5R-SDK/MEMORY.
+
+2026-07-20 08:20 |
+MWO-LTSA-056 |
+DONE |
+Chief Architect review approved. MWO-LTSA-056 (Pump Management UI Polish)
+closed — Phase 1 and Phase 2 Definition of Done both confirmed Met on
+re-verification (40 test files, 121 tests, all passing). No implementation
+changes made in this step; MWO document and CURRENT_MWO.md updated to
+reflect closure. MWO-LTSA-057 (Work Order Workspace) created as the new
+active MWO — scope defined, implementation not yet started, awaiting
+Chief Architect review before implementation begins.
+
+Files:
+ENGINEERING/MWO/MWO-LTSA-056-Pump-Management-UI-Polish.md (status updated to COMPLETED)
+ENGINEERING/MWO/MWO-LTSA-057-Work-Order-Workspace.md (new)
+CURRENT_MWO.md (repointed to MWO-LTSA-057)
+
+Tests:
+PASS (40 test files, 121 tests — re-verified, no change from prior entry)
+
+Scope:
+Documentation / MWO lifecycle only. No source code, test, SDK, or
+Architecture file modified.
+
+Next:
+Await Chief Architect review of MWO-LTSA-057 before implementation begins.
+
+2026-07-20 08:35 |
+MWO-LTSA-057 |
+DONE |
+Work Order Workspace implemented for LTSA Demo v1, following the exact
+module pattern established by Pump/Seal (page + FilterBar + RegistryTable
++ DetailPanel + module-local utils/data), reusing design-system components
+(PageHeader, SearchBox, Badge, Card, EmptyState, Modal, Timeline, Button)
+read-only — no design-system file modified. Delivered: Work Order List,
+Work Order Detail, Create Work Order (UI-only modal form, no backend/API
+call), Search, Status Filter, Priority (badge + closed set), Status
+(badge + closed set), Assignment field, Timeline (via design-system
+Timeline component), Responsive UI (two-column layout collapsing to one
+column under 768px, matching Pump.css/Seal.css), and 8-record sample
+data set. WorkOrder.jsx is not wired into App.jsx routing, consistent
+with Pump.jsx/Seal.jsx — Dashboard shell untouched.
+
+Files:
+AI5R-STUDIO/dashboard/src/modules/ltsa/data/sampleWorkOrders.js (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/utils/workOrderStatus.js (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/utils/workOrderStatus.test.js (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/WorkOrderFilterBar.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/WorkOrderFilterBar.test.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/WorkOrderRegistryTable.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/WorkOrderRegistryTable.test.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/WorkOrderDetailPanel.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/WorkOrderDetailPanel.test.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/CreateWorkOrderModal.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/CreateWorkOrderModal.test.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/pages/WorkOrder.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/pages/WorkOrder.css (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/pages/WorkOrder.test.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/pages/WorkOrder.responsive.test.js (new)
+ENGINEERING/MWO/MWO-LTSA-057-Work-Order-Workspace.md (updated with implementation record)
+CURRENT_MWO.md (status updated)
+
+Tests:
+PASS (47 test files, 154 tests, all green — 121 baseline + 33 new)
+
+Scope:
+Pump Workspace, Seal Workspace, Dashboard shell (App.jsx), Backend, API,
+Authentication, Notifications, and design-system/ untouched — confirmed
+by git status scoped to those paths (empty). No new MWO created.
+
+Next:
+Await Chief Architect review of MWO-LTSA-057.
+
+2026-07-20 09:05 |
+MWO-LTSA-057 |
+DONE |
+Chief Architect review approved. MWO-LTSA-057 (Work Order Workspace)
+closed — Definition of Done confirmed Met (Work Order List, Work Order
+Detail, Create Work Order UI, Search, Status Filter, Priority, Status,
+Assignment, Timeline, Responsive UI, Sample Data), 154/154 tests passing.
+No implementation changes made in this step; MWO document and
+CURRENT_MWO.md updated to reflect closure. No successor MWO created —
+CURRENT_MWO.md now shows no active MWO, awaiting next Chief Architect
+directive.
+
+Files:
+ENGINEERING/MWO/MWO-LTSA-057-Work-Order-Workspace.md (status updated to COMPLETED)
+CURRENT_MWO.md (updated — no active MWO)
+
+Tests:
+PASS (47 test files, 154 tests — unchanged from prior entry)
+
+Scope:
+Documentation / MWO lifecycle only. No source code, test, SDK, or
+Architecture file modified.
+
+Next:
+Await next Chief Architect directive (new MWO or further instruction).
