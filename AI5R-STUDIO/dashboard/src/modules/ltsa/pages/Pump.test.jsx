@@ -10,11 +10,11 @@ describe("Pump workspace page", () => {
     expect(screen.getByRole("heading", { name: "Pump Workspace" })).toBeTruthy();
   });
 
-  it("renders all 10 sample pumps in the registry table", () => {
+  it("renders every sample pump in the registry table", () => {
     render(<Pump />);
 
     samplePumps.forEach((pump) => {
-      expect(screen.getByText(pump.code)).toBeTruthy();
+      expect(screen.getByText(pump.tag)).toBeTruthy();
     });
   });
 
@@ -27,7 +27,7 @@ describe("Pump workspace page", () => {
   it("shows the selected pump's detail when a registry row is clicked", () => {
     render(<Pump />);
 
-    fireEvent.click(screen.getByText("PMP-003"));
+    fireEvent.click(screen.getByText("305-P-2"));
 
     expect(screen.getByRole("heading", { name: "Cooling Water Circulation Pump" })).toBeTruthy();
   });
@@ -37,8 +37,8 @@ describe("Pump workspace page", () => {
 
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "Amine" } });
 
-    expect(screen.getByText("PMP-006")).toBeTruthy();
-    expect(screen.queryByText("PMP-001")).toBeNull();
+    expect(screen.getByText("418-P-1")).toBeTruthy();
+    expect(screen.queryByText("211-P-1A")).toBeNull();
   });
 
   it("filters the registry table by status", () => {
@@ -46,7 +46,15 @@ describe("Pump workspace page", () => {
 
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "FAULT" } });
 
-    expect(screen.getByText("PMP-009")).toBeTruthy();
-    expect(screen.queryByText("PMP-001")).toBeNull();
+    expect(screen.getByText("641-P-5")).toBeTruthy();
+    expect(screen.queryByText("211-P-1A")).toBeNull();
+  });
+
+  it("shows an empty state in the registry when no pump matches the search", () => {
+    render(<Pump />);
+
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "no-such-pump-xyz" } });
+
+    expect(screen.getByText(/no pumps match/i)).toBeTruthy();
   });
 });

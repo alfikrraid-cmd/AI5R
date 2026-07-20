@@ -1,14 +1,7 @@
-import { Badge, Card, EmptyState, StatusBadge } from "../../../design-system";
+import { Badge, Button, Card, EmptyState } from "../../../design-system";
 import colors from "../../../design-system/theme/colors";
 import spacing from "../../../design-system/theme/spacing";
-
-const STATUS_MODIFIER = {
-  ACTIVE: "active",
-  STANDBY: "idle",
-  MAINTENANCE: "warning",
-  ALERT: "warning",
-  FAULT: "error",
-};
+import { criticalityBadgeVariant, healthScoreColor, statusBadgeVariant } from "../utils/pumpHealth";
 
 function Field({ label, value }) {
   return (
@@ -30,37 +23,72 @@ export default function PumpDetailPanel({ pump }) {
   }
 
   return (
-    <Card title={pump.name}>
-      <Field label="Pump Code" value={pump.code} />
-      <Field label="Manufacturer" value={pump.manufacturer} />
-      <Field label="Pump Type" value={pump.type} />
-      <Field label="Seal" value={pump.seal} />
-      <Field label="Location" value={pump.location} />
+    <div>
+      <h2 style={{ marginTop: 0 }}>{pump.name}</h2>
 
-      <div style={{ marginBottom: spacing.sm }}>
-        <div style={{ color: colors.textMuted, fontSize: 12 }}>Status</div>
-        <StatusBadge label="Status" status={STATUS_MODIFIER[pump.status] ? pump.status : pump.status} />
-      </div>
+      <Card title="Equipment Summary">
+        <Field label="Pump Code" value={pump.code} />
+        <Field label="Tag" value={pump.tag} />
+        <Field label="Manufacturer" value={pump.manufacturer} />
+        <Field label="Pump Type" value={pump.type} />
+        <Field label="Seal" value={pump.seal} />
+        <Field label="Location" value={pump.location} />
+        <Field label="Area" value={pump.area} />
 
-      <Field label="Recommendation" value={pump.recommendation} />
-
-      <div>
-        <div style={{ color: colors.textMuted, fontSize: 12, marginBottom: spacing.xs }}>
-          Knowledge Links
+        <div style={{ marginBottom: spacing.sm }}>
+          <div style={{ color: colors.textMuted, fontSize: 12 }}>Criticality</div>
+          <Badge variant={criticalityBadgeVariant(pump.criticality)}>{pump.criticality}</Badge>
         </div>
 
-        {pump.knowledgeLinks.length === 0 ? (
-          <div style={{ color: colors.textMuted }}>No knowledge links.</div>
-        ) : (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: spacing.xs }}>
-            {pump.knowledgeLinks.map((link) => (
-              <Badge key={link} variant="info">
-                {link}
-              </Badge>
-            ))}
+        <div style={{ marginBottom: spacing.sm }}>
+          <div style={{ color: colors.textMuted, fontSize: 12 }}>Status</div>
+          <Badge variant={statusBadgeVariant(pump.status)}>{pump.status}</Badge>
+        </div>
+      </Card>
+
+      <Card title="Maintenance Summary">
+        <div style={{ marginBottom: spacing.sm }}>
+          <div style={{ color: colors.textMuted, fontSize: 12 }}>Health Score</div>
+          <strong style={{ color: healthScoreColor(pump.healthScore) }}>{pump.healthScore}</strong>
+        </div>
+
+        <Field label="Availability" value={`${pump.availability}%`} />
+        <Field label="Runtime Hours" value={`${pump.runtimeHours.toLocaleString("en-US")} hrs`} />
+        <Field label="Last PM" value={pump.lastPM} />
+        <Field label="Next PM" value={pump.nextPM} />
+        <Field label="Open Work Orders" value={pump.openWO} />
+      </Card>
+
+      <Card title="AI Recommendation">
+        <Field label="Recommendation" value={pump.recommendation} />
+
+        <div>
+          <div style={{ color: colors.textMuted, fontSize: 12, marginBottom: spacing.xs }}>
+            Knowledge Links
           </div>
-        )}
-      </div>
-    </Card>
+
+          {pump.knowledgeLinks.length === 0 ? (
+            <div style={{ color: colors.textMuted }}>No knowledge links.</div>
+          ) : (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: spacing.xs }}>
+              {pump.knowledgeLinks.map((link) => (
+                <Badge key={link} variant="info">
+                  {link}
+                </Badge>
+              ))}
+            </div>
+          )}
+        </div>
+      </Card>
+
+      <Card title="Quick Actions">
+        <div style={{ display: "flex", flexWrap: "wrap", gap: spacing.sm }}>
+          <Button disabled>View History</Button>
+          <Button disabled>Create PM</Button>
+          <Button disabled>Create CM</Button>
+          <Button disabled>Documents</Button>
+        </div>
+      </Card>
+    </div>
   );
 }
