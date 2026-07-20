@@ -7,6 +7,7 @@ import PM from "./PM";
 import CM from "./CM";
 import MaintenanceHistory from "./MaintenanceHistory";
 import ReportsWorkspace from "./ReportsWorkspace";
+import AnalyticsWorkspace from "./AnalyticsWorkspace";
 import "./LTSAWorkspace.css";
 
 const TABS = [
@@ -17,6 +18,7 @@ const TABS = [
   { key: "cm", label: "Corrective Maintenance" },
   { key: "history", label: "Maintenance History" },
   { key: "reports", label: "Reports" },
+  { key: "analytics", label: "Analytics" },
 ];
 
 const PAGES = {
@@ -27,6 +29,7 @@ const PAGES = {
   cm: CM,
   history: MaintenanceHistory,
   reports: ReportsWorkspace,
+  analytics: AnalyticsWorkspace,
 };
 
 export default function LTSAWorkspace() {

@@ -13,6 +13,7 @@ describe("LTSAWorkspace navigation shell", () => {
     expect(screen.getByRole("tab", { name: "Corrective Maintenance" })).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Maintenance History" })).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Reports" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Analytics" })).toBeTruthy();
   });
 
   it("defaults to the Executive Dashboard", () => {
@@ -72,5 +73,13 @@ describe("LTSAWorkspace navigation shell", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Reports" }));
 
     expect(screen.getByRole("heading", { name: "Executive Summary Report" })).toBeTruthy();
+  });
+
+  it("switches to the Analytics workspace when its tab is clicked", () => {
+    render(<LTSAWorkspace />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Analytics" }));
+
+    expect(screen.getByRole("heading", { level: 1, name: "Analytics" })).toBeTruthy();
   });
 });

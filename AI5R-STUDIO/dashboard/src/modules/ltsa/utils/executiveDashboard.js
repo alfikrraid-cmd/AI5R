@@ -12,13 +12,14 @@ import { buildAssetSummary, buildAssetTimeline, buildPlantTimeline, isOpenWorkOr
  * No live synchronization is introduced by this constant — it is pure
  * derivation over static sample data, evaluated fresh on every render.
  */
-const REFERENCE_DATE = new Date("2026-07-20T00:00:00Z");
+export const REFERENCE_DATE = new Date("2026-07-20T00:00:00Z");
 const RECENT_ACTIVITY_WINDOW_DAYS = 14;
 
 const OPEN_CM_STATUSES = new Set(["OPEN", "IN_PROGRESS"]);
 const ATTENTION_PUMP_STATUSES = new Set(["FAULT", "MAINTENANCE"]);
 
-function daysBeforeReference(dateString) {
+/** Exported so other modules (e.g. Analytics) anchor "today" identically. */
+export function daysBeforeReference(dateString) {
   if (!dateString) {
     return null;
   }
