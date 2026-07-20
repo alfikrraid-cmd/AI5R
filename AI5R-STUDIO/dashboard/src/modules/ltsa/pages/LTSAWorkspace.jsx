@@ -6,6 +6,7 @@ import WorkOrder from "./WorkOrder";
 import PM from "./PM";
 import CM from "./CM";
 import MaintenanceHistory from "./MaintenanceHistory";
+import ReportsWorkspace from "./ReportsWorkspace";
 import "./LTSAWorkspace.css";
 
 const TABS = [
@@ -15,6 +16,7 @@ const TABS = [
   { key: "pm", label: "Preventive Maintenance" },
   { key: "cm", label: "Corrective Maintenance" },
   { key: "history", label: "Maintenance History" },
+  { key: "reports", label: "Reports" },
 ];
 
 const PAGES = {
@@ -24,6 +26,7 @@ const PAGES = {
   pm: PM,
   cm: CM,
   history: MaintenanceHistory,
+  reports: ReportsWorkspace,
 };
 
 export default function LTSAWorkspace() {
@@ -32,7 +35,9 @@ export default function LTSAWorkspace() {
 
   return (
     <div>
-      <Tabs items={TABS} activeKey={activeKey} onChange={setActiveKey} />
+      <div className="no-print">
+        <Tabs items={TABS} activeKey={activeKey} onChange={setActiveKey} />
+      </div>
 
       <div className="ltsa-workspace-content">
         <ActivePage onNavigate={setActiveKey} />

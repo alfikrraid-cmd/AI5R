@@ -753,3 +753,156 @@ Architecture file modified.
 
 Next:
 Await next Chief Architect directive (new MWO or further instruction).
+
+2026-07-20 15:15 |
+MWO-LTSA-064 |
+DONE |
+MWO-LTSA-064 (Reporting) created per Chief Architect directive — next
+available LTSA MWO number after 063. MWO document written with full
+Goal/Business Context/Scope/Rules/Out-of-Scope/Definition-of-Done;
+CURRENT_MWO.md repointed to MWO-LTSA-064. No implementation
+performed — this entry documents MWO creation only, per instruction
+to stop immediately after creation.
+
+Files:
+ENGINEERING/MWO/MWO-LTSA-064-Reporting.md (new)
+CURRENT_MWO.md (repointed to MWO-LTSA-064)
+
+Tests:
+Not applicable — no implementation in this step.
+
+Scope:
+Documentation / MWO lifecycle only. No source code, test, SDK, or
+Architecture file modified.
+
+Next:
+Await Chief Architect review of MWO-LTSA-064 before implementation begins.
+
+2026-07-20 15:30 |
+MWO-LTSA-064 |
+INFO |
+Product Owner refinement received for MWO-LTSA-064 (Reporting), prior
+to implementation. Framing: reporting is for managers, not engineers.
+Priority order set: (1) Executive Summary Report, (2) Pump History
+Report, (3) Work Order Report, (4) Preventive Maintenance Report,
+(5) Corrective Maintenance Report. Rules reaffirmed: derived from
+existing sample data only, reuse existing LTSA components,
+print-friendly, PDF-ready layout (UI only), no backend/API/charts/new
+architecture; reports must stay readable on A4. Recorded in
+CURRENT_MWO.md; MWO-LTSA-064.md document itself not modified — no
+instruction was given to do so. No implementation performed in this
+step.
+
+Files:
+CURRENT_MWO.md (Product Owner Refinement recorded)
+
+Tests:
+Not applicable — no implementation in this step.
+
+Scope:
+Documentation / MWO lifecycle only. No source code, test, SDK, or
+Architecture file modified.
+
+Next:
+Await Chief Architect directive to begin implementation of MWO-LTSA-064.
+
+2026-07-20 15:45 |
+MWO-LTSA-064 |
+DONE |
+Reporting implemented for LTSA Demo v1, per the Product Owner's
+manager-first priority order. New ReportsWorkspace.jsx (mirrors
+LTSAWorkspace's own internal Tabs pattern) hosts five reports, wired
+into LTSAWorkspace.jsx as a seventh tab ("Reports"): (1) Executive
+Summary Report reuses KpiCardGrid/MaintenanceHealthPanel/
+AttentionAssetList/UpcomingMaintenanceList and their existing
+executiveDashboard.js data functions verbatim (MWO-LTSA-063); (2) Pump
+History Report reuses AssetSummaryCard + buildAssetSummary/
+buildAssetTimeline/listAssets (MWO-LTSA-062) across every pump; (3-5)
+Work Order/Preventive Maintenance/Corrective Maintenance Reports each
+directly reuse the existing WorkOrderRegistryTable/PMScheduleTable/
+CMReportTable components read-only (selectedId=null, no-op onSelect)
+— no new table markup written for any of the three. Two small new
+shared components: PrintButton.jsx (window.print(), the browser's
+"Save as PDF" capability — no PDF library) and ReportGeneratedOn.jsx
+(date stamp). Print styling (Reports.css) uses an opt-out .no-print
+class plus @page{size:A4} rather than the common "hide everything in
+body, reveal one subtree" trick — the latter was considered and
+rejected because it leaks globally once bundled and would blank out
+printing on every other page in the app that happens to load the
+stylesheet (all component CSS is bundled globally, not scoped to
+which tab is active). LTSAWorkspace's own outer Tabs bar was also
+marked .no-print so it doesn't appear in printed reports; App.jsx
+(Dashboard shell) was not touched — this MWO's scope did not extend
+there, so the outermost OS/LTSA section-switcher tabs will still
+appear at the top of a printed page as a known, documented, in-scope
+limitation. Five ReportsWorkspace tab labels use full report names
+("Work Order Report", not "Work Order") to avoid duplicate tab labels
+with LTSAWorkspace's own outer tabs, which are both mounted
+simultaneously whenever Reports is the active outer tab. No
+PM/CM/WO/Pump component, page, or sample data file was modified; no
+chart library or other external dependency introduced.
+
+Files:
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/PrintButton.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/PrintButton.test.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/ReportGeneratedOn.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/ReportGeneratedOn.test.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/pages/ExecutiveSummaryReport.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/pages/ExecutiveSummaryReport.test.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/pages/PumpHistoryReport.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/pages/PumpHistoryReport.test.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/pages/WorkOrderReport.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/pages/WorkOrderReport.test.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/pages/PreventiveMaintenanceReport.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/pages/PreventiveMaintenanceReport.test.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/pages/CorrectiveMaintenanceReport.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/pages/CorrectiveMaintenanceReport.test.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/pages/ReportsWorkspace.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/pages/ReportsWorkspace.test.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/pages/Reports.css (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/pages/LTSAWorkspace.jsx (modified — Reports tab registered, outer Tabs marked no-print)
+AI5R-STUDIO/dashboard/src/modules/ltsa/pages/LTSAWorkspace.test.jsx (modified)
+CURRENT_MWO.md (status updated)
+
+Tests:
+PASS (89 test files, 368 tests, all green — 346 baseline + 22 new)
+
+Scope:
+No PM/CM/WO/Pump component, page, or sample data file modified;
+App.jsx itself untouched; design-system/, Backend, API, Database, and
+Authentication untouched — confirmed by git status scoped to those
+paths (empty aside from the pre-existing, unrelated modules.json diff
+already flagged in the prior classification report). No new MWO
+created.
+
+Next:
+Await Chief Architect review of MWO-LTSA-064.
+
+2026-07-20 16:00 |
+MWO-LTSA-064 |
+DONE |
+Product Owner review approved. MWO-LTSA-064 (Reporting) closed —
+Definition of Done confirmed Met (Executive Summary, Pump History,
+Work Order, Preventive Maintenance, and Corrective Maintenance
+Reports; print/PDF-ready via the browser's native print dialog; no
+backend, no charts), 368/368 tests passing. MWO document updated at
+closure with the Product Owner refinement guidance and a full
+Delivered Capabilities record (including the documented App.jsx
+print-scope limitation), then marked COMPLETED. No implementation
+changes made in this step; CURRENT_MWO.md updated to reflect closure.
+No successor MWO created — CURRENT_MWO.md now shows no active MWO,
+awaiting next Chief Architect directive.
+
+Files:
+ENGINEERING/MWO/MWO-LTSA-064-Reporting.md (status updated to COMPLETED, Product Owner Refinement + Implementation + Closure sections added)
+CURRENT_MWO.md (updated — no active MWO)
+
+Tests:
+PASS (89 test files, 368 tests — unchanged from prior entry)
+
+Scope:
+Documentation / MWO lifecycle only. No source code, test, SDK, or
+Architecture file modified.
+
+Next:
+Await next Chief Architect directive (new MWO or further instruction).

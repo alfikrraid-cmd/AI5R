@@ -1,0 +1,17 @@
+/*
+ * Print styling shared by every LTSA report. Deliberately "opt-out"
+ * (hide only elements explicitly marked .no-print) rather than
+ * "hide everything, reveal one subtree" — the latter is a common trick
+ * but leaks globally once bundled, breaking printing on any other page
+ * in the app that happens to load this stylesheet.
+ */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}
+
+@page {
+  size: A4;
+  margin: 15mm;
+}
