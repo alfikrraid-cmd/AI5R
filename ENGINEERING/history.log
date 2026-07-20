@@ -207,3 +207,85 @@ already flagged in the prior classification report). No new MWO created.
 
 Next:
 Await Chief Architect review of MWO-LTSA-058.
+
+2026-07-20 10:15 |
+MWO-LTSA-059 |
+DONE |
+MWO-LTSA-059 (Corrective Maintenance Workspace) created per Chief
+Architect directive — next available LTSA MWO number after 058. MWO
+document written with full Goal/Business Context/Scope/Out-of-Scope/
+Definition-of-Done; CURRENT_MWO.md repointed to MWO-LTSA-059. No
+implementation performed — this entry documents MWO creation only,
+per instruction to stop immediately after creation.
+
+Files:
+ENGINEERING/MWO/MWO-LTSA-059-Corrective-Maintenance-Workspace.md (new)
+CURRENT_MWO.md (repointed to MWO-LTSA-059)
+
+Tests:
+Not applicable — no implementation in this step.
+
+Scope:
+Documentation / MWO lifecycle only. No source code, test, SDK, or
+Architecture file modified.
+
+Next:
+Await Chief Architect review of MWO-LTSA-059 before implementation begins.
+
+2026-07-20 10:35 |
+MWO-LTSA-059 |
+DONE |
+Corrective Maintenance Workspace implemented for LTSA Demo v1, following
+the Pump, Work Order, and PM module architecture exactly (page +
+FilterBar + list Table + DetailPanel + Create modal + module-local
+utils/data), reusing design-system components (PageHeader, SearchBox,
+Badge, Card, EmptyState, Modal, Timeline, Button) read-only — no
+design-system file modified. Delivered: Corrective Maintenance List
+(CM ID, Equipment, Failure Category, Severity, Priority, Downtime,
+Assigned Technician, Status), Corrective Maintenance Detail (Equipment,
+Failure Category, Failure Description, Root Cause, Immediate Action,
+Corrective Action, Downtime, Assigned Technician, Related Pump and
+Related Work Order as UI placeholders, Timeline), Create Corrective
+Maintenance Report (UI-only modal: Equipment, Failure Category,
+Severity, Priority, Failure Description, Immediate Action, Assigned
+Technician, Save button, no backend), Search, Status Filter, Responsive
+UI (two-column layout collapsing under 768px, matching Pump.css/
+WorkOrder.css/PM.css), and 8-record realistic sample data set covering
+all failure categories, severities, priorities, and statuses. CM.jsx is
+not wired into App.jsx routing, consistent with Pump.jsx/Seal.jsx/
+WorkOrder.jsx/PM.jsx — Dashboard shell untouched. Completed modules
+(Pump, Seal, Work Order, PM) and design-system/ confirmed untouched by
+git status.
+
+Files:
+AI5R-STUDIO/dashboard/src/modules/ltsa/data/sampleCMReports.js (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/utils/cmStatus.js (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/utils/cmStatus.test.js (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/CMFilterBar.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/CMFilterBar.test.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/CMReportTable.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/CMReportTable.test.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/CMDetailPanel.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/CMDetailPanel.test.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/CreateCMReportModal.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/CreateCMReportModal.test.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/pages/CM.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/pages/CM.css (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/pages/CM.test.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/pages/CM.responsive.test.js (new)
+ENGINEERING/MWO/MWO-LTSA-059-Corrective-Maintenance-Workspace.md (updated with implementation record)
+CURRENT_MWO.md (status updated)
+
+Tests:
+PASS (61 test files, 237 tests, all green — 196 baseline + 41 new)
+
+Scope:
+Backend, API, Workflow engine, Notifications, Authentication, Dashboard
+KPI/shell (App.jsx), Analytics, and design-system/ untouched; Pump,
+Seal, Work Order, and PM modules untouched — confirmed by git status
+scoped to those paths (empty aside from the pre-existing, unrelated
+modules.json diff already flagged in the prior classification report).
+No new MWO created.
+
+Next:
+Await Chief Architect review of MWO-LTSA-059.

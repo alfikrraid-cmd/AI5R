@@ -1,0 +1,21 @@
+.cm-workspace-layout {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+}
+
+.cm-workspace-registry {
+  flex: 2;
+  min-width: 0;
+}
+
+.cm-workspace-detail {
+  flex: 1;
+  min-width: 280px;
+}
+
+@media (max-width: 768px) {
+  .cm-workspace-layout {
+    flex-direction: column;
+  }
+}
