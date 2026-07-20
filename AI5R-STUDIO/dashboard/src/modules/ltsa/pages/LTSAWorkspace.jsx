@@ -4,6 +4,7 @@ import Pump from "./Pump";
 import WorkOrder from "./WorkOrder";
 import PM from "./PM";
 import CM from "./CM";
+import MaintenanceHistory from "./MaintenanceHistory";
 import "./LTSAWorkspace.css";
 
 const TABS = [
@@ -11,6 +12,7 @@ const TABS = [
   { key: "workorder", label: "Work Order" },
   { key: "pm", label: "Preventive Maintenance" },
   { key: "cm", label: "Corrective Maintenance" },
+  { key: "history", label: "Maintenance History" },
 ];
 
 const PAGES = {
@@ -18,6 +20,7 @@ const PAGES = {
   workorder: WorkOrder,
   pm: PM,
   cm: CM,
+  history: MaintenanceHistory,
 };
 
 export default function LTSAWorkspace() {

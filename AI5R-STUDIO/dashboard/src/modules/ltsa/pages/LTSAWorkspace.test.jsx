@@ -10,6 +10,7 @@ describe("LTSAWorkspace navigation shell", () => {
     expect(screen.getByRole("tab", { name: "Work Order" })).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Preventive Maintenance" })).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Corrective Maintenance" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Maintenance History" })).toBeTruthy();
   });
 
   it("defaults to the Pump workspace", () => {
@@ -42,5 +43,13 @@ describe("LTSAWorkspace navigation shell", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Corrective Maintenance" }));
 
     expect(screen.getByRole("heading", { name: "Corrective Maintenance Workspace" })).toBeTruthy();
+  });
+
+  it("switches to the Maintenance History workspace when its tab is clicked", () => {
+    render(<LTSAWorkspace />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Maintenance History" }));
+
+    expect(screen.getByRole("heading", { name: "Maintenance History" })).toBeTruthy();
   });
 });

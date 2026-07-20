@@ -506,3 +506,119 @@ this MWO.)
 
 Next:
 Await Chief Architect review of MWO-LTSA-061.
+
+2026-07-20 12:40 |
+MWO-LTSA-062 |
+DONE |
+MWO-LTSA-062 (Maintenance History) created per Chief Architect
+directive — next available LTSA MWO number after 061. MWO document
+written with full Goal/Business Context/Scope/Implementation
+Requirements/Out-of-Scope/Definition-of-Done; CURRENT_MWO.md
+repointed to MWO-LTSA-062. No implementation performed — this entry
+documents MWO creation only, per instruction to stop immediately
+after creation.
+
+Files:
+ENGINEERING/MWO/MWO-LTSA-062-Maintenance-History.md (new)
+CURRENT_MWO.md (repointed to MWO-LTSA-062)
+
+Tests:
+Not applicable — no implementation in this step.
+
+Scope:
+Documentation / MWO lifecycle only. No source code, test, SDK, or
+Architecture file modified.
+
+Next:
+Await Chief Architect review of MWO-LTSA-062 before implementation begins.
+
+2026-07-20 13:10 |
+MWO-LTSA-062 |
+DONE |
+Maintenance History (Asset 360 View) implemented for LTSA Demo v1, per
+Product Owner refinement guidance received before implementation began
+(guidance incorporated into the MWO document as a dedicated section,
+per instruction not to alter the MWO's original fields). New
+utils/maintenanceHistory.js is the sole aggregation layer — pure
+functions filtering samplePMSchedules/sampleCMReports/sampleWorkOrders
+by equipmentTag, merging into one common event shape, sorted
+descending by date (PM anchored on lastPerformed, CM on its first
+timeline entry, WO on createdDate); Asset Summary (Pump/Tag/Area/
+Status/Criticality plus Last PM/Last CM/Open Work Orders/Last
+Activity) derived from the same timeline. One unified
+MaintenanceTimelineTable (Date/Type badge/Event/Status badge/Assigned
+Technician, reusing the MWO-060 keyboard+scroll accessibility
+standard) and one unified MaintenanceEventDetailPanel (single Event
+Summary card, then a PM/CM/WO-specific sub-section chosen by event
+type, reusing each module's existing label/badge-variant utilities
+rather than duplicating their detail panels) satisfy the "one
+renderer, not three" requirement. Filters: Date From/To, Event Type,
+Status (dynamically computed, humanized via new filterStatusLabel()),
+Assigned Technician (dynamically computed). No global state, no
+shared services, no backend/API/database — page owns local useState
+exactly like every other LTSA page. Wired into LTSAWorkspace.jsx as a
+fifth "Maintenance History" tab (only existing-file modification in
+this MWO); no PM/CM/WO/Pump component, page, or sample data file was
+touched.
+
+Files:
+AI5R-STUDIO/dashboard/src/modules/ltsa/utils/maintenanceHistory.js (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/utils/maintenanceHistory.test.js (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/AssetSelector.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/AssetSelector.test.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/AssetSummaryCard.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/AssetSummaryCard.test.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/MaintenanceTimelineTable.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/MaintenanceTimelineTable.test.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/MaintenanceHistoryFilterBar.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/MaintenanceHistoryFilterBar.test.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/MaintenanceEventDetailPanel.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/MaintenanceEventDetailPanel.test.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/pages/MaintenanceHistory.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/pages/MaintenanceHistory.css (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/pages/MaintenanceHistory.test.jsx (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/pages/MaintenanceHistory.responsive.test.js (new)
+AI5R-STUDIO/dashboard/src/modules/ltsa/pages/LTSAWorkspace.jsx (modified — new tab registered)
+AI5R-STUDIO/dashboard/src/modules/ltsa/pages/LTSAWorkspace.test.jsx (modified)
+ENGINEERING/MWO/MWO-LTSA-062-Maintenance-History.md (updated with implementation record)
+CURRENT_MWO.md (status updated)
+
+Tests:
+PASS (72 test files, 311 tests, all green — 264 baseline + 47 new)
+
+Scope:
+No PM/CM/WO/Pump component, page, or sample data file modified;
+design-system/, App.jsx, Backend, API, Database, and Authentication
+untouched — confirmed by git status scoped to those paths (empty
+aside from the pre-existing, unrelated modules.json diff already
+flagged in the prior classification report). No new MWO created.
+
+Next:
+Await Chief Architect review of MWO-LTSA-062.
+
+2026-07-20 13:30 |
+MWO-LTSA-062 |
+DONE |
+Product Owner review approved. MWO-LTSA-062 (Maintenance History)
+closed — Definition of Done confirmed Met (Asset 360 View: extended
+Asset Summary, unified PM/CM/WO timeline, unified event detail
+renderer, Date Range/Event Type/Status/Assigned Technician filters,
+wired into LTSAWorkspace as a fifth tab), 311/311 tests passing. No
+implementation changes made in this step; MWO document and
+CURRENT_MWO.md updated to reflect closure. No successor MWO created —
+CURRENT_MWO.md now shows no active MWO, awaiting next Chief Architect
+directive.
+
+Files:
+ENGINEERING/MWO/MWO-LTSA-062-Maintenance-History.md (status updated to COMPLETED)
+CURRENT_MWO.md (updated — no active MWO)
+
+Tests:
+PASS (72 test files, 311 tests — unchanged from prior entry)
+
+Scope:
+Documentation / MWO lifecycle only. No source code, test, SDK, or
+Architecture file modified.
+
+Next:
+Await next Chief Architect directive (new MWO or further instruction).

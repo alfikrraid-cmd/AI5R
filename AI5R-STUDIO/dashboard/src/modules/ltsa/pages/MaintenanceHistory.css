@@ -1,0 +1,21 @@
+.maintenance-history-layout {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+}
+
+.maintenance-history-timeline {
+  flex: 2;
+  min-width: 0;
+}
+
+.maintenance-history-detail {
+  flex: 1;
+  min-width: 280px;
+}
+
+@media (max-width: 768px) {
+  .maintenance-history-layout {
+    flex-direction: column;
+  }
+}
