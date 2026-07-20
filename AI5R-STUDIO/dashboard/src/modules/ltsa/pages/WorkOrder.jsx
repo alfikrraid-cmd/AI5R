@@ -4,6 +4,7 @@ import WorkOrderFilterBar from "../components/WorkOrderFilterBar";
 import WorkOrderRegistryTable from "../components/WorkOrderRegistryTable";
 import WorkOrderDetailPanel from "../components/WorkOrderDetailPanel";
 import CreateWorkOrderModal from "../components/CreateWorkOrderModal";
+import SuccessToast from "../components/SuccessToast";
 import sampleWorkOrders from "../data/sampleWorkOrders";
 import "./WorkOrder.css";
 
@@ -40,6 +41,7 @@ export default function WorkOrder() {
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [selectedId, setSelectedId] = useState(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [successMessage, setSuccessMessage] = useState(null);
 
   const statusOptions = useMemo(
     () => [...new Set(workOrders.map((workOrder) => workOrder.status))],
@@ -73,6 +75,7 @@ export default function WorkOrder() {
     setWorkOrders((current) => [...current, newWorkOrder]);
     setIsCreateModalOpen(false);
     setSelectedId(newWorkOrder.id);
+    setSuccessMessage(`Work Order ${newWorkOrder.id} created.`);
   }
 
   return (
@@ -82,6 +85,8 @@ export default function WorkOrder() {
         subtitle="LTSA Engineering — Work Order Registry"
         actions={<Button onClick={() => setIsCreateModalOpen(true)}>+ Create Work Order</Button>}
       />
+
+      <SuccessToast message={successMessage} onDismiss={() => setSuccessMessage(null)} />
 
       <WorkOrderFilterBar
         searchValue={search}

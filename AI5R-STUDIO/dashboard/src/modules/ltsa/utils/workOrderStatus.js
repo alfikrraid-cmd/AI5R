@@ -5,6 +5,13 @@ const STATUS_VARIANT = {
   COMPLETED: "success",
 };
 
+const STATUS_LABEL = {
+  OPEN: "Open",
+  IN_PROGRESS: "In Progress",
+  ON_HOLD: "On Hold",
+  COMPLETED: "Completed",
+};
+
 const PRIORITY_VARIANT = {
   CRITICAL: "danger",
   HIGH: "warning",
@@ -14,6 +21,10 @@ const PRIORITY_VARIANT = {
 
 export function statusBadgeVariant(status) {
   return STATUS_VARIANT[status] ?? "purple";
+}
+
+export function statusLabel(status) {
+  return STATUS_LABEL[status] ?? status;
 }
 
 export function priorityBadgeVariant(priority) {

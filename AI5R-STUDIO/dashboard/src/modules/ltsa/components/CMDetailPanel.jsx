@@ -6,6 +6,7 @@ import {
   priorityBadgeVariant,
   severityBadgeVariant,
   statusBadgeVariant,
+  statusLabel,
 } from "../utils/cmStatus";
 
 function Field({ label, value }) {
@@ -53,7 +54,7 @@ export default function CMDetailPanel({ cm }) {
 
         <div style={{ marginBottom: spacing.sm }}>
           <div style={{ color: colors.textMuted, fontSize: 12 }}>Status</div>
-          <Badge variant={statusBadgeVariant(cm.status)}>{cm.status}</Badge>
+          <Badge variant={statusBadgeVariant(cm.status)}>{statusLabel(cm.status)}</Badge>
         </div>
       </Card>
 

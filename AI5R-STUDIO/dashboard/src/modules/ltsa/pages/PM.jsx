@@ -4,6 +4,7 @@ import PMFilterBar from "../components/PMFilterBar";
 import PMScheduleTable from "../components/PMScheduleTable";
 import PMDetailPanel from "../components/PMDetailPanel";
 import CreatePMScheduleModal from "../components/CreatePMScheduleModal";
+import SuccessToast from "../components/SuccessToast";
 import samplePMSchedules from "../data/samplePMSchedules";
 import "./PM.css";
 
@@ -44,6 +45,7 @@ export default function PM() {
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [selectedId, setSelectedId] = useState(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [successMessage, setSuccessMessage] = useState(null);
 
   const statusOptions = useMemo(
     () => [...new Set(pmSchedules.map((pm) => pm.status))],
@@ -82,6 +84,7 @@ export default function PM() {
     setPmSchedules((current) => [...current, newPM]);
     setIsCreateModalOpen(false);
     setSelectedId(newPM.id);
+    setSuccessMessage(`PM Schedule ${newPM.id} created.`);
   }
 
   return (
@@ -91,6 +94,8 @@ export default function PM() {
         subtitle="LTSA Engineering — PM Schedule Registry"
         actions={<Button onClick={() => setIsCreateModalOpen(true)}>+ Create PM Schedule</Button>}
       />
+
+      <SuccessToast message={successMessage} onDismiss={() => setSuccessMessage(null)} />
 
       <PMFilterBar
         searchValue={search}

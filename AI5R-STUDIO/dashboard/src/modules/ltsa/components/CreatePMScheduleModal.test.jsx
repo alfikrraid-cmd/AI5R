@@ -25,7 +25,7 @@ describe("CreatePMScheduleModal", () => {
     const onCreate = vi.fn();
     render(<CreatePMScheduleModal isOpen onClose={() => {}} onCreate={onCreate} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create PM Schedule" }));
 
     expect(onCreate).not.toHaveBeenCalled();
   });
@@ -44,7 +44,7 @@ describe("CreatePMScheduleModal", () => {
       target: { value: "Seal Inspection Checklist" },
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create PM Schedule" }));
 
     expect(onCreate).toHaveBeenCalledWith({
       equipmentTag: "533-P-1",

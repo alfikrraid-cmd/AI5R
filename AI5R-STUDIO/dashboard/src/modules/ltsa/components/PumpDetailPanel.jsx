@@ -12,7 +12,7 @@ function Field({ label, value }) {
   );
 }
 
-export default function PumpDetailPanel({ pump }) {
+export default function PumpDetailPanel({ pump, onCreatePM, onCreateCM }) {
   if (!pump) {
     return (
       <EmptyState
@@ -84,8 +84,8 @@ export default function PumpDetailPanel({ pump }) {
       <Card title="Quick Actions">
         <div style={{ display: "flex", flexWrap: "wrap", gap: spacing.sm }}>
           <Button disabled>View History</Button>
-          <Button disabled>Create PM</Button>
-          <Button disabled>Create CM</Button>
+          <Button onClick={onCreatePM}>Create PM</Button>
+          <Button onClick={onCreateCM}>Create CM</Button>
           <Button disabled>Documents</Button>
         </div>
       </Card>

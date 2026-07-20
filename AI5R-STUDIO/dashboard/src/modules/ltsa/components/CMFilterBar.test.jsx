@@ -46,10 +46,10 @@ describe("CMFilterBar", () => {
     );
 
     expect(screen.getByRole("option", { name: "All Statuses" })).toBeTruthy();
-    expect(screen.getByRole("option", { name: "OPEN" })).toBeTruthy();
-    expect(screen.getByRole("option", { name: "IN_PROGRESS" })).toBeTruthy();
-    expect(screen.getByRole("option", { name: "RESOLVED" })).toBeTruthy();
-    expect(screen.getByRole("option", { name: "CLOSED" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "Open" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "In Progress" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "Resolved" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "Closed" })).toBeTruthy();
   });
 
   it("calls onStatusFilterChange when a status is selected", () => {

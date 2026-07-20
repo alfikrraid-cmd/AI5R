@@ -68,7 +68,7 @@ describe("Corrective Maintenance workspace page", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "+ Create CM Report" }));
 
-    expect(screen.getByRole("heading", { name: "Create Corrective Maintenance Report" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Create CM Report" })).toBeTruthy();
   });
 
   it("creates a new CM report via the modal, closes it, and selects the new entry", () => {
@@ -80,14 +80,15 @@ describe("Corrective Maintenance workspace page", () => {
       target: { value: "Discharge pressure gauge reading erratic." },
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create CM Report" }));
 
     expect(
-      screen.queryByRole("heading", { name: "Create Corrective Maintenance Report" })
+      screen.queryByRole("heading", { name: "Create CM Report" })
     ).toBeNull();
     expect(
       screen.getByRole("heading", { name: "Discharge pressure gauge reading erratic." })
     ).toBeTruthy();
     expect(screen.getByText("CM-3009")).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toContain("CM-3009 created.");
   });
 });

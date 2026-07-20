@@ -5,6 +5,13 @@ const STATUS_VARIANT = {
   ON_HOLD: "purple",
 };
 
+const STATUS_LABEL = {
+  ACTIVE: "Active",
+  DUE_SOON: "Due Soon",
+  OVERDUE: "Overdue",
+  ON_HOLD: "On Hold",
+};
+
 const FREQUENCY_VARIANT = {
   DAILY: "info",
   WEEKLY: "info",
@@ -26,6 +33,10 @@ const TRIGGER_TYPE_LABEL = {
 
 export function statusBadgeVariant(status) {
   return STATUS_VARIANT[status] ?? "purple";
+}
+
+export function statusLabel(status) {
+  return STATUS_LABEL[status] ?? status;
 }
 
 export function frequencyBadgeVariant(frequency) {

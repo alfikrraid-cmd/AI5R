@@ -4,12 +4,12 @@ Status: ACTIVE — always reflects the MWO currently being executed.
 
 ---
 
-- **Current MWO:** `MWO-LTSA-059` — Corrective Maintenance Workspace (`ENGINEERING/MWO/MWO-LTSA-059-Corrective-Maintenance-Workspace.md`)
-- **Goal:** Build the Corrective Maintenance Workspace for LTSA Demo v1.
-- **Scope:** Corrective Maintenance List, Corrective Maintenance Detail, Create Corrective Maintenance Report (UI only), Failure Category, Failure Severity, Root Cause, Immediate Action, Corrective Action, Downtime, Priority, Assigned Technician, Related Pump, Related Work Order, Timeline, Search, Filter, Responsive UI, 8 sample records, Tests.
-- **Out of Scope:** Backend, API, Workflow engine, Notifications, Authentication, Dashboard KPI, Analytics, Automatic WO generation.
-- **Status at last update:** Definition of Done met. Corrective Maintenance Workspace implemented (Corrective Maintenance List, Detail, Create Report UI, Failure Category, Severity, Root Cause, Immediate/Corrective Action, Downtime, Priority, Assigned Technician, Related Pump, Related Work Order, Timeline, Search, Filter, Responsive UI, 8 Sample Records). Tests passing (237/237). Engineering History updated. Awaiting Chief Architect review.
+- **Current MWO:** `MWO-LTSA-061` — Dashboard Integration (`ENGINEERING/MWO/MWO-LTSA-061-Dashboard-Integration.md`)
+- **Goal:** Integrate the completed LTSA workspaces into the AI5R Studio Dashboard so LTSA can be demonstrated as one connected product.
+- **Scope:** Integrate `LTSAWorkspace` into the Dashboard shell, add a navigation entry for LTSA, make LTSA the accessible entry point for Pump/Work Order/PM/CM, preserve existing Dashboard behavior, update routing/navigation only where required, responsive layout, tests.
+- **Out of Scope:** Backend, API, Maintenance History, KPI Dashboard, Reporting, Authentication, Permission system, Business logic changes.
+- **Status at last update:** Definition of Done met. LTSA integrated into the AI5R Studio Dashboard via a top-level "LTSA" tab in `App.jsx` (reusing the existing design-system `Tabs` component), switching between the OS Command Center (default, unchanged) and `LTSAWorkspace`. Tests passing (264/264). Engineering History updated. Awaiting Chief Architect review.
 
-- **Previous MWO:** `MWO-LTSA-058` — Preventive Maintenance Workspace (`ENGINEERING/MWO/MWO-LTSA-058-Preventive-Maintenance-Workspace.md`) — **CLOSED**, reviewed and approved by Chief Architect (2026-07-20). Definition of Done fully met (PM Schedule List, PM Detail, Create PM Schedule UI, Frequency, Next Due, Last Performed, Assigned Technician, Search, Filter, Status, Responsive UI, Sample Data), 196/196 tests passing.
-- **Prior MWO:** `MWO-LTSA-057` — Work Order Workspace (`ENGINEERING/MWO/MWO-LTSA-057-Work-Order-Workspace.md`) — **CLOSED**, reviewed and approved by Chief Architect (2026-07-20). Definition of Done fully met (List, Detail, Create UI, Search, Filter, Priority, Status, Assignment, Timeline, Responsive UI, Sample Data), 154/154 tests passing.
-- **Prior MWO:** `MWO-LTSA-056` — Pump Management UI Polish (`ENGINEERING/MWO/MWO-LTSA-056-Pump-Management-UI-Polish.md`) — **CLOSED**, reviewed and approved by Chief Architect (2026-07-20). Phase 1 + Phase 2 Definition of Done fully met, 121/121 tests passing.
+- **Previous MWO:** `MWO-LTSA-060` — Demo Polish & Navigation (`ENGINEERING/MWO/MWO-LTSA-060-Demo-Polish-Navigation.md`) — Definition of Done met (Navigation Shell, Pump Quick Actions, Humanized Status Labels, Naming Consistency, Success Feedback, Accessibility), 260/260 tests passing — **not yet formally closed** (no explicit Chief Architect closure instruction received; carried forward as-is, not marked CLOSED).
+- **Prior MWO:** `MWO-LTSA-059` — Corrective Maintenance Workspace (`ENGINEERING/MWO/MWO-LTSA-059-Corrective-Maintenance-Workspace.md`) — Definition of Done met, 237/237 tests passing — **not yet formally closed**.
+- **Prior MWO:** `MWO-LTSA-058` — Preventive Maintenance Workspace (`ENGINEERING/MWO/MWO-LTSA-058-Preventive-Maintenance-Workspace.md`) — **CLOSED**, reviewed and approved by Chief Architect (2026-07-20), 196/196 tests passing.

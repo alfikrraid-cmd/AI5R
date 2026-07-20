@@ -12,7 +12,7 @@ const EMPTY_FORM = {
   area: "",
   workType: "CM",
   priority: "MEDIUM",
-  assignedTo: "",
+  assignedTechnician: "",
   dueDate: "",
   description: "",
 };
@@ -103,12 +103,12 @@ export default function CreateWorkOrderModal({ isOpen, onClose, onCreate }) {
           </select>
         </Field>
 
-        <Field id="wo-assigned-to" label="Assigned To">
+        <Field id="wo-assigned-technician" label="Assigned Technician">
           <input
-            id="wo-assigned-to"
+            id="wo-assigned-technician"
             style={fieldStyle}
-            value={form.assignedTo}
-            onChange={setField("assignedTo")}
+            value={form.assignedTechnician}
+            onChange={setField("assignedTechnician")}
           />
         </Field>
 

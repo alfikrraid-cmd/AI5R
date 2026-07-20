@@ -78,8 +78,8 @@ describe("PMScheduleTable", () => {
   it("renders a status badge for each PM schedule", () => {
     render(<PMScheduleTable pmSchedules={PM_SCHEDULES} selectedId={null} onSelect={() => {}} />);
 
-    expect(screen.getByText("DUE_SOON")).toBeTruthy();
-    expect(screen.getByText("OVERDUE")).toBeTruthy();
+    expect(screen.getByText("Due Soon")).toBeTruthy();
+    expect(screen.getByText("Overdue")).toBeTruthy();
   });
 
   it("renders a fallback when a PM schedule has not yet been performed", () => {
@@ -99,5 +99,17 @@ describe("PMScheduleTable", () => {
 
     expect(screen.getByText(/no pm schedules match/i)).toBeTruthy();
     expect(screen.queryByRole("table")).toBeNull();
+  });
+
+  it("marks table rows as keyboard-focusable and activates onSelect via Enter", () => {
+    const onSelect = vi.fn();
+    render(<PMScheduleTable pmSchedules={PM_SCHEDULES} selectedId={null} onSelect={onSelect} />);
+
+    const rows = screen.getAllByRole("row");
+    expect(rows[1].getAttribute("tabIndex")).toBe("0");
+
+    fireEvent.keyDown(rows[1], { key: "Enter" });
+
+    expect(onSelect).toHaveBeenCalledWith("PM-2001");
   });
 });

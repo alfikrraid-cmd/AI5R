@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { priorityBadgeVariant, statusBadgeVariant } from "./workOrderStatus";
+import { priorityBadgeVariant, statusBadgeVariant, statusLabel } from "./workOrderStatus";
 
 describe("statusBadgeVariant", () => {
   it("maps every closed-set status to a badge variant", () => {
@@ -11,6 +11,19 @@ describe("statusBadgeVariant", () => {
 
   it("falls back to purple for an unknown status", () => {
     expect(statusBadgeVariant("UNKNOWN")).toBe("purple");
+  });
+});
+
+describe("statusLabel", () => {
+  it("maps every closed-set status to a human-readable label", () => {
+    expect(statusLabel("OPEN")).toBe("Open");
+    expect(statusLabel("IN_PROGRESS")).toBe("In Progress");
+    expect(statusLabel("ON_HOLD")).toBe("On Hold");
+    expect(statusLabel("COMPLETED")).toBe("Completed");
+  });
+
+  it("falls back to the raw value for an unknown status", () => {
+    expect(statusLabel("UNKNOWN")).toBe("UNKNOWN");
   });
 });
 

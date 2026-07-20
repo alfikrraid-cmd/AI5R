@@ -9,7 +9,7 @@ const WORK_ORDERS = [
     equipmentTag: "641-P-5",
     area: "SWS Unit",
     priority: "CRITICAL",
-    assignedTo: "Dedi Kurniawan",
+    assignedTechnician: "Dedi Kurniawan",
     dueDate: "2026-07-21",
     status: "OPEN",
   },
@@ -19,7 +19,7 @@ const WORK_ORDERS = [
     equipmentTag: "211-P-1A",
     area: "Boiler House",
     priority: "MEDIUM",
-    assignedTo: "Sari Wulandari",
+    assignedTechnician: "Sari Wulandari",
     dueDate: "2026-07-24",
     status: "IN_PROGRESS",
   },
@@ -29,7 +29,7 @@ describe("WorkOrderRegistryTable", () => {
   it("renders the work order columns", () => {
     render(<WorkOrderRegistryTable workOrders={WORK_ORDERS} selectedId={null} onSelect={() => {}} />);
 
-    ["Work Order", "Equipment", "Priority", "Assigned To", "Due Date", "Status"].forEach((header) => {
+    ["Work Order", "Equipment", "Priority", "Assigned Technician", "Due Date", "Status"].forEach((header) => {
       expect(screen.getByRole("columnheader", { name: header })).toBeTruthy();
     });
   });
@@ -63,8 +63,8 @@ describe("WorkOrderRegistryTable", () => {
 
     expect(screen.getByText("CRITICAL")).toBeTruthy();
     expect(screen.getByText("MEDIUM")).toBeTruthy();
-    expect(screen.getByText("OPEN")).toBeTruthy();
-    expect(screen.getByText("IN_PROGRESS")).toBeTruthy();
+    expect(screen.getByText("Open")).toBeTruthy();
+    expect(screen.getByText("In Progress")).toBeTruthy();
   });
 
   it("renders an empty state instead of a bare table when no work orders match", () => {
@@ -72,5 +72,17 @@ describe("WorkOrderRegistryTable", () => {
 
     expect(screen.getByText(/no work orders match/i)).toBeTruthy();
     expect(screen.queryByRole("table")).toBeNull();
+  });
+
+  it("marks table rows as keyboard-focusable and activates onSelect via Enter", () => {
+    const onSelect = vi.fn();
+    render(<WorkOrderRegistryTable workOrders={WORK_ORDERS} selectedId={null} onSelect={onSelect} />);
+
+    const rows = screen.getAllByRole("row");
+    expect(rows[1].getAttribute("tabIndex")).toBe("0");
+
+    fireEvent.keyDown(rows[1], { key: "Enter" });
+
+    expect(onSelect).toHaveBeenCalledWith("WO-1001");
   });
 });

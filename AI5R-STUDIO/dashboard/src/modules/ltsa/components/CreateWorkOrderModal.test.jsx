@@ -17,7 +17,7 @@ describe("CreateWorkOrderModal", () => {
     expect(screen.getByLabelText("Area")).toBeTruthy();
     expect(screen.getByLabelText("Work Type")).toBeTruthy();
     expect(screen.getByLabelText("Priority")).toBeTruthy();
-    expect(screen.getByLabelText("Assigned To")).toBeTruthy();
+    expect(screen.getByLabelText("Assigned Technician")).toBeTruthy();
     expect(screen.getByLabelText("Due Date")).toBeTruthy();
     expect(screen.getByLabelText("Description")).toBeTruthy();
   });
@@ -40,7 +40,7 @@ describe("CreateWorkOrderModal", () => {
     fireEvent.change(screen.getByLabelText("Area"), { target: { value: "Boiler House" } });
     fireEvent.change(screen.getByLabelText("Work Type"), { target: { value: "INSPECTION" } });
     fireEvent.change(screen.getByLabelText("Priority"), { target: { value: "HIGH" } });
-    fireEvent.change(screen.getByLabelText("Assigned To"), { target: { value: "Sari Wulandari" } });
+    fireEvent.change(screen.getByLabelText("Assigned Technician"), { target: { value: "Sari Wulandari" } });
     fireEvent.change(screen.getByLabelText("Due Date"), { target: { value: "2026-08-01" } });
     fireEvent.change(screen.getByLabelText("Description"), { target: { value: "Coupling wear check." } });
 
@@ -52,7 +52,7 @@ describe("CreateWorkOrderModal", () => {
       area: "Boiler House",
       workType: "INSPECTION",
       priority: "HIGH",
-      assignedTo: "Sari Wulandari",
+      assignedTechnician: "Sari Wulandari",
       dueDate: "2026-08-01",
       description: "Coupling wear check.",
     });

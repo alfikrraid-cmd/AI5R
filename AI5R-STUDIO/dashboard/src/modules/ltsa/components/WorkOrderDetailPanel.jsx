@@ -1,7 +1,7 @@
 import { Badge, Card, EmptyState, Timeline } from "../../../design-system";
 import colors from "../../../design-system/theme/colors";
 import spacing from "../../../design-system/theme/spacing";
-import { priorityBadgeVariant, statusBadgeVariant } from "../utils/workOrderStatus";
+import { priorityBadgeVariant, statusBadgeVariant, statusLabel } from "../utils/workOrderStatus";
 
 function Field({ label, value }) {
   return (
@@ -31,7 +31,7 @@ export default function WorkOrderDetailPanel({ workOrder }) {
         <Field label="Equipment Tag" value={workOrder.equipmentTag} />
         <Field label="Area" value={workOrder.area} />
         <Field label="Work Type" value={workOrder.workType} />
-        <Field label="Assigned To" value={workOrder.assignedTo} />
+        <Field label="Assigned Technician" value={workOrder.assignedTechnician} />
         <Field label="Requested By" value={workOrder.requestedBy} />
         <Field label="Created Date" value={workOrder.createdDate} />
         <Field label="Due Date" value={workOrder.dueDate} />
@@ -43,7 +43,7 @@ export default function WorkOrderDetailPanel({ workOrder }) {
 
         <div style={{ marginBottom: spacing.sm }}>
           <div style={{ color: colors.textMuted, fontSize: 12 }}>Status</div>
-          <Badge variant={statusBadgeVariant(workOrder.status)}>{workOrder.status}</Badge>
+          <Badge variant={statusBadgeVariant(workOrder.status)}>{statusLabel(workOrder.status)}</Badge>
         </div>
       </Card>
 

@@ -5,6 +5,7 @@ import {
   frequencyBadgeVariant,
   frequencyLabel,
   statusBadgeVariant,
+  statusLabel,
   triggerTypeLabel,
 } from "../utils/pmStatus";
 
@@ -46,7 +47,7 @@ export default function PMDetailPanel({ pm }) {
 
         <div style={{ marginBottom: spacing.sm }}>
           <div style={{ color: colors.textMuted, fontSize: 12 }}>Status</div>
-          <Badge variant={statusBadgeVariant(pm.status)}>{pm.status}</Badge>
+          <Badge variant={statusBadgeVariant(pm.status)}>{statusLabel(pm.status)}</Badge>
         </div>
       </Card>
 

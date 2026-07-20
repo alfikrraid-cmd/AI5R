@@ -4,6 +4,7 @@ import CMFilterBar from "../components/CMFilterBar";
 import CMReportTable from "../components/CMReportTable";
 import CMDetailPanel from "../components/CMDetailPanel";
 import CreateCMReportModal from "../components/CreateCMReportModal";
+import SuccessToast from "../components/SuccessToast";
 import sampleCMReports from "../data/sampleCMReports";
 import "./CM.css";
 
@@ -40,6 +41,7 @@ export default function CM() {
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [selectedId, setSelectedId] = useState(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [successMessage, setSuccessMessage] = useState(null);
 
   const statusOptions = useMemo(
     () => [...new Set(cmReports.map((cm) => cm.status))],
@@ -80,6 +82,7 @@ export default function CM() {
     setCmReports((current) => [...current, newCM]);
     setIsCreateModalOpen(false);
     setSelectedId(newCM.id);
+    setSuccessMessage(`Corrective Maintenance Report ${newCM.id} created.`);
   }
 
   return (
@@ -89,6 +92,8 @@ export default function CM() {
         subtitle="LTSA Engineering — Corrective Maintenance Registry"
         actions={<Button onClick={() => setIsCreateModalOpen(true)}>+ Create CM Report</Button>}
       />
+
+      <SuccessToast message={successMessage} onDismiss={() => setSuccessMessage(null)} />
 
       <CMFilterBar
         searchValue={search}

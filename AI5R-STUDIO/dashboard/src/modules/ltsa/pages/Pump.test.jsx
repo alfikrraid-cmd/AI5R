@@ -57,4 +57,22 @@ describe("Pump workspace page", () => {
 
     expect(screen.getByText(/no pumps match/i)).toBeTruthy();
   });
+
+  it("opens the Create PM Schedule dialog from the selected pump's Quick Actions", () => {
+    render(<Pump />);
+
+    fireEvent.click(screen.getByText("305-P-2"));
+    fireEvent.click(screen.getByRole("button", { name: "Create PM" }));
+
+    expect(screen.getByRole("heading", { name: "Create PM Schedule" })).toBeTruthy();
+  });
+
+  it("opens the Create CM Report dialog from the selected pump's Quick Actions", () => {
+    render(<Pump />);
+
+    fireEvent.click(screen.getByText("305-P-2"));
+    fireEvent.click(screen.getByRole("button", { name: "Create CM" }));
+
+    expect(screen.getByRole("heading", { name: "Create CM Report" })).toBeTruthy();
+  });
 });

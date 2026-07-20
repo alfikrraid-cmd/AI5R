@@ -5,6 +5,13 @@ const STATUS_VARIANT = {
   CLOSED: "success",
 };
 
+const STATUS_LABEL = {
+  OPEN: "Open",
+  IN_PROGRESS: "In Progress",
+  RESOLVED: "Resolved",
+  CLOSED: "Closed",
+};
+
 const SEVERITY_VARIANT = {
   MINOR: "success",
   MODERATE: "info",
@@ -29,6 +36,10 @@ const FAILURE_CATEGORY_LABEL = {
 
 export function statusBadgeVariant(status) {
   return STATUS_VARIANT[status] ?? "purple";
+}
+
+export function statusLabel(status) {
+  return STATUS_LABEL[status] ?? status;
 }
 
 export function severityBadgeVariant(severity) {

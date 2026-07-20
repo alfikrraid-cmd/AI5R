@@ -46,9 +46,9 @@ describe("WorkOrderFilterBar", () => {
     );
 
     expect(screen.getByRole("option", { name: "All Statuses" })).toBeTruthy();
-    expect(screen.getByRole("option", { name: "OPEN" })).toBeTruthy();
-    expect(screen.getByRole("option", { name: "IN_PROGRESS" })).toBeTruthy();
-    expect(screen.getByRole("option", { name: "COMPLETED" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "Open" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "In Progress" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "Completed" })).toBeTruthy();
   });
 
   it("calls onStatusFilterChange when a status is selected", () => {

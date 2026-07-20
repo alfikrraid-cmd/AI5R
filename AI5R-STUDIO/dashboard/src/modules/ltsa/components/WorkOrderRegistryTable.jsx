@@ -1,9 +1,9 @@
 import { Badge, EmptyState } from "../../../design-system";
 import colors from "../../../design-system/theme/colors";
 import spacing from "../../../design-system/theme/spacing";
-import { priorityBadgeVariant, statusBadgeVariant } from "../utils/workOrderStatus";
+import { priorityBadgeVariant, statusBadgeVariant, statusLabel } from "../utils/workOrderStatus";
 
-const HEADERS = ["Work Order", "Equipment", "Priority", "Assigned To", "Due Date", "Status"];
+const HEADERS = ["Work Order", "Equipment", "Priority", "Assigned Technician", "Due Date", "Status"];
 
 const thStyle = {
   textAlign: "left",
@@ -24,52 +24,63 @@ export default function WorkOrderRegistryTable({ workOrders, selectedId, onSelec
     );
   }
 
+  function handleKeyDown(event, id) {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onSelect(id);
+    }
+  }
+
   return (
-    <table style={{ width: "100%", borderCollapse: "collapse" }}>
-      <thead>
-        <tr>
-          {HEADERS.map((header) => (
-            <th key={header} style={thStyle}>
-              {header}
-            </th>
-          ))}
-        </tr>
-      </thead>
+    <div style={{ overflowX: "auto" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <thead>
+          <tr>
+            {HEADERS.map((header) => (
+              <th key={header} style={thStyle}>
+                {header}
+              </th>
+            ))}
+          </tr>
+        </thead>
 
-      <tbody>
-        {workOrders.map((workOrder) => {
-          const isSelected = workOrder.id === selectedId;
+        <tbody>
+          {workOrders.map((workOrder) => {
+            const isSelected = workOrder.id === selectedId;
 
-          return (
-            <tr
-              key={workOrder.id}
-              aria-selected={isSelected}
-              onClick={() => onSelect(workOrder.id)}
-              style={{
-                cursor: "pointer",
-                background: isSelected ? colors.background : "transparent",
-              }}
-            >
-              <td style={tdStyle}>
-                <div style={{ fontWeight: "bold" }}>{workOrder.id}</div>
-                <div style={{ fontSize: 13 }}>{workOrder.title}</div>
-              </td>
-              <td style={tdStyle}>
-                <div>{workOrder.equipmentTag}</div>
-                <div style={{ color: colors.textMuted, fontSize: 12 }}>{workOrder.area}</div>
-              </td>
-              <td style={tdStyle}>
-                <Badge variant={priorityBadgeVariant(workOrder.priority)}>{workOrder.priority}</Badge>
-              </td>
-              <td style={tdStyle}>{workOrder.assignedTo}</td>
-              <td style={tdStyle}>{workOrder.dueDate}</td>
-              <td style={tdStyle}>
-                <Badge variant={statusBadgeVariant(workOrder.status)}>{workOrder.status}</Badge>
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+            return (
+              <tr
+                key={workOrder.id}
+                aria-selected={isSelected}
+                tabIndex={0}
+                onClick={() => onSelect(workOrder.id)}
+                onKeyDown={(event) => handleKeyDown(event, workOrder.id)}
+                style={{
+                  cursor: "pointer",
+                  background: isSelected ? colors.background : "transparent",
+                }}
+              >
+                <td style={tdStyle}>
+                  <div style={{ fontWeight: "bold" }}>{workOrder.id}</div>
+                  <div style={{ fontSize: 13 }}>{workOrder.title}</div>
+                </td>
+                <td style={tdStyle}>
+                  <div>{workOrder.equipmentTag}</div>
+                  <div style={{ color: colors.textMuted, fontSize: 12 }}>{workOrder.area}</div>
+                </td>
+                <td style={tdStyle}>
+                  <Badge variant={priorityBadgeVariant(workOrder.priority)}>{workOrder.priority}</Badge>
+                </td>
+                <td style={tdStyle}>{workOrder.assignedTechnician}</td>
+                <td style={tdStyle}>{workOrder.dueDate}</td>
+                <td style={tdStyle}>
+                  <Badge variant={statusBadgeVariant(workOrder.status)}>{statusLabel(workOrder.status)}</Badge>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }

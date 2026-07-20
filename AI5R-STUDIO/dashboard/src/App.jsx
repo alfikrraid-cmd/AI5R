@@ -7,7 +7,7 @@ import {
 
 import { LiveStreamProvider } from "./context/LiveStreamContext";
 
-import { MetricCard, Timeline } from "./design-system";
+import { MetricCard, Tabs, Timeline } from "./design-system";
 import AgentPanel from "./components/AgentPanel";
 import BrainActivity from "./components/BrainActivity";
 import MemoryPanel from "./components/MemoryPanel";
@@ -27,10 +27,17 @@ import { UMKMOverview, UMKMAgents, UMKMInsight } from "./products/UMKM_OS";
 import UMKMLiveStatus from "./products/UMKM_OS/components/UMKMLiveStatus";
 import AdvisorChat from "./products/UMKM_OS/components/AdvisorChat";
 import ExecutiveDashboard from "./products/UMKM_OS/components/ExecutiveDashboard";
+import LTSAWorkspace from "./modules/ltsa/pages/LTSAWorkspace";
+
+const SECTION_TABS = [
+    { key: "os", label: "OS Command Center" },
+    { key: "ltsa", label: "LTSA" },
+];
 
 function App(){
     const [system,setSystem] = useState({ status:"LOADING" });
     const [dashboard,setDashboard] = useState({ agents:0, memories:0 });
+    const [activeSection,setActiveSection] = useState("os");
 
     useEffect(()=>{
         getSystemStatus().then(data=>setSystem(data));
@@ -42,6 +49,14 @@ function App(){
         <div className="dashboard">
             <h1>🌳 AI5R OS COMMAND CENTER</h1>
 
+            <div className="dashboard-nav">
+                <Tabs items={SECTION_TABS} activeKey={activeSection} onChange={setActiveSection} />
+            </div>
+
+            {activeSection === "ltsa" ? (
+                <LTSAWorkspace />
+            ) : (
+            <>
             <div className="grid">
                 <MetricCard title="System" value={system.status} />
                 <MetricCard title="Service" value={system.service || "-"} />
@@ -74,6 +89,8 @@ function App(){
             <UMKMLiveStatus />
             <AdvisorChat />
             <ExecutiveDashboard />
+            </>
+            )}
         </div>
         </LiveStreamProvider>
     );

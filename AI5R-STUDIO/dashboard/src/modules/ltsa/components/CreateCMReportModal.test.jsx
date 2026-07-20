@@ -6,7 +6,7 @@ describe("CreateCMReportModal", () => {
   it("renders nothing when closed", () => {
     render(<CreateCMReportModal isOpen={false} onClose={() => {}} onCreate={() => {}} />);
 
-    expect(screen.queryByText("Create Corrective Maintenance Report")).toBeNull();
+    expect(screen.queryByText("Create CM Report")).toBeNull();
   });
 
   it("renders every form field when open", () => {
@@ -25,11 +25,11 @@ describe("CreateCMReportModal", () => {
     const onCreate = vi.fn();
     render(<CreateCMReportModal isOpen onClose={() => {}} onCreate={onCreate} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create CM Report" }));
     expect(onCreate).not.toHaveBeenCalled();
 
     fireEvent.change(screen.getByLabelText("Equipment"), { target: { value: "533-P-1" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create CM Report" }));
     expect(onCreate).not.toHaveBeenCalled();
   });
 
@@ -49,7 +49,7 @@ describe("CreateCMReportModal", () => {
     });
     fireEvent.change(screen.getByLabelText("Assigned Technician"), { target: { value: "Bagus Setiawan" } });
 
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create CM Report" }));
 
     expect(onCreate).toHaveBeenCalledWith({
       equipmentTag: "533-P-1",

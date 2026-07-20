@@ -41,7 +41,7 @@ describe("PMDetailPanel", () => {
     expect(screen.getByText("Sari Wulandari")).toBeTruthy();
     expect(screen.getByText("1.5 hrs")).toBeTruthy();
     expect(screen.getByText("Monthly")).toBeTruthy();
-    expect(screen.getByText("DUE_SOON")).toBeTruthy();
+    expect(screen.getByText("Due Soon")).toBeTruthy();
   });
 
   it("renders a fallback when the PM has not yet been performed", () => {

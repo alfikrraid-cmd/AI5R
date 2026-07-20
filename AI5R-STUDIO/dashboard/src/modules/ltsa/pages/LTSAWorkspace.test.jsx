@@ -1,0 +1,46 @@
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import LTSAWorkspace from "./LTSAWorkspace";
+
+describe("LTSAWorkspace navigation shell", () => {
+  it("renders a tab for every LTSA workspace", () => {
+    render(<LTSAWorkspace />);
+
+    expect(screen.getByRole("tab", { name: "Pump" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Work Order" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Preventive Maintenance" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Corrective Maintenance" })).toBeTruthy();
+  });
+
+  it("defaults to the Pump workspace", () => {
+    render(<LTSAWorkspace />);
+
+    expect(screen.getByRole("tab", { name: "Pump" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("heading", { name: "Pump Workspace" })).toBeTruthy();
+  });
+
+  it("switches to the Work Order workspace when its tab is clicked", () => {
+    render(<LTSAWorkspace />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Work Order" }));
+
+    expect(screen.getByRole("heading", { name: "Work Order Workspace" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Pump Workspace" })).toBeNull();
+  });
+
+  it("switches to the Preventive Maintenance workspace when its tab is clicked", () => {
+    render(<LTSAWorkspace />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Preventive Maintenance" }));
+
+    expect(screen.getByRole("heading", { name: "Preventive Maintenance Workspace" })).toBeTruthy();
+  });
+
+  it("switches to the Corrective Maintenance workspace when its tab is clicked", () => {
+    render(<LTSAWorkspace />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Corrective Maintenance" }));
+
+    expect(screen.getByRole("heading", { name: "Corrective Maintenance Workspace" })).toBeTruthy();
+  });
+});

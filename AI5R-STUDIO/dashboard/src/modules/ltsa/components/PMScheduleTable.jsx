@@ -1,7 +1,7 @@
 import { Badge, EmptyState } from "../../../design-system";
 import colors from "../../../design-system/theme/colors";
 import spacing from "../../../design-system/theme/spacing";
-import { frequencyBadgeVariant, frequencyLabel, statusBadgeVariant } from "../utils/pmStatus";
+import { frequencyBadgeVariant, frequencyLabel, statusBadgeVariant, statusLabel } from "../utils/pmStatus";
 
 const HEADERS = ["PM ID", "Equipment", "Frequency", "Next Due", "Last Performed", "Assigned Technician", "Status"];
 
@@ -24,53 +24,64 @@ export default function PMScheduleTable({ pmSchedules, selectedId, onSelect }) {
     );
   }
 
+  function handleKeyDown(event, id) {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onSelect(id);
+    }
+  }
+
   return (
-    <table style={{ width: "100%", borderCollapse: "collapse" }}>
-      <thead>
-        <tr>
-          {HEADERS.map((header) => (
-            <th key={header} style={thStyle}>
-              {header}
-            </th>
-          ))}
-        </tr>
-      </thead>
+    <div style={{ overflowX: "auto" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <thead>
+          <tr>
+            {HEADERS.map((header) => (
+              <th key={header} style={thStyle}>
+                {header}
+              </th>
+            ))}
+          </tr>
+        </thead>
 
-      <tbody>
-        {pmSchedules.map((pm) => {
-          const isSelected = pm.id === selectedId;
+        <tbody>
+          {pmSchedules.map((pm) => {
+            const isSelected = pm.id === selectedId;
 
-          return (
-            <tr
-              key={pm.id}
-              aria-selected={isSelected}
-              onClick={() => onSelect(pm.id)}
-              style={{
-                cursor: "pointer",
-                background: isSelected ? colors.background : "transparent",
-              }}
-            >
-              <td style={tdStyle}>
-                <div style={{ fontWeight: "bold" }}>{pm.id}</div>
-                <div style={{ fontSize: 13 }}>{pm.procedure}</div>
-              </td>
-              <td style={tdStyle}>
-                <div>{pm.equipmentTag}</div>
-                {pm.area ? <div style={{ color: colors.textMuted, fontSize: 12 }}>{pm.area}</div> : null}
-              </td>
-              <td style={tdStyle}>
-                <Badge variant={frequencyBadgeVariant(pm.frequency)}>{frequencyLabel(pm.frequency)}</Badge>
-              </td>
-              <td style={tdStyle}>{pm.nextDue}</td>
-              <td style={tdStyle}>{pm.lastPerformed ?? "Not yet performed"}</td>
-              <td style={tdStyle}>{pm.assignedTechnician}</td>
-              <td style={tdStyle}>
-                <Badge variant={statusBadgeVariant(pm.status)}>{pm.status}</Badge>
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+            return (
+              <tr
+                key={pm.id}
+                aria-selected={isSelected}
+                tabIndex={0}
+                onClick={() => onSelect(pm.id)}
+                onKeyDown={(event) => handleKeyDown(event, pm.id)}
+                style={{
+                  cursor: "pointer",
+                  background: isSelected ? colors.background : "transparent",
+                }}
+              >
+                <td style={tdStyle}>
+                  <div style={{ fontWeight: "bold" }}>{pm.id}</div>
+                  <div style={{ fontSize: 13 }}>{pm.procedure}</div>
+                </td>
+                <td style={tdStyle}>
+                  <div>{pm.equipmentTag}</div>
+                  {pm.area ? <div style={{ color: colors.textMuted, fontSize: 12 }}>{pm.area}</div> : null}
+                </td>
+                <td style={tdStyle}>
+                  <Badge variant={frequencyBadgeVariant(pm.frequency)}>{frequencyLabel(pm.frequency)}</Badge>
+                </td>
+                <td style={tdStyle}>{pm.nextDue}</td>
+                <td style={tdStyle}>{pm.lastPerformed ?? "Not yet performed"}</td>
+                <td style={tdStyle}>{pm.assignedTechnician}</td>
+                <td style={tdStyle}>
+                  <Badge variant={statusBadgeVariant(pm.status)}>{statusLabel(pm.status)}</Badge>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }

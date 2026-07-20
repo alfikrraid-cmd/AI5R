@@ -46,9 +46,9 @@ describe("PMFilterBar", () => {
     );
 
     expect(screen.getByRole("option", { name: "All Statuses" })).toBeTruthy();
-    expect(screen.getByRole("option", { name: "ACTIVE" })).toBeTruthy();
-    expect(screen.getByRole("option", { name: "DUE_SOON" })).toBeTruthy();
-    expect(screen.getByRole("option", { name: "OVERDUE" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "Active" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "Due Soon" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "Overdue" })).toBeTruthy();
   });
 
   it("calls onStatusFilterChange when a status is selected", () => {

@@ -79,5 +79,6 @@ describe("Work Order workspace page", () => {
     expect(screen.queryByRole("heading", { name: "Create Work Order" })).toBeNull();
     expect(screen.getByRole("heading", { name: "Inspect coupling" })).toBeTruthy();
     expect(screen.getAllByText("Inspect coupling")).toHaveLength(2);
+    expect(screen.getByRole("status").textContent).toContain("WO-1009 created.");
   });
 });

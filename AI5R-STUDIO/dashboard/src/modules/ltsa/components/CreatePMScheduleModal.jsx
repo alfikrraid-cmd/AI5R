@@ -193,7 +193,7 @@ export default function CreatePMScheduleModal({ isOpen, onClose, onCreate }) {
           <Button type="button" onClick={handleClose}>
             Cancel
           </Button>
-          <Button type="submit">Save</Button>
+          <Button type="submit">Create PM Schedule</Button>
         </div>
       </form>
     </Modal>

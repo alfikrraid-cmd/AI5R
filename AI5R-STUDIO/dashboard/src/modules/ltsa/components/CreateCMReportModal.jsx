@@ -71,7 +71,7 @@ export default function CreateCMReportModal({ isOpen, onClose, onCreate }) {
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} title="Create Corrective Maintenance Report">
+    <Modal isOpen={isOpen} onClose={handleClose} title="Create CM Report">
       <form onSubmit={handleSubmit}>
         <Field id="cm-equipment" label="Equipment">
           <input
@@ -150,7 +150,7 @@ export default function CreateCMReportModal({ isOpen, onClose, onCreate }) {
           <Button type="button" onClick={handleClose}>
             Cancel
           </Button>
-          <Button type="submit">Save</Button>
+          <Button type="submit">Create CM Report</Button>
         </div>
       </form>
     </Modal>

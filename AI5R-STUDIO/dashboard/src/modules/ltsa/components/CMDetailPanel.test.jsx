@@ -41,7 +41,7 @@ describe("CMDetailPanel", () => {
     expect(screen.getByText("18 hrs")).toBeTruthy();
     expect(screen.getByText("Seal Failure")).toBeTruthy();
     expect(screen.getByText("CRITICAL")).toBeTruthy();
-    expect(screen.getByText("IN_PROGRESS")).toBeTruthy();
+    expect(screen.getByText("In Progress")).toBeTruthy();
   });
 
   it("renders the Root Cause & Actions section", () => {

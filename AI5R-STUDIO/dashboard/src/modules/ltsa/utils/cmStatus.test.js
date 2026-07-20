@@ -4,6 +4,7 @@ import {
   priorityBadgeVariant,
   severityBadgeVariant,
   statusBadgeVariant,
+  statusLabel,
 } from "./cmStatus";
 
 describe("statusBadgeVariant", () => {
@@ -16,6 +17,19 @@ describe("statusBadgeVariant", () => {
 
   it("falls back to purple for an unknown status", () => {
     expect(statusBadgeVariant("UNKNOWN")).toBe("purple");
+  });
+});
+
+describe("statusLabel", () => {
+  it("maps every closed-set status to a human-readable label", () => {
+    expect(statusLabel("OPEN")).toBe("Open");
+    expect(statusLabel("IN_PROGRESS")).toBe("In Progress");
+    expect(statusLabel("RESOLVED")).toBe("Resolved");
+    expect(statusLabel("CLOSED")).toBe("Closed");
+  });
+
+  it("falls back to the raw value for an unknown status", () => {
+    expect(statusLabel("UNKNOWN")).toBe("UNKNOWN");
   });
 });
 

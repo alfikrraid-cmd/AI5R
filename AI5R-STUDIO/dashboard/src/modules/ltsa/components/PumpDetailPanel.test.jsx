@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import PumpDetailPanel from "./PumpDetailPanel";
 
 const PUMP = {
@@ -73,15 +73,33 @@ describe("PumpDetailPanel", () => {
     expect(screen.getByText(/no knowledge links/i)).toBeTruthy();
   });
 
-  it("renders the Quick Actions section with disabled action buttons", () => {
+  it("renders the Quick Actions section with View History and Documents disabled", () => {
     render(<PumpDetailPanel pump={PUMP} />);
 
     expect(screen.getByRole("heading", { name: "Quick Actions" })).toBeTruthy();
 
-    ["View History", "Create PM", "Create CM", "Documents"].forEach((label) => {
+    ["View History", "Documents"].forEach((label) => {
       const button = screen.getByRole("button", { name: label });
       expect(button).toBeTruthy();
       expect(button.disabled).toBe(true);
     });
+  });
+
+  it("calls onCreatePM when the Create PM quick action is clicked", () => {
+    const onCreatePM = vi.fn();
+    render(<PumpDetailPanel pump={PUMP} onCreatePM={onCreatePM} onCreateCM={() => {}} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Create PM" }));
+
+    expect(onCreatePM).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls onCreateCM when the Create CM quick action is clicked", () => {
+    const onCreateCM = vi.fn();
+    render(<PumpDetailPanel pump={PUMP} onCreatePM={() => {}} onCreateCM={onCreateCM} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Create CM" }));
+
+    expect(onCreateCM).toHaveBeenCalledTimes(1);
   });
 });

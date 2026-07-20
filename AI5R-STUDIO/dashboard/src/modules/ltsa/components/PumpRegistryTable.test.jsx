@@ -80,4 +80,16 @@ describe("PumpRegistryTable", () => {
     expect(screen.getByText(/no pumps match/i)).toBeTruthy();
     expect(screen.queryByRole("table")).toBeNull();
   });
+
+  it("marks table rows as keyboard-focusable and activates onSelect via Enter", () => {
+    const onSelect = vi.fn();
+    render(<PumpRegistryTable pumps={PUMPS} selectedCode={null} onSelect={onSelect} />);
+
+    const rows = screen.getAllByRole("row");
+    expect(rows[1].getAttribute("tabIndex")).toBe("0");
+
+    fireEvent.keyDown(rows[1], { key: "Enter" });
+
+    expect(onSelect).toHaveBeenCalledWith("PMP-001");
+  });
 });

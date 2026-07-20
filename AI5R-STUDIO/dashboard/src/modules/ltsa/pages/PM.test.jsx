@@ -74,10 +74,11 @@ describe("Preventive Maintenance workspace page", () => {
     fireEvent.click(screen.getByRole("button", { name: "+ Create PM Schedule" }));
     fireEvent.change(screen.getByLabelText("Equipment"), { target: { value: "533-P-1" } });
 
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create PM Schedule" }));
 
     expect(screen.queryByRole("heading", { name: "Create PM Schedule" })).toBeNull();
     expect(screen.getByRole("heading", { name: "Standard Lubrication" })).toBeTruthy();
     expect(screen.getByText("PM-2009")).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toContain("PM-2009 created.");
   });
 });

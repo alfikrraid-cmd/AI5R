@@ -3,6 +3,7 @@ import {
   frequencyBadgeVariant,
   frequencyLabel,
   statusBadgeVariant,
+  statusLabel,
   triggerTypeLabel,
 } from "./pmStatus";
 
@@ -16,6 +17,19 @@ describe("statusBadgeVariant", () => {
 
   it("falls back to purple for an unknown status", () => {
     expect(statusBadgeVariant("UNKNOWN")).toBe("purple");
+  });
+});
+
+describe("statusLabel", () => {
+  it("maps every closed-set status to a human-readable label", () => {
+    expect(statusLabel("ACTIVE")).toBe("Active");
+    expect(statusLabel("DUE_SOON")).toBe("Due Soon");
+    expect(statusLabel("OVERDUE")).toBe("Overdue");
+    expect(statusLabel("ON_HOLD")).toBe("On Hold");
+  });
+
+  it("falls back to the raw value for an unknown status", () => {
+    expect(statusLabel("UNKNOWN")).toBe("UNKNOWN");
   });
 });
 

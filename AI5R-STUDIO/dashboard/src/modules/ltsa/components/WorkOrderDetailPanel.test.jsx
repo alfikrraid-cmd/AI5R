@@ -10,7 +10,7 @@ const WORK_ORDER = {
   workType: "CM",
   status: "OPEN",
   priority: "CRITICAL",
-  assignedTo: "Dedi Kurniawan",
+  assignedTechnician: "Dedi Kurniawan",
   requestedBy: "Operations - SWS",
   createdDate: "2026-07-18",
   dueDate: "2026-07-21",
@@ -42,7 +42,7 @@ describe("WorkOrderDetailPanel", () => {
     expect(screen.getByText("2026-07-18")).toBeTruthy();
     expect(screen.getByText("2026-07-21")).toBeTruthy();
     expect(screen.getByText("CRITICAL")).toBeTruthy();
-    expect(screen.getByText("OPEN")).toBeTruthy();
+    expect(screen.getByText("Open")).toBeTruthy();
   });
 
   it("renders the Description section", () => {

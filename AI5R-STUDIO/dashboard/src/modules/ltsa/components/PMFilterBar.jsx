@@ -1,6 +1,7 @@
 import { SearchBox } from "../../../design-system";
 import colors from "../../../design-system/theme/colors";
 import spacing from "../../../design-system/theme/spacing";
+import { statusLabel } from "../utils/pmStatus";
 
 export default function PMFilterBar({
   searchValue,
@@ -32,7 +33,7 @@ export default function PMFilterBar({
 
         {statusOptions.map((status) => (
           <option key={status} value={status}>
-            {status}
+            {statusLabel(status)}
           </option>
         ))}
       </select>

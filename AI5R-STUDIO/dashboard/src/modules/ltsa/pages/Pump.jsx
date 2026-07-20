@@ -3,6 +3,8 @@ import { PageHeader } from "../../../design-system";
 import PumpFilterBar from "../components/PumpFilterBar";
 import PumpRegistryTable from "../components/PumpRegistryTable";
 import PumpDetailPanel from "../components/PumpDetailPanel";
+import CreatePMScheduleModal from "../components/CreatePMScheduleModal";
+import CreateCMReportModal from "../components/CreateCMReportModal";
 import samplePumps from "../data/samplePumps";
 import "./Pump.css";
 
@@ -24,6 +26,8 @@ export default function Pump() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [selectedCode, setSelectedCode] = useState(null);
+  const [isCreatePMOpen, setIsCreatePMOpen] = useState(false);
+  const [isCreateCMOpen, setIsCreateCMOpen] = useState(false);
 
   const statusOptions = useMemo(
     () => [...new Set(samplePumps.map((pump) => pump.status))],
@@ -64,9 +68,25 @@ export default function Pump() {
         </div>
 
         <div className="pump-workspace-detail">
-          <PumpDetailPanel pump={selectedPump} />
+          <PumpDetailPanel
+            pump={selectedPump}
+            onCreatePM={() => setIsCreatePMOpen(true)}
+            onCreateCM={() => setIsCreateCMOpen(true)}
+          />
         </div>
       </div>
+
+      <CreatePMScheduleModal
+        isOpen={isCreatePMOpen}
+        onClose={() => setIsCreatePMOpen(false)}
+        onCreate={() => setIsCreatePMOpen(false)}
+      />
+
+      <CreateCMReportModal
+        isOpen={isCreateCMOpen}
+        onClose={() => setIsCreateCMOpen(false)}
+        onCreate={() => setIsCreateCMOpen(false)}
+      />
     </div>
   );
 }

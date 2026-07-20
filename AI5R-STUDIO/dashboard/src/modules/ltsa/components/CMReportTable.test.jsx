@@ -91,8 +91,8 @@ describe("CMReportTable", () => {
     expect(screen.getByText("CRITICAL")).toBeTruthy();
     expect(screen.getByText("MINOR")).toBeTruthy();
     expect(screen.getByText("LOW")).toBeTruthy();
-    expect(screen.getByText("IN_PROGRESS")).toBeTruthy();
-    expect(screen.getByText("CLOSED")).toBeTruthy();
+    expect(screen.getByText("In Progress")).toBeTruthy();
+    expect(screen.getByText("Closed")).toBeTruthy();
   });
 
   it("renders an empty state instead of a bare table when no reports match", () => {
@@ -100,5 +100,17 @@ describe("CMReportTable", () => {
 
     expect(screen.getByText(/no corrective maintenance reports match/i)).toBeTruthy();
     expect(screen.queryByRole("table")).toBeNull();
+  });
+
+  it("marks table rows as keyboard-focusable and activates onSelect via Enter", () => {
+    const onSelect = vi.fn();
+    render(<CMReportTable cmReports={CM_REPORTS} selectedId={null} onSelect={onSelect} />);
+
+    const rows = screen.getAllByRole("row");
+    expect(rows[1].getAttribute("tabIndex")).toBe("0");
+
+    fireEvent.keyDown(rows[1], { key: "Enter" });
+
+    expect(onSelect).toHaveBeenCalledWith("CM-3001");
   });
 });

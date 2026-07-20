@@ -315,3 +315,194 @@ No new MWO created.
 
 Next:
 Await Chief Architect review of MWO-LTSA-059.
+
+2026-07-20 11:00 |
+MWO-LTSA-059 |
+INFO |
+Product Readiness Review performed for LTSA Demo v1, covering Pump
+Management, Work Order, Preventive Maintenance, and Corrective
+Maintenance (read-only — no code, files, or MWO created/modified).
+Evaluated user flow, UI consistency, UX consistency, information
+hierarchy, naming consistency, navigation, enterprise usability, and
+demo readiness. Key findings: no navigation exists between the four
+workspaces (Critical); Pump Detail's Create PM/Create CM Quick Action
+buttons are disabled dead stubs despite those workspaces now existing;
+status/priority badges render raw enum text instead of humanized
+labels; "Assigned To" vs "Assigned Technician" naming drift; Create
+submit button wording drift ("Create Work Order" vs "Save"); table
+rows lack keyboard activation and wide tables lack horizontal scroll.
+Demo Readiness Score: 6/10. Recommendation: one UX Polish sprint before
+building Maintenance History next.
+
+Files:
+None — review only, no files created or modified.
+
+Tests:
+Not applicable — no implementation in this step.
+
+Scope:
+Review only. No source code, test, SDK, Architecture, or MWO file
+modified.
+
+Next:
+Chief Architect directed creation of MWO-LTSA-060 (Demo Polish &
+Navigation) to act on this review's recommendation.
+
+2026-07-20 11:15 |
+MWO-LTSA-060 |
+DONE |
+MWO-LTSA-060 (Demo Polish & Navigation) created per Chief Architect
+directive, acting directly on the MWO-LTSA-059 Product Readiness
+Review recommendation — next available LTSA MWO number after 059. MWO
+document written with full Goal/Business Context/Scope/Out-of-Scope/
+Definition-of-Done; CURRENT_MWO.md repointed to MWO-LTSA-060.
+MWO-LTSA-059 carried forward as Previous MWO — noted explicitly as not
+yet formally closed, since no separate Chief Architect closure
+instruction was received for it. No implementation performed — this
+entry documents MWO creation only, per instruction to stop immediately
+after creation.
+
+Files:
+ENGINEERING/MWO/MWO-LTSA-060-Demo-Polish-Navigation.md (new)
+CURRENT_MWO.md (repointed to MWO-LTSA-060)
+
+Tests:
+Not applicable — no implementation in this step.
+
+Scope:
+Documentation / MWO lifecycle only. No source code, test, SDK, or
+Architecture file modified.
+
+Next:
+Await Chief Architect review of MWO-LTSA-060 before implementation begins.
+
+2026-07-20 11:45 |
+MWO-LTSA-060 |
+DONE |
+Demo Polish & Navigation implemented for LTSA Demo v1, acting on every
+finding raised in the MWO-LTSA-059 Product Readiness Review. (1)
+Navigation Shell: new LTSAWorkspace.jsx composes the existing
+design-system Tabs component with the four existing workspace pages
+(Pump/WorkOrder/PM/CM), switching via local state — not wired into
+App.jsx, since the Dashboard shell is a separate, unrelated product
+surface no MWO has touched and this MWO's scope did not grant that
+access; full Dashboard-level integration remains open for a future,
+separately-scoped MWO. (2) Pump Quick Actions: PumpDetailPanel's
+Create PM/Create CM buttons are no longer disabled, wired via new
+onCreatePM/onCreateCM props to open the existing CreatePMScheduleModal/
+CreateCMReportModal from Pump.jsx (reuse, not new dialogs) — submitting
+closes the dialog without persisting anywhere, since PM/CM's sample
+data lives in each page's own independent local state and lifting it
+into shared state would be an architecture change, out of scope; no
+success toast shown on this path since nothing is actually created.
+(3) Humanized Status Labels: added statusLabel() to workOrderStatus.js/
+pmStatus.js/cmStatus.js (mirrors existing frequencyLabel/
+failureCategoryLabel pattern), applied to every status badge and every
+FilterBar status-dropdown option across WorkOrder/PM/CM; Pump's own
+statuses and all Priority/Severity values were left as-is (already
+human-readable ALL-CAPS single words, not the verified problem). (4)
+Naming Consistency: Work Order's assignedTo field renamed to
+assignedTechnician throughout (data/components/tests), matching PM/CM;
+Create button/modal-title/submit-button wording standardized per
+module (PM submit "Save"->"Create PM Schedule"; CM modal title
+"Create Corrective Maintenance Report"->"Create CM Report", submit
+"Save"->"Create CM Report"; Work Order was already consistent). (5)
+Success Feedback: new local SuccessToast.jsx (module-scoped, not added
+to design-system/, themed with existing tokens only), wired into
+WorkOrder.jsx/PM.jsx/CM.jsx create flows, auto-dismisses after 4s. (6)
+Accessibility: every list table (Pump/WorkOrder/PM/CM) rows now have
+tabIndex+onKeyDown for Enter/Space activation, and are wrapped in an
+overflow-x:auto container for narrow viewports.
+
+Files: 48 changed under AI5R-STUDIO/dashboard/src/modules/ltsa/ — 43
+modified, 5 new (components/SuccessToast.{jsx,test.jsx},
+pages/LTSAWorkspace.{jsx,css,test.jsx}). Full list in
+ENGINEERING/MWO/MWO-LTSA-060-Demo-Polish-Navigation.md.
+CURRENT_MWO.md (status updated)
+
+Tests:
+PASS (63 test files, 260 tests, all green — 237 baseline + 23 new)
+
+Scope:
+design-system/, App.jsx, Backend, API, and the Seal module untouched —
+confirmed by git status scoped to those paths (empty aside from the
+pre-existing, unrelated modules.json diff already flagged in the prior
+classification report). No new MWO created.
+
+Next:
+Await Chief Architect review of MWO-LTSA-060.
+
+2026-07-20 12:00 |
+MWO-LTSA-061 |
+DONE |
+MWO-LTSA-061 (Dashboard Integration) created per Chief Architect
+directive — next available LTSA MWO number after 060. This is the
+first MWO authorized to touch the AI5R Studio Dashboard shell
+(App.jsx), which every prior LTSA MWO (056-060) explicitly excluded.
+MWO document written with full Goal/Business Context/Scope/
+Out-of-Scope/Definition-of-Done; CURRENT_MWO.md repointed to
+MWO-LTSA-061 (list also trimmed to the three most recent prior MWOs
+for brevity — MWO-LTSA-060 and MWO-LTSA-059 both noted as not yet
+formally closed, consistent with their actual status). No
+implementation performed — this entry documents MWO creation only,
+per instruction to stop immediately after creation.
+
+Files:
+ENGINEERING/MWO/MWO-LTSA-061-Dashboard-Integration.md (new)
+CURRENT_MWO.md (repointed to MWO-LTSA-061)
+
+Tests:
+Not applicable — no implementation in this step.
+
+Scope:
+Documentation / MWO lifecycle only. No source code, test, SDK, or
+Architecture file modified.
+
+Next:
+Await Chief Architect review of MWO-LTSA-061 before implementation begins.
+
+2026-07-20 12:20 |
+MWO-LTSA-061 |
+DONE |
+Dashboard Integration implemented — LTSA is now reachable from the
+AI5R Studio Dashboard. App.jsx gained one top-level design-system Tabs
+(the same existing, unmodified component already reused inside
+LTSAWorkspace.jsx, so no new pattern introduced) switching between
+"OS Command Center" (default) and "LTSA". The entire pre-existing
+panel tree (AgentPanel, BrainActivity, LiveRuntimeStatus, UMKM_OS
+panels, etc.) was wrapped unmodified inside the default branch of one
+conditional — no router, no restructuring, no change to any panel's
+own logic or the existing useEffect-driven data fetching. Selecting
+"LTSA" renders the existing LTSAWorkspace (Pump/WorkOrder/PM/CM,
+built under MWO-LTSA-060) in its place. One supporting CSS rule
+(.dashboard-nav) added to the existing index.css for tab-bar spacing
+— no new stylesheet, no design-system change. Considered and rejected:
+appending LTSAWorkspace inline at the bottom of the flat panel list
+(mirroring the UMKM_OS integration pattern) — rejected because it
+would not satisfy the MWO's explicit "Add navigation entry for LTSA"
+scope item.
+
+Files:
+AI5R-STUDIO/dashboard/src/App.jsx (modified)
+AI5R-STUDIO/dashboard/src/index.css (modified)
+AI5R-STUDIO/dashboard/src/App.test.jsx (new)
+ENGINEERING/MWO/MWO-LTSA-061-Dashboard-Integration.md (updated with implementation record)
+CURRENT_MWO.md (status updated)
+
+Tests:
+PASS (64 test files, 264 tests, all green — 260 baseline + 4 new).
+New App.test.jsx covers: default OS Command Center view unchanged,
+LTSA tab present, switching to LTSA renders Pump Workspace and hides
+OS-only content, switching back restores the OS Command Center.
+
+Scope:
+design-system/, Backend, API, Authentication, and the Permission
+system untouched — confirmed by git status scoped to those paths
+(empty aside from the pre-existing, unrelated modules.json diff
+already flagged in the prior classification report). No new MWO
+created. (The modules/ltsa/* files still showing modified in the
+working tree belong to the still-uncommitted MWO-LTSA-060 work, not
+this MWO.)
+
+Next:
+Await Chief Architect review of MWO-LTSA-061.
