@@ -1055,3 +1055,126 @@ Architecture file modified.
 
 Next:
 Await next Chief Architect directive (new MWO or further instruction).
+
+2026-07-20 18:00 |
+MWO-LTSA-066 |
+INFO |
+Product Owner refinement recorded for MWO-LTSA-066 (Demo Final
+Polish). Demo polish only. Priority order: (1) End-to-end demo flow,
+(2) UI consistency, (3) Responsive, (4) Accessibility, (5)
+Empty/loading/error states, (6) Minor bug fixes. Rules reaffirmed: no
+new features, no backend/API, no architecture changes, no business
+logic changes, reuse existing components, demo-first. Success
+criterion: a first-time user can complete the full LTSA demo without
+confusion. No implementation performed in this step; MWO document not
+modified. CURRENT_MWO.md updated to show MWO-LTSA-066 as the current
+MWO with this refinement recorded.
+
+Files:
+CURRENT_MWO.md (updated — MWO-LTSA-066 set as current, refinement recorded)
+
+Tests:
+UNCHANGED (393/393 — no code touched)
+
+Scope:
+Documentation / MWO refinement record only. No source code, test,
+SDK, or Architecture file modified.
+
+Next:
+Await instruction to implement MWO-LTSA-066.
+
+2026-07-20 19:00 |
+MWO-LTSA-066 |
+DONE |
+Implemented MWO-LTSA-066 (Demo Final Polish) per Product Owner
+refinement: demo flow, UI consistency, responsive, accessibility,
+empty/loading/error states, minor bug fixes. Performed a full audit of
+the LTSA module against all six priorities (registry tables, filter
+bars, detail panels, empty states, responsive CSS breakpoints,
+keyboard row activation, print CSS) before changing anything. Fixed
+three concrete gaps found: (1) QuickNavigationPanel had not been
+updated when MWO-064/065 added the Reports and Analytics tabs, so
+those two workspaces were unreachable from the Executive Dashboard's
+navigation shortcuts — added "Open Reports"/"Open Analytics" using
+the existing onNavigate mechanism, no new navigation pattern
+introduced. (2) Pump Detail's "View History" Quick Action button had
+been permanently disabled since MWO-060 (written before the
+Maintenance History/Asset 360 tab existed); now that the tab exists
+(MWO-062), the button was a dead end a first-time user could click
+with no effect and no explanation — enabled it and wired it to
+onNavigate("history"), the same tab-switch mechanism already used by
+QuickNavigationPanel and passed to every LTSAWorkspace page. Threaded
+onNavigate from LTSAWorkspace -> Pump -> PumpDetailPanel; optional
+chaining keeps Pump usable standalone without the prop. "Documents"
+remains disabled — no equivalent feature exists anywhere to link to,
+so leaving it disabled is correct, not a gap. (3) The four oldest
+FilterBars (Pump/Work Order/PM/CM, from MWO-056-059) had a raw status
+<select> with no accessible name, inconsistent with the labelled
+pattern MaintenanceHistoryFilterBar (MWO-062) already established for
+its own selects — added aria-label="Filter by status" to each,
+visual layout unchanged. Every other audited area (empty-state
+messages, no-selection panels, horizontal-scroll wrapping, keyboard
+Enter/Space row activation, responsive breakpoints, print CSS,
+terminology) was already consistent from the prior progressive polish
+MWOs (056, 060, 062-065) and needed no change — not padded with
+unnecessary edits. No backend/API, architecture, business-logic, or
+design-system file touched; sample data files untouched.
+
+Files:
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/QuickNavigationPanel.jsx (modified — added Reports/Analytics destinations)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/QuickNavigationPanel.test.jsx (modified)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/PumpDetailPanel.jsx (modified — View History wired via onViewHistory)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/PumpDetailPanel.test.jsx (modified)
+AI5R-STUDIO/dashboard/src/modules/ltsa/pages/Pump.jsx (modified — onNavigate threaded to PumpDetailPanel)
+AI5R-STUDIO/dashboard/src/modules/ltsa/pages/Pump.test.jsx (modified)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/PumpFilterBar.jsx (modified — aria-label added)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/PumpFilterBar.test.jsx (modified)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/WorkOrderFilterBar.jsx (modified — aria-label added)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/WorkOrderFilterBar.test.jsx (modified)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/PMFilterBar.jsx (modified — aria-label added)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/PMFilterBar.test.jsx (modified)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/CMFilterBar.jsx (modified — aria-label added)
+AI5R-STUDIO/dashboard/src/modules/ltsa/components/CMFilterBar.test.jsx (modified)
+CURRENT_MWO.md (updated)
+
+Tests:
+PASS (94 test files, 399 tests — 393 baseline + 6 new)
+
+Scope:
+LTSA dashboard module only (components/pages listed above). No
+design-system, App.jsx, backend, API, sample-data, or Architecture
+file modified — confirmed via git status scoped to those paths
+(empty).
+
+Next:
+Await Chief Architect / Product Owner review of MWO-LTSA-066.
+
+2026-07-20 20:00 |
+MWO-LTSA-066 |
+DONE |
+Product Owner review approved. MWO-LTSA-066 (Demo Final Polish)
+closed — Definition of Done confirmed Met (three audited gaps fixed:
+QuickNavigationPanel missing Reports/Analytics links, Pump Detail's
+dead "View History" button wired to the existing Maintenance History
+tab via onNavigate, accessible aria-label added to the four oldest
+FilterBars' status selects; every other audited area already
+compliant from prior polish MWOs), 399/399 tests passing. MWO document
+updated at closure with the Product Owner refinement guidance and a
+full Delivered Capabilities record, then marked COMPLETED. No
+implementation changes made in this step; CURRENT_MWO.md updated to
+reflect closure. No successor MWO created — CURRENT_MWO.md now shows
+no active MWO, awaiting next Chief Architect directive.
+
+Files:
+ENGINEERING/MWO/MWO-LTSA-066-Demo-Final-Polish.md (status updated to COMPLETED, Product Owner Refinement + Implementation + Closure sections added)
+CURRENT_MWO.md (updated — no active MWO)
+
+Tests:
+PASS (94 test files, 399 tests — unchanged from prior entry)
+
+Scope:
+Documentation / MWO lifecycle only. No source code, test, SDK, or
+Architecture file modified.
+
+Next:
+Await next Chief Architect directive (new MWO or further instruction).

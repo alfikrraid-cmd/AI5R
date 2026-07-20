@@ -73,16 +73,25 @@ describe("PumpDetailPanel", () => {
     expect(screen.getByText(/no knowledge links/i)).toBeTruthy();
   });
 
-  it("renders the Quick Actions section with View History and Documents disabled", () => {
+  it("renders the Quick Actions section with Documents disabled", () => {
     render(<PumpDetailPanel pump={PUMP} />);
 
     expect(screen.getByRole("heading", { name: "Quick Actions" })).toBeTruthy();
 
-    ["View History", "Documents"].forEach((label) => {
-      const button = screen.getByRole("button", { name: label });
-      expect(button).toBeTruthy();
-      expect(button.disabled).toBe(true);
-    });
+    const documentsButton = screen.getByRole("button", { name: "Documents" });
+    expect(documentsButton.disabled).toBe(true);
+
+    const viewHistoryButton = screen.getByRole("button", { name: "View History" });
+    expect(viewHistoryButton.disabled).toBe(false);
+  });
+
+  it("calls onViewHistory when the View History quick action is clicked", () => {
+    const onViewHistory = vi.fn();
+    render(<PumpDetailPanel pump={PUMP} onViewHistory={onViewHistory} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "View History" }));
+
+    expect(onViewHistory).toHaveBeenCalledTimes(1);
   });
 
   it("calls onCreatePM when the Create PM quick action is clicked", () => {

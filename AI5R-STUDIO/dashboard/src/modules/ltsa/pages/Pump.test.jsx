@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import Pump from "./Pump";
 import samplePumps from "../data/samplePumps";
 
@@ -74,5 +74,15 @@ describe("Pump workspace page", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create CM" }));
 
     expect(screen.getByRole("heading", { name: "Create CM Report" })).toBeTruthy();
+  });
+
+  it("navigates to Maintenance History when View History is clicked from Quick Actions", () => {
+    const onNavigate = vi.fn();
+    render(<Pump onNavigate={onNavigate} />);
+
+    fireEvent.click(screen.getByText("305-P-2"));
+    fireEvent.click(screen.getByRole("button", { name: "View History" }));
+
+    expect(onNavigate).toHaveBeenCalledWith("history");
   });
 });

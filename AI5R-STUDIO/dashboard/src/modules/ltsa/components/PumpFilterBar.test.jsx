@@ -67,4 +67,18 @@ describe("PumpFilterBar", () => {
 
     expect(onStatusFilterChange).toHaveBeenCalledWith("FAULT");
   });
+
+  it("labels the status filter for assistive technology", () => {
+    render(
+      <PumpFilterBar
+        searchValue=""
+        onSearchChange={() => {}}
+        statusFilter="ALL"
+        onStatusFilterChange={() => {}}
+        statusOptions={["ACTIVE"]}
+      />
+    );
+
+    expect(screen.getByRole("combobox", { name: "Filter by status" })).toBeTruthy();
+  });
 });

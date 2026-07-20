@@ -22,7 +22,7 @@ function matchesSearch(pump, search) {
   );
 }
 
-export default function Pump() {
+export default function Pump({ onNavigate }) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [selectedCode, setSelectedCode] = useState(null);
@@ -72,6 +72,7 @@ export default function Pump() {
             pump={selectedPump}
             onCreatePM={() => setIsCreatePMOpen(true)}
             onCreateCM={() => setIsCreateCMOpen(true)}
+            onViewHistory={() => onNavigate?.("history")}
           />
         </div>
       </div>

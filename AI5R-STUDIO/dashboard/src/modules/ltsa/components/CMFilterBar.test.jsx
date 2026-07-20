@@ -68,4 +68,18 @@ describe("CMFilterBar", () => {
 
     expect(onStatusFilterChange).toHaveBeenCalledWith("CLOSED");
   });
+
+  it("labels the status filter for assistive technology", () => {
+    render(
+      <CMFilterBar
+        searchValue=""
+        onSearchChange={() => {}}
+        statusFilter="ALL"
+        onStatusFilterChange={() => {}}
+        statusOptions={["OPEN"]}
+      />
+    );
+
+    expect(screen.getByRole("combobox", { name: "Filter by status" })).toBeTruthy();
+  });
 });

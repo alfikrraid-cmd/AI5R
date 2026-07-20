@@ -19,6 +19,7 @@ export default function PMFilterBar({
       />
 
       <select
+        aria-label="Filter by status"
         value={statusFilter}
         onChange={(event) => onStatusFilterChange(event.target.value)}
         style={{

@@ -7,6 +7,8 @@ const DESTINATIONS = [
   { key: "pm", label: "Open Preventive Maintenance" },
   { key: "cm", label: "Open Corrective Maintenance" },
   { key: "history", label: "Open Asset 360" },
+  { key: "reports", label: "Open Reports" },
+  { key: "analytics", label: "Open Analytics" },
 ];
 
 export default function QuickNavigationPanel({ onNavigate }) {

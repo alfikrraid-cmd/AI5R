@@ -12,6 +12,8 @@ describe("QuickNavigationPanel", () => {
     expect(screen.getByRole("button", { name: "Open Preventive Maintenance" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Open Corrective Maintenance" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Open Asset 360" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Open Reports" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Open Analytics" })).toBeTruthy();
   });
 
   it("calls onNavigate with the correct workspace key for each action", () => {
@@ -32,5 +34,11 @@ describe("QuickNavigationPanel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Open Asset 360" }));
     expect(onNavigate).toHaveBeenCalledWith("history");
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Reports" }));
+    expect(onNavigate).toHaveBeenCalledWith("reports");
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Analytics" }));
+    expect(onNavigate).toHaveBeenCalledWith("analytics");
   });
 });
