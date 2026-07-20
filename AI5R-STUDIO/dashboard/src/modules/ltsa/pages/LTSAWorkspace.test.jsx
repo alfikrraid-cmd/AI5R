@@ -82,4 +82,45 @@ describe("LTSAWorkspace navigation shell", () => {
 
     expect(screen.getByRole("heading", { level: 1, name: "Analytics" })).toBeTruthy();
   });
+
+  it("completes a first-time-user demo walkthrough across every workspace without error", () => {
+    render(<LTSAWorkspace />);
+
+    // Land on the Executive Dashboard by default.
+    expect(screen.getByRole("heading", { name: "Executive Dashboard" })).toBeTruthy();
+
+    // Jump to Pump Registry via Quick Navigation, select a pump, view its detail.
+    fireEvent.click(screen.getByRole("button", { name: "Open Pump Registry" }));
+    expect(screen.getByRole("heading", { name: "Pump Workspace" })).toBeTruthy();
+
+    fireEvent.click(screen.getByText("305-P-2"));
+    expect(screen.getByRole("heading", { name: "Cooling Water Circulation Pump" })).toBeTruthy();
+
+    // Follow the pump's "View History" quick action into Maintenance History.
+    fireEvent.click(screen.getByRole("button", { name: "View History" }));
+    expect(screen.getByRole("heading", { name: "Maintenance History" })).toBeTruthy();
+
+    // Return to the Dashboard and jump to Reports via Quick Navigation.
+    fireEvent.click(screen.getByRole("tab", { name: "Executive Dashboard" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open Reports" }));
+    expect(screen.getByRole("heading", { name: "Executive Summary Report" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Print / Save as PDF" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Pump History Report" }));
+    expect(screen.getByRole("heading", { name: "Pump History Report" })).toBeTruthy();
+
+    // Return to the Dashboard and jump to Analytics via Quick Navigation.
+    fireEvent.click(screen.getByRole("tab", { name: "Executive Dashboard" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open Analytics" }));
+    expect(screen.getByRole("heading", { level: 1, name: "Analytics" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Are we healthy?" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "What should managers do next?" })).toBeTruthy();
+
+    // Every outer LTSA tab remains reachable after this journey.
+    ["Executive Dashboard", "Pump", "Work Order", "Preventive Maintenance", "Corrective Maintenance", "Maintenance History", "Reports", "Analytics"].forEach(
+      (tabName) => {
+        expect(screen.getByRole("tab", { name: tabName })).toBeTruthy();
+      }
+    );
+  });
 });

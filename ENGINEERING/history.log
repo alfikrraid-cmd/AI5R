@@ -1178,3 +1178,97 @@ Architecture file modified.
 
 Next:
 Await next Chief Architect directive (new MWO or further instruction).
+
+2026-07-20 21:00 |
+MWO-LTSA-067 |
+DONE |
+Implemented MWO-LTSA-067 (Demo Candidate) per the given checklist:
+end-to-end walkthrough, regression verification, repository hygiene,
+documentation verification, bug fixes only. End-to-end walkthrough:
+no live browser is available in this environment, so verified via a
+new comprehensive Testing-Library interaction test added to
+LTSAWorkspace.test.jsx that renders the fully composed app and drives
+a realistic first-time-user journey end to end (Dashboard -> Quick
+Navigation -> Pump -> select a pump -> View History quick action ->
+Maintenance History -> Dashboard -> Reports incl. sub-tab and Print
+button -> Dashboard -> Analytics incl. all four question sections),
+asserting real rendered output at every step, plus a manual
+code-path audit of every workspace, filter bar, detail panel, and
+create-flow. Regression verification: `npm run lint` scoped to
+src/modules/ltsa is clean; `npm run build` succeeds cleanly; full
+suite is 94 test files, 400 tests, all green (399 baseline + 1 new).
+Repository hygiene: dist/ confirmed gitignored, no stray files;
+disclosed one pre-existing finding, not fixed - Seal.jsx and its
+supporting components/tests exist under modules/ltsa but were never
+wired into LTSAWorkspace's 8-tab navigation (outside this MWO's
+"fix only verified defects" authority to remove or wire in).
+Documentation verification: the LTSA MWO trail itself
+(CURRENT_MWO.md, this log, every ENGINEERING/MWO/MWO-LTSA-0*.md) is
+internally consistent and current; disclosed one pre-existing
+finding, not fixed - the repository's root Mandatory Documentation
+files (CURRENT_STATE.md, CHANGELOG.md, ROADMAP.md, PROJECT_HISTORY.md)
+were last updated for the LTSA-BRAIN backend Factory Pack track
+(MWO-LTSA-030-053) and do not mention the LTSA Dashboard frontend
+track (MWO-LTSA-056-066) that is actually "LTSA Demo v1" - a
+documentation/reality mismatch per DOCUMENTATION_CONTRACT.md's own
+Engineering Audit Rule, left unresolved because reconciling two
+parallel MWO tracks in cross-product root governance docs is a Chief
+Architect scoping decision, outside this MWO's stated DoD (which
+requires only CURRENT_MWO.md/history.log) and outside "fix only
+verified defects." Bug fixes: none required - no functional defects
+were found beyond what MWO-LTSA-066 already resolved, so nothing else
+was changed. No new features, UI redesign, backend/API, or
+architecture change made.
+
+Files:
+AI5R-STUDIO/dashboard/src/modules/ltsa/pages/LTSAWorkspace.test.jsx (modified — added end-to-end demo walkthrough test)
+CURRENT_MWO.md (updated)
+
+Tests:
+PASS (94 test files, 400 tests — 399 baseline + 1 new)
+
+Scope:
+LTSA dashboard module only (one test file). No design-system,
+App.jsx, backend, API, sample-data, or Architecture file modified —
+confirmed via git status scoped to those paths (empty). Two
+out-of-scope documentation/hygiene findings disclosed above, neither
+acted on.
+
+Next:
+Await Chief Architect / Product Owner review of MWO-LTSA-067.
+
+2026-07-20 22:00 |
+MWO-LTSA-067 |
+DONE |
+Product Owner review approved. MWO-LTSA-067 (Demo Candidate) closed —
+Definition of Done confirmed Met. LTSA Demo v1 is certified
+release-candidate ready: end-to-end walkthrough verified via new
+Testing-Library interaction test (no live browser available in this
+environment, disclosed), lint clean, build clean, no LTSA
+regressions, 400/400 tests passing. Two findings disclosed but
+deliberately left unresolved, outside "fix only verified defects" and
+this MWO's authority: the Seal.jsx module exists under modules/ltsa
+unwired into navigation; the repository's root Mandatory
+Documentation (CURRENT_STATE.md/CHANGELOG.md/ROADMAP.md/
+PROJECT_HISTORY.md) still describes only the older LTSA-BRAIN backend
+Factory Pack track and does not mention the LTSA Dashboard track —
+both flagged for a future Chief Architect scoping decision. MWO
+document updated at closure with the Checklist Guidance, full
+Certification Results, and Closure sections, then marked COMPLETED.
+No implementation changes made in this step; CURRENT_MWO.md updated
+to reflect closure. No successor MWO created — CURRENT_MWO.md now
+shows no active MWO, awaiting next Chief Architect directive.
+
+Files:
+ENGINEERING/MWO/MWO-LTSA-067-Demo-Candidate.md (status updated to COMPLETED, Checklist Guidance + Implementation + Closure sections added)
+CURRENT_MWO.md (updated — no active MWO)
+
+Tests:
+PASS (94 test files, 400 tests — unchanged from prior entry)
+
+Scope:
+Documentation / MWO lifecycle only. No source code, test, SDK, or
+Architecture file modified.
+
+Next:
+Await next Chief Architect directive (new MWO or further instruction).
