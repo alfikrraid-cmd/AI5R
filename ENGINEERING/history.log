@@ -1272,3 +1272,136 @@ Architecture file modified.
 
 Next:
 Await next Chief Architect directive (new MWO or further instruction).
+
+2026-07-20 23:00 |
+MWO-LTSA-068 |
+INFO |
+Product Owner refinement recorded for MWO-LTSA-068 (CV Razzan
+Enterprise Preparation), reclassifying it as a discovery-only MWO,
+explicitly NOT an implementation MWO. Purpose: understand how CV
+Razzan Teknik Mandiri actually operates before changing LTSA.
+Deliverables recorded: (1) Business Process Map (Lead -> Quotation ->
+PO/SPK -> Project -> Assignment -> Maintenance -> Service Report ->
+Customer Approval -> Invoice, reference only); (2) Organization Map
+(Director, Project Manager, Supervisor, Engineer, Technician,
+Administration); (3) Enterprise Objects (Customer, Project, Contract,
+PO/SPK, Site, Area, Equipment, Pump, Motor, Seal, Work Order, PM, CM,
+Inspection, Service Report, Engineer, Supervisor, Vendor,
+Manufacturer); (4) Operational Workflow, customer request through
+project completion; (5) Gap Analysis (LTSA Demo v1 vs. CV Razzan real
+operation, every capability classified Already supported / Needs
+adaptation / Missing / Not required). Rules reaffirmed: discovery
+only, no implementation, no UI changes, no backend, no architecture
+changes, no feature development. Success criterion: a complete
+deployment blueprint for transforming LTSA Demo v1 into CV Razzan
+Teknik Mandiri's operational system. No implementation performed in
+this step; MWO document not modified. CURRENT_MWO.md updated to
+record this refinement.
+
+Files:
+CURRENT_MWO.md (updated — MWO-LTSA-068 refinement recorded)
+
+Tests:
+UNCHANGED (400/400 — no code touched)
+
+Scope:
+Documentation / MWO refinement record only. No source code, test,
+SDK, or Architecture file modified.
+
+Next:
+Await instruction to produce the MWO-LTSA-068 discovery deliverables.
+
+2026-07-20 23:30 |
+MWO-LTSA-068 |
+DONE |
+Produced the MWO-LTSA-068 discovery blueprint, acting as Senior
+Enterprise Consultant per Product Owner direction, not as an
+implementation task. Before drafting, searched the repository for
+existing CV Razzan material rather than assuming none existed, and
+found substantial grounding: MANUFACTURING/MO-001/* (a real
+Manufacturing Order built for CV Razzan Teknik Mandiri, with a working
+demo script and manufacturing report) and the already-approved
+MWO-ENT-001 (AI5R Enterprise OS v1 Specification), MWO-ENT-002
+(38-object Enterprise Object Model), and MWO-ENT-003 (Sprint 1
+Architecture). These independently confirm CV Razzan Teknik Mandiri
+is the internal, never-customer-visible operating entity behind a
+separate customer-facing brand, "PT Tommy Adji Prasetyo" - a
+structural fact the blueprint is built around. Wrote all seven
+requested sections into the MWO document (Business Model, Business
+Process Map, Organization Map, Enterprise Object Discovery,
+Operational Workflow, Gap Analysis, Deployment Roadmap), labeling
+every claim [CONFIRMED]/[INFERRED]/[UNKNOWN] per the explicit
+Product Owner rule to identify unknowns rather than guess. Headline
+findings disclosed in the report: the LTSA Dashboard frontend (LTSA
+Demo v1) and the LTSA-BRAIN backend are both fully built but not
+connected to each other in any way (confirmed by direct search - no
+fetch/API client exists anywhere in the frontend); Customer and
+Project exist only as specifications, never as real objects in
+either system; the Lead -> Quotation -> PO/SPK sales-led process this
+MWO asked about is unmodeled anywhere in the repository (PO/SPK has
+zero mentions outside this MWO's own text); the org-role set this
+MWO requested (Director, Project Manager, Technician, Administration)
+only partially overlaps the already-approved role set (Owner,
+Supervisor, Admin, Engineer, Finance Officer, HR Officer) -
+reconciled explicitly rather than silently substituted. Proposed a
+MWO-LTSA-069 through 075 deployment roadmap in priority order
+(frontend-backend connectivity first, as the precondition for
+everything else), explicitly not authorized by this report itself.
+CURRENT_MWO.md updated to summarize the deliverable and headline
+findings. No implementation, UI, backend, database, or architecture
+change made, per the Rules.
+
+Files:
+ENGINEERING/MWO/MWO-LTSA-068-CV-Razzan-Enterprise-Preparation.md (extended — full seven-part discovery blueprint added)
+CURRENT_MWO.md (updated — deliverable and headline findings summarized)
+
+Tests:
+UNCHANGED (400/400 — no code touched)
+
+Scope:
+Documentation / discovery only. No source code, test, SDK,
+Architecture, UI, backend, or database file modified.
+
+Next:
+Await Chief Architect / Product Owner review of the MWO-LTSA-068
+blueprint and a decision on whether/how to authorize the proposed
+MWO-LTSA-069 deployment roadmap.
+
+2026-07-20 23:45 |
+MWO-LTSA-068 |
+DONE |
+Product Owner review approved. MWO-LTSA-068 (CV Razzan Enterprise
+Preparation) closed - Definition of Done confirmed Met against its
+Product-Owner-reframed success criterion (a complete deployment
+blueprint for CV Razzan Teknik Mandiri). All seven requested sections
+verified present and complete (Business Model, Business Process Map,
+Organization Map, Enterprise Object Discovery, Operational Workflow,
+Gap Analysis, Deployment Roadmap), discovery-only confirmed via git
+status scoped to source/UI/backend/database paths (empty). The
+blueprint stands as the durable record for CV Razzan's real operating
+model; its proposed MWO-LTSA-069 (Frontend-Backend Connectivity)
+through MWO-LTSA-075 roadmap remains unauthorized pending separate
+Chief Architect/Product Owner decision. MWO document updated at
+closure with Definition of Done status and a Closure section, then
+marked COMPLETED; Type/Role lines corrected to reflect the
+Product-Owner-directed Discovery/Senior-Enterprise-Consultant
+reframing rather than the original Implementation/Implementation-
+Engineer framing. No implementation changes made in this step;
+CURRENT_MWO.md updated to reflect closure. No successor MWO created -
+CURRENT_MWO.md now shows no active MWO, awaiting next Chief Architect
+directive.
+
+Files:
+ENGINEERING/MWO/MWO-LTSA-068-CV-Razzan-Enterprise-Preparation.md (status updated to COMPLETED, Definition of Done + Closure sections added, header Type/Role corrected)
+CURRENT_MWO.md (updated — no active MWO)
+
+Tests:
+UNCHANGED (400/400 — no code touched)
+
+Scope:
+Documentation / MWO lifecycle only. No source code, test, SDK, or
+Architecture file modified.
+
+Next:
+Await next Chief Architect directive (new MWO, or authorization of an
+item from the MWO-LTSA-068 deployment roadmap).
