@@ -7,6 +7,7 @@ import WorkOrder from "./WorkOrder";
 import PM from "./PM";
 import CM from "./CM";
 import ConditionMonitoring from "./ConditionMonitoring";
+import ConditionMonitoringWorkspace from "./ConditionMonitoringWorkspace";
 import MaintenanceHistory from "./MaintenanceHistory";
 import PMWorkOrderWorkspace from "./PMWorkOrderWorkspace";
 import ReportsWorkspace from "./ReportsWorkspace";
@@ -50,6 +51,7 @@ const PAGES = {
   pm: PM,
   cm: CM,
   cmon: ConditionMonitoring,
+  "cmon-workspace": ConditionMonitoringWorkspace,
   history: MaintenanceHistory,
   "pm-workspace": PMWorkOrderWorkspace,
   reports: ReportsWorkspace,
