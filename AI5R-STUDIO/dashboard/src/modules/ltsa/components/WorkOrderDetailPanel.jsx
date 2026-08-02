@@ -1,4 +1,4 @@
-import { Badge, Card, EmptyState, Timeline } from "../../../design-system";
+import { Badge, Button, Card, EmptyState, Timeline } from "../../../design-system";
 import colors from "../../../design-system/theme/colors";
 import spacing from "../../../design-system/theme/spacing";
 import { priorityBadgeVariant, statusBadgeVariant, statusLabel } from "../utils/workOrderStatus";
@@ -12,7 +12,7 @@ function Field({ label, value }) {
   );
 }
 
-export default function WorkOrderDetailPanel({ workOrder }) {
+export default function WorkOrderDetailPanel({ workOrder, onOpenPMWorkspace }) {
   if (!workOrder) {
     return (
       <EmptyState
@@ -45,6 +45,10 @@ export default function WorkOrderDetailPanel({ workOrder }) {
           <div style={{ color: colors.textMuted, fontSize: 12 }}>Status</div>
           <Badge variant={statusBadgeVariant(workOrder.status)}>{statusLabel(workOrder.status)}</Badge>
         </div>
+
+        {workOrder.workType === "PM" && onOpenPMWorkspace ? (
+          <Button onClick={onOpenPMWorkspace}>Open PM Workspace</Button>
+        ) : null}
       </Card>
 
       <Card title="Description">

@@ -88,6 +88,47 @@ export const IconSearch = (props) => (
   </Icon>
 );
 
+export const IconShield = (props) => (
+  <Icon {...props}>
+    <path d="M12 3l7 3v6c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z" />
+    <path d="m9.5 12 1.8 1.8L15 10" />
+  </Icon>
+);
+
+export const IconClipboard = (props) => (
+  <Icon {...props}>
+    <rect x="6" y="4" width="12" height="17" rx="2" />
+    <path d="M9 4V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1" />
+    <path d="M9 10h6M9 14h6M9 18h4" />
+  </Icon>
+);
+
+export const IconCamera = (props) => (
+  <Icon {...props}>
+    <path d="M4 8h3l1.5-2h7L17 8h3v11H4z" />
+    <circle cx="12" cy="13.5" r="3.3" />
+  </Icon>
+);
+
+export const IconPaperclip = (props) => (
+  <Icon {...props}>
+    <path d="M19.5 12.5 12 20a4.5 4.5 0 0 1-6.4-6.4L13 6.2a3 3 0 0 1 4.3 4.3L10 17.8a1.5 1.5 0 0 1-2.1-2.1l6.7-6.7" />
+  </Icon>
+);
+
+export const IconPen = (props) => (
+  <Icon {...props}>
+    <path d="m17 3 4 4L9 19l-4.5 1.5L6 16z" />
+  </Icon>
+);
+
+export const IconDownload = (props) => (
+  <Icon {...props}>
+    <path d="M12 3v12m0 0-4-4m4 4 4-4" />
+    <path d="M4 18v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2" />
+  </Icon>
+);
+
 const TIER_ICON = {
   pm: IconCheck,
   cm: IconWrench,

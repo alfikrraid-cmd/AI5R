@@ -1,0 +1,190 @@
+/* ==========================================================================
+   PM Work Order Workspace -- additive only. Reuses .pump-workspace-root's
+   tokens and every base component class (chrome-bar, workspace-grid,
+   identity, assessment-section, tf-chip, inspector-rail, rail-section,
+   info-row, part-item, stock-flag, cmdk-*, drawer, toast, coming-soon)
+   from MaintenanceHistory.css, imported alongside this file -- nothing
+   above this point is redefined here.
+   Ported from DESIGN/LTSA/PM_WORKSPACE/design-tokens.css §2.
+   ========================================================================== */
+
+/* ---------- Status stepper (Work Order Status, inspector rail) ---------- */
+.pump-workspace-root .stepper {
+  position: relative;
+  padding-left: 26px;
+}
+.pump-workspace-root .stepper::before {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 6px;
+  bottom: 6px;
+  width: 1px;
+  background: var(--border);
+}
+.pump-workspace-root .step-item {
+  position: relative;
+  padding-bottom: var(--space-4);
+}
+.pump-workspace-root .step-item:last-child {
+  padding-bottom: 0;
+}
+.pump-workspace-root .step-dot {
+  position: absolute;
+  left: -26px;
+  top: 1px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--bg);
+  background: var(--surface-2);
+  box-shadow: 0 0 0 1px var(--border);
+  color: var(--muted);
+}
+.pump-workspace-root .step-dot svg {
+  width: 9px;
+  height: 9px;
+}
+.pump-workspace-root .step-item[data-state="done"] .step-dot {
+  color: var(--status-normal);
+  box-shadow: 0 0 0 1px var(--status-normal);
+}
+.pump-workspace-root .step-item[data-state="current"] .step-dot {
+  color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.pump-workspace-root .step-label {
+  font-size: 13.5px;
+  font-weight: 540;
+}
+.pump-workspace-root .step-item[data-state="upcoming"] .step-label {
+  color: var(--muted);
+  font-weight: 500;
+}
+.pump-workspace-root .step-meta {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+/* ---------- Checklist rows (Procedure) ---------- */
+.pump-workspace-root .checklist {
+  display: flex;
+  flex-direction: column;
+}
+.pump-workspace-root .check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4) 0;
+  border-top: 1px solid var(--border);
+}
+.pump-workspace-root .check-row:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+.pump-workspace-root .check-box {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  border-radius: 6px;
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  display: grid;
+  place-items: center;
+  color: var(--accent-fg);
+}
+.pump-workspace-root .check-box[data-checked="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.pump-workspace-root .check-box svg {
+  width: 12px;
+  height: 12px;
+  opacity: 0;
+}
+.pump-workspace-root .check-box[data-checked="true"] svg {
+  opacity: 1;
+}
+.pump-workspace-root .check-body {
+  flex: 1;
+  min-width: 0;
+}
+.pump-workspace-root .check-title {
+  font-size: 14px;
+  font-weight: 540;
+  line-height: 1.4;
+}
+.pump-workspace-root .check-row[data-checked="true"] .check-title {
+  color: var(--muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--border);
+}
+.pump-workspace-root .progress-line {
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+.pump-workspace-root .progress-line b {
+  color: var(--fg);
+  font-weight: 590;
+}
+.pump-workspace-root .stock-flag.pending {
+  color: var(--status-attention);
+}
+.pump-workspace-root .status-signal.neutral {
+  color: var(--muted);
+}
+
+/* ---------- Action bar (sticky bottom, mirrors chrome-bar) ---------- */
+.pump-workspace-root .action-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 30;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+}
+.pump-workspace-root .action-bar-inner {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: var(--space-4) var(--space-6);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-5);
+  flex-wrap: wrap;
+}
+.pump-workspace-root .action-bar-status {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.pump-workspace-root .action-bar-status .label {
+  font-size: 13px;
+  font-weight: 590;
+}
+.pump-workspace-root .action-bar-status .meta {
+  font-size: 12px;
+  color: var(--muted);
+}
+.pump-workspace-root .action-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-shrink: 0;
+}
+
+/* Page needs bottom padding so the sticky action bar never overlaps content */
+.pump-workspace-root .workspace-grid {
+  padding-bottom: 120px;
+}
+
+@media (max-width: 640px) {
+  .pump-workspace-root .action-bar-inner {
+    padding: var(--space-3) var(--space-5);
+    gap: var(--space-3);
+  }
+}
