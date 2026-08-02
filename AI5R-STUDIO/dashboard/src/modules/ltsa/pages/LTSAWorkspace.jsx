@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Tabs } from "../../../design-system";
 import ExecutiveDashboard from "./ExecutiveDashboard";
 import Equipment from "./Equipment";
@@ -14,6 +14,7 @@ import ReportsWorkspace from "./ReportsWorkspace";
 import AnalyticsWorkspace from "./AnalyticsWorkspace";
 import FailureAnalysisWorkspace from "./FailureAnalysisWorkspace";
 import { WorkspaceProvider } from "../workspace/WorkspaceContext";
+import { parseWorkspaceLocation, workspaceLocation } from "../workspace/WorkspaceRegistry";
 import "./LTSAWorkspace.css";
 
 // "history"'s label is "Asset 360" (renamed under APP-ASSET360-001) --
@@ -62,8 +63,9 @@ const PAGES = {
 };
 
 export default function LTSAWorkspace({ initialActiveKey = "dashboard" }) {
-  const [activeKey, setActiveKey] = useState(initialActiveKey);
-  const [navContext, setNavContext] = useState(null);
+  const initialLocation = parseWorkspaceLocation(window.location.pathname);
+  const [activeKey, setActiveKey] = useState(initialLocation?.key ?? initialActiveKey);
+  const [navContext, setNavContext] = useState(initialLocation?.context ?? null);
   const ActivePage = PAGES[activeKey];
 
   // Extended under APP-ASSET360-001 (per ADR-ASSET360-001) with an
@@ -74,9 +76,12 @@ export default function LTSAWorkspace({ initialActiveKey = "dashboard" }) {
   // `context` is a new, optional second argument, not a breaking change
   // to the callback's shape.
   function handleNavigate(key, context) {
+    const nextContext = context ?? {};
+    window.history.pushState({}, "", workspaceLocation(key, nextContext));
     setActiveKey(key);
-    setNavContext(context ?? null);
+    setNavContext(nextContext);
   }
+  useEffect(() => { const onPopState = () => { const location = parseWorkspaceLocation(window.location.pathname); if (location) { setActiveKey(location.key); setNavContext(location.context); } }; window.addEventListener("popstate", onPopState); return () => window.removeEventListener("popstate", onPopState); }, []);
 
   return (
     <WorkspaceProvider value={{ navigate: handleNavigate }}><div>

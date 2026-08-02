@@ -28,17 +28,22 @@ import UMKMLiveStatus from "./products/UMKM_OS/components/UMKMLiveStatus";
 import AdvisorChat from "./products/UMKM_OS/components/AdvisorChat";
 import ExecutiveDashboard from "./products/UMKM_OS/components/ExecutiveDashboard";
 import LTSAWorkspace from "./modules/ltsa/pages/LTSAWorkspace";
-
-export const PUMP_WORKSPACE_ROUTE = "/ltsa/pump-workspace";
-
-function sectionFromPath(pathname) {
-    return pathname === PUMP_WORKSPACE_ROUTE ? "ltsa" : "os";
-}
+import PMWorkspace from "./modules/ltsa/pages/PMWorkspace";
+import ODWorkspace from "./modules/od/pages/ODWorkspace";
+import DashboardLayout from "./layout/DashboardLayout";
 
 const SECTION_TABS = [
     { key: "os", label: "OS Command Center" },
     { key: "ltsa", label: "LTSA" },
+    { key: "od", label: "Open Design" },
 ];
+
+export const PUMP_WORKSPACE_ROUTE = "/ltsa/pump-workspace";
+export const PM_WORKSPACE_ROUTE = "/ltsa/pm-workspace";
+
+function sectionFromPath(pathname) {
+    return pathname.startsWith("/ltsa/") ? "ltsa" : "os";
+}
 
 function App(){
     const [system,setSystem] = useState({ status:"LOADING" });
@@ -64,6 +69,7 @@ function App(){
 
     return (
         <LiveStreamProvider>
+        <DashboardLayout>
         <div className="dashboard">
             <h1>🌳 AI5R OS COMMAND CENTER</h1>
 
@@ -72,7 +78,9 @@ function App(){
             </div>
 
             {activeSection === "ltsa" ? (
-                <LTSAWorkspace initialActiveKey="history" />
+                window.location.pathname === PM_WORKSPACE_ROUTE ? <PMWorkspace /> : <LTSAWorkspace initialActiveKey="history" />
+            ) : activeSection === "od" ? (
+                <ODWorkspace />
             ) : (
             <>
             <div className="grid">
@@ -110,6 +118,7 @@ function App(){
             </>
             )}
         </div>
+        </DashboardLayout>
         </LiveStreamProvider>
     );
 }
