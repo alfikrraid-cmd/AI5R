@@ -1,6 +1,10 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
-import App from "./App";
+import { afterEach, describe, expect, it } from "vitest";
+import App, { PUMP_WORKSPACE_ROUTE } from "./App";
+
+afterEach(() => {
+  window.history.replaceState({}, "", "/");
+});
 
 describe("App", () => {
   it("renders the OS Command Center by default, preserving existing behavior", () => {
@@ -19,13 +23,23 @@ describe("App", () => {
     expect(screen.getByRole("tab", { name: "LTSA" })).toBeTruthy();
   });
 
-  it("switches to the LTSA workspace when its tab is clicked", () => {
+  it("opens the Pump Workspace route when the LTSA tab is clicked", () => {
     render(<App />);
 
     fireEvent.click(screen.getByRole("tab", { name: "LTSA" }));
 
-    expect(screen.getByRole("heading", { name: "Executive Dashboard" })).toBeTruthy();
+    expect(window.location.pathname).toBe(PUMP_WORKSPACE_ROUTE);
+    expect(screen.getByRole("heading", { name: "Pump Workspace" })).toBeTruthy();
     expect(screen.queryByRole("heading", { level: 3, name: "System" })).toBeNull();
+  });
+
+  it("registers the Pump Workspace as a directly reachable route", () => {
+    window.history.replaceState({}, "", PUMP_WORKSPACE_ROUTE);
+
+    render(<App />);
+
+    expect(screen.getByRole("tab", { name: "LTSA" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("heading", { name: "Pump Workspace" })).toBeTruthy();
   });
 
   it("switches back to the OS Command Center when its tab is clicked again", () => {
@@ -35,6 +49,7 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("tab", { name: "OS Command Center" }));
 
     expect(screen.getByRole("heading", { level: 3, name: "System" })).toBeTruthy();
-    expect(screen.queryByRole("heading", { name: "Executive Dashboard" })).toBeNull();
+    expect(window.location.pathname).toBe("/");
+    expect(screen.queryByRole("heading", { name: "Pump Workspace" })).toBeNull();
   });
 });

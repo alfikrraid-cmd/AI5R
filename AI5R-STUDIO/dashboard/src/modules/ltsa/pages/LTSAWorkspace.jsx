@@ -32,8 +32,8 @@ const PAGES = {
   analytics: AnalyticsWorkspace,
 };
 
-export default function LTSAWorkspace() {
-  const [activeKey, setActiveKey] = useState("dashboard");
+export default function LTSAWorkspace({ initialActiveKey = "dashboard" }) {
+  const [activeKey, setActiveKey] = useState(initialActiveKey);
   const ActivePage = PAGES[activeKey];
 
   return (

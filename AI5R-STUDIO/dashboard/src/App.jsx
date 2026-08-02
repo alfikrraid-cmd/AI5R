@@ -29,6 +29,12 @@ import AdvisorChat from "./products/UMKM_OS/components/AdvisorChat";
 import ExecutiveDashboard from "./products/UMKM_OS/components/ExecutiveDashboard";
 import LTSAWorkspace from "./modules/ltsa/pages/LTSAWorkspace";
 
+export const PUMP_WORKSPACE_ROUTE = "/ltsa/pump-workspace";
+
+function sectionFromPath(pathname) {
+    return pathname === PUMP_WORKSPACE_ROUTE ? "ltsa" : "os";
+}
+
 const SECTION_TABS = [
     { key: "os", label: "OS Command Center" },
     { key: "ltsa", label: "LTSA" },
@@ -37,12 +43,24 @@ const SECTION_TABS = [
 function App(){
     const [system,setSystem] = useState({ status:"LOADING" });
     const [dashboard,setDashboard] = useState({ agents:0, memories:0 });
-    const [activeSection,setActiveSection] = useState("os");
+    const [activeSection,setActiveSection] = useState(() => sectionFromPath(window.location.pathname));
 
     useEffect(()=>{
         getSystemStatus().then(data=>setSystem(data));
         getDashboardData().then(data=>setDashboard(data));
     },[]);
+
+    useEffect(() => {
+        const handlePopState = () => setActiveSection(sectionFromPath(window.location.pathname));
+        window.addEventListener("popstate", handlePopState);
+        return () => window.removeEventListener("popstate", handlePopState);
+    }, []);
+
+    function handleSectionChange(section) {
+        const route = section === "ltsa" ? PUMP_WORKSPACE_ROUTE : "/";
+        window.history.pushState({}, "", route);
+        setActiveSection(section);
+    }
 
     return (
         <LiveStreamProvider>
@@ -50,11 +68,11 @@ function App(){
             <h1>🌳 AI5R OS COMMAND CENTER</h1>
 
             <div className="dashboard-nav">
-                <Tabs items={SECTION_TABS} activeKey={activeSection} onChange={setActiveSection} />
+                <Tabs items={SECTION_TABS} activeKey={activeSection} onChange={handleSectionChange} />
             </div>
 
             {activeSection === "ltsa" ? (
-                <LTSAWorkspace />
+                <LTSAWorkspace initialActiveKey="history" />
             ) : (
             <>
             <div className="grid">
