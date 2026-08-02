@@ -1,0 +1,1 @@
+import { useState } from "react"; export function useWorkspaceDrawer(){const [drawer,setDrawer]=useState(null);return {drawer,openDrawer:setDrawer,closeDrawer:()=>setDrawer(null)}}

@@ -1,0 +1,1 @@
+export default function WorkspaceShell({className="",theme,children}){return <div className={`pump-workspace-root ${className}`.trim()} data-theme={theme}>{children}</div>}

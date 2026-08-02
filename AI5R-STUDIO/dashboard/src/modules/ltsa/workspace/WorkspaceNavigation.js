@@ -1,0 +1,1 @@
+import { useWorkspaceContext } from "./WorkspaceContext"; export function useWorkspaceNavigation(){const context=useWorkspaceContext();return context?.navigate ?? (()=>{})}

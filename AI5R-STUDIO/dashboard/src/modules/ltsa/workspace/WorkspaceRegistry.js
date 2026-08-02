@@ -1,0 +1,1 @@
+export const WORKSPACE_KEYS={PUMP:"history",PM:"pm-workspace",CONDITION_MONITORING:"cmon-workspace"};

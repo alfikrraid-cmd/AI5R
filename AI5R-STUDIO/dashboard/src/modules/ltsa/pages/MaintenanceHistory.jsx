@@ -35,6 +35,9 @@ import {
 } from "../utils/maintenanceHistory";
 import { toWorkspaceTimelineItem } from "../utils/pumpWorkspaceEventTaxonomy";
 import "./MaintenanceHistory.css";
+import WorkspaceShell from "../workspace/WorkspaceShell";
+import { useWorkspaceTheme } from "../workspace/WorkspaceTheme";
+import { useWorkspaceShortcuts } from "../workspace/WorkspaceShortcuts";
 
 const RUNNING_LABEL = {
   RUNNING: "Running",
@@ -87,26 +90,11 @@ export default function MaintenanceHistory({ onNavigate, navContext }) {
   const [spareParts, setSpareParts] = useState([]);
   const [summary, setSummary] = useState(null);
 
-  const [theme, setTheme] = useState(() => {
-    try {
-      return localStorage.getItem("ltsa-theme") || "light";
-    } catch {
-      return "light";
-    }
-  });
+  const [theme, setTheme] = useWorkspaceTheme();
   const [drawerMode, setDrawerMode] = useState(null);
   const [toast, setToast] = useState(null);
   const [cmReason, setCmReason] = useState("");
-  const [paletteOpen, setPaletteOpen] = useState(false);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem("ltsa-theme", theme);
-    } catch {
-      // localStorage unavailable (e.g. private browsing) -- theme still
-      // applies for this session via the data-theme attribute below.
-    }
-  }, [theme]);
+  const [paletteOpen, setPaletteOpen] = useWorkspaceShortcuts();
 
   const showToast = useCallback((message) => {
     setToast(message);
@@ -250,19 +238,6 @@ export default function MaintenanceHistory({ onNavigate, navContext }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTag]);
-
-  useEffect(() => {
-    function onKeyDown(event) {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        setPaletteOpen(true);
-      } else if (event.key === "Escape") {
-        setPaletteOpen(false);
-      }
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
 
   const timelineItems = useMemo(() => eventStream.map(toWorkspaceTimelineItem), [eventStream]);
 

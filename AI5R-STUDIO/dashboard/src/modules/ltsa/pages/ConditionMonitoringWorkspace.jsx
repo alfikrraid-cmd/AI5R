@@ -10,6 +10,10 @@ import { mapPumpRecord } from "../utils/pumpMapping";
 import { mapConditionMonitoringReadingRecord, mapConditionMonitoringScheduleRecord } from "../utils/conditionMonitoringMapping";
 import "./MaintenanceHistory.css";
 import "./ConditionMonitoringWorkspace.css";
+import WorkspaceShell from "../workspace/WorkspaceShell";
+import { useWorkspaceTheme } from "../workspace/WorkspaceTheme";
+import { useWorkspaceShortcuts } from "../workspace/WorkspaceShortcuts";
+import { useWorkspaceDrawer } from "../workspace/WorkspaceDrawer";
 
 const unavailable = (label) => <PumpWorkspaceComingSoon label={label} />;
 const fmt = (value, suffix = "") => value == null || value === "" ? "Unavailable" : `${value}${suffix}`;
@@ -31,11 +35,9 @@ export default function ConditionMonitoringWorkspace({ navContext, onNavigate })
   const [readings, setReadings] = useState([]);
   const [schedules, setSchedules] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [paletteOpen, setPaletteOpen] = useState(false);
-  const [drawer, setDrawer] = useState(null);
-  const [theme, setTheme] = useState(() => { try { return localStorage.getItem("ltsa-theme") || "light"; } catch { return "light"; } });
-
-  useEffect(() => { try { localStorage.setItem("ltsa-theme", theme); } catch {} }, [theme]);
+  const [paletteOpen, setPaletteOpen] = useWorkspaceShortcuts();
+  const { drawer, openDrawer: setDrawer } = useWorkspaceDrawer();
+  const [theme, setTheme] = useWorkspaceTheme();
   useEffect(() => {
     let active = true;
     Promise.all([
@@ -48,10 +50,6 @@ export default function ConditionMonitoringWorkspace({ navContext, onNavigate })
       if (!selectedTag && pumpItems.length === 1) setSelectedTag(pumpItems[0].tag);
     });
     return () => { active = false; };
-  }, []);
-  useEffect(() => {
-    const keydown = (event) => { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") { event.preventDefault(); setPaletteOpen(true); } if (event.key === "Escape") setPaletteOpen(false); };
-    window.addEventListener("keydown", keydown); return () => window.removeEventListener("keydown", keydown);
   }, []);
 
   const pump = pumps.find((item) => item.tag === selectedTag) ?? null;
@@ -67,7 +65,7 @@ export default function ConditionMonitoringWorkspace({ navContext, onNavigate })
     { id: "recommendation", label: "View recommendation", hint: "Unavailable", icon: IconWrench, run: () => showDrawer("Recommendation") },
   ], [showDrawer]);
 
-  return <div className="pump-workspace-root cmon-workspace-root" data-theme={theme}>
+  return <WorkspaceShell className="cmon-workspace-root" theme={theme}>
     <header className="chrome-bar"><div className="chrome-inner"><div className="crumb"><span>LTSA</span><span className="sep">/</span><span>Condition Monitoring</span><span className="sep">/</span><b>{pump?.tag ?? "Observation"}</b></div><div className="chrome-right"><button type="button" className="cmdk-trigger" onClick={() => setPaletteOpen(true)}><IconSearch width="14" height="14" /> Actions <kbd>Ctrl K</kbd></button><button type="button" className="icon-btn" onClick={() => setTheme(theme === "light" ? "dark" : "light")} aria-label="Toggle theme">{theme === "light" ? <IconMoon width="16" height="16" /> : <IconSun width="16" height="16" />}</button></div></div></header>
     <div className="workspace-shell"><AssetSelector assets={pumps} selectedTag={selectedTag} onSelect={setSelectedTag} />
       {loading ? <div className="workspace-empty">Loading condition monitoring data...</div> : !selectedTag ? <div className="workspace-empty">Select a pump to observe its condition.</div> : <>
@@ -82,5 +80,5 @@ export default function ConditionMonitoringWorkspace({ navContext, onNavigate })
       </>}</div>
     <div className="action-bar"><div className="action-bar-inner"><div className="action-bar-status"><span className="label">Observation is read-only</span><span className="meta">Recommendations and intervention actions are unavailable.</span></div><div className="action-bar-actions"><button className="btn-link" type="button" onClick={() => showDrawer("Evidence")}>View evidence</button><button className="btn-primary" type="button" disabled>Review recommendation</button></div></div></div>
     <PumpWorkspaceCommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} actions={actions} pumpTag={selectedTag ?? "pump"} /><PumpWorkspaceDrawer open={Boolean(drawer)} onClose={() => setDrawer(null)} title={drawer ?? "Unavailable"}>{unavailable(drawer ?? "This capability")}</PumpWorkspaceDrawer>
-  </div>;
+  </WorkspaceShell>;
 }

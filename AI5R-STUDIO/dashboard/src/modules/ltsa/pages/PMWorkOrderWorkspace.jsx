@@ -27,6 +27,9 @@ import { mapWorkOrderRecord } from "../utils/workOrderMapping";
 import { mapSparePartRecord } from "../utils/inventoryContextMapping";
 import { statusLabel as woStatusLabel } from "../utils/workOrderStatus";
 import "./MaintenanceHistory.css";
+import WorkspaceShell from "../workspace/WorkspaceShell";
+import { useWorkspaceTheme } from "../workspace/WorkspaceTheme";
+import { useWorkspaceShortcuts } from "../workspace/WorkspaceShortcuts";
 import "./PMWorkOrderWorkspace.css";
 
 function safeList(promise) {
@@ -140,25 +143,11 @@ export default function PMWorkOrderWorkspace({ navContext, onNavigate }) {
   const [pmOccurrence, setPmOccurrence] = useState(null);
   const [spareParts, setSpareParts] = useState([]);
 
-  const [theme, setTheme] = useState(() => {
-    try {
-      return localStorage.getItem("ltsa-theme") || "light";
-    } catch {
-      return "light";
-    }
-  });
+  const [theme, setTheme] = useWorkspaceTheme();
   const [drawerMode, setDrawerMode] = useState(null);
   const [toast, setToast] = useState(null);
-  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useWorkspaceShortcuts();
   const [procFilter, setProcFilter] = useState("all");
-
-  useEffect(() => {
-    try {
-      localStorage.setItem("ltsa-theme", theme);
-    } catch {
-      // localStorage unavailable -- theme still applies for this session.
-    }
-  }, [theme]);
 
   const showToast = useCallback((message) => {
     setToast(message);
@@ -218,19 +207,6 @@ export default function PMWorkOrderWorkspace({ navContext, onNavigate }) {
       active = false;
     };
   }, [workOrderId]);
-
-  useEffect(() => {
-    function onKeyDown(event) {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        setPaletteOpen(true);
-      } else if (event.key === "Escape") {
-        setPaletteOpen(false);
-      }
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
 
   const procedureItems = useMemo(() => {
     const required = pmSchedule?.checklist ?? [];

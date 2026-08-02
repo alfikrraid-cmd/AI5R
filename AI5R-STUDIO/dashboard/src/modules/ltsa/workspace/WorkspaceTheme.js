@@ -1,0 +1,1 @@
+import { useEffect, useState } from "react"; export function useWorkspaceTheme(){const [theme,setTheme]=useState(()=>{try{return localStorage.getItem("ltsa-theme")||"light"}catch{return "light"}});useEffect(()=>{try{localStorage.setItem("ltsa-theme",theme)}catch{}},[theme]);return [theme,setTheme]}
