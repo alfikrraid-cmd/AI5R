@@ -1,21 +1,845 @@
-.maintenance-history-layout {
-  display: flex;
-  gap: 24px;
-  align-items: flex-start;
+/* ==========================================================================
+   Pump Workspace -- ported from DESIGN/LTSA/PUMP_WORKSPACE/design-tokens.css
+   and pump-workspace.html, scoped under .pump-workspace-root so these
+   tokens never leak into the rest of the app's own design system.
+   Object-centric, calm-industrial: flat by default, elevation reserved
+   for overlays only, one accent, four status tiers.
+   ========================================================================== */
+
+.pump-workspace-root {
+  --bg: oklch(99% 0.002 240);
+  --surface: oklch(100% 0 0);
+  --surface-2: oklch(97% 0.005 240);
+  --fg: oklch(18% 0.012 250);
+  --muted: oklch(50% 0.014 250);
+  --border: oklch(91% 0.006 250);
+  --accent: oklch(52% 0.15 255);
+  --accent-fg: oklch(99% 0.002 240);
+
+  --status-normal: oklch(56% 0.13 155);
+  --status-attention: oklch(58% 0.13 75);
+  --status-high: oklch(52% 0.17 40);
+  --status-critical: oklch(50% 0.19 25);
+
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", system-ui, sans-serif;
+  --font-body: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "SF Mono", "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+
+  --text-xs: 11px;
+  --text-sm: 13px;
+  --text-base: 15px;
+  --text-md: 16px;
+  --text-lg: 20px;
+  --text-xl: clamp(24px, 2.6vw, 30px);
+  --text-2xl: clamp(28px, 3.4vw, 38px);
+  --text-3xl: clamp(34px, 4.4vw, 54px);
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+  --space-9: 96px;
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --shadow-sm: 0 1px 3px oklch(18% 0.012 250 / 0.04), 0 6px 20px oklch(18% 0.012 250 / 0.05);
+  --shadow-md: 0 10px 32px oklch(18% 0.012 250 / 0.1);
+  --shadow-lg: 0 24px 64px oklch(18% 0.012 250 / 0.18);
+
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }
 
-.maintenance-history-timeline {
-  flex: 2;
+.pump-workspace-root[data-theme="dark"] {
+  --bg: oklch(17% 0.01 250);
+  --surface: oklch(21% 0.012 250);
+  --surface-2: oklch(25% 0.013 250);
+  --fg: oklch(93% 0.006 250);
+  --muted: oklch(66% 0.014 250);
+  --border: oklch(32% 0.014 250);
+  --accent: oklch(70% 0.15 255);
+  --accent-fg: oklch(14% 0.01 255);
+  --shadow-sm: 0 1px 3px oklch(0% 0 0 / 0.2), 0 6px 20px oklch(0% 0 0 / 0.22);
+  --shadow-md: 0 10px 32px oklch(0% 0 0 / 0.4);
+  --shadow-lg: 0 24px 64px oklch(0% 0 0 / 0.55);
+}
+
+.pump-workspace-root .tabular {
+  font-variant-numeric: tabular-nums;
+}
+.pump-workspace-root .mono {
+  font-family: var(--font-mono);
+}
+.pump-workspace-root .eyebrow {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.pump-workspace-root button,
+.pump-workspace-root input,
+.pump-workspace-root textarea {
+  font-family: inherit;
+}
+.pump-workspace-root kbd {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 2px 6px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+/* ---------- Chrome bar ---------- */
+.pump-workspace-root .chrome-bar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  height: 52px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+}
+.pump-workspace-root .chrome-inner {
+  max-width: 1240px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 var(--space-6);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.pump-workspace-root .crumb {
+  font-size: var(--text-sm);
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pump-workspace-root .crumb b {
+  color: var(--fg);
+  font-weight: 540;
+}
+.pump-workspace-root .crumb .sep {
+  opacity: 0.5;
+}
+.pump-workspace-root .chrome-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.pump-workspace-root .cmdk-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 8px 6px 12px;
+  font-size: 12.5px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.pump-workspace-root .cmdk-trigger:hover {
+  background: var(--surface-2);
+  border-color: color-mix(in oklab, var(--border) 50%, var(--fg));
+}
+.pump-workspace-root .icon-btn {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--fg);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+.pump-workspace-root .icon-btn:hover {
+  background: var(--surface-2);
+}
+.pump-workspace-root .icon-btn:active {
+  transform: scale(0.94);
+}
+
+/* ---------- Grid ---------- */
+.pump-workspace-root .workspace-grid {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-6) 100px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 336px;
+  gap: var(--space-9);
+  align-items: start;
+}
+.pump-workspace-root .object-column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
   min-width: 0;
 }
 
-.maintenance-history-detail {
-  flex: 1;
-  min-width: 280px;
+/* ---------- Identity ---------- */
+.pump-workspace-root .identity h1 {
+  font-family: var(--font-display);
+  font-size: var(--text-3xl);
+  font-weight: 630;
+  letter-spacing: -0.025em;
+  line-height: 1.05;
+  margin: 0 0 var(--space-3);
+}
+.pump-workspace-root .identity-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+.pump-workspace-root .identity-meta .dot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--border);
+}
+.pump-workspace-root .identity-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  margin-top: var(--space-4);
+  flex-wrap: wrap;
+}
+.pump-workspace-root .status-signal {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-md);
+  font-weight: 560;
+}
+.pump-workspace-root .status-signal .dot-lg {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+.pump-workspace-root .status-signal.normal {
+  color: var(--status-normal);
+}
+.pump-workspace-root .status-signal.attention {
+  color: var(--status-attention);
+}
+.pump-workspace-root .status-signal.high {
+  color: var(--status-high);
+}
+.pump-workspace-root .status-signal.critical {
+  color: var(--status-critical);
+}
+.pump-workspace-root .status-signal.unavailable {
+  color: var(--muted);
+}
+.pump-workspace-root .running-line {
+  font-size: var(--text-sm);
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.pump-workspace-root .running-line .dot-sm {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--status-normal);
+  flex-shrink: 0;
 }
 
-@media (max-width: 768px) {
-  .maintenance-history-layout {
-    flex-direction: column;
+/* ---------- Assessment ---------- */
+.pump-workspace-root .assessment-section {
+  padding-top: var(--space-7);
+  border-top: 1px solid var(--border);
+}
+.pump-workspace-root .assessment-headline {
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.28;
+  margin: var(--space-4) 0 var(--space-6);
+  max-width: 40ch;
+}
+.pump-workspace-root .assessment-columns {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap: var(--space-7);
+}
+.pump-workspace-root .assessment-columns .eyebrow {
+  margin-bottom: var(--space-3);
+}
+.pump-workspace-root .assessment-columns p {
+  margin: 0;
+  font-size: var(--text-md);
+  line-height: 1.68;
+  color: var(--fg);
+  max-width: 44ch;
+}
+.pump-workspace-root .assessment-footer {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  flex-wrap: wrap;
+  margin-top: var(--space-6);
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--border);
+}
+.pump-workspace-root .confidence-inline {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.pump-workspace-root .confidence-tier {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 590;
+  letter-spacing: 0.02em;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--fg);
+  flex-shrink: 0;
+}
+.pump-workspace-root .confidence-label {
+  font-size: var(--text-sm);
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.pump-workspace-root .btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--accent);
+  color: var(--accent-fg);
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 11px 18px;
+  font-size: 14px;
+  font-weight: 550;
+  cursor: pointer;
+  transition: transform 0.1s ease, opacity 0.15s ease;
+}
+.pump-workspace-root .btn-primary:hover {
+  opacity: 0.92;
+}
+.pump-workspace-root .btn-primary:active {
+  transform: scale(0.98);
+}
+.pump-workspace-root .btn-link {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 510;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+.pump-workspace-root .btn-link:hover {
+  color: var(--fg);
+  border-color: var(--border);
+}
+
+/* ---------- Coming Soon (added -- not in export; approved-with-modification
+   treatment for capabilities whose backend does not exist yet) ---------- */
+.pump-workspace-root .coming-soon {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) 0;
+}
+.pump-workspace-root .coming-soon-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.pump-workspace-root .coming-soon-text {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+.pump-workspace-root .field-unavailable {
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* ---------- Timeline ---------- */
+.pump-workspace-root .section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+.pump-workspace-root .timeline-filter {
+  display: flex;
+  gap: 6px;
+}
+.pump-workspace-root .tf-chip {
+  font-size: 12px;
+  font-weight: 550;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.pump-workspace-root .tf-chip[data-active="true"] {
+  background: var(--fg);
+  color: var(--bg);
+  border-color: var(--fg);
+}
+.pump-workspace-root .timeline-empty {
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.pump-workspace-root .timeline {
+  position: relative;
+  padding-left: 26px;
+}
+.pump-workspace-root .timeline::before {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 6px;
+  bottom: 6px;
+  width: 1px;
+  background: var(--border);
+}
+.pump-workspace-root .t-item {
+  position: relative;
+  padding-bottom: var(--space-5);
+}
+.pump-workspace-root .t-item:last-child {
+  padding-bottom: 0;
+}
+.pump-workspace-root .t-dot {
+  position: absolute;
+  left: -26px;
+  top: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--bg);
+  box-shadow: 0 0 0 1px var(--border);
+}
+.pump-workspace-root .t-dot-pm {
+  color: var(--status-normal);
+}
+.pump-workspace-root .t-dot-cm {
+  color: var(--status-attention);
+}
+.pump-workspace-root .t-dot-breakdown {
+  color: var(--status-critical);
+}
+.pump-workspace-root .t-dot-alert {
+  color: var(--status-high);
+}
+.pump-workspace-root .t-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.pump-workspace-root .t-title {
+  font-size: 14.5px;
+  font-weight: 550;
+}
+.pump-workspace-root .t-time {
+  font-size: 12px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.pump-workspace-root .t-desc {
+  font-size: 13.5px;
+  color: var(--muted);
+  margin-top: 4px;
+  line-height: 1.6;
+  max-width: 60ch;
+}
+.pump-workspace-root .t-tag {
+  display: inline-block;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 5px;
+  margin-right: var(--space-2);
+  background: color-mix(in oklab, currentColor 14%, transparent);
+}
+.pump-workspace-root .t-tag-pm {
+  color: var(--status-normal);
+}
+.pump-workspace-root .t-tag-cm {
+  color: var(--status-attention);
+}
+.pump-workspace-root .t-tag-breakdown {
+  color: var(--status-critical);
+}
+.pump-workspace-root .t-tag-alert {
+  color: var(--status-high);
+}
+
+/* ---------- Inspector rail ---------- */
+.pump-workspace-root .inspector-rail {
+  position: sticky;
+  top: 76px;
+  background: var(--surface-2);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+.pump-workspace-root .rail-section + .rail-section {
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--border);
+}
+.pump-workspace-root .rail-title {
+  font-size: var(--text-sm);
+  font-weight: 590;
+  margin: 0 0 var(--space-4);
+}
+.pump-workspace-root .info-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) 0;
+  gap: var(--space-3);
+}
+.pump-workspace-root .info-row .k {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.pump-workspace-root .info-row .v {
+  font-size: 13px;
+  font-weight: 510;
+  text-align: right;
+}
+.pump-workspace-root .seal-status {
+  font-size: 12px;
+  font-weight: 590;
+  color: var(--status-attention);
+}
+
+.pump-workspace-root .part-item {
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--border);
+}
+.pump-workspace-root .part-item:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+.pump-workspace-root .part-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+.pump-workspace-root .part-name {
+  font-size: 13px;
+  font-weight: 540;
+}
+.pump-workspace-root .part-meta {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 3px;
+}
+.pump-workspace-root .stock-flag {
+  font-size: 11px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.pump-workspace-root .stock-flag.ok {
+  color: var(--status-normal);
+}
+.pump-workspace-root .stock-flag.low {
+  color: var(--status-critical);
+}
+.pump-workspace-root .stock-flag.unknown {
+  color: var(--muted);
+}
+
+.pump-workspace-root .drawing-thumb {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  margin-bottom: var(--space-3);
+  background: var(--surface);
+}
+
+/* ---------- Command palette ---------- */
+.pump-workspace-root .cmdk-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: oklch(10% 0 0 / 0.4);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 14vh;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.16s ease;
+}
+.pump-workspace-root .cmdk-overlay[data-open="true"] {
+  opacity: 1;
+  pointer-events: auto;
+}
+.pump-workspace-root .cmdk-panel {
+  width: min(560px, 92vw);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  transform: translateY(-8px) scale(0.98);
+  transition: transform 0.16s ease;
+}
+.pump-workspace-root .cmdk-overlay[data-open="true"] .cmdk-panel {
+  transform: translateY(0) scale(1);
+}
+.pump-workspace-root .cmdk-input-row {
+  border-bottom: 1px solid var(--border);
+  padding: 4px 6px;
+}
+.pump-workspace-root .cmdk-input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  outline: none;
+  padding: 14px 12px;
+  font-size: 15px;
+  color: var(--fg);
+}
+.pump-workspace-root .cmdk-input::placeholder {
+  color: var(--muted);
+}
+.pump-workspace-root .cmdk-list {
+  max-height: 320px;
+  overflow-y: auto;
+  padding: var(--space-2);
+}
+.pump-workspace-root .cmdk-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.pump-workspace-root .cmdk-item svg {
+  width: 16px;
+  height: 16px;
+  stroke: var(--muted);
+  flex-shrink: 0;
+}
+.pump-workspace-root .cmdk-item[data-active="true"] {
+  background: var(--surface-2);
+}
+.pump-workspace-root .cmdk-item-hint {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--muted);
+}
+.pump-workspace-root .cmdk-empty {
+  padding: var(--space-6) 12px;
+  text-align: center;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+.pump-workspace-root .cmdk-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 9px 16px;
+  border-top: 1px solid var(--border);
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.pump-workspace-root .cmdk-footer .hints {
+  display: flex;
+  gap: var(--space-3);
+}
+
+/* ---------- Drawer ---------- */
+.pump-workspace-root .drawer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: oklch(10% 0 0 / 0.28);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.22s ease;
+}
+.pump-workspace-root .drawer-overlay[data-open="true"] {
+  opacity: 1;
+  pointer-events: auto;
+}
+.pump-workspace-root .drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(420px, 100vw);
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+  transform: translateX(100%);
+  transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+  display: flex;
+  flex-direction: column;
+  z-index: 51;
+}
+.pump-workspace-root .drawer[data-open="true"] {
+  transform: translateX(0);
+}
+.pump-workspace-root .drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-5);
+  border-bottom: 1px solid var(--border);
+}
+.pump-workspace-root .drawer-title {
+  font-family: var(--font-display);
+  font-size: 15.5px;
+  font-weight: 590;
+  margin: 0;
+}
+.pump-workspace-root .drawer-body {
+  padding: var(--space-5);
+  overflow-y: auto;
+  flex: 1;
+}
+.pump-workspace-root .drawer-body p {
+  font-size: 13.5px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+.pump-workspace-root textarea.cm-input {
+  width: 100%;
+  min-height: 110px;
+  margin-top: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  font-size: 13.5px;
+  color: var(--fg);
+  background: var(--bg);
+  resize: vertical;
+}
+
+/* ---------- Toast ---------- */
+.pump-workspace-root .toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: var(--fg);
+  color: var(--bg);
+  padding: 12px 20px;
+  border-radius: 999px;
+  font-size: 13.5px;
+  font-weight: 510;
+  box-shadow: var(--shadow-lg);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.pump-workspace-root .toast[data-open="true"] {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+  pointer-events: auto;
+}
+
+/* ---------- Pre-workspace chrome (asset picker, before a pump is selected --
+   not part of the approved design, which assumes arrival already scoped to
+   one pump via the breadcrumb; preserved so the plant-wide "Asset 360" nav
+   entry point keeps working) ---------- */
+.pump-workspace-picker {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: var(--space-6);
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 980px) {
+  .pump-workspace-root .workspace-grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-7);
+  }
+  .pump-workspace-root .inspector-rail {
+    position: static;
+  }
+}
+@media (max-width: 640px) {
+  .pump-workspace-root .chrome-inner {
+    padding: 0 var(--space-5);
+  }
+  .pump-workspace-root .workspace-grid {
+    padding: var(--space-7) var(--space-5) 72px;
+    gap: var(--space-6);
+  }
+  .pump-workspace-root .assessment-columns {
+    grid-template-columns: 1fr;
+    gap: var(--space-5);
+  }
+  .pump-workspace-root .crumb span:not(.sep):not(:last-child) {
+    display: none;
   }
 }

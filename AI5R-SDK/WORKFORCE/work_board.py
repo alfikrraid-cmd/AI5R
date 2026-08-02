@@ -8,6 +8,7 @@ class WorkBoard:
         self._published: dict[str, WorkItem] = {}
         self._claimed: dict[str, WorkItem] = {}
         self._completed: dict[str, WorkItem] = {}
+        self._released: dict[str, WorkItem] = {}
 
     def publish(self, work_item: WorkItem):
 
@@ -57,3 +58,39 @@ class WorkBoard:
         del self._published[work_item_id]
 
         return work_item
+
+    def complete(self, employee: DigitalEmployee, work_item_id: str):
+
+        if work_item_id not in self._claimed:
+            raise ValueError("Work item is not claimed")
+
+        work_item = self._claimed[work_item_id]
+
+        if work_item.assigned_employee_id != employee.employee_id:
+            raise ValueError("Only the employee who claimed the work item can complete it")
+
+        work_item.status = "COMPLETED"
+
+        self._completed[work_item_id] = work_item
+        del self._claimed[work_item_id]
+
+        return work_item
+
+    def release(self, work_item_id: str):
+
+        if work_item_id not in self._completed:
+            raise ValueError("Work item must be COMPLETED before it can be released")
+
+        work_item = self._completed[work_item_id]
+        work_item.status = "RELEASED"
+
+        self._released[work_item_id] = work_item
+        del self._completed[work_item_id]
+
+        return work_item
+
+    def released_work_items(self):
+
+        return list(
+            self._released.values()
+        )
