@@ -12,6 +12,8 @@ import MaintenanceHistory from "./MaintenanceHistory";
 import PMWorkOrderWorkspace from "./PMWorkOrderWorkspace";
 import ReportsWorkspace from "./ReportsWorkspace";
 import AnalyticsWorkspace from "./AnalyticsWorkspace";
+import FailureAnalysisWorkspace from "./FailureAnalysisWorkspace";
+import { WorkspaceProvider } from "../workspace/WorkspaceContext";
 import "./LTSAWorkspace.css";
 
 // "history"'s label is "Asset 360" (renamed under APP-ASSET360-001) --
@@ -52,6 +54,7 @@ const PAGES = {
   cm: CM,
   cmon: ConditionMonitoring,
   "cmon-workspace": ConditionMonitoringWorkspace,
+  "failure-analysis-workspace": FailureAnalysisWorkspace,
   history: MaintenanceHistory,
   "pm-workspace": PMWorkOrderWorkspace,
   reports: ReportsWorkspace,
@@ -76,7 +79,7 @@ export default function LTSAWorkspace({ initialActiveKey = "dashboard" }) {
   }
 
   return (
-    <div>
+    <WorkspaceProvider value={{ navigate: handleNavigate }}><div>
       <div className="no-print">
         <Tabs items={TABS} activeKey={activeKey} onChange={handleNavigate} />
       </div>
@@ -84,6 +87,6 @@ export default function LTSAWorkspace({ initialActiveKey = "dashboard" }) {
       <div className="ltsa-workspace-content">
         <ActivePage onNavigate={handleNavigate} navContext={navContext} />
       </div>
-    </div>
+    </div></WorkspaceProvider>
   );
 }
