@@ -1,0 +1,1898 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Snapshot > matches the full Executive Dashboard snapshot 1`] = `
+<div
+  class="executive-dashboard-layout"
+>
+  <div
+    style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;"
+  >
+    <div>
+      <h1
+        style="margin: 0px; color: rgb(255, 255, 255); font-family: Arial, sans-serif;"
+      >
+        Executive Dashboard
+      </h1>
+      <p
+        style="margin: 0px; color: rgb(148, 163, 184);"
+      >
+        LTSA Engineering — Maintenance Operations Overview
+      </p>
+    </div>
+  </div>
+  <div
+    style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px;"
+  >
+    <div
+      style="flex: 1 1 240px; min-width: 200px;"
+    >
+      <input
+        class="ds-search-box"
+        placeholder="Search equipment, work orders, drawings…"
+        role="searchbox"
+        type="search"
+        value=""
+      />
+    </div>
+    <div
+      style="display: flex; align-items: center; gap: 16px;"
+    >
+      <label>
+        <span
+          style="margin-right: 4px;"
+        >
+          Workspace
+        </span>
+        <select
+          aria-label="Workspace Selector"
+        >
+          <option
+            disabled=""
+            selected=""
+            value=""
+          >
+            Jump to workspace…
+          </option>
+          <option
+            value="pump"
+          >
+            Open Pump Registry
+          </option>
+          <option
+            value="seal"
+          >
+            Open Mechanical Seal
+          </option>
+          <option
+            value="workorder"
+          >
+            Open Work Orders
+          </option>
+          <option
+            value="pm"
+          >
+            Open Preventive Maintenance
+          </option>
+          <option
+            value="cm"
+          >
+            Open Corrective Maintenance
+          </option>
+          <option
+            value="cmon"
+          >
+            Open Condition Monitoring
+          </option>
+          <option
+            value="history"
+          >
+            Open Asset 360
+          </option>
+          <option
+            value="reports"
+          >
+            Open Reports
+          </option>
+          <option
+            value="analytics"
+          >
+            Open Analytics
+          </option>
+          <option
+            value="drawing"
+          >
+            Open Drawing
+          </option>
+          <option
+            value="document"
+          >
+            Open Document
+          </option>
+          <option
+            disabled=""
+            value="inventory"
+          >
+            Open Inventory
+          </option>
+        </select>
+      </label>
+      <span
+        aria-label="Notifications"
+        title="No unread notifications"
+      >
+        <span
+          data-testid="badge"
+          style="background-color: rgb(59, 130, 246); color: rgb(255, 255, 255); font-family: Arial, sans-serif; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 16px; display: inline-block;"
+        >
+          Notifications: 0
+        </span>
+      </span>
+      <span
+        aria-label="User"
+      >
+        Plant Manager
+      </span>
+    </div>
+  </div>
+  <div
+    class="executive-dashboard-kpi-grid"
+  >
+    <div
+      class="card"
+      data-testid="panel"
+      style="background: rgb(21, 28, 51); color: rgb(255, 255, 255); border-radius: 8px;"
+    >
+      <h3>
+        Total Pumps
+      </h3>
+      <strong>
+        13
+      </strong>
+    </div>
+    <div
+      class="card"
+      data-testid="panel"
+      style="background: rgb(21, 28, 51); color: rgb(255, 255, 255); border-radius: 8px;"
+    >
+      <h3>
+        Mechanical Seals
+      </h3>
+      <strong>
+        Unavailable
+      </strong>
+    </div>
+    <div
+      class="card"
+      data-testid="panel"
+      style="background: rgb(21, 28, 51); color: rgb(255, 255, 255); border-radius: 8px;"
+    >
+      <h3>
+        PM Compliance
+      </h3>
+      <strong>
+        63%
+      </strong>
+    </div>
+    <div
+      class="card"
+      data-testid="panel"
+      style="background: rgb(21, 28, 51); color: rgb(255, 255, 255); border-radius: 8px;"
+    >
+      <h3>
+        CM Coverage
+      </h3>
+      <strong>
+        Unavailable
+      </strong>
+    </div>
+    <div
+      class="card"
+      data-testid="panel"
+      style="background: rgb(21, 28, 51); color: rgb(255, 255, 255); border-radius: 8px;"
+    >
+      <h3>
+        Open Work Orders
+      </h3>
+      <strong>
+        7
+      </strong>
+    </div>
+    <div
+      class="card"
+      data-testid="panel"
+      style="background: rgb(21, 28, 51); color: rgb(255, 255, 255); border-radius: 8px;"
+    >
+      <h3>
+        Overdue PM
+      </h3>
+      <strong>
+        3
+      </strong>
+    </div>
+    <div
+      class="card"
+      data-testid="panel"
+      style="background: rgb(21, 28, 51); color: rgb(255, 255, 255); border-radius: 8px;"
+    >
+      <h3>
+        Upcoming PM
+      </h3>
+      <strong>
+        2
+      </strong>
+    </div>
+    <div
+      class="card"
+      data-testid="panel"
+      style="background: rgb(21, 28, 51); color: rgb(255, 255, 255); border-radius: 8px;"
+    >
+      <h3>
+        Open Corrective Maintenance
+      </h3>
+      <strong>
+        4
+      </strong>
+    </div>
+    <div
+      class="card"
+      data-testid="panel"
+      style="background: rgb(21, 28, 51); color: rgb(255, 255, 255); border-radius: 8px;"
+    >
+      <h3>
+        Critical Assets
+      </h3>
+      <strong>
+        4
+      </strong>
+    </div>
+    <div
+      class="card"
+      data-testid="panel"
+      style="background: rgb(21, 28, 51); color: rgb(255, 255, 255); border-radius: 8px;"
+    >
+      <h3>
+        Critical Failures
+      </h3>
+      <strong>
+        1
+      </strong>
+    </div>
+    <div
+      class="card"
+      data-testid="panel"
+      style="background: rgb(21, 28, 51); color: rgb(255, 255, 255); border-radius: 8px;"
+    >
+      <h3>
+        Recent Maintenance Activity
+      </h3>
+      <strong>
+        11
+      </strong>
+    </div>
+    <div
+      class="card"
+      data-testid="panel"
+      style="background: rgb(21, 28, 51); color: rgb(255, 255, 255); border-radius: 8px;"
+    >
+      <h3>
+        Inventory Availability
+      </h3>
+      <strong>
+        Unavailable
+      </strong>
+    </div>
+    <div
+      class="card"
+      data-testid="panel"
+      style="background: rgb(21, 28, 51); color: rgb(255, 255, 255); border-radius: 8px;"
+    >
+      <h3>
+        Drawing Coverage
+      </h3>
+      <strong>
+        Unavailable
+      </strong>
+    </div>
+    <div
+      class="card"
+      data-testid="panel"
+      style="background: rgb(21, 28, 51); color: rgb(255, 255, 255); border-radius: 8px;"
+    >
+      <h3>
+        Document Coverage
+      </h3>
+      <strong>
+        Unavailable
+      </strong>
+    </div>
+    <div
+      class="card"
+      data-testid="panel"
+      style="background: rgb(21, 28, 51); color: rgb(255, 255, 255); border-radius: 8px;"
+    >
+      <h3>
+        Knowledge Coverage
+      </h3>
+      <strong>
+        Unavailable
+      </strong>
+    </div>
+  </div>
+  <div
+    class="card"
+    data-testid="panel"
+    style="background: rgb(21, 28, 51); color: rgb(255, 255, 255); border-radius: 8px;"
+  >
+    <h2>
+      Fleet Reliability
+    </h2>
+    <div
+      class="executive-dashboard-kpi-grid"
+    >
+      <div
+        class="card"
+        data-testid="panel"
+        style="background: rgb(21, 28, 51); color: rgb(255, 255, 255); border-radius: 8px;"
+      >
+        <h3>
+          Fleet Health
+        </h3>
+        <strong>
+          87
+        </strong>
+      </div>
+      <div
+        class="card"
+        data-testid="panel"
+        style="background: rgb(21, 28, 51); color: rgb(255, 255, 255); border-radius: 8px;"
+      >
+        <h3>
+          Fleet MTBF
+        </h3>
+        <strong>
+          42 days
+        </strong>
+      </div>
+      <div
+        class="card"
+        data-testid="panel"
+        style="background: rgb(21, 28, 51); color: rgb(255, 255, 255); border-radius: 8px;"
+      >
+        <h3>
+          Fleet MTTR
+        </h3>
+        <strong>
+          6 hrs
+        </strong>
+      </div>
+      <div
+        class="card"
+        data-testid="panel"
+        style="background: rgb(21, 28, 51); color: rgb(255, 255, 255); border-radius: 8px;"
+      >
+        <h3>
+          Fleet Availability
+        </h3>
+        <strong>
+          98.76%
+        </strong>
+      </div>
+      <div
+        class="card"
+        data-testid="panel"
+        style="background: rgb(21, 28, 51); color: rgb(255, 255, 255); border-radius: 8px;"
+      >
+        <h3>
+          Breakdown Count
+        </h3>
+        <strong>
+          3
+        </strong>
+      </div>
+      <div
+        class="card"
+        data-testid="panel"
+        style="background: rgb(21, 28, 51); color: rgb(255, 255, 255); border-radius: 8px;"
+      >
+        <h3>
+          Critical Spare Count
+        </h3>
+        <strong>
+          2
+        </strong>
+      </div>
+    </div>
+  </div>
+  <div
+    class="card"
+    data-testid="panel"
+    style="background: rgb(21, 28, 51); color: rgb(255, 255, 255); border-radius: 8px;"
+  >
+    <h2>
+      Fleet Power BI
+    </h2>
+    <div
+      class="executive-dashboard-kpi-grid"
+    >
+      <div
+        class="card"
+        data-testid="panel"
+        style="background: rgb(21, 28, 51); color: rgb(255, 255, 255); border-radius: 8px;"
+      >
+        <h3>
+          Fleet Health
+        </h3>
+        <strong>
+          87
+        </strong>
+      </div>
+      <div
+        class="card"
+        data-testid="panel"
+        style="background: rgb(21, 28, 51); color: rgb(255, 255, 255); border-radius: 8px;"
+      >
+        <h3>
+          Fleet Availability
+        </h3>
+        <strong>
+          98.76%
+        </strong>
+      </div>
+      <div
+        class="card"
+        data-testid="panel"
+        style="background: rgb(21, 28, 51); color: rgb(255, 255, 255); border-radius: 8px;"
+      >
+        <h3>
+          Fleet MTBF
+        </h3>
+        <strong>
+          42 days
+        </strong>
+      </div>
+      <div
+        class="card"
+        data-testid="panel"
+        style="background: rgb(21, 28, 51); color: rgb(255, 255, 255); border-radius: 8px;"
+      >
+        <h3>
+          Fleet MTTR
+        </h3>
+        <strong>
+          6 hrs
+        </strong>
+      </div>
+      <div
+        class="card"
+        data-testid="panel"
+        style="background: rgb(21, 28, 51); color: rgb(255, 255, 255); border-radius: 8px;"
+      >
+        <h3>
+          Breakdown Count
+        </h3>
+        <strong>
+          3
+        </strong>
+      </div>
+      <div
+        class="card"
+        data-testid="panel"
+        style="background: rgb(21, 28, 51); color: rgb(255, 255, 255); border-radius: 8px;"
+      >
+        <h3>
+          Critical Spare Count
+        </h3>
+        <strong>
+          2
+        </strong>
+      </div>
+      <div
+        class="card"
+        data-testid="panel"
+        style="background: rgb(21, 28, 51); color: rgb(255, 255, 255); border-radius: 8px;"
+      >
+        <h3>
+          Fleet Status
+        </h3>
+        <strong>
+          NORMAL
+        </strong>
+      </div>
+    </div>
+    <section>
+      <h3>
+        Fleet Insight
+      </h3>
+      <p>
+        No insight available.
+      </p>
+    </section>
+    <section>
+      <h3>
+        Top Risks
+      </h3>
+      <p>
+        No risks reported.
+      </p>
+    </section>
+  </div>
+  <div
+    class="card"
+    data-testid="panel"
+    style="background: rgb(21, 28, 51); color: rgb(255, 255, 255); border-radius: 8px;"
+  >
+    <h2>
+      Engineering Readiness
+    </h2>
+    <div
+      style="display: flex; flex-direction: column; gap: 8px;"
+    >
+      <div>
+        <div
+          class="ds-progress-bar"
+        >
+          <div
+            class="ds-progress-bar-label"
+            style="color: rgb(148, 163, 184);"
+          >
+            Pump — 92%
+          </div>
+          <div
+            class="ds-progress-bar-track"
+            style="background: rgb(31, 41, 55); border-radius: 4px; height: 4px;"
+          >
+            <div
+              class="ds-progress-bar-fill"
+              data-testid="progress-bar-fill"
+              style="width: 92%; background: rgb(59, 130, 246); border-radius: 4px; height: 100%;"
+            />
+          </div>
+        </div>
+      </div>
+      <div>
+        <div>
+          <div
+            style="color: rgb(148, 163, 184); font-size: 12px;"
+          >
+            Mechanical Seal
+          </div>
+          <div
+            style="color: rgb(148, 163, 184);"
+          >
+            Not available
+          </div>
+        </div>
+      </div>
+      <div>
+        <div>
+          <div
+            style="color: rgb(148, 163, 184); font-size: 12px;"
+          >
+            Drawing
+          </div>
+          <div
+            style="color: rgb(148, 163, 184);"
+          >
+            Not available
+          </div>
+        </div>
+      </div>
+      <div>
+        <div>
+          <div
+            style="color: rgb(148, 163, 184); font-size: 12px;"
+          >
+            Document
+          </div>
+          <div
+            style="color: rgb(148, 163, 184);"
+          >
+            Not available
+          </div>
+        </div>
+      </div>
+      <div>
+        <div>
+          <div
+            style="color: rgb(148, 163, 184); font-size: 12px;"
+          >
+            Knowledge
+          </div>
+          <div
+            style="color: rgb(148, 163, 184);"
+          >
+            Not available
+          </div>
+        </div>
+      </div>
+      <div>
+        <div>
+          <div
+            style="color: rgb(148, 163, 184); font-size: 12px;"
+          >
+            Inventory
+          </div>
+          <div
+            style="color: rgb(148, 163, 184);"
+          >
+            Not available
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div
+    class="card"
+    data-testid="panel"
+    style="background: rgb(21, 28, 51); color: rgb(255, 255, 255); border-radius: 8px;"
+  >
+    <h2>
+      Maintenance Health
+    </h2>
+    <div
+      style="margin-bottom: 16px;"
+    >
+      <div
+        class="ds-progress-bar"
+      >
+        <div
+          class="ds-progress-bar-label"
+          style="color: rgb(148, 163, 184);"
+        >
+          PM Compliance — 63% (5 of 8 not overdue)
+        </div>
+        <div
+          class="ds-progress-bar-track"
+          style="background: rgb(31, 41, 55); border-radius: 4px; height: 4px;"
+        >
+          <div
+            class="ds-progress-bar-fill"
+            data-testid="progress-bar-fill"
+            style="width: 63%; background: rgb(59, 130, 246); border-radius: 4px; height: 100%;"
+          />
+        </div>
+      </div>
+    </div>
+    <div
+      style="margin-bottom: 16px;"
+    >
+      <div
+        class="ds-progress-bar"
+      >
+        <div
+          class="ds-progress-bar-label"
+          style="color: rgb(148, 163, 184);"
+        >
+          Work Orders — 1 closed / 7 open (of 8)
+        </div>
+        <div
+          class="ds-progress-bar-track"
+          style="background: rgb(31, 41, 55); border-radius: 4px; height: 4px;"
+        >
+          <div
+            class="ds-progress-bar-fill"
+            data-testid="progress-bar-fill"
+            style="width: 12.5%; background: rgb(59, 130, 246); border-radius: 4px; height: 100%;"
+          />
+        </div>
+      </div>
+    </div>
+    <div>
+      <div
+        style="color: rgb(148, 163, 184); font-size: 12px; margin-bottom: 4px;"
+      >
+        Corrective Maintenance Status
+      </div>
+      <div
+        style="display: flex; flex-wrap: wrap; gap: 8px;"
+      >
+        <span
+          data-testid="badge"
+          style="background-color: rgb(245, 158, 11); color: rgb(255, 255, 255); font-family: Arial, sans-serif; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 16px; display: inline-block;"
+        >
+          In Progress
+          : 
+          2
+        </span>
+        <span
+          data-testid="badge"
+          style="background-color: rgb(239, 68, 68); color: rgb(255, 255, 255); font-family: Arial, sans-serif; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 16px; display: inline-block;"
+        >
+          Open
+          : 
+          2
+        </span>
+        <span
+          data-testid="badge"
+          style="background-color: rgb(59, 130, 246); color: rgb(255, 255, 255); font-family: Arial, sans-serif; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 16px; display: inline-block;"
+        >
+          Resolved
+          : 
+          2
+        </span>
+        <span
+          data-testid="badge"
+          style="background-color: rgb(34, 197, 94); color: rgb(255, 255, 255); font-family: Arial, sans-serif; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 16px; display: inline-block;"
+        >
+          Closed
+          : 
+          2
+        </span>
+      </div>
+    </div>
+  </div>
+  <div
+    class="card"
+    data-testid="panel"
+    style="background: rgb(21, 28, 51); color: rgb(255, 255, 255); border-radius: 8px;"
+  >
+    <h2>
+      Engineering Alerts
+    </h2>
+    <div
+      style="display: flex; flex-wrap: wrap; gap: 8px;"
+    >
+      <span
+        data-testid="badge"
+        style="background-color: rgb(239, 68, 68); color: rgb(255, 255, 255); font-family: Arial, sans-serif; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 16px; display: inline-block;"
+      >
+        Overdue PM
+        : 
+        3
+      </span>
+      <span
+        data-testid="badge"
+        style="background-color: rgb(239, 68, 68); color: rgb(255, 255, 255); font-family: Arial, sans-serif; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 16px; display: inline-block;"
+      >
+        Critical Open Corrective Maintenance
+        : 
+        1
+      </span>
+      <span
+        data-testid="badge"
+        style="background-color: rgb(239, 68, 68); color: rgb(255, 255, 255); font-family: Arial, sans-serif; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 16px; display: inline-block;"
+      >
+        Critical Open Work Orders
+        : 
+        1
+      </span>
+    </div>
+  </div>
+  <div
+    class="card"
+    data-testid="panel"
+    style="background: rgb(21, 28, 51); color: rgb(255, 255, 255); border-radius: 8px;"
+  >
+    <h2>
+      Today's Engineering Insight
+    </h2>
+    <div
+      style="border: 1px dashed rgb(31, 41, 55); border-radius: 8px; padding: 16px;"
+    >
+      <span
+        data-testid="badge"
+        style="background-color: rgb(59, 130, 246); color: rgb(255, 255, 255); font-family: Arial, sans-serif; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 16px; display: inline-block;"
+      >
+        Reserved
+      </span>
+      <p
+        style="color: rgb(148, 163, 184); margin-top: 8px; margin-bottom: 0px;"
+      >
+        Engineering AI Summary — Reserved for the Future Aggregation Platform. No cross-workspace Engineering AI aggregation exists yet; this panel does not read, poll, or summarize any workspace's AI state.
+      </p>
+    </div>
+  </div>
+  <div
+    class="card"
+    data-testid="panel"
+    style="background: rgb(21, 28, 51); color: rgb(255, 255, 255); border-radius: 8px;"
+  >
+    <h2>
+      Business Opportunity
+    </h2>
+    <div
+      class="card ds-empty-state"
+      data-testid="panel"
+      style="background: rgb(21, 28, 51); color: rgb(255, 255, 255); border-radius: 8px;"
+    >
+      <p
+        style="color: rgb(255, 255, 255); font-weight: bold;"
+      >
+        Business Opportunity analysis is not yet available
+      </p>
+      <p
+        data-testid="empty-state-description"
+        style="color: rgb(148, 163, 184);"
+      >
+        No cost, savings, or revenue calculation exists yet — reserved for a future, separately-scoped analytics capability.
+      </p>
+    </div>
+  </div>
+  <div
+    class="card"
+    data-testid="panel"
+    style="background: rgb(21, 28, 51); color: rgb(255, 255, 255); border-radius: 8px;"
+  >
+    <h2>
+      Assets Requiring Attention
+    </h2>
+    <div
+      style="display: flex; flex-direction: column; gap: 8px;"
+    >
+      <div
+        style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 8px; border-radius: 4px; border: 1px solid rgb(31, 41, 55);"
+      >
+        <div
+          style="min-width: 160px;"
+        >
+          <div
+            style="font-weight: bold; color: rgb(255, 255, 255);"
+          >
+            Boiler Feedwater Pump 1A
+          </div>
+          <div
+            style="color: rgb(148, 163, 184); font-size: 12px;"
+          >
+            211-P-1A
+          </div>
+        </div>
+        <span
+          data-testid="badge"
+          style="background-color: rgb(239, 68, 68); color: rgb(255, 255, 255); font-family: Arial, sans-serif; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 16px; display: inline-block;"
+        >
+          HIGH
+        </span>
+        <span
+          data-testid="badge"
+          style="background-color: rgb(34, 197, 94); color: rgb(255, 255, 255); font-family: Arial, sans-serif; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 16px; display: inline-block;"
+        >
+          RUNNING
+        </span>
+        <div>
+          <div
+            style="color: rgb(148, 163, 184); font-size: 12px;"
+          >
+            Open Work Orders
+          </div>
+          <div
+            style="color: rgb(255, 255, 255);"
+          >
+            1
+          </div>
+        </div>
+        <div>
+          <div
+            style="color: rgb(148, 163, 184); font-size: 12px;"
+          >
+            Recent CM
+          </div>
+          <div
+            style="color: rgb(255, 255, 255);"
+          >
+            2026-06-25
+          </div>
+        </div>
+      </div>
+      <div
+        style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 8px; border-radius: 4px; border: 1px solid rgb(31, 41, 55);"
+      >
+        <div
+          style="min-width: 160px;"
+        >
+          <div
+            style="font-weight: bold; color: rgb(255, 255, 255);"
+          >
+            Boiler Feedwater Pump 1B
+          </div>
+          <div
+            style="color: rgb(148, 163, 184); font-size: 12px;"
+          >
+            211-P-1B
+          </div>
+        </div>
+        <span
+          data-testid="badge"
+          style="background-color: rgb(239, 68, 68); color: rgb(255, 255, 255); font-family: Arial, sans-serif; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 16px; display: inline-block;"
+        >
+          HIGH
+        </span>
+        <span
+          data-testid="badge"
+          style="background-color: rgb(59, 130, 246); color: rgb(255, 255, 255); font-family: Arial, sans-serif; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 16px; display: inline-block;"
+        >
+          STANDBY
+        </span>
+        <div>
+          <div
+            style="color: rgb(148, 163, 184); font-size: 12px;"
+          >
+            Open Work Orders
+          </div>
+          <div
+            style="color: rgb(255, 255, 255);"
+          >
+            1
+          </div>
+        </div>
+        <div>
+          <div
+            style="color: rgb(148, 163, 184); font-size: 12px;"
+          >
+            Recent CM
+          </div>
+          <div
+            style="color: rgb(255, 255, 255);"
+          >
+            None recorded
+          </div>
+        </div>
+      </div>
+      <div
+        style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 8px; border-radius: 4px; border: 1px solid rgb(31, 41, 55);"
+      >
+        <div
+          style="min-width: 160px;"
+        >
+          <div
+            style="font-weight: bold; color: rgb(255, 255, 255);"
+          >
+            Crude Charge Pump
+          </div>
+          <div
+            style="color: rgb(148, 163, 184); font-size: 12px;"
+          >
+            112-P-3
+          </div>
+        </div>
+        <span
+          data-testid="badge"
+          style="background-color: rgb(239, 68, 68); color: rgb(255, 255, 255); font-family: Arial, sans-serif; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 16px; display: inline-block;"
+        >
+          HIGH
+        </span>
+        <span
+          data-testid="badge"
+          style="background-color: rgb(245, 158, 11); color: rgb(255, 255, 255); font-family: Arial, sans-serif; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 16px; display: inline-block;"
+        >
+          MAINTENANCE
+        </span>
+        <div>
+          <div
+            style="color: rgb(148, 163, 184); font-size: 12px;"
+          >
+            Open Work Orders
+          </div>
+          <div
+            style="color: rgb(255, 255, 255);"
+          >
+            1
+          </div>
+        </div>
+        <div>
+          <div
+            style="color: rgb(148, 163, 184); font-size: 12px;"
+          >
+            Recent CM
+          </div>
+          <div
+            style="color: rgb(255, 255, 255);"
+          >
+            2026-07-05
+          </div>
+        </div>
+      </div>
+      <div
+        style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 8px; border-radius: 4px; border: 1px solid rgb(31, 41, 55);"
+      >
+        <div
+          style="min-width: 160px;"
+        >
+          <div
+            style="font-weight: bold; color: rgb(255, 255, 255);"
+          >
+            Sour Water Stripper Bottoms Pump
+          </div>
+          <div
+            style="color: rgb(148, 163, 184); font-size: 12px;"
+          >
+            641-P-5
+          </div>
+        </div>
+        <span
+          data-testid="badge"
+          style="background-color: rgb(239, 68, 68); color: rgb(255, 255, 255); font-family: Arial, sans-serif; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 16px; display: inline-block;"
+        >
+          HIGH
+        </span>
+        <span
+          data-testid="badge"
+          style="background-color: rgb(239, 68, 68); color: rgb(255, 255, 255); font-family: Arial, sans-serif; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 16px; display: inline-block;"
+        >
+          FAULT
+        </span>
+        <div>
+          <div
+            style="color: rgb(148, 163, 184); font-size: 12px;"
+          >
+            Open Work Orders
+          </div>
+          <div
+            style="color: rgb(255, 255, 255);"
+          >
+            1
+          </div>
+        </div>
+        <div>
+          <div
+            style="color: rgb(148, 163, 184); font-size: 12px;"
+          >
+            Recent CM
+          </div>
+          <div
+            style="color: rgb(255, 255, 255);"
+          >
+            2026-07-18
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div
+    class="card"
+    data-testid="panel"
+    style="background: rgb(21, 28, 51); color: rgb(255, 255, 255); border-radius: 8px;"
+  >
+    <h2>
+      Assets Requiring Immediate Action
+    </h2>
+    <table
+      style="width: 100%; border-collapse: collapse;"
+    >
+      <thead>
+        <tr>
+          <th
+            style="text-align: left; color: rgb(148, 163, 184); border-bottom: 1px solid rgb(31, 41, 55); padding: 4px;"
+          >
+            Asset
+          </th>
+          <th
+            style="text-align: left; color: rgb(148, 163, 184); border-bottom: 1px solid rgb(31, 41, 55); padding: 4px;"
+          >
+            Tag
+          </th>
+          <th
+            style="text-align: left; color: rgb(148, 163, 184); border-bottom: 1px solid rgb(31, 41, 55); padding: 4px;"
+          >
+            Criticality
+          </th>
+          <th
+            style="text-align: left; color: rgb(148, 163, 184); border-bottom: 1px solid rgb(31, 41, 55); padding: 4px;"
+          >
+            Status
+          </th>
+          <th
+            style="text-align: left; color: rgb(148, 163, 184); border-bottom: 1px solid rgb(31, 41, 55); padding: 4px;"
+          >
+            Open Work Orders
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr
+          style="cursor: default; background: transparent;"
+        >
+          <td
+            style="padding: 4px; color: rgb(255, 255, 255);"
+          >
+            Boiler Feedwater Pump 1A
+          </td>
+          <td
+            style="padding: 4px; color: rgb(255, 255, 255);"
+          >
+            211-P-1A
+          </td>
+          <td
+            style="padding: 4px; color: rgb(255, 255, 255);"
+          >
+            HIGH
+          </td>
+          <td
+            style="padding: 4px; color: rgb(255, 255, 255);"
+          >
+            RUNNING
+          </td>
+          <td
+            style="padding: 4px; color: rgb(255, 255, 255);"
+          >
+            1
+          </td>
+        </tr>
+        <tr
+          style="cursor: default; background: transparent;"
+        >
+          <td
+            style="padding: 4px; color: rgb(255, 255, 255);"
+          >
+            Boiler Feedwater Pump 1B
+          </td>
+          <td
+            style="padding: 4px; color: rgb(255, 255, 255);"
+          >
+            211-P-1B
+          </td>
+          <td
+            style="padding: 4px; color: rgb(255, 255, 255);"
+          >
+            HIGH
+          </td>
+          <td
+            style="padding: 4px; color: rgb(255, 255, 255);"
+          >
+            STANDBY
+          </td>
+          <td
+            style="padding: 4px; color: rgb(255, 255, 255);"
+          >
+            1
+          </td>
+        </tr>
+        <tr
+          style="cursor: default; background: transparent;"
+        >
+          <td
+            style="padding: 4px; color: rgb(255, 255, 255);"
+          >
+            Crude Charge Pump
+          </td>
+          <td
+            style="padding: 4px; color: rgb(255, 255, 255);"
+          >
+            112-P-3
+          </td>
+          <td
+            style="padding: 4px; color: rgb(255, 255, 255);"
+          >
+            HIGH
+          </td>
+          <td
+            style="padding: 4px; color: rgb(255, 255, 255);"
+          >
+            MAINTENANCE
+          </td>
+          <td
+            style="padding: 4px; color: rgb(255, 255, 255);"
+          >
+            1
+          </td>
+        </tr>
+        <tr
+          style="cursor: default; background: transparent;"
+        >
+          <td
+            style="padding: 4px; color: rgb(255, 255, 255);"
+          >
+            Sour Water Stripper Bottoms Pump
+          </td>
+          <td
+            style="padding: 4px; color: rgb(255, 255, 255);"
+          >
+            641-P-5
+          </td>
+          <td
+            style="padding: 4px; color: rgb(255, 255, 255);"
+          >
+            HIGH
+          </td>
+          <td
+            style="padding: 4px; color: rgb(255, 255, 255);"
+          >
+            FAULT
+          </td>
+          <td
+            style="padding: 4px; color: rgb(255, 255, 255);"
+          >
+            1
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div
+    class="card"
+    data-testid="panel"
+    style="background: rgb(21, 28, 51); color: rgb(255, 255, 255); border-radius: 8px;"
+  >
+    <h2>
+      Upcoming Maintenance
+    </h2>
+    <div
+      style="display: flex; flex-direction: column; gap: 8px;"
+    >
+      <div
+        style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 8px; border-radius: 4px; border: 1px solid rgb(31, 41, 55);"
+      >
+        <div
+          style="min-width: 200px;"
+        >
+          <div
+            style="font-weight: bold; color: rgb(255, 255, 255);"
+          >
+            Seal Flush Plan Inspection
+          </div>
+          <div
+            style="color: rgb(148, 163, 184); font-size: 12px;"
+          >
+            PM-2003
+             · 
+            418-P-1
+          </div>
+        </div>
+        <div>
+          <div
+            style="color: rgb(148, 163, 184); font-size: 12px;"
+          >
+            Next Due
+          </div>
+          <div
+            style="color: rgb(255, 255, 255);"
+          >
+            2026-07-17
+          </div>
+        </div>
+        <div>
+          <div
+            style="color: rgb(148, 163, 184); font-size: 12px;"
+          >
+            Assigned Technician
+          </div>
+          <div
+            style="color: rgb(255, 255, 255);"
+          >
+            Dedi Kurniawan
+          </div>
+        </div>
+        <span
+          data-testid="badge"
+          style="background-color: rgb(239, 68, 68); color: rgb(255, 255, 255); font-family: Arial, sans-serif; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 16px; display: inline-block;"
+        >
+          Overdue
+        </span>
+      </div>
+      <div
+        style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 8px; border-radius: 4px; border: 1px solid rgb(31, 41, 55);"
+      >
+        <div
+          style="min-width: 200px;"
+        >
+          <div
+            style="font-weight: bold; color: rgb(255, 255, 255);"
+          >
+            Seal Chamber Condition Check
+          </div>
+          <div
+            style="color: rgb(148, 163, 184); font-size: 12px;"
+          >
+            PM-2008
+             · 
+            641-P-5
+          </div>
+        </div>
+        <div>
+          <div
+            style="color: rgb(148, 163, 184); font-size: 12px;"
+          >
+            Next Due
+          </div>
+          <div
+            style="color: rgb(255, 255, 255);"
+          >
+            2026-07-19
+          </div>
+        </div>
+        <div>
+          <div
+            style="color: rgb(148, 163, 184); font-size: 12px;"
+          >
+            Assigned Technician
+          </div>
+          <div
+            style="color: rgb(255, 255, 255);"
+          >
+            Dedi Kurniawan
+          </div>
+        </div>
+        <span
+          data-testid="badge"
+          style="background-color: rgb(239, 68, 68); color: rgb(255, 255, 255); font-family: Arial, sans-serif; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 16px; display: inline-block;"
+        >
+          Overdue
+        </span>
+      </div>
+      <div
+        style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 8px; border-radius: 4px; border: 1px solid rgb(31, 41, 55);"
+      >
+        <div
+          style="min-width: 200px;"
+        >
+          <div
+            style="font-weight: bold; color: rgb(255, 255, 255);"
+          >
+            Daily Operator Walkdown
+          </div>
+          <div
+            style="color: rgb(148, 163, 184); font-size: 12px;"
+          >
+            PM-2006
+             · 
+            305-P-2
+          </div>
+        </div>
+        <div>
+          <div
+            style="color: rgb(148, 163, 184); font-size: 12px;"
+          >
+            Next Due
+          </div>
+          <div
+            style="color: rgb(255, 255, 255);"
+          >
+            2026-07-20
+          </div>
+        </div>
+        <div>
+          <div
+            style="color: rgb(148, 163, 184); font-size: 12px;"
+          >
+            Assigned Technician
+          </div>
+          <div
+            style="color: rgb(255, 255, 255);"
+          >
+            Sari Wulandari
+          </div>
+        </div>
+        <span
+          data-testid="badge"
+          style="background-color: rgb(245, 158, 11); color: rgb(255, 255, 255); font-family: Arial, sans-serif; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 16px; display: inline-block;"
+        >
+          Due Soon
+        </span>
+      </div>
+      <div
+        style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 8px; border-radius: 4px; border: 1px solid rgb(31, 41, 55);"
+      >
+        <div
+          style="min-width: 200px;"
+        >
+          <div
+            style="font-weight: bold; color: rgb(255, 255, 255);"
+          >
+            Lubrication & Vibration Check
+          </div>
+          <div
+            style="color: rgb(148, 163, 184); font-size: 12px;"
+          >
+            PM-2001
+             · 
+            211-P-1A
+          </div>
+        </div>
+        <div>
+          <div
+            style="color: rgb(148, 163, 184); font-size: 12px;"
+          >
+            Next Due
+          </div>
+          <div
+            style="color: rgb(255, 255, 255);"
+          >
+            2026-07-24
+          </div>
+        </div>
+        <div>
+          <div
+            style="color: rgb(148, 163, 184); font-size: 12px;"
+          >
+            Assigned Technician
+          </div>
+          <div
+            style="color: rgb(255, 255, 255);"
+          >
+            Sari Wulandari
+          </div>
+        </div>
+        <span
+          data-testid="badge"
+          style="background-color: rgb(245, 158, 11); color: rgb(255, 255, 255); font-family: Arial, sans-serif; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 16px; display: inline-block;"
+        >
+          Due Soon
+        </span>
+      </div>
+      <div
+        style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 8px; border-radius: 4px; border: 1px solid rgb(31, 41, 55);"
+      >
+        <div
+          style="min-width: 200px;"
+        >
+          <div
+            style="font-weight: bold; color: rgb(255, 255, 255);"
+          >
+            Bearing Housing Inspection
+          </div>
+          <div
+            style="color: rgb(148, 163, 184); font-size: 12px;"
+          >
+            PM-2002
+             · 
+            112-P-3
+          </div>
+        </div>
+        <div>
+          <div
+            style="color: rgb(148, 163, 184); font-size: 12px;"
+          >
+            Next Due
+          </div>
+          <div
+            style="color: rgb(255, 255, 255);"
+          >
+            2026-07-24
+          </div>
+        </div>
+        <div>
+          <div
+            style="color: rgb(148, 163, 184); font-size: 12px;"
+          >
+            Assigned Technician
+          </div>
+          <div
+            style="color: rgb(255, 255, 255);"
+          >
+            Bagus Setiawan
+          </div>
+        </div>
+        <span
+          data-testid="badge"
+          style="background-color: rgb(239, 68, 68); color: rgb(255, 255, 255); font-family: Arial, sans-serif; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 16px; display: inline-block;"
+        >
+          Overdue
+        </span>
+      </div>
+    </div>
+  </div>
+  <div
+    class="card"
+    data-testid="panel"
+    style="background: rgb(21, 28, 51); color: rgb(255, 255, 255); border-radius: 8px;"
+  >
+    <h2>
+      Recent Activities
+    </h2>
+    <div
+      style="display: flex; flex-direction: column; gap: 8px;"
+    >
+      <div
+        role="button"
+        style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 4px 0px; border-bottom: 1px solid rgb(31, 41, 55); cursor: pointer;"
+        tabindex="0"
+      >
+        <div
+          style="color: rgb(148, 163, 184); font-size: 12px; min-width: 90px;"
+        >
+          2026-07-19
+        </div>
+        <span
+          data-testid="badge"
+          style="background-color: rgb(59, 130, 246); color: rgb(255, 255, 255); font-family: Arial, sans-serif; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 16px; display: inline-block;"
+        >
+          PM
+        </span>
+        <div
+          style="flex: 1 1 0%; min-width: 200px;"
+        >
+          <div
+            style="font-weight: bold; color: rgb(255, 255, 255);"
+          >
+            PM-2006
+          </div>
+          <div
+            style="font-size: 13px; color: rgb(255, 255, 255);"
+          >
+            Daily Operator Walkdown
+          </div>
+        </div>
+        <span
+          data-testid="badge"
+          style="background-color: rgb(245, 158, 11); color: rgb(255, 255, 255); font-family: Arial, sans-serif; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 16px; display: inline-block;"
+        >
+          Due Soon
+        </span>
+      </div>
+      <div
+        role="button"
+        style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 4px 0px; border-bottom: 1px solid rgb(31, 41, 55); cursor: pointer;"
+        tabindex="0"
+      >
+        <div
+          style="color: rgb(148, 163, 184); font-size: 12px; min-width: 90px;"
+        >
+          2026-07-19
+        </div>
+        <span
+          data-testid="badge"
+          style="background-color: rgb(245, 158, 11); color: rgb(255, 255, 255); font-family: Arial, sans-serif; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 16px; display: inline-block;"
+        >
+          CM
+        </span>
+        <div
+          style="flex: 1 1 0%; min-width: 200px;"
+        >
+          <div
+            style="font-weight: bold; color: rgb(255, 255, 255);"
+          >
+            CM-3007
+          </div>
+          <div
+            style="font-size: 13px; color: rgb(255, 255, 255);"
+          >
+            Monthly churn test failed — discharge pressure below fire protection minimum.
+          </div>
+        </div>
+        <span
+          data-testid="badge"
+          style="background-color: rgb(245, 158, 11); color: rgb(255, 255, 255); font-family: Arial, sans-serif; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 16px; display: inline-block;"
+        >
+          In Progress
+        </span>
+      </div>
+      <div
+        role="button"
+        style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 4px 0px; border-bottom: 1px solid rgb(31, 41, 55); cursor: pointer;"
+        tabindex="0"
+      >
+        <div
+          style="color: rgb(148, 163, 184); font-size: 12px; min-width: 90px;"
+        >
+          2026-07-19
+        </div>
+        <span
+          data-testid="badge"
+          style="background-color: rgb(245, 158, 11); color: rgb(255, 255, 255); font-family: Arial, sans-serif; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 16px; display: inline-block;"
+        >
+          CM
+        </span>
+        <div
+          style="flex: 1 1 0%; min-width: 200px;"
+        >
+          <div
+            style="font-weight: bold; color: rgb(255, 255, 255);"
+          >
+            CM-3008
+          </div>
+          <div
+            style="font-size: 13px; color: rgb(255, 255, 255);"
+          >
+            Minor vibration anomaly noted above baseline during operator walkdown.
+          </div>
+        </div>
+        <span
+          data-testid="badge"
+          style="background-color: rgb(239, 68, 68); color: rgb(255, 255, 255); font-family: Arial, sans-serif; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 16px; display: inline-block;"
+        >
+          Open
+        </span>
+      </div>
+      <div
+        role="button"
+        style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 4px 0px; border-bottom: 1px solid rgb(31, 41, 55); cursor: pointer;"
+        tabindex="0"
+      >
+        <div
+          style="color: rgb(148, 163, 184); font-size: 12px; min-width: 90px;"
+        >
+          2026-07-18
+        </div>
+        <span
+          data-testid="badge"
+          style="background-color: rgb(245, 158, 11); color: rgb(255, 255, 255); font-family: Arial, sans-serif; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 16px; display: inline-block;"
+        >
+          CM
+        </span>
+        <div
+          style="flex: 1 1 0%; min-width: 200px;"
+        >
+          <div
+            style="font-weight: bold; color: rgb(255, 255, 255);"
+          >
+            CM-3001
+          </div>
+          <div
+            style="font-size: 13px; color: rgb(255, 255, 255);"
+          >
+            Third mechanical seal failure in 90 days — visible process leakage at seal chamber.
+          </div>
+        </div>
+        <span
+          data-testid="badge"
+          style="background-color: rgb(245, 158, 11); color: rgb(255, 255, 255); font-family: Arial, sans-serif; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 16px; display: inline-block;"
+        >
+          In Progress
+        </span>
+      </div>
+      <div
+        role="button"
+        style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 4px 0px; border-bottom: 1px solid rgb(31, 41, 55); cursor: pointer;"
+        tabindex="0"
+      >
+        <div
+          style="color: rgb(148, 163, 184); font-size: 12px; min-width: 90px;"
+        >
+          2026-07-18
+        </div>
+        <span
+          data-testid="badge"
+          style="background-color: rgb(139, 92, 246); color: rgb(255, 255, 255); font-family: Arial, sans-serif; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 16px; display: inline-block;"
+        >
+          Work Order
+        </span>
+        <div
+          style="flex: 1 1 0%; min-width: 200px;"
+        >
+          <div
+            style="font-weight: bold; color: rgb(255, 255, 255);"
+          >
+            WO-1001
+          </div>
+          <div
+            style="font-size: 13px; color: rgb(255, 255, 255);"
+          >
+            Seal replacement — repeat failures
+          </div>
+        </div>
+        <span
+          data-testid="badge"
+          style="background-color: rgb(59, 130, 246); color: rgb(255, 255, 255); font-family: Arial, sans-serif; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 16px; display: inline-block;"
+        >
+          Open
+        </span>
+      </div>
+      <div
+        role="button"
+        style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 4px 0px; border-bottom: 1px solid rgb(31, 41, 55); cursor: pointer;"
+        tabindex="0"
+      >
+        <div
+          style="color: rgb(148, 163, 184); font-size: 12px; min-width: 90px;"
+        >
+          2026-07-17
+        </div>
+        <span
+          data-testid="badge"
+          style="background-color: rgb(245, 158, 11); color: rgb(255, 255, 255); font-family: Arial, sans-serif; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 16px; display: inline-block;"
+        >
+          CM
+        </span>
+        <div
+          style="flex: 1 1 0%; min-width: 200px;"
+        >
+          <div
+            style="font-weight: bold; color: rgb(255, 255, 255);"
+          >
+            CM-3002
+          </div>
+          <div
+            style="font-size: 13px; color: rgb(255, 255, 255);"
+          >
+            Elevated seal chamber temperature detected during routine inspection.
+          </div>
+        </div>
+        <span
+          data-testid="badge"
+          style="background-color: rgb(239, 68, 68); color: rgb(255, 255, 255); font-family: Arial, sans-serif; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 16px; display: inline-block;"
+        >
+          Open
+        </span>
+      </div>
+      <div
+        role="button"
+        style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 4px 0px; border-bottom: 1px solid rgb(31, 41, 55); cursor: pointer;"
+        tabindex="0"
+      >
+        <div
+          style="color: rgb(148, 163, 184); font-size: 12px; min-width: 90px;"
+        >
+          2026-07-17
+        </div>
+        <span
+          data-testid="badge"
+          style="background-color: rgb(139, 92, 246); color: rgb(255, 255, 255); font-family: Arial, sans-serif; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 16px; display: inline-block;"
+        >
+          Work Order
+        </span>
+        <div
+          style="flex: 1 1 0%; min-width: 200px;"
+        >
+          <div
+            style="font-weight: bold; color: rgb(255, 255, 255);"
+          >
+            WO-1004
+          </div>
+          <div
+            style="font-size: 13px; color: rgb(255, 255, 255);"
+          >
+            Seal flush plan inspection
+          </div>
+        </div>
+        <span
+          data-testid="badge"
+          style="background-color: rgb(59, 130, 246); color: rgb(255, 255, 255); font-family: Arial, sans-serif; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 16px; display: inline-block;"
+        >
+          Open
+        </span>
+      </div>
+      <div
+        role="button"
+        style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 4px 0px; border-bottom: 1px solid rgb(31, 41, 55); cursor: pointer;"
+        tabindex="0"
+      >
+        <div
+          style="color: rgb(148, 163, 184); font-size: 12px; min-width: 90px;"
+        >
+          2026-07-15
+        </div>
+        <span
+          data-testid="badge"
+          style="background-color: rgb(245, 158, 11); color: rgb(255, 255, 255); font-family: Arial, sans-serif; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 16px; display: inline-block;"
+        >
+          CM
+        </span>
+        <div
+          style="flex: 1 1 0%; min-width: 200px;"
+        >
+          <div
+            style="font-weight: bold; color: rgb(255, 255, 255);"
+          >
+            CM-3003
+          </div>
+          <div
+            style="font-size: 13px; color: rgb(255, 255, 255);"
+          >
+            Excessive wear-plate erosion found during scheduled inspection, below minimum thickness.
+          </div>
+        </div>
+        <span
+          data-testid="badge"
+          style="background-color: rgb(59, 130, 246); color: rgb(255, 255, 255); font-family: Arial, sans-serif; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 16px; display: inline-block;"
+        >
+          Resolved
+        </span>
+      </div>
+    </div>
+  </div>
+  <div
+    class="card"
+    data-testid="panel"
+    style="background: rgb(21, 28, 51); color: rgb(255, 255, 255); border-radius: 8px;"
+  >
+    <h2>
+      Quick Navigation
+    </h2>
+    <div
+      style="display: flex; flex-wrap: wrap; gap: 8px;"
+    >
+      <button
+        class="ds-button"
+        style="background: rgb(59, 130, 246); color: rgb(255, 255, 255); border: medium; border-radius: 4px; padding: 4px 16px; cursor: pointer;"
+        type="button"
+      >
+        Open Pump Registry
+      </button>
+      <button
+        class="ds-button"
+        style="background: rgb(59, 130, 246); color: rgb(255, 255, 255); border: medium; border-radius: 4px; padding: 4px 16px; cursor: pointer;"
+        type="button"
+      >
+        Open Mechanical Seal
+      </button>
+      <button
+        class="ds-button"
+        style="background: rgb(59, 130, 246); color: rgb(255, 255, 255); border: medium; border-radius: 4px; padding: 4px 16px; cursor: pointer;"
+        type="button"
+      >
+        Open Work Orders
+      </button>
+      <button
+        class="ds-button"
+        style="background: rgb(59, 130, 246); color: rgb(255, 255, 255); border: medium; border-radius: 4px; padding: 4px 16px; cursor: pointer;"
+        type="button"
+      >
+        Open Preventive Maintenance
+      </button>
+      <button
+        class="ds-button"
+        style="background: rgb(59, 130, 246); color: rgb(255, 255, 255); border: medium; border-radius: 4px; padding: 4px 16px; cursor: pointer;"
+        type="button"
+      >
+        Open Corrective Maintenance
+      </button>
+      <button
+        class="ds-button"
+        style="background: rgb(59, 130, 246); color: rgb(255, 255, 255); border: medium; border-radius: 4px; padding: 4px 16px; cursor: pointer;"
+        type="button"
+      >
+        Open Condition Monitoring
+      </button>
+      <button
+        class="ds-button"
+        style="background: rgb(59, 130, 246); color: rgb(255, 255, 255); border: medium; border-radius: 4px; padding: 4px 16px; cursor: pointer;"
+        type="button"
+      >
+        Open Asset 360
+      </button>
+      <button
+        class="ds-button"
+        style="background: rgb(59, 130, 246); color: rgb(255, 255, 255); border: medium; border-radius: 4px; padding: 4px 16px; cursor: pointer;"
+        type="button"
+      >
+        Open Reports
+      </button>
+      <button
+        class="ds-button"
+        style="background: rgb(59, 130, 246); color: rgb(255, 255, 255); border: medium; border-radius: 4px; padding: 4px 16px; cursor: pointer;"
+        type="button"
+      >
+        Open Analytics
+      </button>
+      <button
+        class="ds-button"
+        style="background: rgb(59, 130, 246); color: rgb(255, 255, 255); border: medium; border-radius: 4px; padding: 4px 16px; cursor: pointer;"
+        type="button"
+      >
+        Open Drawing
+      </button>
+      <button
+        class="ds-button"
+        style="background: rgb(59, 130, 246); color: rgb(255, 255, 255); border: medium; border-radius: 4px; padding: 4px 16px; cursor: pointer;"
+        type="button"
+      >
+        Open Document
+      </button>
+      <button
+        class="ds-button"
+        disabled=""
+        style="background: rgb(148, 163, 184); color: rgb(255, 255, 255); border: medium; border-radius: 4px; padding: 4px 16px; cursor: not-allowed;"
+        type="button"
+      >
+        Open Inventory
+         (Coming soon)
+      </button>
+    </div>
+  </div>
+  <div
+    class="card"
+    data-testid="panel"
+    style="background: rgb(21, 28, 51); color: rgb(255, 255, 255); border-radius: 8px;"
+  >
+    <h2>
+      Digital Twin
+    </h2>
+    <div
+      class="card ds-empty-state"
+      data-testid="panel"
+      style="background: rgb(21, 28, 51); color: rgb(255, 255, 255); border-radius: 8px;"
+    >
+      <p
+        style="color: rgb(255, 255, 255); font-weight: bold;"
+      >
+        Digital Twin is not yet available
+      </p>
+      <p
+        data-testid="empty-state-description"
+        style="color: rgb(148, 163, 184);"
+      >
+        Reserved for a future, separately-scoped visualization capability.
+      </p>
+    </div>
+  </div>
+</div>
+`;

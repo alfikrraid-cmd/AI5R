@@ -31,9 +31,13 @@ describe("Executive Dashboard page", () => {
   });
 
   it("renders at least one attention asset derived from sample data", () => {
+    // RC-002 added ImmediateActionTable, which reuses the same attention
+    // asset data (by design, to avoid a second filtering rule) alongside
+    // AttentionAssetList -- "641-P-5" now legitimately appears more than
+    // once, so this asserts presence, not uniqueness.
     render(<ExecutiveDashboard onNavigate={() => {}} />);
 
-    expect(screen.getByText("641-P-5")).toBeTruthy();
+    expect(screen.getAllByText("641-P-5").length).toBeGreaterThan(0);
   });
 
   it("calls onNavigate with the correct workspace key from Quick Navigation", () => {
