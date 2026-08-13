@@ -49,6 +49,16 @@ describe("App", () => {
     expect(screen.getByRole("heading", { name: "Pump Workspace" })).toBeTruthy();
   });
 
+  it("registers /ltsa/{organization} as an LTSA organization route", () => {
+    window.history.replaceState({}, "", "/ltsa/tap");
+
+    render(<App />);
+
+    expect(screen.getByRole("tab", { name: "LTSA" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("heading", { name: "Pump Workspace" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { level: 1, name: "AI5ROS" })).toBeNull();
+  });
+
   it("switches back to the AI5ROS Landing when its tab is clicked again", () => {
     render(<App />);
 
