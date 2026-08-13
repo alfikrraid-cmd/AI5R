@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import ApplicationAdapter from "./ApplicationAdapter";
+import { resolveOrganization } from "./OrganizationResolver";
 import { usePlatformContext } from "./PlatformContext";
 
 function resolveApplication(pathname, applications) {
@@ -12,9 +13,21 @@ function resolveApplication(pathname, applications) {
 }
 
 export default function ApplicationRouter() {
-  const { applications, setCurrentApplication, setOrganizationContext } = usePlatformContext();
+  const platformContext = usePlatformContext();
+  const { applications, setCurrentApplication, setOrganizationContext } = platformContext;
   const [pathname, setPathname] = useState(() => window.location.pathname);
   const application = useMemo(() => resolveApplication(pathname, applications), [applications, pathname]);
+  const organizationContext = useMemo(
+    () =>
+      application?.organizationAware
+        ? resolveOrganization({
+            pathname,
+            basePath: application.basePath,
+            reservedRouteSegments: application.reservedRouteSegments,
+          })
+        : null,
+    [application, pathname]
+  );
 
   useEffect(() => {
     const handlePopState = () => setPathname(window.location.pathname);
@@ -24,8 +37,8 @@ export default function ApplicationRouter() {
 
   useEffect(() => {
     setCurrentApplication(application);
-    setOrganizationContext(null);
-  }, [application, setCurrentApplication, setOrganizationContext]);
+    setOrganizationContext(organizationContext);
+  }, [application, organizationContext, setCurrentApplication, setOrganizationContext]);
 
   function handleNavigateApplication(applicationId) {
     const nextApplication = applications.find((item) => item.applicationId === applicationId);
@@ -42,6 +55,8 @@ export default function ApplicationRouter() {
       application={application}
       applications={applications}
       onNavigateApplication={handleNavigateApplication}
+      organizationContext={organizationContext}
+      platformContext={platformContext}
     />
   );
 }

@@ -100,11 +100,25 @@ function ProductChrome({ activeKey, applications, onNavigateApplication, childre
   );
 }
 
-export default function ApplicationAdapter({ application, applications, onNavigateApplication }) {
+export default function ApplicationAdapter({
+  application,
+  applications,
+  onNavigateApplication,
+  organizationContext,
+  platformContext,
+}) {
   if (application?.applicationId === "ltsa") {
     return (
       <ProductChrome activeKey="ltsa" applications={applications} onNavigateApplication={onNavigateApplication}>
-        {window.location.pathname === PM_WORKSPACE_ROUTE ? <PMWorkspace /> : <LTSAWorkspace initialActiveKey="history" />}
+        {window.location.pathname === PM_WORKSPACE_ROUTE ? (
+          <PMWorkspace organizationContext={organizationContext} platformContext={platformContext} />
+        ) : (
+          <LTSAWorkspace
+            initialActiveKey="history"
+            organizationContext={organizationContext}
+            platformContext={platformContext}
+          />
+        )}
       </ProductChrome>
     );
   }
@@ -112,7 +126,7 @@ export default function ApplicationAdapter({ application, applications, onNaviga
   if (application?.applicationId === "od") {
     return (
       <ProductChrome activeKey="od" applications={applications} onNavigateApplication={onNavigateApplication}>
-        <ODWorkspace />
+        <ODWorkspace organizationContext={organizationContext} platformContext={platformContext} />
       </ProductChrome>
     );
   }
