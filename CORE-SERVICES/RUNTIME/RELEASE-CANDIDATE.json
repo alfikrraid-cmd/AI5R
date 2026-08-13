@@ -1,0 +1,38 @@
+{
+  "created_at": "2026-08-13T11:32:05.652722+00:00",
+  "status": "READY",
+  "env_file": "CORE-SERVICES\\RUNTIME\\.env.production.example",
+  "compose_file": "CORE-SERVICES\\RUNTIME\\compose.yaml",
+  "ai5r_version": "0.1.0",
+  "domain": "osa-system.com",
+  "image_tags": {
+    "dashboard": "ai5r/dashboard:0.1.0",
+    "api": "ai5r/api:0.1.0",
+    "postgres": "postgres:16-alpine",
+    "redis": "redis:7.4-alpine",
+    "n8n": "n8nio/n8n:1.115.3",
+    "minio": "minio/minio:RELEASE.2025-02-28T09-55-16Z",
+    "nginx": "nginx:1.27-alpine",
+    "gotenberg": "gotenberg/gotenberg:8",
+    "neo4j": "neo4j:5.26-community"
+  },
+  "validation_errors": [],
+  "compose_services": [
+    "n8n",
+    "postgres",
+    "api",
+    "dashboard",
+    "gotenberg",
+    "minio",
+    "neo4j",
+    "nginx",
+    "redis"
+  ],
+  "compose_error": null,
+  "manual_requirements": [
+    "existing system nginx/certbot checked on host",
+    "production secrets installed outside git",
+    "backup completed before deploy",
+    "rollback target version known"
+  ]
+}

@@ -1,0 +1,239 @@
+name: ${AI5R_COMPOSE_PROJECT}
+
+services:
+  dashboard:
+    image: ${AI5R_DASHBOARD_IMAGE_REPO}:${AI5R_VERSION}
+    build:
+      context: ../..
+      dockerfile: CORE-SERVICES/RUNTIME/docker/dashboard.Dockerfile
+      args:
+        VITE_API_URL: ${AI5R_API_PUBLIC_URL}
+    restart: unless-stopped
+    depends_on:
+      - api
+    networks:
+      - edge
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
+      interval: ${AI5R_HEALTHCHECK_INTERVAL}
+      timeout: ${AI5R_HEALTHCHECK_TIMEOUT}
+      retries: ${AI5R_HEALTHCHECK_RETRIES}
+      start_period: ${AI5R_HEALTHCHECK_START_PERIOD}
+
+  api:
+    image: ${AI5R_API_IMAGE_REPO}:${AI5R_VERSION}
+    build:
+      context: ../..
+      dockerfile: CORE-SERVICES/RUNTIME/docker/api.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - n8n
+    environment:
+      AI5R_ENV: ${AI5R_ENV}
+      AI5R_VERSION: ${AI5R_VERSION}
+      AI5R_DOMAIN: ${AI5R_DOMAIN}
+      AI5R_PRODUCT_NAME: ${AI5R_PRODUCT_NAME}
+      AI5R_LOG_LEVEL: ${AI5R_LOG_LEVEL}
+      AI5R_CORS_ORIGINS: ${AI5R_CORS_ORIGINS}
+      AI5R_PUMP_GATEWAY_BASE_URL: ${AI5R_PUMP_GATEWAY_BASE_URL}
+      AI5R_WORK_ORDER_GATEWAY_BASE_URL: ${AI5R_WORK_ORDER_GATEWAY_BASE_URL}
+      AI5R_MAINTENANCE_HISTORY_GATEWAY_BASE_URL: ${AI5R_MAINTENANCE_HISTORY_GATEWAY_BASE_URL}
+      AI5R_PM_SCHEDULE_GATEWAY_BASE_URL: ${AI5R_PM_SCHEDULE_GATEWAY_BASE_URL}
+      AI5R_PM_OCCURRENCE_GATEWAY_BASE_URL: ${AI5R_PM_OCCURRENCE_GATEWAY_BASE_URL}
+      AI5R_CM_REPORT_GATEWAY_BASE_URL: ${AI5R_CM_REPORT_GATEWAY_BASE_URL}
+      AI5R_CONDITION_MONITORING_SCHEDULE_GATEWAY_BASE_URL: ${AI5R_CONDITION_MONITORING_SCHEDULE_GATEWAY_BASE_URL}
+      AI5R_CONDITION_MONITORING_READING_GATEWAY_BASE_URL: ${AI5R_CONDITION_MONITORING_READING_GATEWAY_BASE_URL}
+      AI5R_SEAL_GATEWAY_BASE_URL: ${AI5R_SEAL_GATEWAY_BASE_URL}
+      AI5R_SEAL_STOCK_GATEWAY_BASE_URL: ${AI5R_SEAL_STOCK_GATEWAY_BASE_URL}
+      AI5R_SEAL_PUMP_COMPATIBILITY_GATEWAY_BASE_URL: ${AI5R_SEAL_PUMP_COMPATIBILITY_GATEWAY_BASE_URL}
+      AI5R_SEAL_ENGINEERING_DOCUMENT_GATEWAY_BASE_URL: ${AI5R_SEAL_ENGINEERING_DOCUMENT_GATEWAY_BASE_URL}
+      AI5R_INSTALLATION_GATEWAY_BASE_URL: ${AI5R_INSTALLATION_GATEWAY_BASE_URL}
+    networks:
+      - edge
+      - backend
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)",
+        ]
+      interval: ${AI5R_HEALTHCHECK_INTERVAL}
+      timeout: ${AI5R_HEALTHCHECK_TIMEOUT}
+      retries: ${AI5R_HEALTHCHECK_RETRIES}
+      start_period: ${AI5R_HEALTHCHECK_START_PERIOD}
+
+  # MWO-AI5R-106 -- unified hardened edge entrypoint. Dashboard/api are
+  # internal-only; nginx is the public gateway in front of both services.
+  # No build (plain upstream image + one mounted config file, the same
+  # "no new packaging asset needed" shape minio/redis/n8n already use).
+  nginx:
+    image: ${AI5R_NGINX_IMAGE}
+    restart: unless-stopped
+    depends_on:
+      - dashboard
+      - api
+    volumes:
+      - ./docker/nginx-proxy.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "${AI5R_NGINX_PORT}:80"
+    networks:
+      - edge
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/healthz || exit 1"]
+      interval: ${AI5R_HEALTHCHECK_INTERVAL}
+      timeout: ${AI5R_HEALTHCHECK_TIMEOUT}
+      retries: ${AI5R_HEALTHCHECK_RETRIES}
+      start_period: ${AI5R_HEALTHCHECK_START_PERIOD}
+
+  postgres:
+    image: ${AI5R_POSTGRES_IMAGE}
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${AI5R_POSTGRES_DB}
+      POSTGRES_USER: ${AI5R_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${AI5R_POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init_postgres.sql:/docker-entrypoint-initdb.d/001_init_postgres.sql:ro
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB -h 127.0.0.1"]
+      interval: ${AI5R_HEALTHCHECK_INTERVAL}
+      timeout: ${AI5R_HEALTHCHECK_TIMEOUT}
+      retries: ${AI5R_HEALTHCHECK_RETRIES}
+      start_period: ${AI5R_HEALTHCHECK_START_PERIOD}
+
+  neo4j:
+    image: ${AI5R_NEO4J_IMAGE}
+    restart: unless-stopped
+    environment:
+      AI5R_NEO4J_USERNAME: ${AI5R_NEO4J_USERNAME}
+      AI5R_NEO4J_PASSWORD: ${AI5R_NEO4J_PASSWORD}
+      NEO4J_AUTH: ${AI5R_NEO4J_USERNAME}/${AI5R_NEO4J_PASSWORD}
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+      - neo4j_plugins:/plugins
+    networks:
+      - backend
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "cypher-shell -u $$AI5R_NEO4J_USERNAME -p $$AI5R_NEO4J_PASSWORD 'RETURN 1;' >/dev/null",
+        ]
+      interval: ${AI5R_HEALTHCHECK_INTERVAL}
+      timeout: ${AI5R_HEALTHCHECK_TIMEOUT}
+      retries: ${AI5R_HEALTHCHECK_RETRIES}
+      start_period: ${AI5R_HEALTHCHECK_START_PERIOD}
+
+  redis:
+    image: ${AI5R_REDIS_IMAGE}
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1", "--requirepass", "${AI5R_REDIS_PASSWORD}"]
+    environment:
+      AI5R_REDIS_PASSWORD: ${AI5R_REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a $$AI5R_REDIS_PASSWORD ping | grep PONG >/dev/null"]
+      interval: ${AI5R_HEALTHCHECK_INTERVAL}
+      timeout: ${AI5R_HEALTHCHECK_TIMEOUT}
+      retries: ${AI5R_HEALTHCHECK_RETRIES}
+      start_period: ${AI5R_HEALTHCHECK_START_PERIOD}
+
+  # MWO-AI5R-105 -- document-conversion service, documented in this repo's
+  # own root MEMORY.md as an intended Production Runtime (VPS)
+  # responsibility but never previously wired into any compose file
+  # (confirmed by repository-wide search before adding this). Stateless
+  # (no persistent volume -- the official image needs none for its normal
+  # request-scoped conversion workload), internal-only (backend network,
+  # no published port -- no application code calls it yet; opening it up
+  # is a one-line change for whichever future MWO actually wires a caller
+  # to it, not invented here).
+  gotenberg:
+    image: ${AI5R_GOTENBERG_IMAGE}
+    restart: unless-stopped
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3000/health >/dev/null || exit 1"]
+      interval: ${AI5R_HEALTHCHECK_INTERVAL}
+      timeout: ${AI5R_HEALTHCHECK_TIMEOUT}
+      retries: ${AI5R_HEALTHCHECK_RETRIES}
+      start_period: ${AI5R_HEALTHCHECK_START_PERIOD}
+
+  n8n:
+    image: ${AI5R_N8N_IMAGE}
+    restart: unless-stopped
+    environment:
+      TZ: ${AI5R_TIMEZONE}
+      N8N_HOST: 0.0.0.0
+      N8N_PORT: 5678
+      N8N_PROTOCOL: http
+      N8N_ENDPOINT_HEALTH: healthz
+      WEBHOOK_URL: ${AI5R_N8N_PUBLIC_URL}/
+      GENERIC_TIMEZONE: ${AI5R_TIMEZONE}
+      N8N_ENCRYPTION_KEY: ${AI5R_N8N_ENCRYPTION_KEY}
+    volumes:
+      - n8n_data:/home/node/.n8n
+    networks:
+      - edge
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:5678/healthz/readiness || exit 1"]
+      interval: ${AI5R_HEALTHCHECK_INTERVAL}
+      timeout: ${AI5R_HEALTHCHECK_TIMEOUT}
+      retries: ${AI5R_HEALTHCHECK_RETRIES}
+      start_period: ${AI5R_HEALTHCHECK_START_PERIOD}
+
+  minio:
+    image: ${AI5R_MINIO_IMAGE}
+    restart: unless-stopped
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: ${AI5R_MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${AI5R_MINIO_ROOT_PASSWORD}
+    ports:
+      - "127.0.0.1:${AI5R_MINIO_API_PORT}:9000"
+    volumes:
+      - minio_data:/data
+    networks:
+      - edge
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/minio/health/live >/dev/null || exit 1"]
+      interval: ${AI5R_HEALTHCHECK_INTERVAL}
+      timeout: ${AI5R_HEALTHCHECK_TIMEOUT}
+      retries: ${AI5R_HEALTHCHECK_RETRIES}
+      start_period: ${AI5R_HEALTHCHECK_START_PERIOD}
+
+networks:
+  edge:
+    name: ${AI5R_COMPOSE_PROJECT}-edge
+  backend:
+    name: ${AI5R_COMPOSE_PROJECT}-backend
+    internal: true
+
+volumes:
+  postgres_data:
+    name: ${AI5R_VOLUME_PREFIX}-postgres-data
+  neo4j_data:
+    name: ${AI5R_VOLUME_PREFIX}-neo4j-data
+  neo4j_logs:
+    name: ${AI5R_VOLUME_PREFIX}-neo4j-logs
+  neo4j_plugins:
+    name: ${AI5R_VOLUME_PREFIX}-neo4j-plugins
+  redis_data:
+    name: ${AI5R_VOLUME_PREFIX}-redis-data
+  n8n_data:
+    name: ${AI5R_VOLUME_PREFIX}-n8n-data
+  minio_data:
+    name: ${AI5R_VOLUME_PREFIX}-minio-data
+
