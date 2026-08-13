@@ -1,32 +1,9 @@
 import { useMemo, useState } from "react";
+import { loadPlatformRegistry } from "./ManifestLoader";
 import { PlatformContext } from "./PlatformContext";
 
-const APPLICATIONS = [
-  {
-    applicationId: "platform-home",
-    slug: "",
-    basePath: "/",
-    displayName: "AI5ROS",
-    defaultPath: "/",
-    status: "active",
-  },
-  {
-    applicationId: "ltsa",
-    slug: "ltsa",
-    basePath: "/ltsa",
-    displayName: "LTSA",
-    defaultPath: "/ltsa/pump-workspace",
-    status: "active",
-  },
-  {
-    applicationId: "od",
-    slug: "od",
-    basePath: "/od",
-    displayName: "Open Design",
-    defaultPath: "/od",
-    status: "active",
-  },
-];
+const platformRegistry = loadPlatformRegistry();
+const APPLICATIONS = platformRegistry.list();
 
 export default function PlatformProvider({ children }) {
   const [currentApplication, setCurrentApplication] = useState(null);
@@ -47,4 +24,3 @@ export default function PlatformProvider({ children }) {
 
   return <PlatformContext.Provider value={value}>{children}</PlatformContext.Provider>;
 }
-
