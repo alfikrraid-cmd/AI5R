@@ -42,6 +42,15 @@ describe("App", () => {
     expect(screen.getByRole("heading", { name: "Pump Workspace" })).toBeTruthy();
   });
 
+  it("registers /ltsa as the LTSA application entry route", () => {
+    window.history.replaceState({}, "", "/ltsa");
+
+    render(<App />);
+
+    expect(screen.getByRole("tab", { name: "LTSA" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("heading", { name: "Pump Workspace" })).toBeTruthy();
+  });
+
   it("switches back to the OS Command Center when its tab is clicked again", () => {
     render(<App />);
 
