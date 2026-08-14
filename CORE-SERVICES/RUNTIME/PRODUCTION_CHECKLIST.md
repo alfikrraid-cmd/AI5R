@@ -15,11 +15,12 @@
 ## Production Preparation
 
 - [ ] Production `.env` created from `.env.production.example` on the VPS.
-- [ ] Production `.env` keeps `AI5R_POSTGRES_DB=ai5r_runtime` and sets `AI5R_LTSA_POSTGRES_DB=ltsa_brain`.
+- [ ] Production `.env` keeps `AI5R_POSTGRES_DB=ai5r_runtime`, `AI5R_POSTGRES_PORT=5432`, and `AI5R_LTSA_POSTGRES_DB=ltsa_brain`.
 - [ ] Real secrets satisfy `PRODUCTION_SECRETS_CONTRACT.md`.
 - [ ] Image tags are pinned to approved release versions.
 - [ ] `validate_config.py` passes against production `.env`.
 - [ ] `docker compose config` passes against `compose.yaml`.
+- [ ] Rendered n8n config uses PostgreSQL (`DB_TYPE=postgresdb`) and does not fall back to SQLite.
 - [ ] System nginx config is backed up before cutover.
 - [ ] Certbot certificate for `osa-system.com` is valid.
 - [ ] Firewall exposes only intended public ports.

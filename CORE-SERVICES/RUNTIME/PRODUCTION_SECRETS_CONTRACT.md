@@ -19,7 +19,8 @@ only this contract and the non-secret example file; the real production
 
 | Variable | Owner | Required value | Notes |
 |---|---|---|---|
-| `AI5R_POSTGRES_DB` | Production operator | `ai5r_runtime` | AI5ROS runtime/platform database used by the compose-managed Postgres service. |
+| `AI5R_POSTGRES_DB` | Production operator | `ai5r_runtime` | AI5ROS runtime/platform database used by the compose-managed Postgres service and n8n internal persistence. |
+| `AI5R_POSTGRES_PORT` | Production operator | `5432` | Internal compose-network PostgreSQL port used by n8n. |
 | `AI5R_LTSA_POSTGRES_DB` | Production operator | `ltsa_brain` | LTSA canonical application database targeted by the LTSA n8n Postgres credential. |
 
 ## Handling Rules

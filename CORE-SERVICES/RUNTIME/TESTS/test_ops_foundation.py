@@ -41,6 +41,7 @@ def test_validate_environment_accepts_valid_development_configuration(tmp_path):
         AI5R_NGINX_IMAGE=nginx:1.27-alpine
         AI5R_GOTENBERG_IMAGE=gotenberg/gotenberg:8
         AI5R_POSTGRES_DB=ai5r_runtime
+        AI5R_POSTGRES_PORT=5432
         AI5R_LTSA_POSTGRES_DB=ltsa_brain
         AI5R_POSTGRES_USER=ai5r
         AI5R_POSTGRES_PASSWORD=dev-postgres-password
@@ -85,6 +86,7 @@ def test_validate_environment_accepts_valid_production_like_configuration(tmp_pa
         AI5R_NGINX_IMAGE=nginx:1.27-alpine
         AI5R_GOTENBERG_IMAGE=gotenberg/gotenberg:8
         AI5R_POSTGRES_DB=ai5r_runtime
+        AI5R_POSTGRES_PORT=5432
         AI5R_LTSA_POSTGRES_DB=ltsa_brain
         AI5R_POSTGRES_USER=ai5r
         AI5R_POSTGRES_PASSWORD=prod-postgres-credential
@@ -141,6 +143,7 @@ def test_validate_environment_rejects_unsafe_production_credential(tmp_path):
         AI5R_N8N_IMAGE=n8nio/n8n:1.115.3
         AI5R_MINIO_IMAGE=minio/minio:RELEASE.2025-02-28T09-55-16Z
         AI5R_POSTGRES_DB=ai5r_runtime
+        AI5R_POSTGRES_PORT=5432
         AI5R_LTSA_POSTGRES_DB=ltsa_brain
         AI5R_POSTGRES_USER=ai5r
         AI5R_POSTGRES_PASSWORD=change-me
@@ -186,6 +189,7 @@ def test_validate_environment_rejects_missing_ltsa_database_variable(tmp_path):
         AI5R_NGINX_IMAGE=nginx:1.27-alpine
         AI5R_GOTENBERG_IMAGE=gotenberg/gotenberg:8
         AI5R_POSTGRES_DB=ai5r_runtime
+        AI5R_POSTGRES_PORT=5432
         AI5R_POSTGRES_USER=ai5r
         AI5R_POSTGRES_PASSWORD=dev-postgres-password
         AI5R_NEO4J_USERNAME=neo4j

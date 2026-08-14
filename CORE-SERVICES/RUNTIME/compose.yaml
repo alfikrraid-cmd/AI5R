@@ -172,6 +172,9 @@ services:
   n8n:
     image: ${AI5R_N8N_IMAGE}
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
       TZ: ${AI5R_TIMEZONE}
       N8N_HOST: 0.0.0.0
@@ -181,6 +184,12 @@ services:
       WEBHOOK_URL: ${AI5R_N8N_PUBLIC_URL}/
       GENERIC_TIMEZONE: ${AI5R_TIMEZONE}
       N8N_ENCRYPTION_KEY: ${AI5R_N8N_ENCRYPTION_KEY}
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: ${AI5R_POSTGRES_PORT}
+      DB_POSTGRESDB_DATABASE: ${AI5R_POSTGRES_DB}
+      DB_POSTGRESDB_USER: ${AI5R_POSTGRES_USER}
+      DB_POSTGRESDB_PASSWORD: ${AI5R_POSTGRES_PASSWORD}
     volumes:
       - n8n_data:/home/node/.n8n
     networks:
