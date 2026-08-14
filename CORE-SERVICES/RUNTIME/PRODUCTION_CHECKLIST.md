@@ -21,6 +21,7 @@
 - [ ] `validate_config.py` passes against production `.env`.
 - [ ] `docker compose config` passes against `compose.yaml`.
 - [ ] Rendered n8n config uses PostgreSQL (`DB_TYPE=postgresdb`) and does not fall back to SQLite.
+- [ ] Rendered nginx config routes `/rest/*` and `/webhook/*` to n8n while preserving `/api/*` to API and `/` to dashboard.
 - [ ] System nginx config is backed up before cutover.
 - [ ] Certbot certificate for `osa-system.com` is valid.
 - [ ] Firewall exposes only intended public ports.
@@ -39,5 +40,6 @@
 - [ ] `smoke_test.py` passes against `https://osa-system.com`.
 - [ ] Dashboard resolves through system nginx.
 - [ ] API resolves through system nginx.
+- [ ] n8n bootstrap REST and LTSA webhook paths resolve through system nginx.
 - [ ] Direct dashboard/API container ports are not public.
 - [ ] Rollback path is ready and documented.

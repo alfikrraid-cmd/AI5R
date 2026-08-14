@@ -28,12 +28,14 @@ without moving Docker, Compose, health, or infrastructure concerns into
 ### Edge reverse proxy (`nginx`) -- MWO-AI5R-105
 
 One additional, unified entrypoint (`AI5R_NGINX_PORT`, default `8080`) in
-front of the existing `dashboard`/`api` services: `/api/*` is forwarded to
-`api:8000` unchanged (every backend route already starts with `/api/`, so
-no path rewriting happens), everything else is forwarded to `dashboard:80`
-(the existing built SPA, served by its own already-existing internal
-nginx, unchanged). This is additive, not a replacement -- `dashboard` and
-`api` still publish their own ports directly, exactly as before.
+front of the existing `dashboard`/`api`/`n8n` services: `/api/*` is
+forwarded to `api:8000` unchanged (every backend route already starts with
+`/api/`, so no path rewriting happens), n8n bootstrap/API paths under
+`/rest/*` and active workflow paths under `/webhook/*` are forwarded to
+`n8n:5678`, and everything else is forwarded to `dashboard:80` (the
+existing built SPA, served by its own already-existing internal nginx,
+unchanged). This is additive, not a replacement -- the compose nginx
+remains the single public gateway behind host-owned TLS.
 
 ### Document conversion (`gotenberg`) -- MWO-AI5R-105
 
