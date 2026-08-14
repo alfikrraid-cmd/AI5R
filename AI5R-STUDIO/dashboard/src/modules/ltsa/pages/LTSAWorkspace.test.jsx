@@ -1,6 +1,10 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import LTSAWorkspace from "./LTSAWorkspace";
+
+afterEach(() => {
+  window.history.pushState({}, "", "/");
+});
 
 describe("LTSAWorkspace navigation shell", () => {
   it("renders a tab for every LTSA workspace", () => {
@@ -11,7 +15,7 @@ describe("LTSAWorkspace navigation shell", () => {
     expect(screen.getByRole("tab", { name: "Work Order" })).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Preventive Maintenance" })).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Corrective Maintenance" })).toBeTruthy();
-    expect(screen.getByRole("tab", { name: "Maintenance History" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Asset 360" })).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Reports" })).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Analytics" })).toBeTruthy();
   });
@@ -59,12 +63,12 @@ describe("LTSAWorkspace navigation shell", () => {
     expect(screen.getByRole("heading", { name: "Corrective Maintenance Workspace" })).toBeTruthy();
   });
 
-  it("switches to the Maintenance History workspace when its tab is clicked", () => {
+  it("switches to the Asset 360 workspace when its tab is clicked", () => {
     render(<LTSAWorkspace />);
 
-    fireEvent.click(screen.getByRole("tab", { name: "Maintenance History" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Asset 360" }));
 
-    expect(screen.getByRole("heading", { name: "Maintenance History" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Pump Workspace" })).toBeTruthy();
   });
 
   it("switches to the Reports workspace when its tab is clicked", () => {
@@ -98,7 +102,7 @@ describe("LTSAWorkspace navigation shell", () => {
 
     // Follow the pump's "View History" quick action into Maintenance History.
     fireEvent.click(screen.getByRole("button", { name: "View History" }));
-    expect(screen.getByRole("heading", { name: "Maintenance History" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Pump Workspace" })).toBeTruthy();
 
     // Return to the Dashboard and jump to Reports via Quick Navigation.
     fireEvent.click(screen.getByRole("tab", { name: "Executive Dashboard" }));
@@ -117,7 +121,7 @@ describe("LTSAWorkspace navigation shell", () => {
     expect(screen.getByRole("heading", { name: "What should managers do next?" })).toBeTruthy();
 
     // Every outer LTSA tab remains reachable after this journey.
-    ["Executive Dashboard", "Pump", "Work Order", "Preventive Maintenance", "Corrective Maintenance", "Maintenance History", "Reports", "Analytics"].forEach(
+    ["Executive Dashboard", "Pump", "Work Order", "Preventive Maintenance", "Corrective Maintenance", "Asset 360", "Reports", "Analytics"].forEach(
       (tabName) => {
         expect(screen.getByRole("tab", { name: tabName })).toBeTruthy();
       }

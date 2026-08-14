@@ -49,6 +49,14 @@ export function buildKpiSummary() {
   ).length;
   const recentMaintenanceActivity = buildPlantTimeline().filter((event) => isRecent(event.date)).length;
 
+  // RC-002 (Executive Dashboard React Implementation): Global KPI addition.
+  // A plain count over already-loaded sample data -- no new gateway, no new
+  // fetch, consistent with every other field in this function.
+  const totalPumps = samplePumps.length;
+  const criticalFailures = sampleCMReports.filter(
+    (cm) => cm.severity === "CRITICAL" && OPEN_CM_STATUSES.has(cm.status)
+  ).length;
+
   return {
     openWorkOrders,
     overduePM,
@@ -56,6 +64,8 @@ export function buildKpiSummary() {
     openCorrectiveMaintenance,
     criticalAssets,
     recentMaintenanceActivity,
+    totalPumps,
+    criticalFailures,
   };
 }
 
@@ -91,6 +101,45 @@ export function buildMaintenanceHealth() {
     closedWorkOrders,
     cmStatusCounts,
   };
+}
+
+/**
+ * Engineering Readiness (RC-002) — Pump readiness is a real sample-data
+ * percentage. Seal, Drawing, Document, Knowledge, and Inventory have no
+ * backend yet (MWO-LTSA-036L: no real Seal Registry API exists to reuse
+ * either) and are represented as `null` (rendered as a placeholder by
+ * EngineeringReadinessPanel), not fabricated.
+ */
+export function buildEngineeringReadiness() {
+  const pumpReadyCount = samplePumps.filter((pump) => pump.status !== "FAULT").length;
+
+  return {
+    pump: samplePumps.length === 0 ? null : Math.round((pumpReadyCount / samplePumps.length) * 100),
+    seal: null,
+    drawing: null,
+    document: null,
+    knowledge: null,
+    inventory: null,
+  };
+}
+
+/**
+ * Engineering Alerts (RC-002) — compact plant-wide alert counts, distinct
+ * from buildAttentionAssets() (per-asset detail list): this is the same
+ * underlying sample data, aggregated to single counts instead of rows, so
+ * no source data or filtering rule is duplicated, only the presentation
+ * differs.
+ */
+export function buildEngineeringAlerts() {
+  const overduePM = samplePMSchedules.filter((pm) => pm.status === "OVERDUE").length;
+  const criticalOpenCM = sampleCMReports.filter(
+    (cm) => cm.severity === "CRITICAL" && OPEN_CM_STATUSES.has(cm.status)
+  ).length;
+  const criticalOpenWorkOrders = sampleWorkOrders.filter(
+    (wo) => wo.priority === "CRITICAL" && isOpenWorkOrderStatus(wo.status)
+  ).length;
+
+  return { overduePM, criticalOpenCM, criticalOpenWorkOrders };
 }
 
 /**

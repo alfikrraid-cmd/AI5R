@@ -1,0 +1,22 @@
+.condition-monitoring-workspace-layout {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+  margin-top: 16px;
+}
+
+.condition-monitoring-workspace-registry {
+  flex: 2;
+  min-width: 0;
+}
+
+.condition-monitoring-workspace-detail {
+  flex: 1;
+  min-width: 280px;
+}
+
+@media (max-width: 768px) {
+  .condition-monitoring-workspace-layout {
+    flex-direction: column;
+  }
+}
