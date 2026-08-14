@@ -187,6 +187,66 @@ CREATE TABLE IF NOT EXISTS public.maintenance_history (
 );
 
 -- ============================================================
+-- KNOWLEDGE SOURCE REGISTRY
+-- Manufactured under MWO-LTSA-040A (Knowledge Source Registry).
+--
+-- Canonical registry for engineering source provenance inside LTSA
+-- (Architecture Decision item 4). Deliberately NOT AI5R-SDK/KNOWLEDGE's
+-- KnowledgeSource/KnowledgeSourceRegistry -- that package is frozen,
+-- AI5R-platform-level, and explicitly not reused, modified, or integrated
+-- with by this MWO (Architecture Decision items 1-2). The identical name is
+-- a known, deliberate collision between two unrelated artifacts, not an
+-- oversight.
+--
+-- The relationship "Knowledge Source -> Engineering Document" named in
+-- MWO-LTSA-040A is logical only here -- no FK is added in this block.
+-- Physical linkage is deferred to MWO-LTSA-040B (Architecture Decision
+-- item 6). Installation Event, Inspection Event, Failure Event, and
+-- Engineering Media do not exist yet and are not created here (item 7) --
+-- reserved for future MWOs (item 10).
+--
+-- No DELETE workflow exists for this table, by design: the original
+-- engineering source must never be removed by Engineering Knowledge
+-- Acquisition (Business Rule; Architecture Decision item 9).
+--
+-- Source: ../BUILD-PACKS/BP-KNOWLEDGE-SOURCE/DATABASE/001_create_table.sql
+-- See ENGINEERING/MWO/MWO-LTSA-040A-Knowledge-Source-Registry.md
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS public.knowledge_source_registry (
+    knowledge_source_id TEXT PRIMARY KEY NOT NULL,
+    source_type TEXT NOT NULL,
+    source_name TEXT NOT NULL,
+    original_file_name TEXT,
+    source_date DATE,
+    customer TEXT,
+    site TEXT,
+    unit TEXT,
+    uploaded_by TEXT,
+    upload_timestamp TIMESTAMP DEFAULT NOW(),
+    source_url TEXT,
+    verification_status TEXT NOT NULL DEFAULT 'DRAFT',
+    confidence_level NUMERIC,
+    file_hash TEXT,
+    file_size BIGINT,
+    media_type TEXT,
+    description TEXT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    CONSTRAINT knowledge_source_registry_source_type_check
+        CHECK (source_type IN (
+            'INSTALLATION_REPORT', 'SERVICE_REPORT', 'INSPECTION_REPORT', 'FAILURE_REPORT',
+            'DRAWING', 'DATASHEET', 'BILL_OF_MATERIAL', 'MAINTENANCE_HISTORY',
+            'PUMP_MASTER_EXCEL', 'STOCK_EXCEL', 'INSTALLATION_HISTORY_EXCEL',
+            'PHOTO', 'VIDEO', 'ENGINEER_NOTE', 'CUSTOMER_NOTE'
+        )),
+    CONSTRAINT knowledge_source_registry_verification_status_check
+        CHECK (verification_status IN ('DRAFT', 'UNDER_REVIEW', 'VERIFIED', 'CANONICAL')),
+    CONSTRAINT knowledge_source_registry_file_size_check
+        CHECK (file_size IS NULL OR file_size >= 0)
+);
+
+-- ============================================================
 -- SEAL STOCK, PUMP COMPATIBILITY, INTERCHANGE COMPATIBILITY,
 -- ENGINEERING DOCUMENT
 -- Manufactured under MWO-LTSA-030 (Mechanical Seal Knowledge Manufacturing).
@@ -473,66 +533,6 @@ CREATE TABLE IF NOT EXISTS public.acquisition_job (
     CONSTRAINT acquisition_job_rows_invalid_check CHECK (rows_invalid IS NULL OR rows_invalid >= 0)
 );
 
--- ============================================================
--- KNOWLEDGE SOURCE REGISTRY
--- Manufactured under MWO-LTSA-040A (Knowledge Source Registry).
---
--- Canonical registry for engineering source provenance inside LTSA
--- (Architecture Decision item 4). Deliberately NOT AI5R-SDK/KNOWLEDGE's
--- KnowledgeSource/KnowledgeSourceRegistry -- that package is frozen,
--- AI5R-platform-level, and explicitly not reused, modified, or integrated
--- with by this MWO (Architecture Decision items 1-2). The identical name is
--- a known, deliberate collision between two unrelated artifacts, not an
--- oversight.
---
--- The relationship "Knowledge Source -> Engineering Document" named in
--- MWO-LTSA-040A is logical only here -- seal_engineering_document (above)
--- is intentionally left unmodified; no FK is added in either direction.
--- Physical linkage is deferred to MWO-LTSA-040B (Architecture Decision
--- item 6). Installation Event, Inspection Event, Failure Event, and
--- Engineering Media do not exist yet and are not created here (item 7) --
--- reserved for future MWOs (item 10).
---
--- No DELETE workflow exists for this table, by design: the original
--- engineering source must never be removed by Engineering Knowledge
--- Acquisition (Business Rule; Architecture Decision item 9).
---
--- Source: ../BUILD-PACKS/BP-KNOWLEDGE-SOURCE/DATABASE/001_create_table.sql
--- See ENGINEERING/MWO/MWO-LTSA-040A-Knowledge-Source-Registry.md
--- ============================================================
-
-CREATE TABLE IF NOT EXISTS public.knowledge_source_registry (
-    knowledge_source_id TEXT PRIMARY KEY NOT NULL,
-    source_type TEXT NOT NULL,
-    source_name TEXT NOT NULL,
-    original_file_name TEXT,
-    source_date DATE,
-    customer TEXT,
-    site TEXT,
-    unit TEXT,
-    uploaded_by TEXT,
-    upload_timestamp TIMESTAMP DEFAULT NOW(),
-    source_url TEXT,
-    verification_status TEXT NOT NULL DEFAULT 'DRAFT',
-    confidence_level NUMERIC,
-    file_hash TEXT,
-    file_size BIGINT,
-    media_type TEXT,
-    description TEXT,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW(),
-    CONSTRAINT knowledge_source_registry_source_type_check
-        CHECK (source_type IN (
-            'INSTALLATION_REPORT', 'SERVICE_REPORT', 'INSPECTION_REPORT', 'FAILURE_REPORT',
-            'DRAWING', 'DATASHEET', 'BILL_OF_MATERIAL', 'MAINTENANCE_HISTORY',
-            'PUMP_MASTER_EXCEL', 'STOCK_EXCEL', 'INSTALLATION_HISTORY_EXCEL',
-            'PHOTO', 'VIDEO', 'ENGINEER_NOTE', 'CUSTOMER_NOTE'
-        )),
-    CONSTRAINT knowledge_source_registry_verification_status_check
-        CHECK (verification_status IN ('DRAFT', 'UNDER_REVIEW', 'VERIFIED', 'CANONICAL')),
-    CONSTRAINT knowledge_source_registry_file_size_check
-        CHECK (file_size IS NULL OR file_size >= 0)
-);
 
 -- ============================================================
 -- PDF DOCUMENT, PDF METADATA, DOCUMENT CLASSIFICATION,
