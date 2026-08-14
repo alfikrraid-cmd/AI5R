@@ -1,6 +1,5 @@
 import { Tabs } from "../design-system";
 import LTSAWorkspace from "../modules/ltsa/pages/LTSAWorkspace";
-import PMWorkspace from "../modules/ltsa/pages/PMWorkspace";
 import ODWorkspace from "../modules/od/pages/ODWorkspace";
 import Landing from "./Landing";
 
@@ -36,15 +35,11 @@ export default function ApplicationAdapter({
   if (application?.applicationId === "ltsa") {
     return (
       <ProductChrome activeKey="ltsa" applications={applications} onNavigateApplication={onNavigateApplication}>
-        {window.location.pathname === PM_WORKSPACE_ROUTE ? (
-          <PMWorkspace organizationContext={organizationContext} platformContext={platformContext} />
-        ) : (
-          <LTSAWorkspace
-            initialActiveKey="history"
-            organizationContext={organizationContext}
-            platformContext={platformContext}
-          />
-        )}
+        <LTSAWorkspace
+          initialActiveKey="history"
+          organizationContext={organizationContext}
+          platformContext={platformContext}
+        />
       </ProductChrome>
     );
   }

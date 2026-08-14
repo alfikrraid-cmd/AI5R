@@ -1,0 +1,13 @@
+.od-studio {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 640px;
+}
+
+.od-studio-field {
+  display: block;
+  width: 100%;
+  margin-bottom: 12px;
+  box-sizing: border-box;
+}

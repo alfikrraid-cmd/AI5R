@@ -1,0 +1,16 @@
+.od-presentation {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 640px;
+}
+
+.od-presentation-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.od-presentation-meta {
+  font-size: 12px;
+}

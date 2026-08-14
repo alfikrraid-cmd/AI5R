@@ -1,0 +1,23 @@
+.od-headquarters {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.od-headquarters-executive-row {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 16px;
+}
+
+@media (max-width: 768px) {
+  .od-headquarters-executive-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .od-headquarters-executive-row {
+    grid-template-columns: 1fr;
+  }
+}
