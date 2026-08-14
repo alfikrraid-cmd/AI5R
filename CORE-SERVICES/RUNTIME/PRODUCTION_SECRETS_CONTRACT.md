@@ -14,6 +14,14 @@ only this contract and the non-secret example file; the real production
 | `AI5R_N8N_ENCRYPTION_KEY` | Production operator | Do not rotate casually after migration | Must match existing n8n key to decrypt migrated credentials. |
 | `AI5R_MINIO_ROOT_PASSWORD` | Production operator | Rotate before public object storage use | Required if MinIO retains production data. |
 
+
+## Required Non-Secret Database Names
+
+| Variable | Owner | Required value | Notes |
+|---|---|---|---|
+| `AI5R_POSTGRES_DB` | Production operator | `ai5r_runtime` | AI5ROS runtime/platform database used by the compose-managed Postgres service. |
+| `AI5R_LTSA_POSTGRES_DB` | Production operator | `ltsa_brain` | LTSA canonical application database targeted by the LTSA n8n Postgres credential. |
+
 ## Handling Rules
 
 - Do not commit the real production `.env`.

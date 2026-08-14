@@ -15,6 +15,7 @@
 ## Production Preparation
 
 - [ ] Production `.env` created from `.env.production.example` on the VPS.
+- [ ] Production `.env` keeps `AI5R_POSTGRES_DB=ai5r_runtime` and sets `AI5R_LTSA_POSTGRES_DB=ltsa_brain`.
 - [ ] Real secrets satisfy `PRODUCTION_SECRETS_CONTRACT.md`.
 - [ ] Image tags are pinned to approved release versions.
 - [ ] `validate_config.py` passes against production `.env`.

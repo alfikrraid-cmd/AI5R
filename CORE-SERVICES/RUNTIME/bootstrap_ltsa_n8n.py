@@ -173,12 +173,21 @@ def get_or_create_postgres_credential(client: N8nClient, env: dict[str, str]) ->
         if credential.get("name") == "Postgres account" and credential.get("type") == "postgres":
             return {"id": credential["id"], "name": credential["name"], "created": False}
 
+    required_keys = (
+        "AI5R_LTSA_POSTGRES_DB",
+        "AI5R_POSTGRES_USER",
+        "AI5R_POSTGRES_PASSWORD",
+    )
+    for key in required_keys:
+        if not env.get(key):
+            raise RuntimeError(f"Missing required variable for LTSA n8n Postgres credential: {key}")
+
     payload = {
         "name": "Postgres account",
         "type": "postgres",
         "data": {
             "host": "postgres",
-            "database": env["AI5R_POSTGRES_DB"],
+            "database": env["AI5R_LTSA_POSTGRES_DB"],
             "user": env["AI5R_POSTGRES_USER"],
             "password": env["AI5R_POSTGRES_PASSWORD"],
             "port": int(env.get("AI5R_POSTGRES_PORT", "5432")),
