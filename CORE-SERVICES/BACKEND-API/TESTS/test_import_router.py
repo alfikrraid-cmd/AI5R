@@ -32,6 +32,11 @@ def _real_runner() -> DatabaseRunner:
     )
 
 
+def _pump_present(runner: DatabaseRunner, tag_number: str) -> bool:
+    rows = _json_query(f"SELECT tag_number FROM ltsa_pumps WHERE tag_number = '{tag_number}'", runner)
+    return rows != []
+
+
 @pytest.fixture
 def real_db_cleanup():
     """Only used by the MWO-LTSA-103 real-execution tests below -- every
@@ -760,3 +765,207 @@ def test_pump_xlsx_dry_run_is_deterministic_across_repeated_calls():
         report.pop("session_id")
         report.pop("source")
     assert first == second
+
+
+# --- Dry-run -> persisted session -> Approve -> execute (MWO-LTSA-DATA-IMPORT-UI-001C) ---
+#
+# Real Postgres throughout, real multipart upload, real POST .../execute --
+# no mocked adapter, no stubbed dry_run_import/execute_import. TEST-ROUTER-
+# namespaced, cleaned by the same real_db_cleanup fixture every other real-
+# write test in this file already uses.
+
+
+def _dry_run_data(rows: tuple[tuple, ...], filename: str = "master.xlsx") -> dict:
+    response = _upload_pump_xlsx(rows, filename)
+    assert response.status_code == 200
+    return response.json()["data"]
+
+
+def _approve(session_id: str):
+    return client.post("/api/ltsa/import/execute", json={"session_id": session_id})
+
+
+class _RollbackInjectingRunner:
+    """Delegates reads to a real DatabaseRunner (so the dry-run's own
+    live-snapshot query still works) but always fails the write --
+    reproduces a real transaction failure without touching execute_import/
+    DatabaseRunner themselves (both reused unmodified)."""
+
+    def __init__(self, real_runner):
+        self._real = real_runner
+
+    def query_scalar(self, sql: str) -> str:
+        return self._real.query_scalar(sql)
+
+    def execute_script(self, sql: str) -> None:
+        raise RuntimeError("INJECTED FAILURE -- simulated transaction failure for MWO-LTSA-DATA-IMPORT-UI-001C")
+
+
+def test_dry_run_persists_a_session_reachable_by_status_endpoint(real_db_cleanup):
+    data = _dry_run_data((("PUMP-1", "TEST-ROUTER-P-SESS", "Unit 1", "OH", "11/61", None),))
+
+    status_response = client.get(f"/api/ltsa/import/status/{data['session_id']}")
+    body = status_response.json()
+
+    assert body["success"] is True
+    assert body["data"]["session_id"] == data["session_id"]
+    assert body["data"]["status"] == "REVIEWING"
+
+
+def test_a_rejected_file_cannot_approve_and_writes_nothing(real_db_cleanup):
+    runner = _real_runner()
+    # Real acceptance-file shape: a real tag_number, but missing 'area' --
+    # same MISSING_REQUIRED_FIELD rejection the real RU II workbook's 5
+    # rows hit. approval_ready must be false, and Approve must refuse to
+    # write ANY of this package's rows (all-or-nothing), never a partial
+    # 1-of-2 import.
+    data = _dry_run_data(
+        (
+            ("PUMP-1", "TEST-ROUTER-P-REJ-1", "Unit 1", "OH", "11/61", None),
+            ("PUMP-2", "TEST-ROUTER-P-REJ-2", None, "OH", "11/61", None),
+        )
+    )
+    assert data["approval_ready"] is False
+    assert data["rejected_count"] == 1
+
+    response = _approve(data["session_id"])
+    body = response.json()
+
+    # Outer envelope success=true means the API call itself completed --
+    # the real outcome (refused, all-or-nothing) is in data.status, the
+    # same convention this router already uses for every execute result.
+    assert body["success"] is True
+    assert body["data"]["status"] == "REJECTED_INVALID"
+    assert not _pump_present(runner, "TEST-ROUTER-P-REJ-1")
+    assert not _pump_present(runner, "TEST-ROUTER-P-REJ-2")
+
+
+def test_a_valid_file_can_approve_and_writes_exactly_the_reviewed_rows(real_db_cleanup):
+    runner = _real_runner()
+    data = _dry_run_data(
+        (
+            ("PUMP-1", "TEST-ROUTER-P-OK-1", "Unit 1", "OH", "11/61", None),
+            ("PUMP-2", "TEST-ROUTER-P-OK-2", "Unit 2", "BB", "32/62", None),
+        )
+    )
+    assert data["approval_ready"] is True
+    assert not _pump_present(runner, "TEST-ROUTER-P-OK-1")  # zero writes before Approve
+
+    response = _approve(data["session_id"])
+    body = response.json()
+
+    assert body["success"] is True
+    assert body["data"]["status"] == "COMMITTED"
+    assert body["data"]["session_id"] == data["session_id"]
+    assert body["data"]["statistics"]["pump"]["inserted"] == 2
+    assert _pump_present(runner, "TEST-ROUTER-P-OK-1")  # writes only after Approve
+    assert _pump_present(runner, "TEST-ROUTER-P-OK-2")
+
+
+def test_second_approve_is_blocked_and_does_not_execute_again(real_db_cleanup):
+    runner = _real_runner()
+    data = _dry_run_data((("PUMP-1", "TEST-ROUTER-P-REPLAY", "Unit 1", "OH", "11/61", None),))
+
+    first = _approve(data["session_id"])
+    assert first.json()["success"] is True
+    assert first.json()["data"]["status"] == "COMMITTED"
+
+    second = _approve(data["session_id"])
+    second_body = second.json()
+
+    assert second_body["success"] is False
+    assert "already been executed" in second_body["message"]
+    assert second_body["data"]["status"] == "IMPORTED"
+    # Still exactly one row -- a second real INSERT never ran.
+    rows = _json_query("SELECT count(*) AS n FROM ltsa_pumps WHERE tag_number = 'TEST-ROUTER-P-REPLAY'", runner)
+    assert rows == [{"n": 1}]
+
+
+def test_approving_an_unknown_session_id_is_a_safe_error_not_a_crash():
+    response = _approve("SESSION-DOES-NOT-EXIST")
+    body = response.json()
+
+    assert response.status_code == 200
+    assert body["success"] is False
+    assert "not found" in body["message"]
+
+
+def test_transaction_rolls_back_on_an_injected_failure_and_marks_the_session_failed(real_db_cleanup):
+    runner = _real_runner()
+    data = _dry_run_data((("PUMP-1", "TEST-ROUTER-P-ROLLBACK", "Unit 1", "OH", "11/61", None),))
+
+    failing_runner = _RollbackInjectingRunner(runner)
+    app.dependency_overrides[get_import_database_runner] = lambda: failing_runner
+    try:
+        response = _approve(data["session_id"])
+    finally:
+        del app.dependency_overrides[get_import_database_runner]
+
+    body = response.json()
+    assert body["success"] is True  # the request itself succeeded -- it honestly reports a failed execution
+    assert body["data"]["status"] == "FAILED_ROLLED_BACK"
+    assert not _pump_present(runner, "TEST-ROUTER-P-ROLLBACK")
+
+    status_response = client.get(f"/api/ltsa/import/status/{data['session_id']}")
+    assert status_response.json()["data"]["status"] == "FAILED"
+
+
+def test_approve_after_a_rolled_back_failure_is_also_blocked_as_already_executed(real_db_cleanup):
+    # FAILED is terminal too (import_session.py's own IMPORT_SESSION_STATUSES)
+    # -- a session that already failed once is not silently retried on a
+    # second Approve click; a fresh dry-run is required.
+    runner = _real_runner()
+    data = _dry_run_data((("PUMP-1", "TEST-ROUTER-P-FAILRETRY", "Unit 1", "OH", "11/61", None),))
+
+    failing_runner = _RollbackInjectingRunner(runner)
+    app.dependency_overrides[get_import_database_runner] = lambda: failing_runner
+    try:
+        _approve(data["session_id"])
+    finally:
+        del app.dependency_overrides[get_import_database_runner]
+
+    retry = _approve(data["session_id"])
+    retry_body = retry.json()
+    assert retry_body["success"] is False
+    assert "already been executed" in retry_body["message"]
+
+
+def test_approved_import_preserves_ab_and_arbr_as_distinct_rows(real_db_cleanup):
+    runner = _real_runner()
+    data = _dry_run_data(
+        (
+            ("PUMP-1", "TEST-ROUTER-P-13A", "Unit 1", "BB", "32/62", None),
+            ("PUMP-2", "TEST-ROUTER-P-13AR", "Unit 1", "BB", "32/62", None),
+            ("PUMP-3", "TEST-ROUTER-P-13B", "Unit 1", "BB", "32/62", None),
+            ("PUMP-4", "TEST-ROUTER-P-13BR", "Unit 1", "BB", "32/62", None),
+        )
+    )
+    assert data["approval_ready"] is True
+
+    response = _approve(data["session_id"])
+    assert response.json()["data"]["statistics"]["pump"]["inserted"] == 4
+
+    for tag in ("TEST-ROUTER-P-13A", "TEST-ROUTER-P-13AR", "TEST-ROUTER-P-13B", "TEST-ROUTER-P-13BR"):
+        assert _pump_present(runner, tag)
+
+
+def test_approved_import_shows_insert_update_and_skip_in_the_execution_result(real_db_cleanup):
+    runner = _real_runner()
+    runner.execute_script("INSERT INTO ltsa_pumps (tag_number, area) VALUES ('TEST-ROUTER-P-APR-UPD', 'Unit 1');")
+    data = _dry_run_data(
+        (
+            ("PUMP-1", "TEST-ROUTER-P-APR-NEW", "Unit 1", "OH", "11/61", None),
+            ("PUMP-2", "TEST-ROUTER-P-APR-UPD", "Unit 1", "OH", "11/61", None),
+        )
+    )
+    assert data["new_count"] == 1
+    assert data["update_count"] == 1
+
+    response = _approve(data["session_id"])
+    stats = response.json()["data"]["statistics"]["pump"]
+
+    assert stats["inserted"] == 1
+    assert stats["updated"] == 1
+    assert _pump_present(runner, "TEST-ROUTER-P-APR-NEW")
+    live = _json_query("SELECT pump_type FROM ltsa_pumps WHERE tag_number = 'TEST-ROUTER-P-APR-UPD'", runner)
+    assert live == [{"pump_type": "OH"}]

@@ -153,6 +153,24 @@ def execute_import(
             "data": None,
         }
 
+    # MWO-LTSA-DATA-IMPORT-UI-001C -- replay guard: IMPORTED/FAILED are
+    # both terminal (import_session.py's own IMPORT_SESSION_STATUSES,
+    # reused unmodified) -- either one means execute_import() already ran
+    # for this exact session once. A second call is refused here, before
+    # ImportWorker/execute_import ever run again, rather than relying on
+    # ON CONFLICT DO NOTHING to make a second real write silently harmless
+    # -- "second Approve must not execute again" is enforced as a real
+    # guard, not an accidental side effect of idempotent SQL.
+    if session.status in ("IMPORTED", "FAILED"):
+        return {
+            "success": False,
+            "message": (
+                f"Import session '{payload.session_id}' has already been executed "
+                f"(status={session.status}) -- it cannot be approved/executed again."
+            ),
+            "data": dataclasses.asdict(session),
+        }
+
     queue = ImportQueueManager()
     queue.enqueue(f"JOB-{uuid.uuid4()}", payload.session_id, datetime.now(timezone.utc).isoformat())
     worker = ImportWorker(queue=queue, session_repository=import_session_repository, runner=database_runner)
@@ -199,10 +217,19 @@ def get_import_status(
 # reused unmodified, not re-implemented here). The file is always removed
 # in `finally`, whether dry_run_import succeeds, raises, or the extension
 # check rejects it first -- no upload is ever left behind on disk.
+#
+# MWO-LTSA-DATA-IMPORT-UI-001C -- session_repository is now threaded
+# through to dry_run_import() (Depends(get_import_session_repository), the
+# SAME singleton POST .../execute already reads from), so the session this
+# call builds is the one a later Approve (POST .../execute) can actually
+# find and run -- see dry_run_import()'s own docstring for the immutability
+# guarantee this gives (Approve executes exactly this session's stored
+# packages/validation/conflict_report, never re-reading the uploaded file).
 @router.post("/api/ltsa/import/pump-xlsx/dry-run")
 async def dry_run_pump_xlsx(
     file: UploadFile = File(...),
     database_runner=Depends(get_import_database_runner),
+    import_session_repository=Depends(get_import_session_repository),
 ) -> Payload:
     suffix = Path(file.filename or "").suffix.lower()
     if suffix not in _PUMP_XLSX_EXTENSIONS:
@@ -219,7 +246,7 @@ async def dry_run_pump_xlsx(
             tmp.write(contents)
             tmp_path = tmp.name
 
-        report = dry_run_import(Path(tmp_path), database_runner)
+        report = dry_run_import(Path(tmp_path), database_runner, session_repository=import_session_repository)
         return {"success": True, "data": dataclasses.asdict(report)}
     except ManufacturingValidationError as error:
         return {"success": False, "message": str(error), "data": None}

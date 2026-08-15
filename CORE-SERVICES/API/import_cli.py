@@ -276,10 +276,35 @@ def _excel_pump_sheet_info(path: Path) -> tuple[str | None, int, tuple[Any, ...]
     return (", ".join(sheet_names) or None), total_rows, headers
 
 
-def dry_run_import(path: Path, runner: "DatabaseRunner", *, session_id: str | None = None) -> DryRunReport:
+def dry_run_import(
+    path: Path,
+    runner: "DatabaseRunner",
+    *,
+    session_id: str | None = None,
+    session_repository: "ImportSessionRepository | None" = None,
+) -> DryRunReport:
     """The dry-run entry point this mission adds. See this module's own
     "Dry-run" header section above for the zero-write guarantee and the
-    A/B/AR/BR tag-identity rationale -- neither is re-explained here."""
+    A/B/AR/BR tag-identity rationale -- neither is re-explained here.
+
+    MWO-LTSA-DATA-IMPORT-UI-001C -- `session_repository`, when given,
+    persists the exact ImportSession this function already builds
+    internally (canonical_packages/validated/conflict_report/
+    execution_plan, all frozen dataclasses -- import_session.py's own
+    immutability, not re-derived here) via ImportSessionRepository.create()
+    (reused unmodified). Nothing about the dry-run computation itself
+    changes: `session_repository=None` (the default, and every existing
+    caller/test) is byte-for-byte the same zero-persistence behavior as
+    before. This is what makes Approve later execute EXACTLY the reviewed
+    data: POST /api/ltsa/import/execute looks the session up by this same
+    session_id and calls execute_import() against the stored
+    packages/validation/conflict_report -- it never re-reads path, so a
+    changed or replaced XLSX after this call has no effect on what Approve
+    would execute. Only ever called once per dry-run (create(), not
+    save()) -- a real session_id collision (never possible from the
+    router's own fresh-uuid-per-call path) surfaces loudly as a ValueError
+    rather than silently overwriting a session someone may already be
+    reviewing."""
     package = parse_import_file(path)
     if isinstance(package, tuple):
         raise ManufacturingValidationError(
@@ -377,6 +402,9 @@ def dry_run_import(path: Path, runner: "DatabaseRunner", *, session_id: str | No
         validations=(validated,),
         conflict_report=conflicts,
     )
+
+    if session_repository is not None:
+        session_repository.create(session)
 
     pump_plan = [item for item in session.execution_plan if item.entity_type == "pump"]
     new_count = sum(1 for item in pump_plan if item.action == _ACTION_INSERTED)

@@ -1,10 +1,11 @@
 import { useRef, useState } from "react";
 import { Badge, Button, EmptyState, Table } from "../../../design-system";
 import { Section } from "./open-design";
-import { dryRunPumpXlsx } from "../../../api/ai5rClient";
+import { dryRunPumpXlsx, executeImportSession } from "../../../api/ai5rClient";
 
 /**
- * MWO-LTSA-DATA-IMPORT-UI-001B -- Pump Master XLSX drag/drop dry-run panel.
+ * MWO-LTSA-DATA-IMPORT-UI-001B/-001C -- Pump Master XLSX drag/drop
+ * dry-run + Approve panel.
  *
  * Built entirely from existing design-system/open-design primitives
  * (Section/Table/Badge/Button/EmptyState) -- no new design language, no new
@@ -12,24 +13,37 @@ import { dryRunPumpXlsx } from "../../../api/ai5rClient";
  * state), mounted alongside the existing generic JSON Import flow in
  * ImportWorkspace.jsx -- that flow's own state/handlers/tests are untouched.
  *
- * One real API call (dryRunPumpXlsx, ai5rClient.js -> POST /api/ltsa/import/
- * pump-xlsx/dry-run -> API.import_cli.dry_run_import(), reused unmodified)
- * per "Analyze / Dry Run" click. This component never parses the workbook
- * itself, never re-validates, never re-plans -- it only renders the real
- * DryRunReport the backend returns, exactly as returned.
+ * Two real API calls, both already-existing pipeline entry points, never a
+ * client-side re-computation of either:
+ *   - dryRunPumpXlsx (ai5rClient.js -> POST /api/ltsa/import/pump-xlsx/
+ *     dry-run -> API.import_cli.dry_run_import(), MWO-LTSA-DATA-IMPORT-
+ *     UI-001A/-CLOSURE/-001B) -- now also persists the reviewed
+ *     ImportSession server-side, so report.session_id is a real,
+ *     look-up-able id, not just a label.
+ *   - executeImportSession (ai5rClient.js, pre-existing -- the SAME
+ *     function the generic JSON Import flow already calls) -> POST
+ *     /api/ltsa/import/execute -> ImportWorker/execute_import(), reused
+ *     completely unmodified. This component sends only session_id; it
+ *     never re-uploads the file or resends parsed data -- Approve executes
+ *     exactly what the stored session holds (import_cli.dry_run_import()'s
+ *     own immutability contract).
  *
  * "Never silently discard rows": every row_issue the backend returns is
  * rendered (not capped); preview_rows is a real but capped (backend-side,
  * _PREVIEW_ROW_LIMIT) slice of the parsed rows, labeled as a preview so a
  * capped table is never mistaken for "this is everything".
  *
- * Approve: disabled unconditionally in this mission. The dry-run pipeline
- * never persists a session (by design -- see dry_run_import()'s own
- * "zero persistent writes" contract), so there is no session_id the
- * existing POST /api/ltsa/import/execute endpoint could act on yet.
- * Wiring that safely (session hand-off from a dry-run to a real execute
- * call) is real, disclosed, out-of-scope work for MWO-LTSA-DATA-IMPORT-
- * UI-001C -- not invented here.
+ * Approve gating: enabled only when report.approval_ready is true (the
+ * same boolean execute_import()'s own REJECTED_INVALID gate enforces
+ * server-side -- this button's disabled state is a UX convenience, not the
+ * only protection; a bypassed/direct API call still gets refused
+ * server-side). A native window.confirm() is the "confirmation before
+ * execution" step this mission requires -- a real, functioning browser
+ * gate, not a new modal component invented for one button. After a
+ * result comes back (success or failure), Approve is hidden for this
+ * report -- the session is now terminal (IMPORTED/FAILED, replay-guarded
+ * server-side too, POST .../execute's own status check) -- a fresh
+ * Analyze / Dry Run is required to review (and possibly approve) again.
  */
 
 const PUMP_XLSX_EXTENSIONS = [".xlsx", ".xls"];
@@ -54,6 +68,9 @@ export default function PumpXlsxImportPanel() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [rejectMessage, setRejectMessage] = useState(null);
+  const [approving, setApproving] = useState(false);
+  const [approveError, setApproveError] = useState(null);
+  const [executionResult, setExecutionResult] = useState(null);
   const inputRef = useRef(null);
 
   function acceptFile(candidate) {
@@ -61,6 +78,8 @@ export default function PumpXlsxImportPanel() {
     setError(null);
     setRejectMessage(null);
     setReport(null);
+    setExecutionResult(null);
+    setApproveError(null);
     if (!hasSupportedExtension(candidate.name)) {
       setRejectMessage(`"${candidate.name}" is not a .xlsx/.xls file -- choose the real Pump Master workbook.`);
       setFile(null);
@@ -83,6 +102,8 @@ export default function PumpXlsxImportPanel() {
     if (!file) return;
     setLoading(true);
     setError(null);
+    setExecutionResult(null);
+    setApproveError(null);
     try {
       const result = await dryRunPumpXlsx(file);
       if (!result?.success) {
@@ -99,7 +120,33 @@ export default function PumpXlsxImportPanel() {
     }
   }
 
+  async function handleApprove() {
+    if (!report?.session_id) return;
+    const confirmed = window.confirm(
+      `Approve and execute this import?\n\n` +
+        `${report.new_count} INSERT, ${report.update_count} UPDATE, ${report.duplicate_count} SKIP.\n` +
+        `This writes to the live ltsa_pumps table and cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    setApproving(true);
+    setApproveError(null);
+    try {
+      const result = await executeImportSession(report.session_id);
+      if (!result?.success) {
+        setApproveError(result?.message || "Approve failed");
+      } else {
+        setExecutionResult(result.data);
+      }
+    } catch (apiError) {
+      setApproveError(apiError.message);
+    } finally {
+      setApproving(false);
+    }
+  }
+
   const approvalReady = report?.approval_ready === true;
+  const canApprove = approvalReady && !approving && !executionResult;
 
   return (
     <Section id="pump-xlsx-import-section" title="Pump Master XLSX Import">
@@ -212,14 +259,42 @@ export default function PumpXlsxImportPanel() {
             )}
           </Section>
 
-          <div style={{ marginTop: "var(--space-3, 12px)" }}>
-            <Button disabled>Approve Import</Button>
-            <p data-testid="pump-xlsx-approve-note" style={{ color: "#94A3B8" }}>
-              {approvalReady
-                ? "Approve execution is deferred to MWO-LTSA-DATA-IMPORT-UI-001C (session hand-off to the execute pipeline is not yet wired)."
-                : "Approve is disabled -- resolve the rejected rows above first."}
-            </p>
-          </div>
+          {!executionResult && (
+            <div style={{ marginTop: "var(--space-3, 12px)" }}>
+              <Button onClick={handleApprove} disabled={!canApprove}>
+                {approving ? "Approving..." : "Approve Import"}
+              </Button>
+              {!approvalReady && (
+                <p data-testid="pump-xlsx-approve-note" style={{ color: "#94A3B8" }}>
+                  Approve is disabled -- resolve the rejected rows above first (all-or-nothing: {report.rejected_count} rejected row(s) block the entire import).
+                </p>
+              )}
+            </div>
+          )}
+
+          {approveError && <p data-testid="pump-xlsx-approve-error" style={{ color: "#EF4444" }}>{approveError}</p>}
+
+          {executionResult && (
+            <Section id="pump-xlsx-execution-result-section" title="Execution Result">
+              <div data-testid="pump-xlsx-execution-result">
+                <p>
+                  session_id: {executionResult.session_id} · status:{" "}
+                  <Badge variant={executionResult.status === "COMMITTED" ? "success" : "danger"}>
+                    {executionResult.status}
+                  </Badge>
+                </p>
+                {executionResult.reason && <p>{executionResult.reason}</p>}
+                {executionResult.statistics?.pump && (
+                  <div>
+                    <CountBadge label="Inserted" value={executionResult.statistics.pump.inserted} variant="info" />
+                    <CountBadge label="Updated" value={executionResult.statistics.pump.updated} variant="warning" />
+                    <CountBadge label="Skipped" value={executionResult.statistics.pump.skipped} variant="purple" />
+                    <CountBadge label="Failed" value={executionResult.statistics.pump.failed} variant="danger" />
+                  </div>
+                )}
+              </div>
+            </Section>
+          )}
         </div>
       )}
     </Section>
