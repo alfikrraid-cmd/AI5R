@@ -2,9 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
-import secrets
-import string
 import sys
 import urllib.error
 import urllib.parse
@@ -12,6 +9,21 @@ import urllib.request
 from http.cookies import SimpleCookie
 from pathlib import Path
 from typing import Any
+
+# n8n's internal REST API (/rest/...) wraps every successful single-object
+# AND list payload in {"data": ...} -- confirmed against a real, disposable
+# n8n 1.115.3 instance for every endpoint this script calls: GET
+# /rest/settings, POST /rest/owner/setup, POST /rest/login, GET/POST
+# /rest/credentials, GET/POST/PATCH /rest/workflows. Error bodies
+# (4xx/5xx) are NOT wrapped -- they are shaped {"code": int, "message":
+# str} instead, so unwrapping is conditional on the "data" key actually
+# being present, never assumed. This was previously unhandled for every
+# single-object response except GET /rest/credentials and GET
+# /rest/workflows (which happened to already do `.get("data", ...)`)
+# -- POST /rest/credentials returning body["data"]["id"] rather than
+# body["id"] is the exact, reproduced cause of the production
+# `KeyError: 'id'` crash.
+REQUIRED_OWNER_ENV_KEYS = ("AI5R_N8N_OWNER_EMAIL", "AI5R_N8N_OWNER_PASSWORD")
 
 
 WORKFLOW_SPECS = [
@@ -122,52 +134,121 @@ class N8nClient:
             return body
 
 
-def random_password() -> str:
-    alphabet = string.ascii_letters + string.digits
-    return f"AI5R-{''.join(secrets.choice(alphabet) for _ in range(18))}!9a"
+def unwrap_data(body: Any) -> Any:
+    """n8n's internal REST API wraps every successful payload in
+    {"data": ...} (see this module's own header note, backed by direct
+    inspection of a real n8n 1.115.3 instance). Unwraps it when present;
+    returns `body` unchanged otherwise (an error body has no "data" key
+    at all, so this is never a guess about which shape a given response
+    "should" have -- it reflects whichever shape actually arrived)."""
+    if isinstance(body, dict) and "data" in body:
+        return body["data"]
+    return body
 
 
-def ensure_owner_session(client: N8nClient) -> dict[str, Any]:
+def ensure_owner_session(client: N8nClient, env: dict[str, str]) -> dict[str, Any]:
+    """Idempotent, resumable owner phase.
+
+    n8n has exactly one supported way to obtain an authenticated session
+    without an existing one: POST /rest/owner/setup (only while
+    showSetupOnFirstLoad is true, confirmed -- calling it again once
+    setup is complete returns 400 "Instance owner already setup", never
+    a usable session) or POST /rest/login (confirmed: 200 + Set-Cookie +
+    {"data": {...owner...}} for correct credentials, 401 for incorrect
+    ones). There is no third mechanism, and this function never attempts
+    one -- it does not read or write n8n's Postgres tables directly.
+
+    Resumability requires the SAME owner email/password across runs, so
+    a subsequent run can log back in as the owner a prior run created.
+    The previous implementation generated a random, never-persisted
+    password on every run (secrets.choice(...)), which is exactly why
+    the current stuck production instance cannot be resumed by this
+    function -- that specific password no longer exists anywhere. Going
+    forward, the owner identity is sourced from
+    AI5R_N8N_OWNER_EMAIL/AI5R_N8N_OWNER_PASSWORD in the env file (the
+    same "real secret lives in the gitignored env file, never generated
+    ad hoc" convention this script already uses for the Postgres
+    credential), so every run -- first-time setup or resume -- uses the
+    same identity and can always log back in.
+    """
+    for key in REQUIRED_OWNER_ENV_KEYS:
+        if not env.get(key):
+            raise RuntimeError(f"Missing required variable for n8n owner bootstrap: {key}")
+    email = env["AI5R_N8N_OWNER_EMAIL"]
+    password = env["AI5R_N8N_OWNER_PASSWORD"]
+
     status, _, settings = client.request("/rest/settings", authenticated=False)
-    if status != 200 or not isinstance(settings, dict):
-        raise RuntimeError(f"Unable to read n8n settings: {status} {settings}")
-
-    setup_needed = bool(settings["data"]["userManagement"]["showSetupOnFirstLoad"])
-    owner_context = {
-        "showSetupOnFirstLoad": setup_needed,
-        "owner_setup_executed": False,
-    }
-    if not setup_needed:
-        raise RuntimeError(
-            "n8n owner setup is already completed, but no authenticated session is available. "
-            "This bootstrap utility only supports the current first-load runtime state."
-        )
-
-    payload = {
-        "email": "ai5r-bootstrap@example.invalid",
-        "firstName": "AI5R",
-        "lastName": "Bootstrap",
-        "password": random_password(),
-    }
-    status, _, body = client.request("/rest/owner/setup", method="POST", payload=payload, authenticated=False)
     if status != 200:
-        raise RuntimeError(f"Owner setup failed: {status} {body}")
-    if not client.cookie_header:
-        raise RuntimeError("Owner setup succeeded but no auth cookie was issued by n8n.")
+        raise RuntimeError(f"Unable to read n8n settings: {status}")
+    settings_data = unwrap_data(settings)
+    if not isinstance(settings_data, dict):
+        raise RuntimeError("Unexpected n8n settings payload shape (no 'data' object)")
 
-    owner_context["owner_setup_executed"] = True
-    owner_context["owner_id"] = body.get("id") if isinstance(body, dict) else None
-    return owner_context
+    setup_needed = bool(settings_data["userManagement"]["showSetupOnFirstLoad"])
+
+    if setup_needed:
+        payload = {
+            "email": email,
+            "firstName": env.get("AI5R_N8N_OWNER_FIRST_NAME", "AI5R"),
+            "lastName": env.get("AI5R_N8N_OWNER_LAST_NAME", "Bootstrap"),
+            "password": password,
+        }
+        status, _, body = client.request("/rest/owner/setup", method="POST", payload=payload, authenticated=False)
+        if status != 200:
+            raise RuntimeError(f"Owner setup failed with status {status}")
+        if not client.cookie_header:
+            raise RuntimeError("Owner setup succeeded but no auth cookie was issued by n8n.")
+        owner_data = unwrap_data(body)
+        return {
+            "mode": "created",
+            "showSetupOnFirstLoad_before": True,
+            "owner_id": owner_data.get("id") if isinstance(owner_data, dict) else None,
+            "owner_email": owner_data.get("email") if isinstance(owner_data, dict) else None,
+        }
+
+    # Resume: owner already exists. The only supported way to obtain a
+    # session for an already-set-up instance is POST /rest/login -- never
+    # a direct database write, never a re-run of owner/setup (which n8n
+    # itself rejects once setup is complete).
+    status, _, body = client.request(
+        "/rest/login",
+        method="POST",
+        payload={"emailOrLdapLoginId": email, "password": password},
+        authenticated=False,
+    )
+    if status != 200:
+        raise RuntimeError(
+            "n8n owner setup was already completed by a previous run, and this run could not "
+            f"authenticate as the configured owner via POST /rest/login (status {status}). "
+            "This script never bypasses n8n authentication or writes to n8n's database directly, "
+            "so resuming requires AI5R_N8N_OWNER_EMAIL/AI5R_N8N_OWNER_PASSWORD to match the "
+            "credentials the owner was actually created with."
+        )
+    if not client.cookie_header:
+        raise RuntimeError("Login succeeded but no auth cookie was issued by n8n.")
+    owner_data = unwrap_data(body)
+    return {
+        "mode": "resumed",
+        "showSetupOnFirstLoad_before": False,
+        "owner_id": owner_data.get("id") if isinstance(owner_data, dict) else None,
+        "owner_email": owner_data.get("email") if isinstance(owner_data, dict) else None,
+    }
 
 
 def get_or_create_postgres_credential(client: N8nClient, env: dict[str, str]) -> dict[str, Any]:
+    """Idempotent: reuses the existing "Postgres account" credential by
+    name+type when present, never duplicates it. Error messages never
+    include the raw response body -- a credential payload (request or
+    response) can carry the connection password / n8n's own encrypted
+    blob of it, so only the HTTP status is ever surfaced on failure,
+    consistent with this script's "no secret in logs/report/exceptions"
+    rule."""
     status, _, credentials = client.request("/rest/credentials")
     if status != 200:
-        raise RuntimeError(f"Unable to list n8n credentials: {status} {credentials}")
-    if isinstance(credentials, dict):
-        credentials = credentials.get("data", [])
+        raise RuntimeError(f"Unable to list n8n credentials: {status}")
+    credentials = unwrap_data(credentials)
     if not isinstance(credentials, list):
-        raise RuntimeError(f"Unexpected n8n credentials payload: {credentials}")
+        raise RuntimeError("Unexpected n8n credentials payload shape (expected a list)")
 
     for credential in credentials:
         if credential.get("name") == "Postgres account" and credential.get("type") == "postgres":
@@ -197,9 +278,12 @@ def get_or_create_postgres_credential(client: N8nClient, env: dict[str, str]) ->
         },
     }
     status, _, created = client.request("/rest/credentials", method="POST", payload=payload)
-    if status != 200 or not isinstance(created, dict):
-        raise RuntimeError(f"Unable to create Postgres credential: {status} {created}")
-    return {"id": created["id"], "name": created["name"], "created": True}
+    if status != 200:
+        raise RuntimeError(f"Unable to create Postgres credential: {status}")
+    created_data = unwrap_data(created)
+    if not isinstance(created_data, dict) or "id" not in created_data or "name" not in created_data:
+        raise RuntimeError("Unexpected n8n credential-creation payload shape (missing 'id'/'name')")
+    return {"id": created_data["id"], "name": created_data["name"], "created": True}
 
 
 def load_workflow_source(source: Path, credential: dict[str, Any]) -> dict[str, Any]:
@@ -224,35 +308,57 @@ def load_workflow_source(source: Path, credential: dict[str, Any]) -> dict[str, 
 
 def get_workflows_by_name(client: N8nClient) -> dict[str, dict[str, Any]]:
     status, _, payload = client.request("/rest/workflows")
-    if status != 200 or not isinstance(payload, dict):
+    if status != 200:
         raise RuntimeError(f"Unable to list n8n workflows: {status} {payload}")
-    return {workflow["name"]: workflow for workflow in payload.get("data", [])}
+    data = unwrap_data(payload)
+    if not isinstance(data, list):
+        raise RuntimeError(f"Unexpected n8n workflows payload shape (expected a list): {payload}")
+    return {workflow["name"]: workflow for workflow in data}
 
 
 def activate_workflow(client: N8nClient, workflow_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     status, _, current = client.request(f"/rest/workflows/{workflow_id}")
-    if status != 200 or not isinstance(current, dict):
+    if status != 200:
         raise RuntimeError(f"Unable to load workflow {workflow_id} for activation: {status} {current}")
+    current_data = unwrap_data(current)
+    if not isinstance(current_data, dict):
+        raise RuntimeError(f"Unexpected n8n workflow payload shape for {workflow_id}: {current}")
 
     activation_payload = {
-        "name": current["name"],
-        "nodes": current["nodes"],
-        "connections": current["connections"],
-        "settings": current.get("settings") or {},
+        "name": current_data["name"],
+        "nodes": current_data["nodes"],
+        "connections": current_data["connections"],
+        "settings": current_data.get("settings") or {},
         "active": True,
-        "versionId": current.get("versionId"),
+        "versionId": current_data.get("versionId"),
     }
     status, _, activated = client.request(
         f"/rest/workflows/{workflow_id}",
         method="PATCH",
         payload=activation_payload,
     )
-    if status != 200 or not isinstance(activated, dict):
+    if status != 200:
         raise RuntimeError(f"Unable to activate workflow {workflow_id}: {status} {activated}")
-    return activated
+    activated_data = unwrap_data(activated)
+    if not isinstance(activated_data, dict):
+        raise RuntimeError(f"Unexpected n8n workflow-activation payload shape for {workflow_id}: {activated}")
+    return activated_data
 
 
-def bootstrap_workflows(client: N8nClient, root: Path, credential: dict[str, Any]) -> dict[str, Any]:
+def bootstrap_workflows(
+    client: N8nClient,
+    root: Path,
+    credential: dict[str, Any],
+    specs: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Idempotent: creates a workflow only when no workflow of that
+    canonical name exists yet (detected via GET /rest/workflows,
+    matched by name); an existing one is updated in place (PATCH) and
+    (re-)activated, never duplicated via a second POST. `specs` defaults
+    to the real WORKFLOW_SPECS -- overridable so tests can exercise this
+    function against a small, self-contained fixture set instead of all
+    five real production workflow files."""
+    specs = WORKFLOW_SPECS if specs is None else specs
     existing_by_name = get_workflows_by_name(client)
     summary = {
         "created": [],
@@ -261,22 +367,30 @@ def bootstrap_workflows(client: N8nClient, root: Path, credential: dict[str, Any
         "unchanged": [],
     }
 
-    for spec in WORKFLOW_SPECS:
+    for spec in specs:
         source_path = root / spec["source"]
         payload = load_workflow_source(source_path, credential)
         existing = existing_by_name.get(spec["name"])
 
         if existing is None:
             status, _, created = client.request("/rest/workflows", method="POST", payload=payload)
-            if status != 200 or not isinstance(created, dict):
+            if status != 200:
                 raise RuntimeError(f"Unable to create workflow {spec['name']}: {status} {created}")
-            workflow_id = created["id"]
+            created_data = unwrap_data(created)
+            if not isinstance(created_data, dict) or "id" not in created_data:
+                raise RuntimeError(
+                    f"Unexpected n8n workflow-creation payload shape for {spec['name']}: {created}"
+                )
+            workflow_id = created_data["id"]
             summary["created"].append(spec["name"])
         else:
             workflow_id = existing["id"]
             status, _, updated = client.request(f"/rest/workflows/{workflow_id}", method="PATCH", payload=payload)
-            if status != 200 or not isinstance(updated, dict):
+            if status != 200:
                 raise RuntimeError(f"Unable to update workflow {spec['name']}: {status} {updated}")
+            updated_data = unwrap_data(updated)
+            if not isinstance(updated_data, dict):
+                raise RuntimeError(f"Unexpected n8n workflow-update payload shape for {spec['name']}: {updated}")
             summary["updated"].append(spec["name"])
 
         activated = activate_workflow(client, workflow_id, payload)
@@ -288,7 +402,15 @@ def bootstrap_workflows(client: N8nClient, root: Path, credential: dict[str, Any
     return summary
 
 
-def call_json(url: str) -> tuple[int, Any]:
+def call_json(url: str) -> tuple[int | None, Any]:
+    """Probes one verification URL. Never raises: an HTTP error response
+    (4xx/5xx) and a connection-level failure (refused/unreachable/DNS/
+    timeout -- urllib.error.URLError, HTTPError's own parent class, not
+    a subclass of it) are both legitimate, expected outcomes for a
+    verification step whose entire purpose is to discover endpoints that
+    are not (yet) reachable -- neither should abort the whole bootstrap
+    report. status is None only for the connection-level case, where
+    there was no HTTP response to have a status at all."""
     request = urllib.request.Request(url, headers={"Accept": "application/json"})
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
@@ -300,6 +422,8 @@ def call_json(url: str) -> tuple[int, Any]:
             return error.code, json.loads(body)
         except json.JSONDecodeError:
             return error.code, body
+    except urllib.error.URLError as error:
+        return None, {"error": str(error.reason)}
 
 
 def verify_runtime(env: dict[str, str]) -> dict[str, Any]:
@@ -351,23 +475,25 @@ def build_inventory(root: Path) -> list[dict[str, Any]]:
     return inventory
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--env-file", required=True)
-    parser.add_argument("--output", required=True)
-    args = parser.parse_args()
-
-    root = Path.cwd()
-    env = parse_env_file(Path(args.env_file))
+def run_bootstrap(env: dict[str, str], root: Path) -> dict[str, Any]:
+    """The full, idempotent, resumable bootstrap sequence. Every phase
+    (owner, credential, workflows) detects and reuses existing state
+    rather than assuming a pristine instance -- safe to run against a
+    fresh n8n, a partially-bootstrapped one (any subset of owner/
+    credential/workflows already present), or a fully-bootstrapped one.
+    Raises RuntimeError (never a bare KeyError/AttributeError from an
+    unexpected response shape) on any phase failure; no report is built
+    or returned in that case -- the caller only ever gets/writes a
+    report after every phase has genuinely succeeded."""
     client = N8nClient(env["AI5R_N8N_PUBLIC_URL"])
 
-    owner_context = ensure_owner_session(client)
+    owner_context = ensure_owner_session(client, env)
     credential = get_or_create_postgres_credential(client, env)
     first = bootstrap_workflows(client, root, credential)
     verification = verify_runtime(env)
     second = bootstrap_workflows(client, root, credential)
 
-    report = {
+    return {
         "owner_context": owner_context,
         "credential": {
             "name": credential["name"],
@@ -379,6 +505,27 @@ def main() -> int:
         "verification": verification,
         "second_bootstrap": second,
     }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--env-file", required=True)
+    parser.add_argument("--output", required=True)
+    args = parser.parse_args()
+
+    env = parse_env_file(Path(args.env_file))
+
+    try:
+        report = run_bootstrap(env, Path.cwd())
+    except RuntimeError as error:
+        # Every RuntimeError raised anywhere in this module is
+        # constructed without embedding request/response bodies that
+        # could carry a password or encrypted-credential blob (see each
+        # function's own docstring) -- safe to print in full. No report
+        # file is written on failure: a bootstrap report is evidence of
+        # a *completed* bootstrap, never a partial one.
+        print(f"Bootstrap failed: {error}", file=sys.stderr)
+        return 1
 
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
