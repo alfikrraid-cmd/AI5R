@@ -246,6 +246,20 @@ class DryRunReport:
 _PREVIEW_ROW_LIMIT = 20
 
 
+def _package_to_dict(package: "ImportPackage") -> dict[str, Any]:
+    """MWO-LTSA-DATA-IMPORT-UI-001C-DURABLE: the plain-dict shape
+    ImportSessionRepository.create()'s own `package`/`snapshot` params
+    expect for durable persistence -- ImportPackage's own fields are
+    already tuples of plain dicts, so this is a pure reshape (tuple ->
+    list, for JSON-safety), never a re-derivation of the data itself."""
+    return {
+        "pumps": list(package.pumps),
+        "seals": list(package.seals),
+        "installations": list(package.installations),
+        "documents": list(package.documents),
+    }
+
+
 def _excel_pump_sheet_info(path: Path) -> tuple[str | None, int, tuple[Any, ...]]:
     """Reuses ExcelReader (ENTERPRISE_DATA_ENGINE, unmodified -- the same
     reader ExcelImportAdapter.parse() itself calls) and the real
@@ -404,7 +418,7 @@ def dry_run_import(
     )
 
     if session_repository is not None:
-        session_repository.create(session)
+        session_repository.create(session, package=_package_to_dict(package), snapshot=_package_to_dict(snapshot))
 
     pump_plan = [item for item in session.execution_plan if item.entity_type == "pump"]
     new_count = sum(1 for item in pump_plan if item.action == _ACTION_INSERTED)

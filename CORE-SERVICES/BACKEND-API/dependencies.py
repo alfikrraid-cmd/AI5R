@@ -49,10 +49,6 @@ _seal_stock_gateway = SealStockGateway()
 _seal_pump_compatibility_gateway = SealPumpCompatibilityGateway()
 _seal_engineering_document_gateway = SealEngineeringDocumentGateway()
 
-# Import API Foundation -- in-memory only, no SQL/schema (see
-# API.import_session_repository's own header comment).
-_import_session_repository = ImportSessionRepository()
-
 # MWO-LTSA-DATA-IMPORT-UI-001B -- the one, real, live-DB-capable
 # DatabaseRunner this backend process holds, needed so
 # POST /api/ltsa/import/pump-xlsx/dry-run (and POST /api/ltsa/import/
@@ -68,6 +64,15 @@ _import_database_runner = DatabaseRunner(
         compose_file=CORE_SERVICES_DIR / "RUNTIME" / "compose.yaml",
     )
 )
+
+# MWO-LTSA-DATA-IMPORT-UI-001C-DURABLE -- runner=_import_database_runner
+# (constructed just above, same singleton) makes this repository durable
+# (see API.import_session_repository's own header): a session dry_run_
+# import() creates here survives this process restarting, as long as
+# Postgres itself does not. Every existing caller of get_import_session_
+# repository() keeps the exact same object/interface -- durability is an
+# additive internal capability, not a new dependency to wire elsewhere.
+_import_session_repository = ImportSessionRepository(runner=_import_database_runner)
 
 # MWO-LTSA-031D -- built from the same singleton Gateway instances above,
 # not fresh ones -- no second set of Gateways is constructed anywhere.

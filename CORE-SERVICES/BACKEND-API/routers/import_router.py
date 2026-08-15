@@ -145,28 +145,26 @@ def execute_import(
     import_session_repository=Depends(get_import_session_repository),
     database_runner=Depends(get_import_database_runner),
 ) -> Payload:
-    session = import_session_repository.get(payload.session_id)
+    # MWO-LTSA-DATA-IMPORT-UI-001C-DURABLE -- atomic claim (see
+    # ImportSessionRepository.claim_for_execution's own docstring)
+    # replaces the previous read-then-write Python-level status check: a
+    # single SQL UPDATE...WHERE...RETURNING (durable mode) or an
+    # equivalent one-statement check-and-set (in-memory mode) is the real
+    # guard against two concurrent Approve calls both proceeding, not
+    # just against a strictly-sequential second call.
+    claimed, session = import_session_repository.claim_for_execution(payload.session_id)
     if session is None:
         return {
             "success": False,
             "message": f"Import session '{payload.session_id}' not found",
             "data": None,
         }
-
-    # MWO-LTSA-DATA-IMPORT-UI-001C -- replay guard: IMPORTED/FAILED are
-    # both terminal (import_session.py's own IMPORT_SESSION_STATUSES,
-    # reused unmodified) -- either one means execute_import() already ran
-    # for this exact session once. A second call is refused here, before
-    # ImportWorker/execute_import ever run again, rather than relying on
-    # ON CONFLICT DO NOTHING to make a second real write silently harmless
-    # -- "second Approve must not execute again" is enforced as a real
-    # guard, not an accidental side effect of idempotent SQL.
-    if session.status in ("IMPORTED", "FAILED"):
+    if not claimed:
         return {
             "success": False,
             "message": (
-                f"Import session '{payload.session_id}' has already been executed "
-                f"(status={session.status}) -- it cannot be approved/executed again."
+                f"Import session '{payload.session_id}' has already been executed or is currently "
+                f"executing (status={session.status}) -- it cannot be approved/executed again."
             ),
             "data": dataclasses.asdict(session),
         }

@@ -44,9 +44,14 @@ def real_db_cleanup():
     file's own pre-existing convention. TEST-ROUTER-* namespaced, deleted
     before and after."""
     runner = _real_runner()
-    runner.execute_script("DELETE FROM ltsa_pumps WHERE tag_number LIKE 'TEST-ROUTER-%';")
+    # import_sessions rows are keyed by a fresh uuid per dry-run (never
+    # TEST-ROUTER-* namespaced), so this test suite's own disposable
+    # database is fully cleared each time rather than pattern-matched --
+    # safe here (this database has no other real tenant), not a general
+    # retention policy (see the final report's own disclosed limitation).
+    runner.execute_script("DELETE FROM ltsa_pumps WHERE tag_number LIKE 'TEST-ROUTER-%'; DELETE FROM import_sessions;")
     yield runner
-    runner.execute_script("DELETE FROM ltsa_pumps WHERE tag_number LIKE 'TEST-ROUTER-%';")
+    runner.execute_script("DELETE FROM ltsa_pumps WHERE tag_number LIKE 'TEST-ROUTER-%'; DELETE FROM import_sessions;")
 
 # Import API Foundation -- router only: every route delegates to
 # API.import_validator.validate_import_package / API.conflict_resolution.
@@ -969,3 +974,172 @@ def test_approved_import_shows_insert_update_and_skip_in_the_execution_result(re
     assert _pump_present(runner, "TEST-ROUTER-P-APR-NEW")
     live = _json_query("SELECT pump_type FROM ltsa_pumps WHERE tag_number = 'TEST-ROUTER-P-APR-UPD'", runner)
     assert live == [{"pump_type": "OH"}]
+
+
+# --- Durable session persistence across a simulated restart (MWO-LTSA-DATA-IMPORT-UI-001C-DURABLE) ---
+#
+# "Restart" is simulated two ways, both real, neither a mock:
+#   1. A brand-new ImportSessionRepository(runner=...) instance, never
+#      touched by the app's own singleton -- proves reconstruction works
+#      from Postgres alone, with zero shared Python state.
+#   2. Clearing the app's own singleton in-memory cache directly (exactly
+#      what is lost across a real process restart) and then calling the
+#      real HTTP endpoints again -- proves the full integration.
+
+
+def _import_sessions_row(runner: DatabaseRunner, session_id: str):
+    rows = _json_query(f"SELECT * FROM import_sessions WHERE session_id = '{session_id}'", runner)
+    return rows[0] if rows else None
+
+
+def test_dry_run_persists_a_durable_row_with_zero_ltsa_pumps_writes(real_db_cleanup):
+    runner = _real_runner()
+    data = _dry_run_data((("PUMP-1", "TEST-ROUTER-P-DURABLE", "Unit 1", "OH", "11/61", None),))
+
+    row = _import_sessions_row(runner, data["session_id"])
+    assert row is not None
+    assert row["status"] == "REVIEWING"
+    assert row["package"]["pumps"][0]["tag_number"] == "TEST-ROUTER-P-DURABLE"
+    assert not _pump_present(runner, "TEST-ROUTER-P-DURABLE")
+
+
+def test_session_survives_a_simulated_restart_via_a_fresh_repository_instance(real_db_cleanup):
+    runner = _real_runner()
+    data = _dry_run_data(
+        (
+            ("PUMP-1", "TEST-ROUTER-P-RESTART-1", "Unit 1", "OH", "11/61", None),
+            ("PUMP-2", "TEST-ROUTER-P-RESTART-2", None, "OH", "11/61", None),  # rejected: missing area
+        )
+    )
+
+    # A genuinely new process would construct a brand-new repository --
+    # this object shares no Python state with the one the dry-run above
+    # went through (that lived inside the running app).
+    fresh_repository = ImportSessionRepository(runner=runner)
+    reconstructed = fresh_repository.get(data["session_id"])
+
+    assert reconstructed is not None
+    assert reconstructed.status == "REVIEWING"
+    assert reconstructed.source == data["source"]
+    validation = reconstructed.validated_packages[0]
+    assert validation.summary.pump_count == 2
+    assert validation.summary.error_count == 1
+    assert validation.summary.is_valid is False
+
+
+def test_exact_reviewed_payload_is_preserved_across_a_simulated_restart(real_db_cleanup):
+    # "Do not re-parse a changed/replaced XLSX during Approve": seed a
+    # DIFFERENT live pump state AFTER the dry-run but BEFORE reconstruction
+    # -- the frozen snapshot (captured at dry-run time) must still drive
+    # the SAME conflict/plan classification the original dry-run reported,
+    # never a freshly re-computed one.
+    runner = _real_runner()
+    data = _dry_run_data((("PUMP-1", "TEST-ROUTER-P-FROZEN", "Unit 1", "OH", "11/61", None),))
+    assert data["new_count"] == 1
+
+    # A pump that did not exist at dry-run time now does -- if the
+    # snapshot were re-read instead of replayed from what was frozen,
+    # this would flip the classification to UPDATE/SKIP.
+    runner.execute_script("INSERT INTO ltsa_pumps (tag_number, area) VALUES ('TEST-ROUTER-P-FROZEN', 'Unit 9');")
+
+    fresh_repository = ImportSessionRepository(runner=runner)
+    reconstructed = fresh_repository.get(data["session_id"])
+    pump_plan = [item for item in reconstructed.execution_plan if item.entity_type == "pump"]
+    assert len(pump_plan) == 1
+    assert pump_plan[0].action == "INSERTED"
+    assert pump_plan[0].entity_id == "TEST-ROUTER-P-FROZEN"
+
+    runner.execute_script("DELETE FROM ltsa_pumps WHERE tag_number = 'TEST-ROUTER-P-FROZEN';")
+
+
+def test_approve_after_a_simulated_restart_executes_the_exact_reviewed_session(real_db_cleanup):
+    runner = _real_runner()
+    data = _dry_run_data((("PUMP-1", "TEST-ROUTER-P-RESTART-OK", "Unit 1", "OH", "11/61", None),))
+    assert data["approval_ready"] is True
+    assert not _pump_present(runner, "TEST-ROUTER-P-RESTART-OK")
+
+    # Simulate the API process restarting: the in-memory cache is gone,
+    # only Postgres remains. Clearing the app's own singleton directly
+    # (not swapping it out) proves the SAME object the router already
+    # depends on reconstructs correctly, through the real HTTP endpoint.
+    get_import_session_repository()._sessions.clear()
+
+    response = _approve(data["session_id"])
+    body = response.json()
+
+    assert body["success"] is True
+    assert body["data"]["status"] == "COMMITTED"
+    assert _pump_present(runner, "TEST-ROUTER-P-RESTART-OK")
+
+
+def test_a_rejected_real_shaped_session_stays_rejected_and_zero_write_after_restart(real_db_cleanup):
+    runner = _real_runner()
+    data = _dry_run_data(
+        (
+            ("PUMP-1", "TEST-ROUTER-P-RJRS-1", "Unit 1", "OH", "11/61", None),
+            ("PUMP-2", "TEST-ROUTER-P-RJRS-2", None, "OH", "11/61", None),
+        )
+    )
+    assert data["approval_ready"] is False
+
+    get_import_session_repository()._sessions.clear()
+
+    response = _approve(data["session_id"])
+    body = response.json()
+
+    assert body["data"]["status"] == "REJECTED_INVALID"
+    assert not _pump_present(runner, "TEST-ROUTER-P-RJRS-1")
+    assert not _pump_present(runner, "TEST-ROUTER-P-RJRS-2")
+
+
+def test_replay_guard_holds_across_a_simulated_restart(real_db_cleanup):
+    runner = _real_runner()
+    data = _dry_run_data((("PUMP-1", "TEST-ROUTER-P-REPLAY-RESTART", "Unit 1", "OH", "11/61", None),))
+
+    first = _approve(data["session_id"])
+    assert first.json()["data"]["status"] == "COMMITTED"
+
+    # Restart, then a second Approve arrives -- must still be blocked,
+    # not silently re-executed just because the in-memory record of
+    # "already ran" was lost.
+    get_import_session_repository()._sessions.clear()
+
+    second = _approve(data["session_id"])
+    second_body = second.json()
+
+    assert second_body["success"] is False
+    assert "already been executed" in second_body["message"]
+    rows = _json_query(
+        "SELECT count(*) AS n FROM ltsa_pumps WHERE tag_number = 'TEST-ROUTER-P-REPLAY-RESTART'", runner
+    )
+    assert rows == [{"n": 1}]
+
+
+def test_concurrent_double_approve_cannot_double_write(real_db_cleanup):
+    # Two callers racing the SAME session_id -- not a sequential
+    # first-then-second call (already covered above), but both hitting
+    # claim_for_execution() back to back before either has run
+    # execute_import. Only one may win the atomic claim.
+    runner = _real_runner()
+    data = _dry_run_data((("PUMP-1", "TEST-ROUTER-P-RACE", "Unit 1", "OH", "11/61", None),))
+
+    repo_a = ImportSessionRepository(runner=runner)
+    repo_b = ImportSessionRepository(runner=runner)
+
+    claimed_a, session_a = repo_a.claim_for_execution(data["session_id"])
+    claimed_b, session_b = repo_b.claim_for_execution(data["session_id"])
+
+    assert claimed_a != claimed_b  # exactly one of the two wins
+    assert (claimed_a, claimed_b) in ((True, False), (False, True))
+    winner_session = session_a if claimed_a else session_b
+    assert winner_session.status == "EXECUTING"
+
+
+def test_claim_for_execution_reports_not_found_for_an_unknown_session():
+    runner = _real_runner()
+    repository = ImportSessionRepository(runner=runner)
+
+    claimed, session = repository.claim_for_execution("SESSION-TRULY-DOES-NOT-EXIST")
+
+    assert claimed is False
+    assert session is None
