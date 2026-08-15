@@ -1,5 +1,9 @@
 {
   "name": "WF-LTSA-BRAIN-PUMP-DETAIL-001",
+  "_deprecated": true,
+  "_deprecatedBy": "MWO-LTSA-PUMP-CANONICAL-MIGRATION-001",
+  "_deprecatedReason": "Superseded by PRODUCTS/LTSA-BRAIN/BUILD-PACKS/BP-007-AI5R-WORKFLOW-GENERATOR/OUTPUTS/WF-LTSA-PUMP-DETAIL-001.json (already canonical per MWO-P-004). Static-response stub targeting the deprecated `pump_registry`/`pump_code` schema (see settings.registry below), not canonical `ltsa_pumps` (DATABASE/CANONICAL_SCHEMA.sql). Do not import into n8n.",
+  "_canonicalReplacement": "PRODUCTS/LTSA-BRAIN/BUILD-PACKS/BP-007-AI5R-WORKFLOW-GENERATOR/OUTPUTS/WF-LTSA-PUMP-DETAIL-001.json",
   "nodes": [
     {
       "parameters": {

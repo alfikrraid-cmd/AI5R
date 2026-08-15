@@ -39,16 +39,36 @@ DEFAULT_REPO_ROOT = Path(__file__).resolve().parents[2]
 
 WORKFLOW_SPECS = [
     {
+        # MWO-LTSA-PUMP-CANONICAL-MIGRATION-001: replaces the deprecated
+        # BUILD-PACKS/BP-PUMP static-response stub (pump_registry/pump_code,
+        # never queried by any workflow -- see CANONICAL_SCHEMA.sql's own
+        # PUMP header) with the real, ltsa_pumps-backed canonical source
+        # already selected by MWO-P-004's own inventory (source path
+        # confirmed there and in the deprecated stub's own
+        # _canonicalReplacement metadata). "deprecated_aliases" lets
+        # bootstrap_workflows find and update-in-place a workflow that a
+        # prior bootstrap created under the old stub's n8n workflow name,
+        # instead of orphaning it and creating a duplicate under the new
+        # canonical name -- see bootstrap_workflows' own docstring.
         "key": "pump_list",
-        "source": Path("PRODUCTS/LTSA-BRAIN/BUILD-PACKS/BP-PUMP/WORKFLOWS/WF-LTSA-BRAIN-PUMP-LIST-001.json"),
-        "name": "WF-LTSA-BRAIN-PUMP-LIST-001",
+        "source": Path("PRODUCTS/LTSA-BRAIN/MODULES/PUMP/WORKFLOWS/WF-LTSA-PUMP-LIST-001.json"),
+        "name": "WF-LTSA-PUMP-LIST-001",
+        "deprecated_aliases": ["WF-LTSA-BRAIN-PUMP-LIST-001"],
         "method": "GET",
         "webhook_path": "ltsa/pump/list",
     },
     {
+        # Already-complete canonical Detail per MWO-P-004's own inventory
+        # ("Already complete -- not touched by this MWO, including its
+        # deprecated counterpart") and CANONICAL_SCHEMA.sql's PUMP header --
+        # reused unchanged except for the alwaysOutputData zero-row/
+        # not-found safety fix (MWO-LTSA-PUMP-CANONICAL-MIGRATION-001).
         "key": "pump_detail",
-        "source": Path("PRODUCTS/LTSA-BRAIN/BUILD-PACKS/BP-PUMP/WORKFLOWS/WF-LTSA-BRAIN-PUMP-DETAIL-001.json"),
-        "name": "WF-LTSA-BRAIN-PUMP-DETAIL-001",
+        "source": Path(
+            "PRODUCTS/LTSA-BRAIN/BUILD-PACKS/BP-007-AI5R-WORKFLOW-GENERATOR/OUTPUTS/WF-LTSA-PUMP-DETAIL-001.json"
+        ),
+        "name": "WF-LTSA-PUMP-DETAIL-001",
+        "deprecated_aliases": ["WF-LTSA-BRAIN-PUMP-DETAIL-001"],
         "method": "GET",
         "webhook_path": "ltsa/pump/detail",
     },
@@ -452,7 +472,20 @@ def bootstrap_workflows(
     (re-)activated, never duplicated via a second POST. `specs` defaults
     to the real WORKFLOW_SPECS -- overridable so tests can exercise this
     function against a small, self-contained fixture set instead of all
-    five real production workflow files."""
+    five real production workflow files.
+
+    A spec may declare "deprecated_aliases": [old_n8n_workflow_name, ...]
+    (MWO-LTSA-PUMP-CANONICAL-MIGRATION-001) -- checked only when no
+    workflow matches the spec's own (canonical) name. This lets a
+    migration that renames a deprecated stub's n8n workflow (e.g.
+    "WF-LTSA-BRAIN-PUMP-LIST-001") to its canonical name (e.g.
+    "WF-LTSA-PUMP-LIST-001") find and PATCH that SAME workflow ID in
+    place instead of orphaning it and POSTing a duplicate under the new
+    name. Once a workflow has been renamed by a prior run, the primary
+    (canonical-name) lookup finds it directly on every subsequent run --
+    the alias path is only ever exercised on the one migration run that
+    still finds the old name, never after, so this can never itself
+    produce a duplicate."""
     specs = WORKFLOW_SPECS if specs is None else specs
     existing_by_name = get_workflows_by_name(client)
     summary = {
@@ -466,6 +499,11 @@ def bootstrap_workflows(
         source_path = root / spec["source"]
         payload = load_workflow_source(source_path, credential)
         existing = existing_by_name.get(spec["name"])
+        if existing is None:
+            for alias in spec.get("deprecated_aliases", []):
+                existing = existing_by_name.get(alias)
+                if existing is not None:
+                    break
 
         if existing is None:
             status, _, created = client.request("/rest/workflows", method="POST", payload=payload)

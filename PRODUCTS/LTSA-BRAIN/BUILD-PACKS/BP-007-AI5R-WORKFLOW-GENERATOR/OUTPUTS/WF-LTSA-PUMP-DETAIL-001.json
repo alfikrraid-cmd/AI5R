@@ -76,6 +76,7 @@
       "name": "Get Pump Detail",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
+      "alwaysOutputData": true,
       "position": [
         0,
         0

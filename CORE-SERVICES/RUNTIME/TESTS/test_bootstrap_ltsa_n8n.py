@@ -476,6 +476,185 @@ def test_bootstrap_workflows_rerun_on_a_fully_bootstrapped_instance_never_duplic
     assert sorted(workflow["id"] for workflow in client.workflows) == first_ids
 
 
+# --- deprecated_aliases: canonical-migration reuse, no orphan/duplicate ---
+#
+# MWO-LTSA-PUMP-CANONICAL-MIGRATION-001: a spec may declare
+# "deprecated_aliases" (old n8n workflow names a canonicalization
+# migration is replacing). Reproduces the real production scenario: an
+# n8n instance that was previously bootstrapped under the deprecated
+# stub's name (e.g. "WF-LTSA-BRAIN-PUMP-LIST-001") must have that SAME
+# workflow renamed and updated in place when the spec's source/name
+# change to the canonical ones -- never orphaned (leaving a stale extra
+# workflow behind) and never duplicated (a fresh POST alongside it).
+
+
+def test_bootstrap_workflows_reuses_a_workflow_found_under_a_deprecated_alias_instead_of_creating_a_duplicate(
+    tmp_path,
+):
+    _write_workflow_fixture(tmp_path, "WF-CANONICAL")
+    specs = [
+        {
+            "source": Path("WF-CANONICAL.json"),
+            "name": "WF-CANONICAL",
+            "deprecated_aliases": ["WF-DEPRECATED-STUB"],
+            "method": "GET",
+            "webhook_path": "ltsa/x",
+        }
+    ]
+    client = FakeN8nClient(
+        workflows=[
+            {
+                "id": "wf-existing",
+                "name": "WF-DEPRECATED-STUB",
+                "nodes": [],
+                "connections": {},
+                "settings": {},
+                "active": True,
+                "versionId": "v1",
+            }
+        ]
+    )
+
+    summary = bootstrap_workflows(client, tmp_path, CREDENTIAL, specs=specs)
+
+    assert summary["created"] == []
+    assert summary["updated"] == ["WF-CANONICAL"]
+    assert len(client.workflows) == 1
+    assert client.workflows[0]["id"] == "wf-existing"
+    assert client.workflows[0]["name"] == "WF-CANONICAL"
+
+
+def test_bootstrap_workflows_prefers_the_canonical_name_over_an_alias_when_both_would_match(tmp_path):
+    _write_workflow_fixture(tmp_path, "WF-CANONICAL")
+    specs = [
+        {
+            "source": Path("WF-CANONICAL.json"),
+            "name": "WF-CANONICAL",
+            "deprecated_aliases": ["WF-DEPRECATED-STUB"],
+            "method": "GET",
+            "webhook_path": "ltsa/x",
+        }
+    ]
+    client = FakeN8nClient(
+        workflows=[
+            {
+                "id": "wf-canonical-already",
+                "name": "WF-CANONICAL",
+                "nodes": [],
+                "connections": {},
+                "settings": {},
+                "active": True,
+                "versionId": "v1",
+            },
+            {
+                "id": "wf-stale-alias",
+                "name": "WF-DEPRECATED-STUB",
+                "nodes": [],
+                "connections": {},
+                "settings": {},
+                "active": True,
+                "versionId": "v1",
+            },
+        ]
+    )
+
+    summary = bootstrap_workflows(client, tmp_path, CREDENTIAL, specs=specs)
+
+    assert summary["created"] == []
+    assert summary["updated"] == ["WF-CANONICAL"]
+    updated = next(w for w in client.workflows if w["id"] == "wf-canonical-already")
+    assert updated["name"] == "WF-CANONICAL"
+    # The alias-named workflow is untouched -- never patched, never deleted.
+    # bootstrap_workflows only ever manages what its specs name; a leftover
+    # alias workflow is a pre-existing-state fact for the operator to
+    # clean up deliberately, never a side effect of this function.
+    stale = next(w for w in client.workflows if w["id"] == "wf-stale-alias")
+    assert stale["name"] == "WF-DEPRECATED-STUB"
+
+
+def test_bootstrap_workflows_migration_is_idempotent_across_two_runs_after_alias_rename(tmp_path):
+    _write_workflow_fixture(tmp_path, "WF-CANONICAL")
+    specs = [
+        {
+            "source": Path("WF-CANONICAL.json"),
+            "name": "WF-CANONICAL",
+            "deprecated_aliases": ["WF-DEPRECATED-STUB"],
+            "method": "GET",
+            "webhook_path": "ltsa/x",
+        }
+    ]
+    client = FakeN8nClient(
+        workflows=[
+            {
+                "id": "wf-existing",
+                "name": "WF-DEPRECATED-STUB",
+                "nodes": [],
+                "connections": {},
+                "settings": {},
+                "active": True,
+                "versionId": "v1",
+            }
+        ]
+    )
+
+    first = bootstrap_workflows(client, tmp_path, CREDENTIAL, specs=specs)
+    second = bootstrap_workflows(client, tmp_path, CREDENTIAL, specs=specs)
+
+    assert first["created"] == []
+    assert second["created"] == []
+    assert second["updated"] == ["WF-CANONICAL"]
+    assert len(client.workflows) == 1
+    assert client.workflows[0]["id"] == "wf-existing"
+
+
+def test_bootstrap_workflows_with_no_deprecated_aliases_key_behaves_exactly_as_before(tmp_path):
+    # Every non-migrating spec (seal_list, seal_stock_list, ...) has no
+    # "deprecated_aliases" key at all -- .get(..., []) must make this a
+    # complete no-op for them, never a behavior change.
+    specs = _specs(tmp_path, ["WF-A"])
+    assert "deprecated_aliases" not in specs[0]
+    client = FakeN8nClient()
+
+    summary = bootstrap_workflows(client, tmp_path, CREDENTIAL, specs=specs)
+
+    assert summary["created"] == ["WF-A"]
+
+
+# --- Pump canonical migration: specs point at real, canonical sources -----
+
+
+def test_pump_workflow_specs_point_at_the_canonical_sources_not_the_deprecated_bp_pump_stub():
+    pump_list_spec = next(spec for spec in WORKFLOW_SPECS if spec["key"] == "pump_list")
+    pump_detail_spec = next(spec for spec in WORKFLOW_SPECS if spec["key"] == "pump_detail")
+
+    assert "MODULES/PUMP/WORKFLOWS/WF-LTSA-PUMP-LIST-001.json" in str(pump_list_spec["source"]).replace("\\", "/")
+    assert "BP-PUMP" not in str(pump_list_spec["source"])
+    assert pump_list_spec["deprecated_aliases"] == ["WF-LTSA-BRAIN-PUMP-LIST-001"]
+
+    assert (
+        "BP-007-AI5R-WORKFLOW-GENERATOR/OUTPUTS/WF-LTSA-PUMP-DETAIL-001.json"
+        in str(pump_detail_spec["source"]).replace("\\", "/")
+    )
+    assert "BP-PUMP" not in str(pump_detail_spec["source"])
+    assert pump_detail_spec["deprecated_aliases"] == ["WF-LTSA-BRAIN-PUMP-DETAIL-001"]
+
+
+def test_deprecated_bp_pump_list_source_is_marked_deprecated_in_place_not_deleted():
+    deprecated_path = REPO_ROOT / "PRODUCTS/LTSA-BRAIN/BUILD-PACKS/BP-PUMP/WORKFLOWS/WF-LTSA-BRAIN-PUMP-LIST-001.json"
+    workflow = json.loads(deprecated_path.read_text(encoding="utf-8"))
+    assert workflow["_deprecated"] is True
+    assert "WF-LTSA-PUMP-LIST-001.json" in workflow["_canonicalReplacement"]
+
+
+def test_deprecated_bp_pump_detail_source_is_marked_deprecated_in_place_not_deleted():
+    deprecated_path = (
+        REPO_ROOT / "PRODUCTS/LTSA-BRAIN/BUILD-PACKS/BP-PUMP/WORKFLOWS/WF-LTSA-BRAIN-PUMP-DETAIL-001.json"
+    )
+    workflow = json.loads(deprecated_path.read_text(encoding="utf-8"))
+    assert workflow["_deprecated"] is True
+    assert "WF-LTSA-PUMP-DETAIL-001.json" in workflow["_canonicalReplacement"]
+
+
 def test_activate_workflow_unwraps_both_the_get_and_patch_envelopes(tmp_path):
     client = FakeN8nClient(
         workflows=[

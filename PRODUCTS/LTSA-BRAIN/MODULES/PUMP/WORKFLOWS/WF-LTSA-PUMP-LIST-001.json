@@ -12,7 +12,8 @@
       "name": "GET /ltsa/pump/list",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [0, 0]
+      "position": [0, 0],
+      "webhookId": "ltsa-pump-list-001"
     },
     {
       "parameters": {
@@ -23,6 +24,7 @@
       "name": "List Pumps",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
+      "alwaysOutputData": true,
       "position": [260, 0],
       "credentials": {
         "postgres": {
@@ -33,7 +35,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const rows = $input.all().map(item => item.json);\n\nreturn [{\n  json: {\n    success: true,\n    message: 'Pump list retrieved',\n    count: rows.length,\n    data: rows\n  }\n}];"
+        "jsCode": "const rows = $input.all().map(item => item.json).filter(row => Object.keys(row).length > 0);\n\nreturn [{\n  json: {\n    success: true,\n    message: 'Pump list retrieved',\n    count: rows.length,\n    data: rows\n  }\n}];"
       },
       "id": "build-pump-list-response",
       "name": "Build Pump List Response",
