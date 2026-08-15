@@ -467,3 +467,137 @@ def test_dry_run_on_a_folder_reports_unsupported_input_not_a_crash(tmp_path):
     exit_code = run(folder, runner, dry_run=True)
 
     assert exit_code == _EXIT_UNSUPPORTED_INPUT
+
+
+# MWO-LTSA-PUMP-IMPORT-DATA-CLOSURE-001 -- reconciliation evidence: the real
+# RU II Master Pump workbook (LTSA_RU_II_Master_Pump_Canonical.xlsx -- not
+# committed to this repo, it is real business data; this file's own header
+# above already documents the established convention of a small, portable,
+# CI-safe stand-in with the same real shape) has 5 rows missing 'area':
+# 211-P-13AR/211-P-13BR (Fraksinasi, same service as sister pumps
+# 211-P-13A/211-P-13B), 212-P-4A/212-P-4B (Reaktor), and 840-P-1A (Amine,
+# same service as sister pump 840-P-1B). This fixture reproduces that exact
+# pattern at a small scale: 4 sister pumps that already have 'area', plus
+# the 5 real target tags missing it -- proving both the reported
+# new_count=244-while-valid_count=239 mismatch AND that supplying the
+# correct 'area' value for exactly these 5 rows (the only defect --
+# import_validator.py's own pump-required-field list is ("tag_number",
+# "area"), confirmed by direct read) resolves it with NO code change,
+# reaching valid=9/rejected=0/approval_ready=True (the 244/0/true target,
+# at this fixture's own scale). Sister pumps keep independently-set
+# 'notes' values here (standing in for any per-row attribute, e.g. seal
+# type in a sheet that carried one) -- never copied from one sibling to
+# another, and each of the 9 tags is asserted as its own distinct row.
+_RECONCILIATION_ROWS_BEFORE_CORRECTION = (
+    ("PUMP-1", "TEST-CLI-P-211-13A", "Fraksinasi", "BB", "32/62", "sister-A-note"),
+    ("PUMP-2", "TEST-CLI-P-211-13AR", None, "BB", "32/62", "sister-AR-note"),
+    ("PUMP-3", "TEST-CLI-P-211-13B", "Fraksinasi", "BB", "32/62", "sister-B-note"),
+    ("PUMP-4", "TEST-CLI-P-211-13BR", None, "BB", "32/62", "sister-BR-note"),
+    ("PUMP-5", "TEST-CLI-P-212-4A", None, "OH2", "11/61", "reaktor-A-note"),
+    ("PUMP-6", "TEST-CLI-P-212-4B", None, "OH2", "11/61", "reaktor-B-note"),
+    ("PUMP-7", "TEST-CLI-P-840-1A", None, "OH", "53B/61", "amine-A-note"),
+    ("PUMP-8", "TEST-CLI-P-840-1B", "Amine", "OH", "53B/61", "amine-B-note"),
+)
+
+_AREA_CORRECTIONS = {
+    "TEST-CLI-P-211-13AR": "Fraksinasi",
+    "TEST-CLI-P-211-13BR": "Fraksinasi",
+    "TEST-CLI-P-212-4A": "Reaktor",
+    "TEST-CLI-P-212-4B": "Reaktor",
+    "TEST-CLI-P-840-1A": "Amine",
+}
+
+
+def _apply_area_corrections(rows: tuple[tuple, ...]) -> tuple[tuple, ...]:
+    corrected = []
+    for pump_id, tag_number, area, pump_type, api_plan, notes in rows:
+        area = _AREA_CORRECTIONS.get(tag_number, area)
+        corrected.append((pump_id, tag_number, area, pump_type, api_plan, notes))
+    return tuple(corrected)
+
+
+def test_missing_area_rows_are_still_planned_as_insert_alongside_rejection(tmp_path):
+    # Reproduces the reported production audit finding BEFORE correction:
+    # new_count counts every row with a tag_number (identifiable_pumps,
+    # this module's own pre-existing design -- see dry_run_import's own
+    # comment on why a missing-'area' row still gets "useful preview
+    # information"), which is a strictly larger set than valid_count
+    # (rejected rows excluded). approval_ready is False, correctly
+    # signaling that Approve would reject the WHOLE batch (execute_import()
+    # checks validation.summary.is_valid) and write none of these 8 rows,
+    # despite the preview showing new_count=8.
+    path = _master_pump_workbook(tmp_path / "master.xlsx", _RECONCILIATION_ROWS_BEFORE_CORRECTION)
+    runner = _runner()
+
+    report = dry_run_import(path, runner)
+
+    assert report.normalized_count == 8
+    assert report.rejected_count == 5
+    assert report.valid_count == 3
+    assert report.new_count == 8  # every identifiable row is still planned
+    assert report.approval_ready is False
+    missing_area_ids = {issue["entity_id"] for issue in report.row_issues if issue["code"] == "MISSING_REQUIRED_FIELD"}
+    assert missing_area_ids == set(_AREA_CORRECTIONS)
+    assert not _pump_present(runner, "TEST-CLI-P-211-13AR")
+
+
+def test_correcting_only_area_resolves_valid_count_to_match_new_count_with_zero_writes(tmp_path):
+    corrected_rows = _apply_area_corrections(_RECONCILIATION_ROWS_BEFORE_CORRECTION)
+    path = _master_pump_workbook(tmp_path / "master.xlsx", corrected_rows)
+    runner = _runner()
+
+    counts_before = {
+        tag: _json_query(f"SELECT count(*) AS n FROM ltsa_pumps WHERE tag_number = '{tag}'", runner)
+        for _pid, tag, *_rest in corrected_rows
+    }
+
+    report = dry_run_import(path, runner)
+
+    # The target state (244/0/true at production scale) reached purely by
+    # the data correction -- no execution-preview code change was needed.
+    assert report.normalized_count == 8
+    assert report.rejected_count == 0
+    assert report.valid_count == 8
+    assert report.new_count == 8
+    assert report.update_count == 0
+    assert report.approval_ready is True
+    assert report.row_issues == ()
+
+    # Zero writes: dry-run never calls execute_import()/runner.execute_
+    # script() for a write -- every one of the 8 tags is still absent.
+    for _pid, tag, *_rest in corrected_rows:
+        assert not _pump_present(runner, tag), f"{tag} must not have been written by a dry-run"
+        after = _json_query(f"SELECT count(*) AS n FROM ltsa_pumps WHERE tag_number = '{tag}'", runner)
+        assert after == counts_before[tag] == [{"n": 0}]
+
+
+def test_ab_and_arbr_sister_pumps_stay_distinct_rows_after_area_correction(tmp_path):
+    corrected_rows = _apply_area_corrections(_RECONCILIATION_ROWS_BEFORE_CORRECTION)
+    path = _master_pump_workbook(tmp_path / "master.xlsx", corrected_rows)
+    runner = _runner()
+
+    report = dry_run_import(path, runner)
+
+    preview_by_tag = {row["tag_number"]: row for row in report.preview_rows}
+    assert set(preview_by_tag) == {tag for _pid, tag, *_rest in corrected_rows}
+
+    # Sister pumps in the same service/group (211-P-13A/13B and their
+    # AR/BR counterparts, 840-P-1A/1B) never collapse into fewer rows, and
+    # each keeps its OWN independently-set attribute (here: notes, standing
+    # in for any per-row field) -- never copied from one sibling to
+    # another. This is the concrete "do not encode 1 pump = 1 seal /
+    # sister pumps are not identical" guarantee: nothing in this pipeline
+    # merges or cross-populates sibling rows.
+    assert preview_by_tag["TEST-CLI-P-211-13A"]["notes"] == "sister-A-note"
+    assert preview_by_tag["TEST-CLI-P-211-13AR"]["notes"] == "sister-AR-note"
+    assert preview_by_tag["TEST-CLI-P-211-13B"]["notes"] == "sister-B-note"
+    assert preview_by_tag["TEST-CLI-P-211-13BR"]["notes"] == "sister-BR-note"
+    assert preview_by_tag["TEST-CLI-P-840-1A"]["notes"] == "amine-A-note"
+    assert preview_by_tag["TEST-CLI-P-840-1B"]["notes"] == "amine-B-note"
+
+    # Corrected areas landed on exactly the right tags, and nowhere else --
+    # 840-P-1A's area was set to Amine (matching its sister 840-P-1B), not
+    # derived FROM 840-P-1B's own row content.
+    assert preview_by_tag["TEST-CLI-P-211-13AR"]["area"] == "Fraksinasi"
+    assert preview_by_tag["TEST-CLI-P-212-4A"]["area"] == "Reaktor"
+    assert preview_by_tag["TEST-CLI-P-840-1A"]["area"] == "Amine"
