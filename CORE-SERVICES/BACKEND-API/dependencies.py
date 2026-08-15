@@ -6,9 +6,11 @@ from pathlib import Path
 
 BACKEND_API_DIR = Path(__file__).resolve().parent
 CORE_SERVICES_DIR = BACKEND_API_DIR.parent
-AI5R_SDK_DIR = CORE_SERVICES_DIR.parent / "AI5R-SDK"
+REPO_ROOT = CORE_SERVICES_DIR.parent
+AI5R_SDK_DIR = REPO_ROOT / "AI5R-SDK"
+INGESTION_DIR = REPO_ROOT / "PRODUCTS" / "LTSA-BRAIN" / "INGESTION"
 
-for _path in (BACKEND_API_DIR, CORE_SERVICES_DIR, AI5R_SDK_DIR):
+for _path in (BACKEND_API_DIR, CORE_SERVICES_DIR, AI5R_SDK_DIR, INGESTION_DIR):
     if str(_path) not in sys.path:
         sys.path.insert(0, str(_path))
 
@@ -19,6 +21,7 @@ from API.engineering_context_engine import EngineeringContextEngine
 from API.equipment_timeline_service import EquipmentTimelineService
 from API.fleet_executive_summary import FleetExecutiveSummaryService
 from API.fleet_reliability_service import FleetReliabilityService
+from API.import_session_repository import ImportSessionRepository
 from API.ltsa_knowledge_service import LTSAKnowledgeService
 from API.maintenance_history_gateway import MaintenanceHistoryGateway
 from API.pm_occurrence_gateway import PMOccurrenceGateway
@@ -29,6 +32,7 @@ from API.seal_gateway import SealGateway
 from API.seal_pump_compatibility_gateway import SealPumpCompatibilityGateway
 from API.seal_stock_gateway import SealStockGateway
 from API.work_order_gateway import WorkOrderGateway
+from ltsa_pump_inventory_db_upsert import DatabaseConfig, DatabaseRunner
 
 PRODUCT_NAME = os.getenv("AI5R_PRODUCT_NAME", "LTSA-BRAIN")
 
@@ -44,6 +48,26 @@ _seal_gateway = SealGateway()
 _seal_stock_gateway = SealStockGateway()
 _seal_pump_compatibility_gateway = SealPumpCompatibilityGateway()
 _seal_engineering_document_gateway = SealEngineeringDocumentGateway()
+
+# Import API Foundation -- in-memory only, no SQL/schema (see
+# API.import_session_repository's own header comment).
+_import_session_repository = ImportSessionRepository()
+
+# MWO-LTSA-DATA-IMPORT-UI-001B -- the one, real, live-DB-capable
+# DatabaseRunner this backend process holds, needed so
+# POST /api/ltsa/import/pump-xlsx/dry-run (and POST /api/ltsa/import/
+# execute) can reach a real database. Same DatabaseConfig/DatabaseRunner
+# (PRODUCTS/LTSA-BRAIN/INGESTION/ltsa_pump_inventory_db_upsert.py, reused
+# unmodified) and the same env-file/compose-file runtime every test file
+# in this session already targets. DatabaseRunner.__init__ does no I/O of
+# its own -- it only stores config; every subprocess call happens inside
+# execute_script()/query_scalar(), called lazily, per request.
+_import_database_runner = DatabaseRunner(
+    DatabaseConfig(
+        env_file=CORE_SERVICES_DIR / "RUNTIME" / ".env.verify.local",
+        compose_file=CORE_SERVICES_DIR / "RUNTIME" / "compose.yaml",
+    )
+)
 
 # MWO-LTSA-031D -- built from the same singleton Gateway instances above,
 # not fresh ones -- no second set of Gateways is constructed anywhere.
@@ -136,6 +160,14 @@ def get_seal_stock_gateway() -> SealStockGateway:
 
 def get_seal_pump_compatibility_gateway() -> SealPumpCompatibilityGateway:
     return _seal_pump_compatibility_gateway
+
+
+def get_import_session_repository() -> ImportSessionRepository:
+    return _import_session_repository
+
+
+def get_import_database_runner() -> DatabaseRunner:
+    return _import_database_runner
 
 
 def get_ltsa_knowledge_service() -> LTSAKnowledgeService:
