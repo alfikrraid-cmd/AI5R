@@ -71,4 +71,14 @@ class SealPumpCompatibilityGateway:
             # propagate uncaught into a bare 500.
             return {"success": False, "data": [], "error": f"{path} unreachable: {error.reason}"}
 
-        return json.loads(raw)
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError as error:
+            # See seal_gateway.py's own identical handling for the full
+            # rationale (secondary defense only -- the canonical workflow
+            # fix is primary).
+            return {
+                "success": False,
+                "data": [],
+                "error": f"{path} returned a non-JSON response ({len(raw)} bytes): {error}",
+            }

@@ -11,6 +11,7 @@ if str(RUNTIME_DIR) not in sys.path:
 import bootstrap_ltsa_n8n
 from bootstrap_ltsa_n8n import (
     DEFAULT_REPO_ROOT,
+    POSTGRES_NODE_TYPE,
     WEBHOOK_NODE_TYPE,
     WORKFLOW_SPECS,
     activate_workflow,
@@ -793,3 +794,126 @@ def test_verify_runtime_only_annotates_the_api_health_key_with_valid(monkeypatch
     assert set(results["api_pumps"]) == {"status", "body"}
     assert set(results["n8n_pump_list"]) == {"status", "body"}
     assert set(results["api_health"]) == {"status", "body", "valid"}
+
+
+# --- Postgres zero-row safety: the "HTTP 200 + empty body" production bug ---
+#
+# Root cause (proven against a real, disposable n8n 1.115.3 instance --
+# see the mission's own investigation): a Postgres node (operation=
+# "executeQuery") with no alwaysOutputData, feeding a webhook's response
+# chain, produces zero output items whenever its query returns zero rows.
+# n8n's execution engine does not run a downstream node when every
+# upstream connection feeding it produced zero items, so the Code node
+# and the Respond-to-Webhook node downstream of it never execute at all
+# -- confirmed directly from a real execution's own runData, whose
+# lastNodeExecuted was the Postgres node itself. n8n then falls back to
+# its own default: HTTP 200 with a completely empty body, which is
+# exactly what caused every gateway's json.loads() to raise
+# json.decoder.JSONDecodeError: Expecting value.
+
+
+def _pg_node(*, always_output_data: bool, operation: str = "executeQuery") -> dict:
+    node = {
+        "name": "Query",
+        "type": POSTGRES_NODE_TYPE,
+        "parameters": {"operation": operation, "query": "SELECT * FROM seal_registry;"},
+    }
+    if always_output_data:
+        node["alwaysOutputData"] = True
+    return node
+
+
+def _webhook_node() -> dict:
+    return {"name": "Webhook", "type": WEBHOOK_NODE_TYPE, "webhookId": "x-001", "parameters": {"path": "ltsa/x"}}
+
+
+def test_load_workflow_source_rejects_a_postgres_query_node_with_no_alwaysOutputData(tmp_path):
+    workflow = {
+        "name": "WF-NO-ALWAYS-OUTPUT",
+        "nodes": [_webhook_node(), _pg_node(always_output_data=False)],
+        "connections": {},
+        "settings": {},
+    }
+    source = tmp_path / "WF-NO-ALWAYS-OUTPUT.json"
+    source.write_text(json.dumps(workflow), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="alwaysOutputData"):
+        load_workflow_source(source, CREDENTIAL)
+
+
+def test_load_workflow_source_accepts_a_postgres_query_node_with_alwaysOutputData(tmp_path):
+    workflow = {
+        "name": "WF-WITH-ALWAYS-OUTPUT",
+        "nodes": [_webhook_node(), _pg_node(always_output_data=True)],
+        "connections": {},
+        "settings": {},
+    }
+    source = tmp_path / "WF-WITH-ALWAYS-OUTPUT.json"
+    source.write_text(json.dumps(workflow), encoding="utf-8")
+
+    payload = load_workflow_source(source, CREDENTIAL)
+
+    assert payload["nodes"][1]["alwaysOutputData"] is True
+
+
+def test_load_workflow_source_ignores_a_postgres_node_that_is_not_executeQuery(tmp_path):
+    # A different operation (e.g. insert) is not the proven zero-row-skip
+    # mechanism this validator targets -- never flagged, never guessed at.
+    workflow = {
+        "name": "WF-INSERT-OP",
+        "nodes": [_webhook_node(), _pg_node(always_output_data=False, operation="insert")],
+        "connections": {},
+        "settings": {},
+    }
+    source = tmp_path / "WF-INSERT-OP.json"
+    source.write_text(json.dumps(workflow), encoding="utf-8")
+
+    load_workflow_source(source, CREDENTIAL)  # must not raise
+
+
+def test_load_workflow_source_ignores_a_postgres_node_with_no_webhook_trigger(tmp_path):
+    # No webhook trigger in this workflow at all -- this validator only
+    # concerns itself with a Postgres node feeding a webhook's own
+    # response chain, never postgres-only automation workflows.
+    workflow = {
+        "name": "WF-NO-WEBHOOK",
+        "nodes": [_pg_node(always_output_data=False)],
+        "connections": {},
+        "settings": {},
+    }
+    source = tmp_path / "WF-NO-WEBHOOK.json"
+    source.write_text(json.dumps(workflow), encoding="utf-8")
+
+    load_workflow_source(source, CREDENTIAL)  # must not raise
+
+
+def test_every_real_canonical_postgres_backed_workflow_source_has_alwaysOutputData():
+    """The direct regression test for the production bug: reads the REAL
+    canonical source files WORKFLOW_SPECS points to (not fixtures), and
+    asserts every Postgres executeQuery node in a webhook-triggered
+    workflow has alwaysOutputData set. Before the fix, this failed for
+    exactly the 3 Postgres-backed workflows (seal_list, seal_stock_list,
+    seal_pump_compatibility_list) -- the exact 3 that returned HTTP 200
+    with an empty body in production."""
+    missing = []
+    for spec in WORKFLOW_SPECS:
+        source_path = REPO_ROOT / spec["source"]
+        workflow = json.loads(source_path.read_text(encoding="utf-8"))
+        node_types = {node.get("type") for node in workflow.get("nodes", [])}
+        if WEBHOOK_NODE_TYPE not in node_types or POSTGRES_NODE_TYPE not in node_types:
+            continue
+        for node in workflow.get("nodes", []):
+            if node.get("type") != POSTGRES_NODE_TYPE:
+                continue
+            if node.get("parameters", {}).get("operation") != "executeQuery":
+                continue
+            if not node.get("alwaysOutputData"):
+                missing.append(f"{spec['name']} ({source_path})")
+
+    assert missing == []
+
+
+def test_every_real_canonical_workflow_source_still_loads_without_error():
+    for spec in WORKFLOW_SPECS:
+        source_path = REPO_ROOT / spec["source"]
+        load_workflow_source(source_path, CREDENTIAL)  # must not raise

@@ -28,6 +28,21 @@ class FakeHTTPResponse:
         return json.dumps(self._payload).encode("utf-8")
 
 
+class FakeEmptyHTTPResponse:
+    """See test_seal_gateway.py's identical fake for the full rationale:
+    reproduces HTTP 200 + empty body, exactly what n8n sent for a
+    zero-row query before the canonical workflow fix."""
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return None
+
+    def read(self):
+        return b""
+
+
 def _gateway():
     return SealPumpCompatibilityGateway(
         SealPumpCompatibilityGatewayConfig(base_url="https://example.test/webhook", timeout=5)
@@ -93,6 +108,19 @@ def test_gateway_returns_an_honest_failure_on_connection_level_failure_instead_o
     connection_error = urllib.error.URLError("Name or service not known")
 
     with patch("urllib.request.urlopen", side_effect=connection_error):
+        result = gateway.list_seal_pump_compatibilities()
+
+    assert result["success"] is False
+    assert result["data"] == []
+    assert "ltsa/seal-pump-compatibility/list" in result["error"]
+
+
+def test_gateway_returns_an_honest_failure_on_an_empty_body_instead_of_raising_jsondecodeerror():
+    # Scenario G (MWO-LTSA-PROD-ZERO-ROW-001): see test_seal_gateway.py's
+    # identical regression test for the full rationale.
+    gateway = _gateway()
+
+    with patch("urllib.request.urlopen", return_value=FakeEmptyHTTPResponse()):
         result = gateway.list_seal_pump_compatibilities()
 
     assert result["success"] is False

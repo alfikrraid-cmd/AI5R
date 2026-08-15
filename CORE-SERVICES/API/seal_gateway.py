@@ -72,4 +72,21 @@ class SealGateway:
             # elsewhere (e.g. maintenance_intelligence_service.py).
             return {"success": False, "data": [], "error": f"{path} unreachable: {error.reason}"}
 
-        return json.loads(raw)
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError as error:
+            # Secondary defense only -- the canonical n8n workflow this
+            # gateway calls is the primary fix (a Postgres node feeding
+            # this webhook's response chain now has alwaysOutputData set,
+            # proven against a real n8n 1.115.3 instance to prevent the
+            # zero-row-empty-body response this was written against). A
+            # malformed/empty response is still reported honestly
+            # (success=False, a real error message) rather than silently
+            # treated as an empty result -- an empty string is never
+            # reinterpreted as "[]" here, since that would hide a real
+            # workflow defect instead of surfacing it.
+            return {
+                "success": False,
+                "data": [],
+                "error": f"{path} returned a non-JSON response ({len(raw)} bytes): {error}",
+            }

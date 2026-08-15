@@ -25,6 +25,7 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [260, 0],
+      "alwaysOutputData": true,
       "credentials": {
         "postgres": {
           "id": "hzgFaX04t1nL01vF",
@@ -34,7 +35,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const rows = $input.all().map(item => item.json);\n\nreturn [{\n  json: {\n    success: true,\n    message: 'Seal list retrieved',\n    count: rows.length,\n    data: rows\n  }\n}];"
+        "jsCode": "const rows = $input.all().map(item => item.json).filter(row => Object.keys(row).length > 0);\n\nreturn [{\n  json: {\n    success: true,\n    message: 'Seal list retrieved',\n    count: rows.length,\n    data: rows\n  }\n}];"
       },
       "id": "build-seal-list-response",
       "name": "Build Seal List Response",

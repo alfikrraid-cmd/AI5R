@@ -298,6 +298,53 @@ def get_or_create_postgres_credential(client: N8nClient, env: dict[str, str]) ->
 
 
 WEBHOOK_NODE_TYPE = "n8n-nodes-base.webhook"
+POSTGRES_NODE_TYPE = "n8n-nodes-base.postgres"
+
+
+def _validate_postgres_zero_row_safety(workflow: dict[str, Any], source: Path) -> None:
+    """A Postgres node (operation="executeQuery") feeding a webhook's
+    response chain, with no `alwaysOutputData`, silently breaks that
+    chain whenever the query returns zero rows -- proven against a real,
+    disposable n8n 1.115.3 instance (MWO-LTSA-PROD-ZERO-ROW-001): n8n's
+    execution engine does not run a downstream node when every upstream
+    connection feeding it produced zero items, so a zero-row query means
+    the Code/Respond-to-Webhook nodes downstream of it never execute at
+    all -- confirmed directly from a real execution's own runData, whose
+    `lastNodeExecuted` was the Postgres node itself. The webhook caller
+    then receives n8n's own fallback: HTTP 200 with a completely empty
+    body, which is exactly what caused
+    `json.decoder.JSONDecodeError: Expecting value` in every gateway
+    that called json.loads() on it.
+
+    `alwaysOutputData: true` on the Postgres node is the fix (proven:
+    without it, the chain never reaches Respond to Webhook at all; with
+    it, the chain runs and a deterministic {"success": true, "data": []}
+    is produced) -- this validator only checks for the field's presence,
+    a structural, deterministic JSON check, never a guess about a
+    workflow's runtime behavior. It only applies to a workflow that
+    genuinely has both a webhook trigger and a Postgres executeQuery
+    node -- a workflow with neither is unaffected by this mechanism and
+    is never flagged."""
+    node_types = {node.get("type") for node in workflow.get("nodes", [])}
+    if WEBHOOK_NODE_TYPE not in node_types or POSTGRES_NODE_TYPE not in node_types:
+        return
+
+    for node in workflow.get("nodes", []):
+        if node.get("type") != POSTGRES_NODE_TYPE:
+            continue
+        if node.get("parameters", {}).get("operation") != "executeQuery":
+            continue
+        if not node.get("alwaysOutputData"):
+            raise RuntimeError(
+                f"Canonical workflow source {source} has a Postgres query node "
+                f"({node.get('name', node.get('id', '<unnamed>'))}) feeding a webhook "
+                "response chain with no alwaysOutputData. A zero-row query result would "
+                "silently break the chain before Respond to Webhook ever runs, producing "
+                "HTTP 200 with an empty body -- fix the canonical workflow JSON to set "
+                "alwaysOutputData=true on this node (and ensure the downstream Code node "
+                "filters out the resulting placeholder empty item), never patch around "
+                "this in the bootstrap client or the API gateway."
+            )
 
 
 def _validate_webhook_nodes(workflow: dict[str, Any], source: Path) -> None:
@@ -335,6 +382,7 @@ def _validate_webhook_nodes(workflow: dict[str, Any], source: Path) -> None:
 def load_workflow_source(source: Path, credential: dict[str, Any]) -> dict[str, Any]:
     workflow = json.loads(source.read_text(encoding="utf-8"))
     _validate_webhook_nodes(workflow, source)
+    _validate_postgres_zero_row_safety(workflow, source)
     for node in workflow.get("nodes", []):
         credentials = node.get("credentials")
         if not isinstance(credentials, dict):

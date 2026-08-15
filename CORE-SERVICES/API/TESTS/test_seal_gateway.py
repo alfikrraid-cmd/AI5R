@@ -25,6 +25,23 @@ class FakeHTTPResponse:
         return json.dumps(self._payload).encode("utf-8")
 
 
+class FakeEmptyHTTPResponse:
+    """Reproduces the exact production defect: HTTP 200, Content-Type
+    application/json, but a completely empty body -- what n8n 1.115.3
+    actually sent whenever the Postgres node behind this webhook
+    returned zero rows and alwaysOutputData was unset (root cause,
+    proven and fixed in the canonical workflow JSON itself)."""
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return None
+
+    def read(self):
+        return b""
+
+
 def _gateway():
     return SealGateway(SealGatewayConfig(base_url="https://example.test/webhook", timeout=5))
 
@@ -97,6 +114,25 @@ def test_gateway_returns_an_honest_failure_on_connection_level_failure_instead_o
     connection_error = urllib.error.URLError("Name or service not known")
 
     with patch("urllib.request.urlopen", side_effect=connection_error):
+        result = gateway.list_seals()
+
+    assert result["success"] is False
+    assert result["data"] == []
+    assert "ltsa/seal/list" in result["error"]
+
+
+def test_gateway_returns_an_honest_failure_on_an_empty_body_instead_of_raising_jsondecodeerror():
+    # Scenario G (MWO-LTSA-PROD-ZERO-ROW-001): secondary defense only --
+    # the canonical workflow fix (alwaysOutputData) is what actually
+    # prevents this response from occurring; this proves that IF a
+    # malformed/empty response ever reaches this gateway regardless, it
+    # degrades to an honest success=False result instead of letting
+    # json.JSONDecodeError propagate uncaught into a bare 500. The empty
+    # body is never silently reinterpreted as a legitimate "[]" result --
+    # success stays False, with a real diagnostic message.
+    gateway = _gateway()
+
+    with patch("urllib.request.urlopen", return_value=FakeEmptyHTTPResponse()):
         result = gateway.list_seals()
 
     assert result["success"] is False
