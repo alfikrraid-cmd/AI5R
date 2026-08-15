@@ -61,5 +61,12 @@ class SealStockGateway:
                 raw = response.read().decode("utf-8")
         except urllib.error.HTTPError as error:
             raw = error.read().decode("utf-8")
+        except urllib.error.URLError as error:
+            # See seal_gateway.py's own identical handling for the full
+            # rationale: a connection-level failure has no HTTP response
+            # body to decode, so this returns an honest success=False/
+            # empty-data result rather than letting the exception
+            # propagate uncaught into a bare 500.
+            return {"success": False, "data": [], "error": f"{path} unreachable: {error.reason}"}
 
         return json.loads(raw)

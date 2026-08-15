@@ -60,5 +60,16 @@ class SealGateway:
                 raw = response.read().decode("utf-8")
         except urllib.error.HTTPError as error:
             raw = error.read().decode("utf-8")
+        except urllib.error.URLError as error:
+            # Connection-level failure (refused/unreachable/DNS/timeout) --
+            # HTTPError is URLError's own subclass and is already handled
+            # above; this is the case where n8n was never reached at all,
+            # so there is no HTTP response body to decode. An honest
+            # success=False/empty-data result, never a raised exception
+            # that would otherwise propagate uncaught into a bare 500 --
+            # the same "one gateway being unavailable should not crash the
+            # whole endpoint" discipline this codebase already applies
+            # elsewhere (e.g. maintenance_intelligence_service.py).
+            return {"success": False, "data": [], "error": f"{path} unreachable: {error.reason}"}
 
         return json.loads(raw)

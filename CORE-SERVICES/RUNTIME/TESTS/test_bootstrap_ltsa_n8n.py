@@ -8,7 +8,9 @@ RUNTIME_DIR = Path(__file__).resolve().parents[1]
 if str(RUNTIME_DIR) not in sys.path:
     sys.path.insert(0, str(RUNTIME_DIR))
 
+import bootstrap_ltsa_n8n
 from bootstrap_ltsa_n8n import (
+    DEFAULT_REPO_ROOT,
     WEBHOOK_NODE_TYPE,
     WORKFLOW_SPECS,
     activate_workflow,
@@ -18,6 +20,7 @@ from bootstrap_ltsa_n8n import (
     get_workflows_by_name,
     load_workflow_source,
     unwrap_data,
+    verify_runtime,
 )
 
 REPO_ROOT = RUNTIME_DIR.parents[1]
@@ -698,3 +701,95 @@ def test_every_real_canonical_workflow_source_loads_without_a_webhookId_validati
     for spec in WORKFLOW_SPECS:
         source_path = REPO_ROOT / spec["source"]
         load_workflow_source(source_path, CREDENTIAL)  # must not raise
+
+
+# --- repo root: no dependence on Path.cwd() -------------------------------
+#
+# Regression: bootstrap_ltsa_n8n.py used Path.cwd() as the base for every
+# WORKFLOW_SPECS source path. Reproduced directly: running the real script
+# from CORE-SERVICES/RUNTIME raised FileNotFoundError on a doubled-up,
+# nonexistent path
+# (CORE-SERVICES/RUNTIME/PRODUCTS/LTSA-BRAIN/BUILD-PACKS/...).
+
+
+def test_default_repo_root_is_derived_from_this_scripts_own_location_not_cwd():
+    # bootstrap_ltsa_n8n.py lives at <repo_root>/CORE-SERVICES/RUNTIME/.
+    assert (DEFAULT_REPO_ROOT / "CORE-SERVICES" / "RUNTIME" / "bootstrap_ltsa_n8n.py").is_file()
+
+
+def test_default_repo_root_resolves_every_real_workflow_spec_source():
+    for spec in WORKFLOW_SPECS:
+        assert (DEFAULT_REPO_ROOT / spec["source"]).is_file()
+
+
+# --- health contract: reject a dashboard-HTML masquerade -------------------
+#
+# Regression: nginx's public routing table had no dedicated /health
+# location, so a request for /health fell through to the dashboard SPA's
+# catch-all route and returned its index.html -- HTTP 200, but not the
+# real API health JSON. A bare status-code check could never catch this;
+# reproduced directly against a real nginx-fronted stack before the fix.
+
+
+def test_verify_runtime_marks_api_health_valid_for_the_real_health_contract(monkeypatch):
+    def fake_call_json(url):
+        if url.endswith("/health"):
+            return 200, {"status": "OK", "version": "1.0.0", "organization": "OK", "database": "OK", "n8n": "OK"}
+        return 200, {"success": True, "data": []}
+
+    monkeypatch.setattr(bootstrap_ltsa_n8n, "call_json", fake_call_json)
+
+    results = verify_runtime(
+        {"AI5R_API_PUBLIC_URL": "http://example.test", "AI5R_N8N_PUBLIC_URL": "http://example.test"}
+    )
+
+    assert results["api_health"]["valid"] is True
+
+
+def test_verify_runtime_rejects_a_dashboard_html_response_masquerading_as_health(monkeypatch):
+    dashboard_html = "<!doctype html>\n<html><head><title>AI5R Dashboard</title></head></html>"
+
+    def fake_call_json(url):
+        if url.endswith("/health"):
+            return 200, dashboard_html
+        return 200, {"success": True, "data": []}
+
+    monkeypatch.setattr(bootstrap_ltsa_n8n, "call_json", fake_call_json)
+
+    results = verify_runtime(
+        {"AI5R_API_PUBLIC_URL": "http://example.test", "AI5R_N8N_PUBLIC_URL": "http://example.test"}
+    )
+
+    assert results["api_health"]["status"] == 200
+    assert results["api_health"]["body"] == dashboard_html
+    assert results["api_health"]["valid"] is False
+
+
+def test_verify_runtime_rejects_a_non_200_health_status_even_with_dict_body(monkeypatch):
+    def fake_call_json(url):
+        if url.endswith("/health"):
+            return 503, {"status": "OK"}
+        return 200, {"success": True, "data": []}
+
+    monkeypatch.setattr(bootstrap_ltsa_n8n, "call_json", fake_call_json)
+
+    results = verify_runtime(
+        {"AI5R_API_PUBLIC_URL": "http://example.test", "AI5R_N8N_PUBLIC_URL": "http://example.test"}
+    )
+
+    assert results["api_health"]["valid"] is False
+
+
+def test_verify_runtime_only_annotates_the_api_health_key_with_valid(monkeypatch):
+    # Every other probe keeps its existing {"status", "body"}-only shape --
+    # this is a targeted, additive fix, not a reshaping of the whole
+    # verification report.
+    monkeypatch.setattr(bootstrap_ltsa_n8n, "call_json", lambda url: (200, {"success": True, "data": []}))
+
+    results = verify_runtime(
+        {"AI5R_API_PUBLIC_URL": "http://example.test", "AI5R_N8N_PUBLIC_URL": "http://example.test"}
+    )
+
+    assert set(results["api_pumps"]) == {"status", "body"}
+    assert set(results["n8n_pump_list"]) == {"status", "body"}
+    assert set(results["api_health"]) == {"status", "body", "valid"}

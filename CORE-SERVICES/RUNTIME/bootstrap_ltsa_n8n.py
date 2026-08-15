@@ -25,6 +25,17 @@ from typing import Any
 # `KeyError: 'id'` crash.
 REQUIRED_OWNER_ENV_KEYS = ("AI5R_N8N_OWNER_EMAIL", "AI5R_N8N_OWNER_PASSWORD")
 
+# This file lives at <repo_root>/CORE-SERVICES/RUNTIME/bootstrap_ltsa_n8n.py
+# -- two parents up from its own resolved location is the repository root
+# that WORKFLOW_SPECS' own paths (e.g. "PRODUCTS/LTSA-BRAIN/BUILD-PACKS/...")
+# are relative to. Previously this script used Path.cwd() instead, which
+# only worked when invoked from the repository root -- running it from
+# CORE-SERVICES/RUNTIME (or any other directory) produced a real,
+# reproduced FileNotFoundError trying to read a workflow source file
+# under a doubled-up, nonexistent path. Deterministic from the script's
+# own location, never from whatever directory happened to invoke it.
+DEFAULT_REPO_ROOT = Path(__file__).resolve().parents[2]
+
 
 WORKFLOW_SPECS = [
     {
@@ -470,6 +481,17 @@ def call_json(url: str) -> tuple[int | None, Any]:
         return None, {"error": str(error.reason)}
 
 
+def _is_valid_api_health_response(status: int | None, body: Any) -> bool:
+    """The real GET /health contract (routers/health.py's HealthResponse)
+    is a JSON object with a "status" key. Proven, reproduced gap: nginx's
+    public routing table had no dedicated /health location, so the
+    request fell through to the dashboard SPA's catch-all route and
+    returned its index.html -- HTTP 200, but not the API's health at
+    all. A bare `status == 200` check cannot tell these apart; this
+    checks the actual decoded body shape, not just the status code."""
+    return status == 200 and isinstance(body, dict) and "status" in body
+
+
 def verify_runtime(env: dict[str, str]) -> dict[str, Any]:
     api_base = env["AI5R_API_PUBLIC_URL"].rstrip("/")
     n8n_base = env["AI5R_N8N_PUBLIC_URL"].rstrip("/")
@@ -493,7 +515,15 @@ def verify_runtime(env: dict[str, str]) -> dict[str, Any]:
     results = {}
     for key, url in urls.items():
         status, body = call_json(url)
-        results[key] = {"status": status, "body": body}
+        result: dict[str, Any] = {"status": status, "body": body}
+        if key == "api_health":
+            # Never accept a 200 status alone as proof of health -- see
+            # _is_valid_api_health_response's own docstring. Recorded
+            # here (not raised) so the report stays the authoritative,
+            # complete record of what verification actually found,
+            # consistent with every other probe in this function.
+            result["valid"] = _is_valid_api_health_response(status, body)
+        results[key] = result
     return results
 
 
@@ -555,12 +585,24 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--env-file", required=True)
     parser.add_argument("--output", required=True)
+    parser.add_argument(
+        "--repo-root",
+        default=None,
+        help=(
+            "Repository root that WORKFLOW_SPECS source paths are relative "
+            "to. Defaults to this script's own location (two directories "
+            "up), never the invoking shell's current working directory -- "
+            "safe to run from the repository root, CORE-SERVICES/RUNTIME, "
+            "or any other directory without this flag."
+        ),
+    )
     args = parser.parse_args()
 
     env = parse_env_file(Path(args.env_file))
+    repo_root = Path(args.repo_root).resolve() if args.repo_root else DEFAULT_REPO_ROOT
 
     try:
-        report = run_bootstrap(env, Path.cwd())
+        report = run_bootstrap(env, repo_root)
     except RuntimeError as error:
         # Every RuntimeError raised anywhere in this module is
         # constructed without embedding request/response bodies that
