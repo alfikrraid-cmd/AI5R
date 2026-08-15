@@ -13,6 +13,7 @@ import PMWorkOrderWorkspace from "./PMWorkOrderWorkspace";
 import ReportsWorkspace from "./ReportsWorkspace";
 import AnalyticsWorkspace from "./AnalyticsWorkspace";
 import FailureAnalysisWorkspace from "./FailureAnalysisWorkspace";
+import ImportWorkspace from "./ImportWorkspace";
 import { WorkspaceProvider } from "../workspace/WorkspaceContext";
 import { parseWorkspaceLocation, workspaceLocation } from "../workspace/WorkspaceRegistry";
 import "./LTSAWorkspace.css";
@@ -37,6 +38,7 @@ const TABS = [
   { key: "pm", label: "Preventive Maintenance" },
   { key: "cm", label: "Corrective Maintenance" },
   { key: "cmon", label: "Condition Monitoring" },
+  { key: "import", label: "Import" },
   { key: "history", label: "Asset 360" },
   { key: "reports", label: "Reports" },
   { key: "analytics", label: "Analytics" },
@@ -56,6 +58,7 @@ const PAGES = {
   cmon: ConditionMonitoring,
   "cmon-workspace": ConditionMonitoringWorkspace,
   "failure-analysis-workspace": FailureAnalysisWorkspace,
+  import: ImportWorkspace,
   history: MaintenanceHistory,
   "pm-workspace": PMWorkOrderWorkspace,
   reports: ReportsWorkspace,
