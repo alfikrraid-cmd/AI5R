@@ -29,18 +29,6 @@ services:
     depends_on:
       - postgres
       - n8n
-    # MWO-LTSA-IMPORT-PROD-COMPOSE-ENV-001 -- ./.env is CORE-SERVICES/
-    # RUNTIME/.env (relative to this file, the same portable-relative-path
-    # convention the nginx service below already uses for its own config
-    # mount) -- the real, gitignored, host-owned env file production
-    # acceptance already confirmed exists at exactly this location. Bind-
-    # mounted (never baked into the image -- api.Dockerfile's own COPY
-    # layer never includes it, correctly, since it is gitignored) to a
-    # FIXED, non-VPS-specific, container-internal path -- never the raw
-    # host absolute path (proven invalid inside the container: nothing in
-    # api.Dockerfile or this file maps /home/<user>/... into it).
-    volumes:
-      - ./.env:/app/CORE-SERVICES/RUNTIME/.env:ro
     environment:
       AI5R_ENV: ${AI5R_ENV}
       AI5R_VERSION: ${AI5R_VERSION}
@@ -48,27 +36,30 @@ services:
       AI5R_PRODUCT_NAME: ${AI5R_PRODUCT_NAME}
       AI5R_LOG_LEVEL: ${AI5R_LOG_LEVEL}
       AI5R_CORS_ORIGINS: ${AI5R_CORS_ORIGINS}
-      # Reuses the existing AI5R_LTSA_POSTGRES_DB var verbatim (already
-      # set in the real production .env -- confirmed by acceptance
-      # evidence) -- this was the missing pass-through, not a missing
-      # value: docker compose only injects a var into a container's own
-      # environment when it is explicitly listed here, regardless of
-      # whether --env-file already has it available for ${...}
-      # interpolation within this file.
+      # MWO-LTSA-IMPORT-DIRECT-DB-001 -- direct psycopg2 connection to
+      # Postgres over the backend network (api already has this network,
+      # unchanged below), the same pattern n8n's own DB_POSTGRESDB_HOST
+      # already uses, reused rather than invented. Replaces the previous
+      # MWO-LTSA-IMPORT-PROD-COMPOSE-ENV-001 design (a bind-mounted .env
+      # file + AI5R_IMPORT_ENV_FILE, read by shelling out to `docker
+      # compose exec postgres psql`) -- removed here because the api
+      # container has neither the docker CLI nor a docker.sock mount (by
+      # design: mounting docker.sock into an internet-facing container is
+      # a security decision this mission explicitly forbids), so that
+      # mechanism could never actually run from inside this container no
+      # matter how its env vars were wired. "postgres" is a literal, not
+      # ${...} -- a fixed backend-network service DNS name, not a
+      # host-specific value (identical in kind to n8n's own literal
+      # DB_POSTGRESDB_HOST: postgres two services below).
+      AI5R_POSTGRES_HOST: postgres
+      AI5R_POSTGRES_PORT: ${AI5R_POSTGRES_PORT}
+      AI5R_POSTGRES_USER: ${AI5R_POSTGRES_USER}
+      AI5R_POSTGRES_PASSWORD: ${AI5R_POSTGRES_PASSWORD}
+      # Still the LTSA-canonical database name (unchanged from MWO-LTSA-
+      # IMPORT-PROD-COMPOSE-ENV-001) -- direct-connect mode needs it just
+      # as much as docker-exec mode did, only the connection MECHANISM
+      # changed, not which database Import targets.
       AI5R_LTSA_POSTGRES_DB: ${AI5R_LTSA_POSTGRES_DB}
-      # Fixed container-internal path, matching the volumes: mount above
-      # exactly -- NOT the host's own AI5R_IMPORT_ENV_FILE value (that var's
-      # real value on a host is an absolute host path, e.g.
-      # /home/<user>/AI5R-PROD/CORE-SERVICES/RUNTIME/.env -- meaningless
-      # inside this container's own filesystem namespace). dependencies.py
-      # reads this one value; AI5R_IMPORT_COMPOSE_FILE needs no equivalent
-      # override -- compose.yaml itself is a plain, non-secret, tracked
-      # file already baked into the image at this same relative position
-      # by api.Dockerfile's own COPY CORE-SERVICES layer, so
-      # dependencies.py's existing default (derived from its own __file__
-      # location, not a hardcoded string) already resolves correctly
-      # inside the container with no override needed.
-      AI5R_IMPORT_ENV_FILE: /app/CORE-SERVICES/RUNTIME/.env
       AI5R_PUMP_GATEWAY_BASE_URL: ${AI5R_PUMP_GATEWAY_BASE_URL}
       AI5R_WORK_ORDER_GATEWAY_BASE_URL: ${AI5R_WORK_ORDER_GATEWAY_BASE_URL}
       AI5R_MAINTENANCE_HISTORY_GATEWAY_BASE_URL: ${AI5R_MAINTENANCE_HISTORY_GATEWAY_BASE_URL}

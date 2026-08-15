@@ -73,31 +73,38 @@ def test_runtime_and_ltsa_database_targets_remain_separate():
     assert n8n_env["DB_POSTGRESDB_DATABASE"] != env["AI5R_LTSA_POSTGRES_DB"]
 
 
-# MWO-LTSA-IMPORT-PROD-COMPOSE-ENV-001 -- production acceptance found the api
-# container's own OS environment missing AI5R_LTSA_POSTGRES_DB and
-# AI5R_IMPORT_ENV_FILE even though the host .env already defines the former
-# and dependencies.py reads the latter, because --env-file only makes a var
-# available for ${...} interpolation inside compose.yaml itself -- a service
-# only receives a var in its own container environment if it is also listed
-# under that service's own `environment:` block. These tests guard the two
-# concrete symptoms production acceptance observed from regressing again.
-def test_api_service_receives_ltsa_postgres_db_and_import_env_file_vars():
-    env = parse_env_file(RUNTIME_DIR / ".env.production.example")
+# MWO-LTSA-IMPORT-DIRECT-DB-001 -- the api container has neither the
+# docker CLI nor a mounted docker.sock, so `docker compose exec postgres
+# psql` (the previous mechanism) is structurally unusable there no matter
+# how its env vars are wired. Import now connects to Postgres directly
+# (psycopg2, over the backend network) -- the same DB_POSTGRESDB_HOST
+# pattern n8n already uses (reused below via api_env["AI5R_POSTGRES_HOST"]
+# == n8n_env["DB_POSTGRESDB_HOST"]), and the same credentials n8n's own
+# DB_POSTGRESDB_USER/PASSWORD/PORT already read (reused, never a second
+# secret). This test guards the concrete wiring production acceptance
+# needs from regressing.
+def test_api_service_connects_directly_to_postgres_reusing_n8n_credentials():
     compose = render_compose_with_example_env()
     api_env = compose["services"]["api"]["environment"]
+    n8n_env = compose["services"]["n8n"]["environment"]
 
-    assert api_env["AI5R_LTSA_POSTGRES_DB"] == env["AI5R_LTSA_POSTGRES_DB"]
-    # A fixed, container-internal path -- never the host's own
-    # AI5R_IMPORT_ENV_FILE value (an absolute host path, meaningless inside
-    # the container's own filesystem namespace).
-    assert api_env["AI5R_IMPORT_ENV_FILE"] == "/app/CORE-SERVICES/RUNTIME/.env"
+    assert api_env["AI5R_POSTGRES_HOST"] == n8n_env["DB_POSTGRESDB_HOST"] == "postgres"
+    assert api_env["AI5R_POSTGRES_PORT"] == n8n_env["DB_POSTGRESDB_PORT"]
+    assert api_env["AI5R_POSTGRES_USER"] == n8n_env["DB_POSTGRESDB_USER"]
+    assert api_env["AI5R_POSTGRES_PASSWORD"] == n8n_env["DB_POSTGRESDB_PASSWORD"]
+    # Still the LTSA-canonical database -- direct-connect mode targets the
+    # same database docker-exec mode did (only the mechanism changed).
+    assert api_env["AI5R_LTSA_POSTGRES_DB"] == "ltsa_brain"
 
 
-def test_api_service_bind_mounts_the_env_file_at_the_path_it_reports():
+def test_api_service_no_longer_bind_mounts_env_file_or_sets_import_env_file():
+    # MWO-LTSA-IMPORT-PROD-COMPOSE-ENV-001's bind-mount + AI5R_IMPORT_ENV_FILE
+    # design (docker-exec mode's own env-file plumbing) is obsolete now that
+    # direct-connect mode reads credentials from real container env vars,
+    # never a mounted file -- this guards against that obsolete infrastructure
+    # being reintroduced/stacked alongside the new mechanism.
     compose = render_compose_with_example_env()
     api = compose["services"]["api"]
-    api_env = api["environment"]
 
-    volumes = api.get("volumes") or []
-    targets = [v.split(":")[1] for v in volumes if isinstance(v, str) and ":" in v]
-    assert api_env["AI5R_IMPORT_ENV_FILE"] in targets
+    assert "AI5R_IMPORT_ENV_FILE" not in api["environment"]
+    assert not api.get("volumes")

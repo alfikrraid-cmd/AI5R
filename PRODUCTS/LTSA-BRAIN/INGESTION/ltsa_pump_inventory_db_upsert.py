@@ -77,14 +77,35 @@ def _json_query(sql: str, runner: "DatabaseRunner") -> list[dict[str, Any]]:
 
 @dataclass
 class DatabaseConfig:
-    env_file: Path
-    compose_file: Path
+    # docker-exec mode (CLI/dev only -- unchanged from before
+    # MWO-LTSA-IMPORT-DIRECT-DB-001): host machine has the `docker` CLI and
+    # shells out to `docker compose exec postgres psql`. Required for this
+    # mode, unused (may be left None) for direct-connect mode below.
+    env_file: Path | None = None
+    compose_file: Path | None = None
     service: str = "postgres"
     user: str = "ai5r"
     database: str = "ai5r_runtime"
+    # Direct-connect mode (MWO-LTSA-IMPORT-DIRECT-DB-001) -- a real wire-
+    # protocol Postgres connection via psycopg2, no docker CLI/socket
+    # required. Selected whenever `host` is set (see DatabaseRunner below).
+    # This is the mode the production api container uses: it has neither
+    # the docker CLI nor a mounted docker.sock (MWO-LTSA-IMPORT-PROD-
+    # COMPOSE-ENV-001's own disclosed blocker), so docker-exec mode is
+    # structurally unusable there.
+    host: str | None = None
+    port: int = 5432
+    password: str | None = None
 
 
 class DatabaseRunner:
+    """Same public interface (`query_scalar`/`execute_script`) regardless
+    of mode -- every existing caller (import_execution_engine.py,
+    import_session_repository.py, import_adapter.py, the ingestion CLIs,
+    ...) is unmodified by MWO-LTSA-IMPORT-DIRECT-DB-001; only how a
+    DatabaseConfig is CONSTRUCTED differs by caller (see dependencies.py's
+    own _resolve_import_database_config for the production/API choice)."""
+
     def __init__(self, config: DatabaseConfig):
         self.config = config
 
@@ -108,7 +129,54 @@ class DatabaseRunner:
             "ON_ERROR_STOP=1",
         ]
 
+    def _direct_connect(self):
+        # Deferred import: a CLI/dev caller that never sets config.host
+        # never imports psycopg2 at all -- no new dependency burden for
+        # that path (requirements.txt still gains psycopg2-binary for the
+        # api container's own venv, but nothing forces it onto a bare
+        # host running the ingestion CLI directly).
+        import psycopg2
+
+        conn = psycopg2.connect(
+            host=self.config.host,
+            port=self.config.port,
+            user=self.config.user,
+            password=self.config.password,
+            dbname=self.config.database,
+        )
+        # autocommit=True: every execute_script() script below already
+        # carries its own literal BEGIN;...COMMIT; (apply_plan(),
+        # execute_import()) -- exactly mirroring psql's own behavior
+        # (psql forwards the script to the server verbatim; the script's
+        # own BEGIN/COMMIT is what actually controls the transaction).
+        # Leaving psycopg2's default (autocommit=False) would make
+        # psycopg2 ALSO wrap every execute() in its own implicit
+        # transaction, nesting a second BEGIN inside the script's own --
+        # harmless per Postgres (a warning, not an error) but needless.
+        # Under Postgres's simple-query protocol, a mid-script error
+        # aborts the transaction and skips every statement after it
+        # (including the trailing COMMIT;) -- the same
+        # "-v ON_ERROR_STOP=1, nothing after the failure runs" semantics
+        # psql already provides. Each call opens and closes its own
+        # connection (no pooling) -- this mirrors the existing docker-exec
+        # mode exactly (a fresh psql process per call), keeping "one
+        # script, one atomic outcome" true in both modes.
+        conn.autocommit = True
+        return conn
+
     def query_scalar(self, sql: str) -> str:
+        if self.config.host:
+            conn = self._direct_connect()
+            try:
+                with conn.cursor() as cursor:
+                    cursor.execute(sql)
+                    row = cursor.fetchone()
+                    if row is None or row[0] is None:
+                        return ""
+                    return str(row[0])
+            finally:
+                conn.close()
+
         result = subprocess.run(
             self._base_command() + ["-tAc", sql],
             check=True,
@@ -118,6 +186,15 @@ class DatabaseRunner:
         return result.stdout.strip()
 
     def execute_script(self, sql: str) -> None:
+        if self.config.host:
+            conn = self._direct_connect()
+            try:
+                with conn.cursor() as cursor:
+                    cursor.execute(sql)
+            finally:
+                conn.close()
+            return
+
         subprocess.run(
             self._base_command(),
             check=True,

@@ -1163,11 +1163,61 @@ def test_resolve_import_database_config_defaults_match_existing_local_testing(mo
     monkeypatch.delenv("AI5R_IMPORT_ENV_FILE", raising=False)
     monkeypatch.delenv("AI5R_IMPORT_COMPOSE_FILE", raising=False)
     monkeypatch.delenv("AI5R_LTSA_POSTGRES_DB", raising=False)
+    monkeypatch.delenv("AI5R_POSTGRES_HOST", raising=False)
 
     config = _resolve_import_database_config()
 
     assert config.env_file == _RUNTIME_DIR / ".env.verify.local"
     assert config.compose_file == _RUNTIME_DIR / "compose.yaml"
+    assert config.database == "ai5r_runtime"
+    assert config.host is None
+
+
+# MWO-LTSA-IMPORT-DIRECT-DB-001 -- the production api container has neither
+# the docker CLI nor a mounted docker.sock, so the docker-exec branch above
+# (still the correct default for local dev/pytest, which has no published
+# postgres port to connect to directly) is structurally unusable there.
+# AI5R_POSTGRES_HOST being set is the one signal that switches
+# _resolve_import_database_config() to the direct-connect branch --
+# compose.yaml's api service sets it unconditionally (a literal "postgres",
+# the backend-network service DNS name), so a real deployment always takes
+# this branch.
+def test_resolve_import_database_config_takes_the_direct_connect_branch_when_host_is_set(monkeypatch):
+    monkeypatch.setenv("AI5R_POSTGRES_HOST", "postgres")
+    monkeypatch.setenv("AI5R_POSTGRES_PORT", "5432")
+    monkeypatch.setenv("AI5R_POSTGRES_USER", "ai5r")
+    monkeypatch.setenv("AI5R_POSTGRES_PASSWORD", "secret")
+    monkeypatch.setenv("AI5R_LTSA_POSTGRES_DB", "ltsa_brain")
+
+    config = _resolve_import_database_config()
+
+    assert config.host == "postgres"
+    assert config.port == 5432
+    assert config.user == "ai5r"
+    assert config.password == "secret"
+    assert config.database == "ltsa_brain"
+    # Direct-connect mode needs no env_file/compose_file at all -- confirms
+    # the obsolete docker-exec-only fields are simply unused here, never
+    # populated with a stale/meaningless value.
+    assert config.env_file is None
+    assert config.compose_file is None
+
+
+def test_resolve_import_database_config_direct_connect_credentials_come_from_existing_postgres_vars(monkeypatch):
+    # "Credentials only from existing env/config" -- AI5R_POSTGRES_USER/
+    # PASSWORD/PORT are the SAME vars the postgres service's own
+    # POSTGRES_* environment and n8n's DB_POSTGRESDB_* environment already
+    # read (see compose.yaml) -- never a second, Import-specific secret.
+    monkeypatch.setenv("AI5R_POSTGRES_HOST", "postgres")
+    monkeypatch.delenv("AI5R_POSTGRES_PORT", raising=False)
+    monkeypatch.delenv("AI5R_POSTGRES_USER", raising=False)
+    monkeypatch.delenv("AI5R_POSTGRES_PASSWORD", raising=False)
+    monkeypatch.delenv("AI5R_LTSA_POSTGRES_DB", raising=False)
+
+    config = _resolve_import_database_config()
+
+    assert config.port == 5432
+    assert config.user == "ai5r"
     assert config.database == "ai5r_runtime"
 
 
@@ -1176,6 +1226,7 @@ def test_resolve_import_database_config_reuses_the_existing_ai5r_ltsa_postgres_d
     # the exact variable name bootstrap_ltsa_n8n.py/the ingestion CLIs
     # already use for "the real canonical LTSA database", never a second,
     # differently-named variable invented for the same fact.
+    monkeypatch.delenv("AI5R_POSTGRES_HOST", raising=False)
     monkeypatch.setenv("AI5R_LTSA_POSTGRES_DB", "ltsa_brain")
 
     config = _resolve_import_database_config()
@@ -1188,6 +1239,7 @@ def test_resolve_import_database_config_env_file_is_overridable_no_verify_local_
     # exist -- a real deployment's own real env file is used instead once
     # this override is set (whatever that real path actually is on a real
     # VPS is that deployment's own concern, never guessed here).
+    monkeypatch.delenv("AI5R_POSTGRES_HOST", raising=False)
     real_env_file = tmp_path / "real-production.env"
     real_env_file.write_text("AI5R_POSTGRES_USER=ai5r\n", encoding="utf-8")
     monkeypatch.setenv("AI5R_IMPORT_ENV_FILE", str(real_env_file))
