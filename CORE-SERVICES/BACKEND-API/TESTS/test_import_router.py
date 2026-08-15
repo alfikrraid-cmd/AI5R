@@ -14,8 +14,9 @@ if str(_INGESTION_DIR) not in sys.path:
     sys.path.insert(0, str(_INGESTION_DIR))
 
 from main import app
-from dependencies import get_import_database_runner, get_import_session_repository
+from dependencies import _resolve_import_database_config, get_import_database_runner, get_import_session_repository
 from API.conflict_resolution import build_conflict_report as _build_conflict_report
+from API.import_cli import dry_run_import
 from API.import_session import build_canonical_packages, build_import_session
 from API.import_session_repository import ImportSessionRepository
 from API.import_validator import ImportPackage, parse_import_package, validate_import_package
@@ -1143,3 +1144,118 @@ def test_claim_for_execution_reports_not_found_for_an_unknown_session():
 
     assert claimed is False
     assert session is None
+
+
+# --- Production Import DB wiring (MWO-LTSA-IMPORT-PROD-DB-WIRING-001) -------
+#
+# Root cause: dependencies.py's _import_database_runner previously hardcoded
+# env_file=.env.verify.local (this repo's own gitignored, local-only
+# disposable-test file -- absent on a real deployment) and relied on
+# DatabaseConfig's own database="ai5r_runtime" default, which is NOT where
+# the canonical LTSA tables (ltsa_pumps included) actually live -- that is
+# ltsa_brain. Fixed via _resolve_import_database_config(): each of the
+# three inputs is independently overridable by an AI5R_-prefixed env var,
+# defaulting to the exact pre-existing local/disposable values so every
+# other test in this file (none of which sets these vars) is unaffected.
+
+
+def test_resolve_import_database_config_defaults_match_existing_local_testing(monkeypatch):
+    monkeypatch.delenv("AI5R_IMPORT_ENV_FILE", raising=False)
+    monkeypatch.delenv("AI5R_IMPORT_COMPOSE_FILE", raising=False)
+    monkeypatch.delenv("AI5R_LTSA_POSTGRES_DB", raising=False)
+
+    config = _resolve_import_database_config()
+
+    assert config.env_file == _RUNTIME_DIR / ".env.verify.local"
+    assert config.compose_file == _RUNTIME_DIR / "compose.yaml"
+    assert config.database == "ai5r_runtime"
+
+
+def test_resolve_import_database_config_reuses_the_existing_ai5r_ltsa_postgres_db_var(monkeypatch):
+    # "Do not hardcode if existing AI5R_LTSA_POSTGRES_DB can be reused" --
+    # the exact variable name bootstrap_ltsa_n8n.py/the ingestion CLIs
+    # already use for "the real canonical LTSA database", never a second,
+    # differently-named variable invented for the same fact.
+    monkeypatch.setenv("AI5R_LTSA_POSTGRES_DB", "ltsa_brain")
+
+    config = _resolve_import_database_config()
+
+    assert config.database == "ltsa_brain"
+
+
+def test_resolve_import_database_config_env_file_is_overridable_no_verify_local_dependency(monkeypatch, tmp_path):
+    # Proves production wiring no longer REQUIRES .env.verify.local to
+    # exist -- a real deployment's own real env file is used instead once
+    # this override is set (whatever that real path actually is on a real
+    # VPS is that deployment's own concern, never guessed here).
+    real_env_file = tmp_path / "real-production.env"
+    real_env_file.write_text("AI5R_POSTGRES_USER=ai5r\n", encoding="utf-8")
+    monkeypatch.setenv("AI5R_IMPORT_ENV_FILE", str(real_env_file))
+
+    config = _resolve_import_database_config()
+
+    assert config.env_file == real_env_file
+    assert config.env_file != _RUNTIME_DIR / ".env.verify.local"
+
+
+def test_dry_run_and_session_persistence_both_target_the_real_canonical_ltsa_brain_database():
+    # End-to-end, real Postgres: a runner explicitly configured for
+    # ltsa_brain (the real canonical database name, not this test file's
+    # own ai5r_runtime convenience stand-in) is used for BOTH dry_run_
+    # import()'s own live-snapshot read AND ImportSessionRepository's own
+    # durable persistence -- proving "same runner serves dry-run, execute,
+    # ImportSessionRepository" actually lands in the SAME, correct database.
+    ltsa_brain_runner = DatabaseRunner(
+        DatabaseConfig(env_file=_RUNTIME_DIR / ".env.verify.local", compose_file=_RUNTIME_DIR / "compose.yaml", database="ltsa_brain")
+    )
+    ltsa_brain_runner.execute_script(
+        "DELETE FROM ltsa_pumps WHERE tag_number = 'TEST-PRODDB-P-1'; DELETE FROM import_sessions;"
+    )
+    ltsa_brain_runner.execute_script(
+        "INSERT INTO ltsa_pumps (tag_number, area) VALUES ('TEST-PRODDB-P-1', 'Unit 1');"
+    )
+
+    package = ImportPackage(
+        pumps=({"tag_number": "TEST-PRODDB-P-1", "area": "Unit 1", "pump_type": "OH"},),
+        seals=(), installations=(), documents=(),
+    )
+    import json
+    import tempfile
+    from openpyxl import Workbook
+
+    workbook = Workbook()
+    workbook.remove(workbook.active)
+    worksheet = workbook.create_sheet("Master Pump")
+    worksheet.append(("Tag Number", "Area", "Pump Type"))
+    worksheet.append(("TEST-PRODDB-P-1", "Unit 1", "OH"))
+    with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
+        workbook.save(tmp.name)
+        tmp_path = tmp.name
+
+    session_repository = ImportSessionRepository(runner=ltsa_brain_runner)
+    report = dry_run_import(Path(tmp_path), ltsa_brain_runner, session_repository=session_repository)
+
+    # dry-run reads ltsa_pumps from ltsa_brain -- the seeded row is
+    # classified as UPDATE (already exists, identical values -> actually
+    # SKIP is possible too depending on columns; either way it must be
+    # FOUND, never treated as brand new/absent).
+    assert report.new_count == 0
+    assert report.update_count + report.duplicate_count == 1
+
+    # The session landed in ltsa_brain's own import_sessions table --
+    # never ai5r_runtime's (this test file's usual database), proving the
+    # SAME runner/database served both dry-run and session persistence.
+    rows = _json_query(f"SELECT session_id, status FROM import_sessions WHERE session_id = '{report.session_id}'", ltsa_brain_runner)
+    assert rows == [{"session_id": report.session_id, "status": "REVIEWING"}]
+
+    ai5r_runtime_runner = _real_runner()
+    cross_contamination = _json_query(
+        f"SELECT session_id FROM import_sessions WHERE session_id = '{report.session_id}'", ai5r_runtime_runner
+    )
+    assert cross_contamination == []
+
+    ltsa_brain_runner.execute_script(
+        "DELETE FROM ltsa_pumps WHERE tag_number = 'TEST-PRODDB-P-1'; DELETE FROM import_sessions;"
+    )
+    import os as _os
+    _os.remove(tmp_path)

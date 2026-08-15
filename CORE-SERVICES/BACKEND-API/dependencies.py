@@ -49,21 +49,48 @@ _seal_stock_gateway = SealStockGateway()
 _seal_pump_compatibility_gateway = SealPumpCompatibilityGateway()
 _seal_engineering_document_gateway = SealEngineeringDocumentGateway()
 
-# MWO-LTSA-DATA-IMPORT-UI-001B -- the one, real, live-DB-capable
-# DatabaseRunner this backend process holds, needed so
-# POST /api/ltsa/import/pump-xlsx/dry-run (and POST /api/ltsa/import/
-# execute) can reach a real database. Same DatabaseConfig/DatabaseRunner
-# (PRODUCTS/LTSA-BRAIN/INGESTION/ltsa_pump_inventory_db_upsert.py, reused
-# unmodified) and the same env-file/compose-file runtime every test file
-# in this session already targets. DatabaseRunner.__init__ does no I/O of
-# its own -- it only stores config; every subprocess call happens inside
-# execute_script()/query_scalar(), called lazily, per request.
-_import_database_runner = DatabaseRunner(
-    DatabaseConfig(
-        env_file=CORE_SERVICES_DIR / "RUNTIME" / ".env.verify.local",
-        compose_file=CORE_SERVICES_DIR / "RUNTIME" / "compose.yaml",
+# MWO-LTSA-IMPORT-PROD-DB-WIRING-001 -- env_file/compose_file/database are
+# each independently overridable via an AI5R_-prefixed env var (the same
+# os.getenv(...) convention every other Gateway config on this page
+# already uses -- e.g. PumpGatewayConfig's own AI5R_PUMP_GATEWAY_BASE_URL
+# -- not a new config system), defaulting to the exact local/disposable-
+# testing values every existing test/dev workflow already relies on, so
+# none of them change behavior. Root cause this fixes: .env.verify.local
+# does not exist on a real deployment (it is this repo's own disposable-
+# test env file, gitignored, never meant to ship), and DatabaseConfig's
+# own default database="ai5r_runtime" is not where the canonical LTSA
+# tables (ltsa_pumps included) actually live -- that is ltsa_brain
+# (PRODUCTS/LTSA-BRAIN/DATABASE/CANONICAL_SCHEMA.sql), reached everywhere
+# else in this codebase (bootstrap_ltsa_n8n.py, the ingestion CLIs) via
+# the SAME AI5R_LTSA_POSTGRES_DB variable name, reused here rather than
+# inventing a second name for the same fact. A real deployment sets
+# AI5R_IMPORT_ENV_FILE (its own real env file -- never guessed/hardcoded
+# here) and inherits AI5R_LTSA_POSTGRES_DB from its already-real .env.
+# extracted as its own function (not inlined) so a test can call it
+# directly with monkeypatched env vars, independent of this module's own
+# import-time singleton construction below.
+def _resolve_import_database_config() -> DatabaseConfig:
+    default_env_file = CORE_SERVICES_DIR / "RUNTIME" / ".env.verify.local"
+    default_compose_file = CORE_SERVICES_DIR / "RUNTIME" / "compose.yaml"
+    return DatabaseConfig(
+        env_file=Path(os.getenv("AI5R_IMPORT_ENV_FILE") or default_env_file),
+        compose_file=Path(os.getenv("AI5R_IMPORT_COMPOSE_FILE") or default_compose_file),
+        database=os.getenv("AI5R_LTSA_POSTGRES_DB", "ai5r_runtime"),
     )
-)
+
+
+# MWO-LTSA-103 -- the one, real, live-DB-capable DatabaseRunner this
+# backend process holds, needed so POST /api/ltsa/import/execute can
+# finally call API.import_execution_engine.execute_import() (via
+# ImportWorker) for real. Same DatabaseConfig/DatabaseRunner
+# (PRODUCTS/LTSA-BRAIN/INGESTION/ltsa_pump_inventory_db_upsert.py, reused
+# unmodified). DatabaseRunner.__init__ does no I/O of its own (confirmed
+# by reading it before reuse -- it only stores config; every subprocess
+# call happens inside execute_script()/query_scalar(), called lazily, per
+# request) -- constructing this singleton at import time is exactly as
+# safe as every other singleton on this page, and adds no Docker/Postgres
+# dependency to any test that never exercises POST .../execute.
+_import_database_runner = DatabaseRunner(_resolve_import_database_config())
 
 # MWO-LTSA-DATA-IMPORT-UI-001C-DURABLE -- runner=_import_database_runner
 # (constructed just above, same singleton) makes this repository durable
