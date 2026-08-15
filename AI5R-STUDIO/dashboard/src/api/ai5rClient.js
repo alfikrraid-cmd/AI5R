@@ -1,4 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+﻿const API_URL = import.meta.env.VITE_API_URL || "http://localhost:18000";
 
 
 export async function getSystemStatus(){
@@ -626,6 +626,30 @@ export async function getPumpKnowledge(tagNumber) {
     return payload;
 }
 
+// Pump Lifecycle API (MWO-LTSA-064A backend, consumed by MWO-LTSA-065's
+// Pump Workspace Lifecycle Integration). One endpoint, {success,
+// tag_number, data} shape -- same convention as getPumpKnowledge/
+// getPumpSpareParts. This is the ONE fetch Pump Workspace's detail view
+// uses for current state, timeline, related engineering, and analytics --
+// see pumpLifecycleMapping.js for the field mapping.
+export async function getPumpLifecycle(tagNumber) {
+    const response = await fetch(
+        `${API_URL}/api/ltsa/pumps/${encodeURIComponent(tagNumber)}/lifecycle`
+    );
+
+    if (!response.ok) {
+        throw new Error("Pump lifecycle API unavailable");
+    }
+
+    const payload = await response.json();
+
+    if (payload?.success === false) {
+        throw new Error(payload?.message || "Pump lifecycle API returned a failure");
+    }
+
+    return payload;
+}
+
 // Fleet Reliability API (MWO-LTSA-037C, consumed by MWO-LTSA-037D's Fleet
 // Dashboard). One endpoint, {success, data} shape -- same convention as
 // getPumpKnowledge.
@@ -659,6 +683,203 @@ export async function getFleetPowerBI() {
 
     if (payload?.success === false) {
         throw new Error(payload?.message || "Fleet Power BI API returned a failure");
+    }
+
+    return payload;
+}
+
+// Mechanical Seal Workspace API (MWO-LTSA-041, per MWO-LTSA-040's
+// archaeology). Same list-unwrapping convention as getPumps().
+export async function getSeals() {
+    const response = await fetch(`${API_URL}/api/ltsa/seals`);
+
+    if (!response.ok) {
+        throw new Error("Seals API unavailable");
+    }
+
+    const payload = await response.json();
+
+    if (payload?.success === false) {
+        throw new Error(payload?.message || "Seals API returned a failure");
+    }
+
+    if (Array.isArray(payload)) return payload;
+    if (Array.isArray(payload?.data)) return payload.data;
+    if (Array.isArray(payload?.items)) return payload.items;
+
+    throw new Error("Seals API returned an invalid list");
+}
+
+// Document Workspace API (MWO-LTSA-062, Document & Drawing
+// Productionization). Reuses the real seal_engineering_document data
+// source Drawing already reads via getPumpKnowledge().data.drawings, but
+// unfiltered (every document_type, not just DRAWING) -- Document.jsx
+// filters/groups client-side. Same list-unwrapping convention as
+// getSeals()/getPumps(). Drawing Workspace also calls this same function
+// to resolve its own Document/Seal relationships -- not a second fetcher.
+export async function getDocuments() {
+    const response = await fetch(`${API_URL}/api/ltsa/documents`);
+
+    if (!response.ok) {
+        throw new Error("Documents API unavailable");
+    }
+
+    const payload = await response.json();
+
+    if (payload?.success === false) {
+        throw new Error(payload?.message || "Documents API returned a failure");
+    }
+
+    if (Array.isArray(payload)) return payload;
+    if (Array.isArray(payload?.data)) return payload.data;
+    if (Array.isArray(payload?.items)) return payload.items;
+
+    throw new Error("Documents API returned an invalid list");
+}
+
+// Installation Report API (MWO-LTSA-060, production persistence path for
+// the Installation Workspace created by MWO-LTSA-056). Same
+// list-unwrapping convention as getSeals()/getPumps().
+export async function getInstallations() {
+    const response = await fetch(`${API_URL}/api/ltsa/installations`);
+
+    if (!response.ok) {
+        throw new Error("Installations API unavailable");
+    }
+
+    const payload = await response.json();
+
+    if (payload?.success === false) {
+        throw new Error(payload?.message || "Installations API returned a failure");
+    }
+
+    if (Array.isArray(payload)) return payload;
+    if (Array.isArray(payload?.data)) return payload.data;
+    if (Array.isArray(payload?.items)) return payload.items;
+
+    throw new Error("Installations API returned an invalid list");
+}
+
+export async function getSealStock() {
+    const response = await fetch(`${API_URL}/api/ltsa/seal-stock`);
+
+    if (!response.ok) {
+        throw new Error("Seal Stock API unavailable");
+    }
+
+    const payload = await response.json();
+
+    if (payload?.success === false) {
+        throw new Error(payload?.message || "Seal Stock API returned a failure");
+    }
+
+    if (Array.isArray(payload)) return payload;
+    if (Array.isArray(payload?.data)) return payload.data;
+    if (Array.isArray(payload?.items)) return payload.items;
+
+    throw new Error("Seal Stock API returned an invalid list");
+}
+
+export async function getSealCompatibility() {
+    const response = await fetch(`${API_URL}/api/ltsa/seal-compatibility`);
+
+    if (!response.ok) {
+        throw new Error("Seal Compatibility API unavailable");
+    }
+
+    const payload = await response.json();
+
+    if (payload?.success === false) {
+        throw new Error(payload?.message || "Seal Compatibility API returned a failure");
+    }
+
+    if (Array.isArray(payload)) return payload;
+    if (Array.isArray(payload?.data)) return payload.data;
+    if (Array.isArray(payload?.items)) return payload.items;
+
+    throw new Error("Seal Compatibility API returned an invalid list");
+}
+
+// Import API (MWO-LTSA-076/077/079/081/085/102B/102C/103/103A,
+// CORE-SERVICES/BACKEND-API/routers/import_router.py) -- five real,
+// already-existing endpoints (checkImportConflicts kept for direct
+// /conflicts callers even though ImportWorkspace.jsx no longer calls it
+// itself as of MWO-LTSA-104 -- POST /session now computes and stores its
+// own ConflictReport server-side). Every function below returns the
+// backend's own {success, data, message?} envelope UNTHROWN on
+// success:false (unlike postEngineeringAI's own throw-on-failure
+// convention) -- a validation/conflict/execute response with success:false
+// is a real, informative outcome the Import Workspace must display (e.g.
+// "N validation errors", or a real REJECTED_CONFLICTS/FAILED_ROLLED_BACK
+// execution outcome), never an exceptional crash. Only a genuine
+// HTTP-level failure or unparseable body throws.
+async function _postImportApi(path, body) {
+    const response = await fetch(`${API_URL}${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+    });
+
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok) {
+        throw new Error(payload?.detail || payload?.message || `Import API ${path} unavailable`);
+    }
+
+    return payload;
+}
+
+export async function validateImportPackage(importPackage) {
+    return _postImportApi("/api/ltsa/import/validate", importPackage);
+}
+
+export async function checkImportConflicts(databaseSnapshot, incomingPackage) {
+    return _postImportApi("/api/ltsa/import/conflicts", {
+        database_snapshot: databaseSnapshot,
+        incoming_package: incomingPackage,
+    });
+}
+
+export async function createImportSession(sessionRequest) {
+    return _postImportApi("/api/ltsa/import/session", sessionRequest);
+}
+
+export async function executeImportSession(sessionId) {
+    return _postImportApi("/api/ltsa/import/execute", { session_id: sessionId });
+}
+
+export async function getImportSessionStatus(sessionId) {
+    const response = await fetch(`${API_URL}/api/ltsa/import/status/${encodeURIComponent(sessionId)}`);
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok) {
+        throw new Error(payload?.detail || payload?.message || "Import Status API unavailable");
+    }
+
+    return payload;
+}
+
+// Pump Master XLSX dry-run (MWO-LTSA-DATA-IMPORT-UI-001B,
+// CORE-SERVICES/BACKEND-API/routers/import_router.py POST
+// /api/ltsa/import/pump-xlsx/dry-run) -- real multipart upload of a real
+// .xlsx File the browser gives us, no client-side parsing. Same
+// success:false-is-not-an-exception convention as _postImportApi above: a
+// rejected extension or an unreadable workbook is a real, informative
+// {success:false, message} response to render, not a thrown error --
+// only a genuine HTTP/network failure throws.
+export async function dryRunPumpXlsx(file) {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const response = await fetch(`${API_URL}/api/ltsa/import/pump-xlsx/dry-run`, {
+        method: "POST",
+        body: formData,
+    });
+
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok) {
+        throw new Error(payload?.detail || payload?.message || "Pump XLSX dry-run API unavailable");
     }
 
     return payload;

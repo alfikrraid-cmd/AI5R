@@ -1,0 +1,387 @@
+/* ==========================================================================
+   MWO-LTSA-042A through MWO-LTSA-048 -- Mechanical Seal Workspace Open
+   Design tokens + component CSS, originally reused verbatim from
+   DESIGN/LTSA/MECHANICAL_SEAL_WORKSPACE/design-tokens.css (the approved,
+   canonical source) and refined across seven UX-polish MWOs.
+
+   MWO-LTSA-050 -- promoted from Seal.opendesign.css (Seal-only) to this
+   shared file: Pump Workspace Enterprise Upgrade required matching Seal's
+   information hierarchy, and "No duplicate CSS" ruled out copy-pasting
+   ~380 near-identical lines into a new Pump.opendesign.css. Every selector
+   was mechanically renamed .seal-open-design -> .ltsa-open-design (a pure
+   scope rename, zero rule changed) so BOTH SealOpenDesignView.jsx and
+   PumpOpenDesignView.jsx can render `<div className="ltsa-open-design">`
+   and share this one stylesheet. The old Seal.opendesign.css file no
+   longer exists -- both Seal.jsx and Pump.jsx import this file directly.
+   ========================================================================== */
+
+.ltsa-open-design {
+  /* ---- Color: neutrals + accent ---- */
+  --bg:        oklch(99% 0.002 240);
+  --surface:   oklch(100% 0 0);
+  --surface-2: oklch(97% 0.005 240);
+  --fg:        oklch(18% 0.012 250);
+  --muted:     oklch(50% 0.014 250);
+  --border:    oklch(91% 0.006 250);
+  --accent:    oklch(52% 0.15 255);
+  --accent-fg: oklch(99% 0.002 240);
+
+  /* ---- Color: 4-tier reliability / lifecycle status ---- */
+  --status-normal:    oklch(56% 0.13 155);
+  --status-attention: oklch(58% 0.13 75);
+  --status-high:      oklch(52% 0.17 40);
+  --status-critical:  oklch(50% 0.19 25);
+
+  /* ---- Type ---- */
+  --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif;
+  --font-body:    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
+  --font-mono:    'SF Mono', 'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace;
+
+  --text-xs:   11px;
+  --text-sm:   13px;
+  --text-base: 15px;
+  --text-md:   16px;
+  --text-lg:   20px;
+  --text-xl:   clamp(24px, 2.6vw, 30px);
+  --text-2xl:  clamp(28px, 3.4vw, 38px);
+  /* MWO-LTSA-045 P2 -- H1 reduced ~10% (34/54 -> 30/48), only consumer is
+     .identity h1 below. */
+  --text-3xl:  clamp(30px, 4vw, 48px);
+
+  /* ---- Spacing scale (8px baseline) ---- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+  --space-9: 96px;
+
+  /* ---- Shape / elevation ---- */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --shadow-sm: 0 1px 3px oklch(18% 0.012 250 / 0.04), 0 6px 20px oklch(18% 0.012 250 / 0.05);
+  --shadow-md: 0 10px 32px oklch(18% 0.012 250 / 0.10);
+  --shadow-lg: 0 24px 64px oklch(18% 0.012 250 / 0.18);
+
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+html[data-theme="dark"] .ltsa-open-design {
+  --bg:        oklch(17% 0.01 250);
+  --surface:   oklch(21% 0.012 250);
+  --surface-2: oklch(25% 0.013 250);
+  --fg:        oklch(93% 0.006 250);
+  --muted:     oklch(66% 0.014 250);
+  --border:    oklch(32% 0.014 250);
+  --accent:    oklch(70% 0.15 255);
+  --accent-fg: oklch(14% 0.01 255);
+  --shadow-sm: 0 1px 3px oklch(0% 0 0 / 0.2), 0 6px 20px oklch(0% 0 0 / 0.22);
+  --shadow-md: 0 10px 32px oklch(0% 0 0 / 0.4);
+  --shadow-lg: 0 24px 64px oklch(0% 0 0 / 0.55);
+}
+
+.ltsa-open-design * { box-sizing: border-box; }
+.ltsa-open-design .mono { font-family: var(--font-mono); }
+.ltsa-open-design .eyebrow {
+  font-size: var(--text-xs); font-weight: 600; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--muted);
+}
+.ltsa-open-design button, .ltsa-open-design input, .ltsa-open-design textarea { font-family: inherit; }
+.ltsa-open-design :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ---------- Chrome bar ---------- */
+.ltsa-open-design .chrome-bar {
+  position: sticky; top: 0; z-index: 30;
+  height: 52px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center;
+}
+.ltsa-open-design .chrome-inner {
+  max-width: 1240px; width: 100%; margin: 0 auto;
+  padding: 0 var(--space-6);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.ltsa-open-design .crumb { font-size: var(--text-sm); color: var(--muted); display: flex; align-items: center; gap: 6px; }
+/* MWO-LTSA-042A-RC2 (P1 fix) -- the ChromeBar's pump link is a <button>
+   (onClick navigation via onNavigate, not a real href), not the Open
+   Design source's <a>. .crumb-link carries the exact same visual treatment
+   the Open Design's own .crumb a rule specifies, attached to the element
+   this component actually renders. */
+.ltsa-open-design .crumb-link { color: inherit; text-decoration: none; cursor: pointer; background: none; border: none; font: inherit; padding: 0; }
+.ltsa-open-design .crumb-link:hover { color: var(--fg); }
+.ltsa-open-design .crumb b { color: var(--fg); font-weight: 540; }
+.ltsa-open-design .crumb .sep { opacity: 0.5; }
+
+/* ---------- Grid ---------- */
+/* MWO-LTSA-044/045/046/047 P2 -- top padding (space-8 -> space-6 ->
+   space-5) and main<->rail gap (space-9 -> space-8 -> space-7 -> space-6
+   -> space-5) tightened across four passes; the trailing 100px is
+   functional (sticky Action Bar clearance), left alone. */
+.ltsa-open-design .workspace-grid {
+  max-width: 1240px; margin: 0 auto;
+  padding: var(--space-5) var(--space-6) 100px;
+  display: grid; grid-template-columns: minmax(0, 1fr) 336px;
+  gap: var(--space-5); align-items: start;
+}
+/* MWO-LTSA-044/045/046/047 P2 -- section rhythm tightened (space-8 ->
+   space-6 -> space-5 -> space-4 -> space-3). */
+.ltsa-open-design .object-column { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+
+/* ---------- Identity ---------- */
+.ltsa-open-design .identity h1 {
+  font-family: var(--font-display);
+  font-size: var(--text-3xl);
+  font-weight: 630; letter-spacing: -0.025em; line-height: 1.05;
+  margin: 0 0 var(--space-3);
+}
+/* MWO-LTSA-046 -- .identity-meta and .identity-meta .dot removed: the
+   Hero's seal.code display moved into the new Identity info-row group
+   (SealOpenDesignView.jsx), and no element uses these selectors anymore
+   (verified by grep before removal) -- the breadcrumb still shows the code
+   separately, so nothing is lost, this was genuinely dead weight. */
+.ltsa-open-design .identity-status { display: flex; align-items: center; gap: var(--space-5); margin-top: var(--space-4); flex-wrap: wrap; }
+.ltsa-open-design .status-signal { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--text-md); font-weight: 560; }
+.ltsa-open-design .status-signal .dot-lg { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+.ltsa-open-design .status-signal.normal { color: var(--status-normal); }
+.ltsa-open-design .status-signal.attention { color: var(--status-attention); }
+.ltsa-open-design .status-signal.high { color: var(--status-high); }
+.ltsa-open-design .status-signal.critical { color: var(--status-critical); }
+.ltsa-open-design .status-signal.neutral { color: var(--muted); }
+.ltsa-open-design .running-line { font-size: var(--text-sm); color: var(--muted); display: flex; align-items: center; gap: var(--space-2); }
+.ltsa-open-design .running-line .dot-sm { width: 6px; height: 6px; border-radius: 50%; background: var(--status-normal); flex-shrink: 0; }
+
+/* ---------- Assessment / narrative sections ---------- */
+/* MWO-LTSA-044/045/046/047 P2 -- padding-top tightened again (space-7 ->
+   space-5 -> space-4 -> space-3 -> space-2). Divider lightened via
+   color-mix on the SAME --border token (not a new color -- a
+   partial-opacity mix of the existing one) so the repeated top-border
+   across many stacked sections reads as a quiet rule rather than a
+   dominant line. */
+.ltsa-open-design .assessment-section {
+  padding-top: var(--space-2);
+  border-top: 1px solid color-mix(in oklch, var(--border) 60%, transparent);
+}
+.ltsa-open-design .assessment-headline {
+  font-family: var(--font-display);
+  font-size: var(--text-xl); font-weight: 600;
+  letter-spacing: -0.015em; line-height: 1.28;
+  margin: var(--space-4) 0 var(--space-5); max-width: 44ch;
+}
+/* MWO-LTSA-045 P0 -- Engineering Overview density: column gap tightened
+   (space-7 -> space-6). */
+.ltsa-open-design .assessment-columns { display: grid; grid-template-columns: 1.3fr 1fr; gap: var(--space-6); }
+/* MWO-LTSA-047 P0.2 -- MWO-046's Engineering Overview de-emphasis
+   (font-weight: 460) removed: this section is now positioned immediately
+   after Hero as the highest-priority content, so de-emphasizing its
+   values no longer fits -- see the component's own header comment.
+   MWO-LTSA-047 typography -- Current Status's values get the emphasis
+   instead, via the same data-od-id attribute-selector technique, now
+   applied in the opposite direction: this is the first-viewport summary
+   card, so its values are the most emphasized text on the page. */
+.ltsa-open-design [data-od-id="current-status-section"] .info-row .v { font-weight: 600; }
+.ltsa-open-design .assessment-columns .eyebrow { margin-bottom: var(--space-3); }
+.ltsa-open-design .assessment-footer {
+  display: flex; align-items: center; gap: var(--space-6); flex-wrap: wrap;
+  margin-top: var(--space-6); padding-top: var(--space-6); border-top: 1px solid var(--border);
+}
+.ltsa-open-design .confidence-label { font-size: var(--text-sm); color: var(--muted); line-height: 1.35; }
+.ltsa-open-design .confidence-label b { color: var(--fg); font-weight: 550; }
+
+.ltsa-open-design .btn-primary {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  background: var(--accent); color: var(--accent-fg);
+  border: none; border-radius: var(--radius-sm);
+  padding: 11px 18px; font-size: 14px; font-weight: 550;
+  cursor: pointer; transition: transform .1s ease, opacity .15s ease;
+}
+.ltsa-open-design .btn-primary:hover { opacity: 0.92; }
+.ltsa-open-design .btn-primary:active { transform: scale(0.98); }
+.ltsa-open-design .btn-primary:disabled { opacity: 0.38; cursor: not-allowed; }
+.ltsa-open-design .btn-link {
+  background: none; border: none; padding: 0; cursor: pointer;
+  font-size: 14px; font-weight: 510; color: var(--muted);
+  display: inline-flex; align-items: center; gap: 6px;
+  border-bottom: 1px solid transparent; transition: border-color .15s ease, color .15s ease;
+}
+.ltsa-open-design .btn-link:hover { color: var(--fg); border-color: var(--border); }
+.ltsa-open-design .btn-link:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ---------- Reference row groups / part items ---------- */
+.ltsa-open-design .section-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-5); flex-wrap: wrap; }
+/* MWO-LTSA-045 P2 -- padding tightened (space-2 -> space-1); this class is
+   now also used by Hero's 6-row metadata block, so this reduction compounds
+   there in particular. */
+.ltsa-open-design .info-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: var(--space-1) 0; gap: var(--space-3);
+}
+.ltsa-open-design .info-row .k { font-size: 12.5px; color: var(--muted); }
+.ltsa-open-design .info-row .v { font-size: 13px; font-weight: 510; text-align: right; }
+
+.ltsa-open-design .part-item { padding: var(--space-3) 0; border-top: 1px solid var(--border); }
+.ltsa-open-design .part-item:first-child { border-top: none; padding-top: 0; }
+.ltsa-open-design .part-row { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3); }
+.ltsa-open-design .part-name { font-size: 13px; font-weight: 540; }
+.ltsa-open-design .part-meta { font-size: 11.5px; color: var(--muted); margin-top: 3px; }
+.ltsa-open-design .stock-flag { font-size: 11px; font-weight: 600; flex-shrink: 0; }
+.ltsa-open-design .stock-flag.ok { color: var(--status-normal); }
+/* MWO-LTSA-042A-RC2 (P2 re-review) -- RefGroup (SealOpenDesignView.jsx)
+   already reads `item.flag` generically (`stock-flag ${item.flag || "ok"}`)
+   for every group it renders -- "low"/"pending" are reachable today by any
+   caller that sets flag on a RefGroup item, with zero component changes.
+   Not proven unreachable, so kept per the "do not remove selectors that
+   belong to planned future features" instruction -- unlike
+   .attachment-row/.confidence-tier/.step-meta/.chrome-right/.icon-btn
+   (removed below), which no code path in this component can produce
+   without editing the component itself. */
+.ltsa-open-design .stock-flag.low { color: var(--status-critical); }
+.ltsa-open-design .stock-flag.pending { color: var(--status-attention); }
+
+/* MWO-LTSA-044 P1 -- lighter treatment for a RefGroup/section's empty
+   state (SealOpenDesignView.jsx applies this class alongside
+   .confidence-label on every "no data yet" line): smaller text, reduced
+   opacity, so a column of several empty groups reads as a quiet, scannable
+   list rather than repeated full-weight paragraphs. Populated .part-item
+   rows are untouched -- they keep .confidence-label's normal weight
+   wherever they use it, and RefGroup's own JS only applies this class to
+   the empty branch, never to real data. */
+.ltsa-open-design .ref-group-empty { font-size: var(--text-xs); opacity: 0.68; }
+
+/* MWO-LTSA-045 P1 -- "subtle bordered information panel" for Engineering
+   AI, composed only of tokens already defined above (--border, --radius-md,
+   --surface-2, --space-4) -- not a duplicate of .inspector-rail (that is a
+   whole sticky sidebar container, this is a plain content box), and not
+   used to introduce a new color or radius scale. Also used by Current
+   Status since MWO-046 (reused, not duplicated). MWO-LTSA-047 P1 --
+   padding tightened (space-4 -> space-3). */
+.ltsa-open-design .info-panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  padding: var(--space-3);
+}
+
+.ltsa-open-design .drawing-thumb {
+  width: 100%; aspect-ratio: 16/10;
+  border: 1px dashed var(--border); border-radius: var(--radius-sm);
+  display: grid; place-items: center; color: var(--muted);
+  margin-bottom: var(--space-3); background: var(--surface);
+}
+
+/* ---------- Inspector rail ---------- */
+/* MWO-LTSA-044 P1 -- Compact Inspector Rail: tighter vertical rhythm
+   (padding space-6 -> space-5, section gap space-6 -> space-4, title
+   margin space-4 -> space-2, divider lightened via the same color-mix
+   formula used on .assessment-section). All 5 existing sections (Seal
+   Health / Lifecycle / Criticality / Recommendation / Recent Activities)
+   are unchanged in content and order -- spacing only. */
+.ltsa-open-design .inspector-rail {
+  position: sticky; top: 76px;
+  background: var(--surface-2);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-5);
+  display: flex; flex-direction: column; gap: var(--space-4);
+}
+.ltsa-open-design .rail-section + .rail-section {
+  padding-top: var(--space-4);
+  border-top: 1px solid color-mix(in oklch, var(--border) 60%, transparent);
+}
+.ltsa-open-design .rail-title { font-size: var(--text-sm); font-weight: 590; margin: 0 0 var(--space-2); }
+
+/* ---------- Status stepper (Lifecycle) ---------- */
+.ltsa-open-design .stepper { position: relative; padding-left: 26px; }
+.ltsa-open-design .stepper::before {
+  content: ''; position: absolute; left: 7px; top: 6px; bottom: 6px; width: 1px;
+  background: var(--border);
+}
+.ltsa-open-design .step-item { position: relative; padding-bottom: var(--space-4); }
+.ltsa-open-design .step-item:last-child { padding-bottom: 0; }
+.ltsa-open-design .step-dot {
+  position: absolute; left: -26px; top: 1px;
+  width: 16px; height: 16px; border-radius: 50%;
+  display: grid; place-items: center;
+  border: 2px solid var(--bg); background: var(--surface-2);
+  box-shadow: 0 0 0 1px var(--border); color: var(--muted);
+}
+.ltsa-open-design .step-item[data-state="done"] .step-dot { color: var(--status-normal); box-shadow: 0 0 0 1px var(--status-normal); }
+.ltsa-open-design .step-item[data-state="current"] .step-dot { color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+.ltsa-open-design .step-label { font-size: 13.5px; font-weight: 540; }
+.ltsa-open-design .step-item[data-state="upcoming"] .step-label { color: var(--muted); font-weight: 500; }
+
+/* ---------- Drawer ---------- */
+.ltsa-open-design .drawer-overlay {
+  position: fixed; inset: 0; z-index: 50;
+  background: oklch(10% 0 0 / 0.28);
+  opacity: 0; pointer-events: none; transition: opacity .22s ease;
+}
+.ltsa-open-design .drawer-overlay[data-open="true"] { opacity: 1; pointer-events: auto; }
+.ltsa-open-design .drawer {
+  position: fixed; top: 0; right: 0; bottom: 0;
+  width: min(420px, 100vw);
+  background: var(--surface); border-left: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+  transform: translateX(100%);
+  transition: transform .28s cubic-bezier(.2,.8,.2,1);
+  display: flex; flex-direction: column; z-index: 51;
+}
+.ltsa-open-design .drawer[data-open="true"] { transform: translateX(0); }
+.ltsa-open-design .drawer-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: var(--space-5); border-bottom: 1px solid var(--border);
+}
+.ltsa-open-design .drawer-title { font-family: var(--font-display); font-size: 15.5px; font-weight: 590; margin: 0; }
+.ltsa-open-design .drawer-body { padding: var(--space-5); overflow-y: auto; flex: 1; }
+.ltsa-open-design .drawer-body p { font-size: 13.5px; color: var(--muted); line-height: 1.6; }
+
+/* ---------- Toast ---------- */
+.ltsa-open-design .toast {
+  position: fixed; bottom: 24px; left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: var(--fg); color: var(--bg);
+  padding: 12px 20px; border-radius: 999px;
+  font-size: 13.5px; font-weight: 510; box-shadow: var(--shadow-lg);
+  opacity: 0; pointer-events: none;
+  transition: opacity .2s ease, transform .2s ease;
+  z-index: 60; display: flex; align-items: center; gap: var(--space-2);
+}
+.ltsa-open-design .toast[data-open="true"] { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
+
+/* ---------- Action bar (sticky bottom, mirrors chrome-bar) ---------- */
+.ltsa-open-design .action-bar {
+  position: sticky; bottom: 0; z-index: 30;
+  background: var(--bg); border-top: 1px solid var(--border);
+}
+.ltsa-open-design .action-bar-inner {
+  max-width: 1240px; margin: 0 auto;
+  padding: var(--space-4) var(--space-6);
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-5);
+  flex-wrap: wrap;
+}
+.ltsa-open-design .action-bar-status { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ltsa-open-design .action-bar-status .label { font-size: 13px; font-weight: 590; }
+.ltsa-open-design .action-bar-status .meta { font-size: 12px; color: var(--muted); }
+.ltsa-open-design .action-bar-actions { display: flex; align-items: center; gap: var(--space-4); flex-shrink: 0; }
+
+/* ---------- Responsive ---------- */
+@media (max-width: 980px) {
+  .ltsa-open-design .workspace-grid { grid-template-columns: 1fr; gap: var(--space-5); }
+  .ltsa-open-design .inspector-rail { position: static; }
+}
+@media (max-width: 640px) {
+  .ltsa-open-design .chrome-inner { padding: 0 var(--space-5); }
+  .ltsa-open-design .workspace-grid { padding: var(--space-5) var(--space-5) 72px; gap: var(--space-5); }
+  .ltsa-open-design .assessment-columns { grid-template-columns: 1fr; gap: var(--space-5); }
+  .ltsa-open-design .crumb span:not(.sep):not(:last-child) { display: none; }
+  .ltsa-open-design .action-bar-inner { padding: var(--space-3) var(--space-5); gap: var(--space-3); }
+}

@@ -230,7 +230,20 @@ class DryRunReport:
     mapped_columns: dict[str, str]
     unmapped_columns: tuple[str, ...]
     row_issues: tuple[dict[str, Any], ...]
+    preview_rows: tuple[dict[str, Any], ...]
     approval_ready: bool
+
+
+# MWO-LTSA-DATA-IMPORT-UI-001B: "preview rows" for the UI -- a real slice
+# of package.pumps (already parsed, already normalized -- nothing new is
+# computed for this), never a summary/fabrication of it. Capped so a
+# 244-row real file doesn't ship its entire body over the API on every
+# dry-run call; every row (not just this preview) is still counted in
+# source_count/normalized_count, and every INVALID row still appears in
+# full in row_issues regardless of this cap -- "never silently discard
+# rows" is about not hiding a row's EXISTENCE/ISSUES, not about the
+# preview table showing all 244 at once.
+_PREVIEW_ROW_LIMIT = 20
 
 
 def _excel_pump_sheet_info(path: Path) -> tuple[str | None, int, tuple[Any, ...]]:
@@ -275,6 +288,7 @@ def dry_run_import(path: Path, runner: "DatabaseRunner", *, session_id: str | No
 
     sheet, source_count, headers = _excel_pump_sheet_info(path)
     normalized_count = len(package.pumps)
+    preview_rows = tuple(package.pumps[:_PREVIEW_ROW_LIMIT])
 
     canonical_by_normalized = {_normalize_header(field): field for field in PUMP_CANONICAL_FIELDS}
     mapped_columns: dict[str, str] = {}
@@ -344,6 +358,7 @@ def dry_run_import(path: Path, runner: "DatabaseRunner", *, session_id: str | No
             mapped_columns=mapped_columns,
             unmapped_columns=tuple(unmapped_columns),
             row_issues=row_issues,
+            preview_rows=preview_rows,
             approval_ready=False,
         )
 
@@ -397,6 +412,7 @@ def dry_run_import(path: Path, runner: "DatabaseRunner", *, session_id: str | No
         mapped_columns=mapped_columns,
         unmapped_columns=tuple(unmapped_columns),
         row_issues=row_issues,
+        preview_rows=preview_rows,
         approval_ready=validated.summary.is_valid,
     )
 

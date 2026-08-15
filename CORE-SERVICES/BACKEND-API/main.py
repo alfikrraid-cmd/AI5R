@@ -13,7 +13,7 @@ for _path in (BACKEND_API_DIR, CORE_SERVICES_DIR, AI5R_SDK_DIR):
 
 from fastapi import FastAPI
 
-from routers import copilot, dashboard, health, maintenance, organization, pumps, seal, work_orders
+from routers import copilot, dashboard, health, import_router, maintenance, organization, pumps, seal, work_orders
 
 app = FastAPI(
     title="AI5R Enterprise OS Backend API",
@@ -35,3 +35,4 @@ app.include_router(seal.router)
 app.include_router(work_orders.router)
 app.include_router(maintenance.router)
 app.include_router(copilot.router)
+app.include_router(import_router.router)
