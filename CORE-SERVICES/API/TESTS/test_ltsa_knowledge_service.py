@@ -6,6 +6,7 @@ if str(CORE_SERVICES_PATH) not in sys.path:
     sys.path.insert(0, str(CORE_SERVICES_PATH))
 
 from API.ltsa_knowledge_service import LTSAKnowledge, LTSAKnowledgeService
+from API.recommendation_engine import Evidence, Recommendation
 
 
 class FakeGateway:
@@ -38,6 +39,10 @@ def _service(
     seal_stock=None,
     seal_compatibility=None,
     work_orders=None,
+    recommendation_engine=None,
+    seal_engineering_documents=None,
+    pm_schedules=None,
+    condition_monitoring_schedules=None,
 ):
     return LTSAKnowledgeService(
         pump_gateway=pump or FakePumpGateway(),
@@ -48,6 +53,14 @@ def _service(
         seal_stock_gateway=FakeGateway("list_seal_stocks", seal_stock),
         seal_pump_compatibility_gateway=FakeGateway("list_seal_pump_compatibilities", seal_compatibility),
         work_order_gateway=FakeGateway("list_work_orders", work_orders),
+        recommendation_engine=recommendation_engine,
+        seal_engineering_document_gateway=FakeGateway(
+            "list_seal_engineering_documents", seal_engineering_documents
+        ),
+        pm_schedule_gateway=FakeGateway("list_pm_schedules", pm_schedules),
+        condition_monitoring_schedule_gateway=FakeGateway(
+            "list_condition_monitoring_schedules", condition_monitoring_schedules
+        ),
     )
 
 
@@ -215,20 +228,238 @@ def test_breakdown_history_is_empty_when_no_maintenance_history():
     assert knowledge.breakdown_history == []
 
 
-def test_drawings_field_is_none_no_backend_service_exists():
-    service = _service()
+# -- drawings (MWO-LTSA-033) -------------------------------------------------
+
+
+def test_drawings_field_is_empty_list_when_no_seal_engineering_documents_exist():
+    service = _service(seal_compatibility=[{"seal_code": "SC-001", "pump_tag_number": TAG}])
 
     knowledge = service.build(TAG)
 
-    assert knowledge.drawings is None
+    assert knowledge.drawings == []
 
 
-def test_recommendation_field_is_none_no_deterministic_source_exists():
-    service = _service()
+def test_drawings_field_lists_drawing_type_documents_for_compatible_seals():
+    service = _service(
+        seal_compatibility=[{"seal_code": "SC-001", "pump_tag_number": TAG}],
+        seal_engineering_documents=[
+            {
+                "document_code": "DOC-001",
+                "seal_code": "SC-001",
+                "document_type": "DRAWING",
+                "title": "SC-001 GA Drawing",
+                "document_number": "DWG-4471",
+                "revision": "B",
+                "status": "APPROVED",
+                "file_name": "sc-001-ga.pdf",
+                "created_at": "2026-05-01T00:00:00Z",
+            }
+        ],
+    )
 
     knowledge = service.build(TAG)
 
-    assert knowledge.recommendation is None
+    assert knowledge.drawings == [
+        {
+            "drawing_id": "DOC-001",
+            "title": "SC-001 GA Drawing",
+            "document_number": "DWG-4471",
+            "revision": "B",
+            "status": "APPROVED",
+            "file_name": "sc-001-ga.pdf",
+            "uploaded_at": "2026-05-01T00:00:00Z",
+        }
+    ]
+
+
+def test_drawings_field_supports_multiple_drawings_for_the_same_pump():
+    service = _service(
+        seal_compatibility=[{"seal_code": "SC-001", "pump_tag_number": TAG}],
+        seal_engineering_documents=[
+            {
+                "document_code": "DOC-001",
+                "seal_code": "SC-001",
+                "document_type": "DRAWING",
+                "title": "GA Drawing",
+                "document_number": "DWG-1",
+                "revision": "A",
+                "status": "APPROVED",
+                "file_name": "ga.pdf",
+                "created_at": "2026-05-01T00:00:00Z",
+            },
+            {
+                "document_code": "DOC-002",
+                "seal_code": "SC-001",
+                "document_type": "DRAWING",
+                "title": "Cross-Section Drawing",
+                "document_number": "DWG-2",
+                "revision": "A",
+                "status": "APPROVED",
+                "file_name": "cross-section.pdf",
+                "created_at": "2026-05-02T00:00:00Z",
+            },
+        ],
+    )
+
+    knowledge = service.build(TAG)
+
+    assert [d["drawing_id"] for d in knowledge.drawings] == ["DOC-001", "DOC-002"]
+
+
+def test_drawings_field_excludes_non_drawing_document_types():
+    service = _service(
+        seal_compatibility=[{"seal_code": "SC-001", "pump_tag_number": TAG}],
+        seal_engineering_documents=[
+            {
+                "document_code": "DOC-003",
+                "seal_code": "SC-001",
+                "document_type": "DATASHEET",
+                "title": "SC-001 Datasheet",
+                "document_number": "DS-1",
+                "revision": "A",
+                "status": "APPROVED",
+                "file_name": "datasheet.pdf",
+                "created_at": "2026-05-01T00:00:00Z",
+            }
+        ],
+    )
+
+    knowledge = service.build(TAG)
+
+    assert knowledge.drawings == []
+
+
+def test_drawings_field_excludes_documents_for_incompatible_seals():
+    service = _service(
+        seal_compatibility=[{"seal_code": "SC-001", "pump_tag_number": TAG}],
+        seal_engineering_documents=[
+            {
+                "document_code": "DOC-004",
+                "seal_code": "SC-999",
+                "document_type": "DRAWING",
+                "title": "Unrelated Seal Drawing",
+                "document_number": "DWG-9",
+                "revision": "A",
+                "status": "APPROVED",
+                "file_name": "other.pdf",
+                "created_at": "2026-05-01T00:00:00Z",
+            }
+        ],
+    )
+
+    knowledge = service.build(TAG)
+
+    assert knowledge.drawings == []
+
+
+def test_drawings_field_maps_only_the_seven_required_metadata_fields():
+    # Metadata only, per MWO-LTSA-033's explicit scope -- file_reference
+    # (the pointer to the binary), manufacturer, description, issue_date,
+    # language, and page_count must never leak into the mapped shape, and
+    # uploaded_at is a disclosed mapping from created_at, not issue_date.
+    service = _service(
+        seal_compatibility=[{"seal_code": "SC-001", "pump_tag_number": TAG}],
+        seal_engineering_documents=[
+            {
+                "document_code": "DOC-001",
+                "seal_code": "SC-001",
+                "document_type": "DRAWING",
+                "title": "SC-001 GA Drawing",
+                "document_number": "DWG-4471",
+                "revision": "B",
+                "status": "APPROVED",
+                "file_name": "sc-001-ga.pdf",
+                "file_reference": "s3://bucket/sc-001-ga.pdf",
+                "manufacturer": "John Crane",
+                "description": "General arrangement drawing",
+                "issue_date": "2025-01-01",
+                "language": "EN",
+                "page_count": 3,
+                "created_at": "2026-05-01T00:00:00Z",
+                "updated_at": "2026-05-02T00:00:00Z",
+            }
+        ],
+    )
+
+    knowledge = service.build(TAG)
+
+    assert set(knowledge.drawings[0].keys()) == {
+        "drawing_id",
+        "title",
+        "document_number",
+        "revision",
+        "status",
+        "file_name",
+        "uploaded_at",
+    }
+    assert knowledge.drawings[0]["uploaded_at"] == "2026-05-01T00:00:00Z"
+
+
+def test_recommendation_field_exists_and_is_populated_by_recommendation_engine():
+    # MWO-LTSA-032C: RecommendationEngine is now wired in -- no PM history
+    # deterministically fires its REC_PM_OVERDUE rule (recommendation_engine.py,
+    # reused unmodified), so recommendation is no longer always None.
+    service = _service(pm_occurrences=[])
+
+    knowledge = service.build(TAG)
+
+    assert len(knowledge.recommendation) == 1
+    assert knowledge.recommendation[0].rule_code == "REC_PM_OVERDUE"
+
+
+def test_recommendation_field_is_empty_tuple_when_no_rules_fire():
+    service = _service(
+        pm_occurrences=[{"pm_occurrence_code": "PM-1", "asset_code": TAG, "occurrence_date": "2026-06-01"}]
+    )
+
+    knowledge = service.build(TAG)
+
+    assert knowledge.recommendation == ()
+
+
+def test_recommendation_priority_confidence_and_evidence_are_preserved():
+    # priority/confidence/evidence flow through RecommendationEngine.recommend()
+    # unchanged -- proves the engine's real dataclass output reaches
+    # LTSAKnowledge.recommendation verbatim, not re-derived here.
+    service = _service(
+        pm_occurrences=[{"pm_occurrence_code": "PM-1", "asset_code": TAG, "occurrence_date": "2026-06-01"}],
+        cm_reports=[
+            {"cm_report_code": "CM-1", "asset_code": TAG, "severity": "CRITICAL", "status": "OPEN"}
+        ],
+    )
+
+    knowledge = service.build(TAG)
+
+    rec = next(r for r in knowledge.recommendation if r.rule_code == "REC_CRITICAL_CM")
+    assert rec.priority == 100
+    assert rec.confidence == 1.0
+    assert rec.evidence == (
+        Evidence(source="CMReport", reference="CM-1", field="severity", value="CRITICAL"),
+    )
+
+
+def test_service_accepts_an_injected_recommendation_engine():
+    class FakeRecommendationEngine:
+        def recommend(self, knowledge):
+            return (
+                Recommendation(
+                    id="FAKE:1",
+                    rule_code="FAKE",
+                    priority=1,
+                    category="MAINTENANCE",
+                    title="Fake",
+                    description="Fake",
+                    evidence=(),
+                    confidence=0.5,
+                    action="Fake",
+                ),
+            )
+
+    service = _service(recommendation_engine=FakeRecommendationEngine())
+
+    knowledge = service.build(TAG)
+
+    assert knowledge.recommendation[0].id == "FAKE:1"
 
 
 def test_ltsa_knowledge_is_immutable():
@@ -250,3 +481,79 @@ def test_service_defaults_to_real_gateways_when_none_injected():
 
     assert service.pump_gateway is not None
     assert service.work_order_gateway is not None
+    assert service.recommendation_engine is not None
+    assert service.seal_engineering_document_gateway is not None
+    assert service.pm_schedule_gateway is not None
+    assert service.condition_monitoring_schedule_gateway is not None
+
+
+# -- pm_schedules / condition_monitoring_schedules (MWO-LTSA-036E) ----------
+# Same "filter by asset_code" technique already used for pm_history/
+# cm_history -- no new business rule, reuses PMScheduleGateway/
+# ConditionMonitoringScheduleGateway unmodified (both already wired
+# elsewhere: EngineeringContextEngine for the former, dependencies.py for
+# the latter).
+
+
+def test_pm_schedules_filters_by_asset_code():
+    service = _service(
+        pm_schedules=[
+            {"pm_schedule_code": "PMS-1", "asset_code": TAG, "status": "ACTIVE", "next_due": "2026-09-01"},
+            {"pm_schedule_code": "PMS-2", "asset_code": "OTHER-PUMP", "status": "ACTIVE", "next_due": "2026-09-02"},
+        ]
+    )
+
+    knowledge = service.build(TAG)
+
+    assert knowledge.pm_schedules == [
+        {"pm_schedule_code": "PMS-1", "asset_code": TAG, "status": "ACTIVE", "next_due": "2026-09-01"}
+    ]
+
+
+def test_pm_schedules_is_empty_when_none_exist():
+    service = _service(pm_schedules=[])
+
+    knowledge = service.build(TAG)
+
+    assert knowledge.pm_schedules == []
+
+
+def test_condition_monitoring_schedules_filters_by_asset_code():
+    service = _service(
+        condition_monitoring_schedules=[
+            {"condition_monitoring_schedule_code": "CMS-1", "asset_code": TAG, "status": "ACTIVE"},
+            {"condition_monitoring_schedule_code": "CMS-2", "asset_code": "OTHER-PUMP", "status": "ACTIVE"},
+        ]
+    )
+
+    knowledge = service.build(TAG)
+
+    assert knowledge.condition_monitoring_schedules == [
+        {"condition_monitoring_schedule_code": "CMS-1", "asset_code": TAG, "status": "ACTIVE"}
+    ]
+
+
+def test_condition_monitoring_schedules_is_empty_when_none_exist():
+    service = _service(condition_monitoring_schedules=[])
+
+    knowledge = service.build(TAG)
+
+    assert knowledge.condition_monitoring_schedules == []
+
+
+def test_existing_fields_unchanged_when_schedules_are_added():
+    # Regression guard: extending the aggregate must not disturb any
+    # existing field's value.
+    service = _service(
+        pump=FakePumpGateway({"success": True, "message": "ok", "data": {"tag_number": TAG}}),
+        pm_occurrences=[{"pm_occurrence_code": "PM-1", "asset_code": TAG, "occurrence_date": "2026-06-01"}],
+        pm_schedules=[{"pm_schedule_code": "PMS-1", "asset_code": TAG, "status": "ACTIVE"}],
+    )
+
+    knowledge = service.build(TAG)
+
+    assert knowledge.pump == {"tag_number": TAG}
+    assert knowledge.pm_history == [
+        {"pm_occurrence_code": "PM-1", "asset_code": TAG, "occurrence_date": "2026-06-01"}
+    ]
+    assert knowledge.pm_schedules == [{"pm_schedule_code": "PMS-1", "asset_code": TAG, "status": "ACTIVE"}]

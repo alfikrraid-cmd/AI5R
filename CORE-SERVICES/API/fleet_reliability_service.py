@@ -90,7 +90,21 @@ class FleetReliabilityService:
         return tuple(self.ltsa_knowledge_service.build(tag) for tag in tags)
 
     def _list_pump_tags(self) -> tuple[str, ...]:
-        response = self.pump_gateway.list_pumps()
+        # MWO-LTSA-037C runtime fix -- PumpGateway._call() only catches
+        # urllib.error.HTTPError (an HTTP response with an error status);
+        # a connection-level failure (refused/unreachable/timeout) raises
+        # urllib.error.URLError, which is a direct OSError subclass and was
+        # not caught anywhere on this path -- it propagated out of
+        # .build() as an unhandled 500 instead of the same "no data
+        # available" outcome every other gateway-failure case in this
+        # codebase already degrades to (e.g. _build_pump's
+        # success=False -> None). No pumps discovered is None-safe here
+        # exactly like an empty registry already is -- not a new fallback
+        # shape, the existing empty-fleet case.
+        try:
+            response = self.pump_gateway.list_pumps()
+        except OSError:
+            return ()
         records = response.get("data") or []
         return tuple(record.get("tag_number") for record in records if record.get("tag_number"))
 

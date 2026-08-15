@@ -49,6 +49,38 @@ def test_create_pump_forwards_request_and_returns_canonical_payload():
     assert result == canonical_response
 
 
+def test_create_pump_forwards_name_criticality_unchanged():
+    # WO-PUMP-002 (implements ADR-PUMP-001): the gateway itself needed no
+    # code change, since create_pump already forwards whatever payload dict
+    # it is given. This test proves that payload-agnostic behavior actually
+    # covers the two new fields, rather than merely asserting it.
+    gateway = _gateway()
+    canonical_response = {
+        "success": True,
+        "message": "Pump created successfully",
+        "data": {"tag_number": "P-101", "name": "Boiler Feedwater Pump 1A"},
+    }
+
+    with patch("urllib.request.urlopen", return_value=FakeHTTPResponse(canonical_response)) as urlopen:
+        result = gateway.create_pump(
+            {
+                "tag_number": "P-101",
+                "area": "Unit 1",
+                "name": "Boiler Feedwater Pump 1A",
+                "criticality": "HIGH",
+            }
+        )
+
+    request = urlopen.call_args[0][0]
+    assert json.loads(request.data.decode("utf-8")) == {
+        "tag_number": "P-101",
+        "area": "Unit 1",
+        "name": "Boiler Feedwater Pump 1A",
+        "criticality": "HIGH",
+    }
+    assert result == canonical_response
+
+
 def test_get_pump_forwards_query_parameter():
     gateway = _gateway()
     canonical_response = {

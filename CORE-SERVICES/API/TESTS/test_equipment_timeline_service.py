@@ -35,6 +35,8 @@ def _knowledge(pm_history=None, cm_history=None, breakdown_history=None):
         breakdown_history=breakdown_history or [],
         drawings=None,
         recommendation=None,
+        pm_schedules=[],
+        condition_monitoring_schedules=[],
     )
 
 

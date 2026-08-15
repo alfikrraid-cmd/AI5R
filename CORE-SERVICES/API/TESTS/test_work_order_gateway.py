@@ -54,6 +54,40 @@ def test_create_work_order_forwards_request_and_returns_canonical_payload():
     assert result == canonical_response
 
 
+def test_create_work_order_forwards_title_work_type_due_date_unchanged():
+    # WO-BE-004 (implements ADR-WO-003): the gateway itself needed no code
+    # change, since create_work_order already forwards whatever payload dict
+    # it is given. This test proves that payload-agnostic behavior actually
+    # covers the three new fields, rather than merely asserting it.
+    gateway = _gateway()
+    canonical_response = {
+        "success": True,
+        "message": "Work order created successfully",
+        "data": {"work_order_code": "WO-101", "title": "Seal replacement"},
+    }
+
+    with patch("urllib.request.urlopen", return_value=FakeHTTPResponse(canonical_response)) as urlopen:
+        result = gateway.create_work_order(
+            {
+                "work_order_code": "WO-101",
+                "description": "Bearing replacement",
+                "title": "Seal replacement",
+                "work_type": "CM",
+                "due_date": "2026-08-01",
+            }
+        )
+
+    request = urlopen.call_args[0][0]
+    assert json.loads(request.data.decode("utf-8")) == {
+        "work_order_code": "WO-101",
+        "description": "Bearing replacement",
+        "title": "Seal replacement",
+        "work_type": "CM",
+        "due_date": "2026-08-01",
+    }
+    assert result == canonical_response
+
+
 def test_get_work_order_forwards_query_parameter():
     gateway = _gateway()
     canonical_response = {
