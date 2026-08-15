@@ -142,14 +142,30 @@ _EXIT_UNSUPPORTED_INPUT = 3
 _EXECUTION_SUCCESS_STATUS = "COMMITTED"
 
 
+_PUMP_SNAPSHOT_COLUMNS = ", ".join(PUMP_CANONICAL_FIELDS)
+
+
 def _read_live_snapshot(runner: "DatabaseRunner") -> "ImportPackage":
     """The real, whole-table live snapshot conflict_resolution.
     build_conflict_report() needs. Same SELECT shape test_import_
     execution_engine.py::_snapshot() / test_import_worker.py::_snapshot()
     already established, generalized (no TEST-* filter) for production
-    use -- reused via the same _json_query helper, not re-implemented."""
+    use -- reused via the same _json_query helper, not re-implemented.
+
+    Pump columns (MWO-LTSA-DATA-IMPORT-UI-001A-CLOSURE): previously only
+    tag_number/area, so conflict_resolution.build_conflict_report() could
+    never see a real, already-populated value in any other column -- every
+    field the incoming package set beyond tag_number/area looked
+    permanently blank on the database side, so a genuinely identical
+    re-import always showed as USE_IMPORT/UPDATE, never SKIP. Now selects
+    every field PUMP_CANONICAL_FIELDS (import_adapter.py, reused
+    unmodified -- the same real ltsa_pumps columns the Excel mapping
+    already supports) covers, so an unchanged existing pump correctly
+    compares as no-conflict/SKIP and a genuinely changed one still compares
+    as UPDATE. No field is added that import_adapter.py's own canonical
+    mapping does not already recognize."""
     return ImportPackage(
-        pumps=tuple(_json_query("SELECT tag_number, area FROM ltsa_pumps", runner)),
+        pumps=tuple(_json_query(f"SELECT {_PUMP_SNAPSHOT_COLUMNS} FROM ltsa_pumps", runner)),
         seals=tuple(_json_query("SELECT seal_code, seal_name FROM seal_registry", runner)),
         installations=tuple(
             _json_query("SELECT installation_code, report_no, source_document_name FROM installation_report", runner)
@@ -351,12 +367,11 @@ def dry_run_import(path: Path, runner: "DatabaseRunner", *, session_id: str | No
     new_count = sum(1 for item in pump_plan if item.action == _ACTION_INSERTED)
     update_count = sum(1 for item in pump_plan if item.action == _ACTION_UPDATED)
     # "Duplicate" here means: already present in the live snapshot with
-    # nothing this import would write for it (import_execution_engine.py's
-    # own SKIPPED semantics, reused verbatim -- not a new classification
-    # axis). This also covers the narrow case of an unresolved conflict on
-    # a field _read_live_snapshot() doesn't fetch (it only reads tag_number/
-    # area, a pre-existing limitation of that reused helper, not changed
-    # here) -- disclosed, not silently treated as a clean duplicate.
+    # identical values across every PUMP_CANONICAL_FIELDS column
+    # _read_live_snapshot() now reads (MWO-LTSA-DATA-IMPORT-UI-001A-
+    # CLOSURE), so no conflict was found at all (import_execution_engine.
+    # py's own SKIPPED semantics, reused verbatim -- not a new
+    # classification axis).
     duplicate_count = sum(1 for item in pump_plan if item.action == _ACTION_SKIPPED)
 
     row_issues = tuple(

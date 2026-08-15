@@ -199,7 +199,12 @@ def test_an_unresolved_manual_review_conflict_makes_execute_import_itself_reject
 
     assert exit_code == _EXIT_EXECUTION_FAILED
     assert "MANUAL_REVIEW" in output
-    assert "Conflicts: 1" in output
+    # MWO-LTSA-DATA-IMPORT-UI-001A-CLOSURE: _read_live_snapshot() now also
+    # sees the row's real `status` default ('UNKNOWN'), absent from this
+    # incoming package -> one additional, non-blocking KEEP_DATABASE
+    # conflict alongside the real area MANUAL_REVIEW one (still the only
+    # HIGH-severity one, still the one that blocks execution).
+    assert "manual_review=1" in output
     assert "Execution: status=REJECTED_CONFLICTS" in output
     # Never overwritten -- execute_import rejected before writing anything.
     live = _json_query("SELECT area FROM ltsa_pumps WHERE tag_number = 'TEST-CLI-P-EXISTING'", runner)
@@ -380,6 +385,30 @@ def test_dry_run_detects_an_existing_pump_as_update_not_new(tmp_path):
     # updated" by this dry-run.
     live_area = _json_query("SELECT area FROM ltsa_pumps WHERE tag_number = 'TEST-CLI-P-EXISTS'", runner)
     assert live_area == [{"area": "Unit 1"}]
+
+
+def test_dry_run_detects_an_identical_existing_pump_as_skip_not_update(tmp_path):
+    # MWO-LTSA-DATA-IMPORT-UI-001A-CLOSURE: proves the _read_live_snapshot()
+    # fix -- every field the incoming row actually sets (tag_number, area,
+    # pump_type, api_plan, notes) matches the live row exactly, so
+    # build_conflict_report() finds no actionable difference and the plan
+    # is SKIPPED, not UPDATE (before the fix, pump_type/api_plan/notes were
+    # invisible to the snapshot, so this same row always showed as UPDATE).
+    runner = _runner()
+    runner.execute_script(
+        "INSERT INTO ltsa_pumps (tag_number, area, pump_type, api_plan, notes) "
+        "VALUES ('TEST-CLI-P-IDENTICAL', 'Unit 1', 'OH', '11/61', 'same note');"
+    )
+    path = _master_pump_workbook(
+        tmp_path / "master.xlsx",
+        (("PUMP-1", "TEST-CLI-P-IDENTICAL", "Unit 1", "OH", "11/61", "same note"),),
+    )
+
+    report = dry_run_import(path, runner)
+
+    assert report.new_count == 0
+    assert report.update_count == 0
+    assert report.duplicate_count == 1
 
 
 def test_dry_run_zero_db_writes_proven_by_row_count_before_and_after(tmp_path):
