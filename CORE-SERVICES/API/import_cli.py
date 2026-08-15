@@ -145,7 +145,7 @@ _EXECUTION_SUCCESS_STATUS = "COMMITTED"
 _PUMP_SNAPSHOT_COLUMNS = ", ".join(PUMP_CANONICAL_FIELDS)
 
 
-def _read_live_snapshot(runner: "DatabaseRunner") -> "ImportPackage":
+def _read_live_snapshot(runner: "DatabaseRunner", incoming: "ImportPackage") -> "ImportPackage":
     """The real, whole-table live snapshot conflict_resolution.
     build_conflict_report() needs. Same SELECT shape test_import_
     execution_engine.py::_snapshot() / test_import_worker.py::_snapshot()
@@ -163,17 +163,46 @@ def _read_live_snapshot(runner: "DatabaseRunner") -> "ImportPackage":
     already supports) covers, so an unchanged existing pump correctly
     compares as no-conflict/SKIP and a genuinely changed one still compares
     as UPDATE. No field is added that import_adapter.py's own canonical
-    mapping does not already recognize."""
+    mapping does not already recognize.
+
+    MWO-LTSA-IMPORT-PROD-SNAPSHOT-001 -- each table is queried only when
+    `incoming` actually has at least one record of that entity type.
+    Proven, not just assumed, to have zero effect on the returned
+    ConflictReport when skipped: conflict_resolution.py's own
+    _compare_entity_type() loops `for entity_id in sorted(incoming_by_key)`
+    -- it never reads `database_records` at all when `incoming_records` is
+    empty, so an empty tuple here produces the exact same (zero) conflicts
+    for that entity type as whatever real snapshot rows exist. A Pump XLSX
+    dry-run's incoming package only ever has pumps (parse_import_file()
+    for a Pump workbook -- see this module's own header -- never populates
+    seals/installations/documents), so this is what actually broke a
+    Pump-only production deployment: querying installation_report/
+    seal_registry/seal_engineering_document unconditionally failed with
+    UndefinedTable on a database that has legitimately never provisioned
+    those tables yet, for a comparison whose result those queries could
+    never have changed."""
     return ImportPackage(
-        pumps=tuple(_json_query(f"SELECT {_PUMP_SNAPSHOT_COLUMNS} FROM ltsa_pumps", runner)),
-        seals=tuple(_json_query("SELECT seal_code, seal_name FROM seal_registry", runner)),
-        installations=tuple(
-            _json_query("SELECT installation_code, report_no, source_document_name FROM installation_report", runner)
+        pumps=tuple(_json_query(f"SELECT {_PUMP_SNAPSHOT_COLUMNS} FROM ltsa_pumps", runner)) if incoming.pumps else (),
+        seals=(
+            tuple(_json_query("SELECT seal_code, seal_name FROM seal_registry", runner)) if incoming.seals else ()
         ),
-        documents=tuple(
-            _json_query(
-                "SELECT document_code, seal_code, document_type, title FROM seal_engineering_document", runner
+        installations=(
+            tuple(
+                _json_query(
+                    "SELECT installation_code, report_no, source_document_name FROM installation_report", runner
+                )
             )
+            if incoming.installations
+            else ()
+        ),
+        documents=(
+            tuple(
+                _json_query(
+                    "SELECT document_code, seal_code, document_type, title FROM seal_engineering_document", runner
+                )
+            )
+            if incoming.documents
+            else ()
         ),
     )
 
@@ -374,7 +403,7 @@ def dry_run_import(
         documents=package.documents,
     )
 
-    snapshot = _read_live_snapshot(runner)
+    snapshot = _read_live_snapshot(runner, plan_package)
     conflicts = build_conflict_report(snapshot, plan_package)
 
     try:
@@ -522,7 +551,7 @@ def _print_execution_result(result) -> int:
 
 def _process_one_package(source_label: str, package: "ImportPackage", runner: "DatabaseRunner") -> int:
     validated = validate_import_package(package)
-    snapshot = _read_live_snapshot(runner)
+    snapshot = _read_live_snapshot(runner, package)
     conflicts = build_conflict_report(snapshot, package)
 
     _print_summary(source_label, package, validated, conflicts)
