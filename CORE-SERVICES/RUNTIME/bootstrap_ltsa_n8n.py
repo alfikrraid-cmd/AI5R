@@ -286,8 +286,44 @@ def get_or_create_postgres_credential(client: N8nClient, env: dict[str, str]) ->
     return {"id": created_data["id"], "name": created_data["name"], "created": True}
 
 
+WEBHOOK_NODE_TYPE = "n8n-nodes-base.webhook"
+
+
+def _validate_webhook_nodes(workflow: dict[str, Any], source: Path) -> None:
+    """A webhook trigger node with no `webhookId` of its own is a proven
+    production-readiness defect, not a stylistic omission: confirmed
+    against a real, disposable n8n 1.115.3 instance (positive AND
+    negative controlled experiments -- see
+    CORE-SERVICES/RUNTIME/TESTS/test_bootstrap_ltsa_n8n.py's own
+    regression test for the reproduction). Without it, n8n registers the
+    workflow's production webhook_entity row under a synthetic,
+    workflow-ID-prefixed compound path instead of the clean static path
+    declared in `parameters.path` -- the workflow reports active=true
+    and n8n's own startup log reports it activated, but the real
+    production URL clients call returns 404 "webhook is not registered"
+    forever, with no error logged anywhere in the process. Failing loudly
+    here, before any POST/PATCH is even sent, is strictly stronger
+    verification than only catching this after activation -- it is not
+    a workaround for the missing field, and it never invents one on the
+    caller's behalf (see this module's own "never fabricate" discipline
+    already established for credential/owner secrets)."""
+    for node in workflow.get("nodes", []):
+        if node.get("type") != WEBHOOK_NODE_TYPE:
+            continue
+        if not node.get("webhookId"):
+            raise RuntimeError(
+                f"Canonical workflow source {source} has a webhook node "
+                f"({node.get('name', node.get('id', '<unnamed>'))}) with no webhookId. "
+                "n8n 1.115.3 registers such a webhook under a synthetic, unreachable path "
+                "instead of its declared production path -- fix the canonical workflow JSON "
+                "to include a webhookId (e.g. a stable, unique slug like other canonical "
+                "workflows already use), never patch around this in the bootstrap client."
+            )
+
+
 def load_workflow_source(source: Path, credential: dict[str, Any]) -> dict[str, Any]:
     workflow = json.loads(source.read_text(encoding="utf-8"))
+    _validate_webhook_nodes(workflow, source)
     for node in workflow.get("nodes", []):
         credentials = node.get("credentials")
         if not isinstance(credentials, dict):
@@ -415,7 +451,15 @@ def call_json(url: str) -> tuple[int | None, Any]:
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
             body = response.read().decode("utf-8")
-            return response.status, json.loads(body)
+            try:
+                return response.status, json.loads(body)
+            except json.JSONDecodeError:
+                # A 200 with an empty/non-JSON body is a real, observed
+                # outcome (e.g. a workflow execution error after the
+                # webhook trigger accepted the request but before the
+                # Respond node ran) -- report it, never crash the whole
+                # bootstrap over one verification probe.
+                return response.status, body
     except urllib.error.HTTPError as error:
         body = error.read().decode("utf-8")
         try:

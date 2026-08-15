@@ -12,7 +12,8 @@
       "name": "GET /ltsa/seal/list",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [0, 0]
+      "position": [0, 0],
+      "webhookId": "ltsa-brain-seal-list-001"
     },
     {
       "parameters": {

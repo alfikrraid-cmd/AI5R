@@ -9,13 +9,18 @@ if str(RUNTIME_DIR) not in sys.path:
     sys.path.insert(0, str(RUNTIME_DIR))
 
 from bootstrap_ltsa_n8n import (
+    WEBHOOK_NODE_TYPE,
+    WORKFLOW_SPECS,
     activate_workflow,
     bootstrap_workflows,
     ensure_owner_session,
     get_or_create_postgres_credential,
     get_workflows_by_name,
+    load_workflow_source,
     unwrap_data,
 )
+
+REPO_ROOT = RUNTIME_DIR.parents[1]
 
 
 # --- FakeN8nClient -----------------------------------------------------
@@ -165,7 +170,7 @@ CREDENTIAL = {"id": "cred-1", "name": "Postgres account"}
 
 
 def _write_workflow_fixture(directory: Path, name: str, *, with_postgres_node: bool = True) -> None:
-    nodes = [{"name": "Webhook", "type": "n8n-nodes-base.webhook"}]
+    nodes = [{"name": "Webhook", "type": "n8n-nodes-base.webhook", "webhookId": f"webhookid-{name.lower()}"}]
     if with_postgres_node:
         nodes.append(
             {
@@ -619,3 +624,77 @@ def test_scenario_e_fully_bootstrapped_rerun_is_idempotent(tmp_path):
     assert summary_again["created"] == []
     assert summary_again["updated"] == ["WF-A", "WF-B"]
     assert len(client.workflows) == workflow_count_after_first_run
+
+
+# --- webhookId regression: the "active=true but webhook 404" production bug ---
+#
+# Root cause (proven with a positive AND a negative controlled experiment
+# against a real, disposable n8n 1.115.3 instance, see the mission's own
+# investigation): a webhook trigger node with no `webhookId` of its own is
+# registered by n8n under a synthetic, workflow-ID-prefixed compound path
+# instead of its declared static production path. The workflow reports
+# active=true (both via GET /rest/workflows/{id} and n8n's own startup
+# log), so a naive "active=true" assertion can never catch this -- only
+# checking the webhookId field itself (statically) or the real webhook
+# response (live) can.
+
+
+def test_load_workflow_source_rejects_a_webhook_node_with_no_webhookId(tmp_path):
+    workflow = {
+        "name": "WF-NO-WEBHOOKID",
+        "nodes": [{"name": "Webhook", "type": WEBHOOK_NODE_TYPE, "parameters": {"path": "ltsa/x"}}],
+        "connections": {},
+        "settings": {},
+    }
+    source = tmp_path / "WF-NO-WEBHOOKID.json"
+    source.write_text(json.dumps(workflow), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="webhookId"):
+        load_workflow_source(source, CREDENTIAL)
+
+
+def test_load_workflow_source_accepts_a_webhook_node_with_a_webhookId(tmp_path):
+    workflow = {
+        "name": "WF-WITH-WEBHOOKID",
+        "nodes": [
+            {"name": "Webhook", "type": WEBHOOK_NODE_TYPE, "parameters": {"path": "ltsa/x"}, "webhookId": "x-001"}
+        ],
+        "connections": {},
+        "settings": {},
+    }
+    source = tmp_path / "WF-WITH-WEBHOOKID.json"
+    source.write_text(json.dumps(workflow), encoding="utf-8")
+
+    payload = load_workflow_source(source, CREDENTIAL)
+
+    assert payload["nodes"][0]["webhookId"] == "x-001"
+
+
+def test_every_real_canonical_workflow_source_has_a_webhookId_on_every_webhook_node():
+    """The direct regression test for the production bug: reads the REAL
+    canonical source files WORKFLOW_SPECS points to (not fixtures), and
+    asserts every n8n-nodes-base.webhook node has a non-empty webhookId.
+    Before the fix, this failed for exactly the 3 Postgres-backed
+    workflows (seal_list, seal_stock_list, seal_pump_compatibility_list)
+    -- the exact 3 that returned "webhook is not registered" in
+    production -- and passed for the 2 pure-passthrough ones (pump_list,
+    pump_detail), matching the observed working/failing split exactly."""
+    missing = []
+    for spec in WORKFLOW_SPECS:
+        source_path = REPO_ROOT / spec["source"]
+        workflow = json.loads(source_path.read_text(encoding="utf-8"))
+        for node in workflow.get("nodes", []):
+            if node.get("type") == WEBHOOK_NODE_TYPE and not node.get("webhookId"):
+                missing.append(f"{spec['name']} ({source_path})")
+
+    assert missing == []
+
+
+def test_every_real_canonical_workflow_source_loads_without_a_webhookId_validation_error():
+    """Complements the structural check above by also exercising the
+    real load_workflow_source() pipeline (field renaming, credential
+    injection) against every real canonical source file end to end --
+    would fail loudly (RuntimeError) if any of the 5 regressed."""
+    for spec in WORKFLOW_SPECS:
+        source_path = REPO_ROOT / spec["source"]
+        load_workflow_source(source_path, CREDENTIAL)  # must not raise
