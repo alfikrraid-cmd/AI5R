@@ -1,21 +1,33 @@
+/* MWO-LTSA-050 -- same layout-fidelity fix Seal.css got in
+   MWO-LTSA-043-RC1: this wrapper predates the Open Design detail pane.
+   PumpOpenDesignView is a continuous-document layout with its own internal
+   max-width: 1240px grid + a 336px Inspector Rail -- side by side with the
+   registry table at flex: 1 (roughly a third of the content width), that
+   internal grid never has the room it needs, and its own responsive
+   breakpoint (a viewport media query, in the shared LTSAOpenDesign.css) can
+   never compensate for a *container* that is narrow only because its flex
+   sibling took most of the space. Stacked layout gives it the full
+   intended canvas. */
 .pump-workspace-layout {
   display: flex;
+  flex-direction: column;
   gap: 24px;
-  align-items: flex-start;
 }
 
+/* MWO-LTSA-UI-V2-001 -- 360px -> 440px: with ~250 pumps in the registry,
+   360px showed roughly 6 rows before scrolling; 440px is a modest increase
+   for more comfortable scanning without reintroducing the side-by-side
+   layout MWO-LTSA-050 deliberately moved away from (see this file's own
+   header comment above -- the detail view's internal grid still needs the
+   full canvas width, so this stays stacked, not side-by-side). Sticky
+   column headers (PumpRegistryTable.jsx) keep column labels visible while
+   scrolling this taller list. */
 .pump-workspace-registry {
-  flex: 2;
-  min-width: 0;
+  width: 100%;
+  max-height: 440px;
+  overflow-y: auto;
 }
 
 .pump-workspace-detail {
-  flex: 1;
-  min-width: 280px;
-}
-
-@media (max-width: 768px) {
-  .pump-workspace-layout {
-    flex-direction: column;
-  }
+  width: 100%;
 }

@@ -9,8 +9,7 @@ const PUMPS = [
     name: "Boiler Feedwater Pump 1A",
     manufacturer: "Sulzer",
     area: "Boiler House",
-    healthScore: 92,
-    nextPM: "2026-10-02",
+    criticality: "HIGH",
     openWO: 0,
     status: "RUNNING",
   },
@@ -20,8 +19,7 @@ const PUMPS = [
     name: "Boiler Feedwater Pump 1B",
     manufacturer: "Sulzer",
     area: "Boiler House",
-    healthScore: 88,
-    nextPM: "2026-09-15",
+    criticality: "MEDIUM",
     openWO: 0,
     status: "STANDBY",
   },
@@ -31,7 +29,7 @@ describe("PumpRegistryTable", () => {
   it("renders the maintenance-oriented columns", () => {
     render(<PumpRegistryTable pumps={PUMPS} selectedCode={null} onSelect={() => {}} />);
 
-    ["Pump", "Area", "Health Score", "Next PM", "Open Work Orders", "Status"].forEach((header) => {
+    ["Pump", "Area", "Criticality", "Open Work Orders", "Status"].forEach((header) => {
       expect(screen.getByRole("columnheader", { name: header })).toBeTruthy();
     });
   });
@@ -67,11 +65,23 @@ describe("PumpRegistryTable", () => {
     expect(screen.getByText("STANDBY")).toBeTruthy();
   });
 
-  it("color-codes the health score", () => {
+  it("renders a criticality badge for each pump with real criticality data", () => {
     render(<PumpRegistryTable pumps={PUMPS} selectedCode={null} onSelect={() => {}} />);
 
-    expect(screen.getByText("92").style.color).not.toBe("");
-    expect(screen.getByText("88").style.color).not.toBe("");
+    expect(screen.getByText("HIGH")).toBeTruthy();
+    expect(screen.getByText("MEDIUM")).toBeTruthy();
+  });
+
+  it("shows a dash instead of fabricating criticality when the field is missing", () => {
+    render(
+      <PumpRegistryTable
+        pumps={[{ ...PUMPS[0], criticality: null }]}
+        selectedCode={null}
+        onSelect={() => {}}
+      />
+    );
+
+    expect(screen.getByText("—")).toBeTruthy();
   });
 
   it("renders an empty state instead of a bare table when no pumps match", () => {

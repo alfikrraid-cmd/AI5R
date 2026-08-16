@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { mapSealRecord, mapSealStockRecord, resolveCompatiblePumps, resolveCompatibleSeals, resolveStock } from "./sealMapping";
+import {
+  buildSealInventoryGroups,
+  mapSealRecord,
+  mapSealStockRecord,
+  resolveCompatiblePumps,
+  resolveCompatibleSeals,
+  resolveStock,
+} from "./sealMapping";
 
 // MWO-LTSA-041 -- maps raw seal_registry API fields to the UI shape
 // SealRegistryTable.jsx/SealDetailPanel.jsx already expect (code/name/
@@ -215,5 +222,100 @@ describe("resolveStock", () => {
 
   it("returns null (not a zeroed object) when no seal_stock row exists -- unknown stock is not zero stock", () => {
     expect(resolveStock("SC-999", STOCK_RECORDS)).toBeNull();
+  });
+});
+
+// MWO-LTSA-UI-V2-001 -- Pump Workspace "Seal & Inventory": enriches
+// lifecycle.relatedEngineering.inventory (seal_code/quantity_on_hand/
+// location only) with each seal's real Type/Size and full compatible-pump
+// list, replacing the old duplicate Compatibility/"Compatible Seals" and
+// Related Engineering/"Inventory" RefGroups that rendered the same array
+// twice.
+describe("buildSealInventoryGroups", () => {
+  const SEALS = [
+    { seal_code: "SC-TANDEM", seal_name: "TANDEM SEAL", shaft_size: "55MM" },
+    { seal_code: "SC-T48MP", seal_name: "T48MP", shaft_size: "1-3/8\"" },
+  ];
+
+  const COMPATIBILITY = [
+    { seal_code: "SC-TANDEM", pump_tag_number: "140-P-24A" },
+    { seal_code: "SC-TANDEM", pump_tag_number: "140-P-24B" },
+    { seal_code: "SC-TANDEM", pump_tag_number: "945-P-7A" },
+    { seal_code: "SC-TANDEM", pump_tag_number: "945-P-7B" },
+    { seal_code: "SC-TANDEM", pump_tag_number: "945-P-7C" },
+    { seal_code: "SC-T48MP", pump_tag_number: "101-P-10B" },
+  ];
+
+  it("enriches an inventory row with the seal's real Type+Size", () => {
+    const [group] = buildSealInventoryGroups(
+      [{ seal_code: "SC-TANDEM", quantity_on_hand: null, location: null }],
+      SEALS,
+      COMPATIBILITY
+    );
+    expect(group.sealName).toBe("TANDEM SEAL");
+    expect(group.shaftSize).toBe("55MM");
+  });
+
+  it("compatible-pump count is the full compatibility list, never quantity_on_hand -- the two are never the same number", () => {
+    const [group] = buildSealInventoryGroups(
+      [{ seal_code: "SC-TANDEM", quantity_on_hand: 1, location: null }],
+      SEALS,
+      COMPATIBILITY
+    );
+    expect(group.compatiblePumps).toEqual(["140-P-24A", "140-P-24B", "945-P-7A", "945-P-7B", "945-P-7C"]);
+    expect(group.compatiblePumps.length).toBe(5);
+    expect(group.quantityOnHand).toBe(1);
+  });
+
+  it("labels quantity > 0 as Available · N", () => {
+    const [group] = buildSealInventoryGroups(
+      [{ seal_code: "SC-T48MP", quantity_on_hand: 3, location: "Warehouse A" }],
+      SEALS,
+      COMPATIBILITY
+    );
+    expect(group.stockLabel).toBe("Available · 3");
+  });
+
+  it("labels quantity === 0 as Out of stock · 0, distinct from unknown", () => {
+    const [group] = buildSealInventoryGroups(
+      [{ seal_code: "SC-T48MP", quantity_on_hand: 0, location: "Warehouse A" }],
+      SEALS,
+      COMPATIBILITY
+    );
+    expect(group.stockLabel).toBe("Out of stock · 0");
+  });
+
+  it("labels a missing stock record (null quantity) as No stock record, never fabricated as zero", () => {
+    const [group] = buildSealInventoryGroups(
+      [{ seal_code: "SC-TANDEM", quantity_on_hand: null, location: null }],
+      SEALS,
+      COMPATIBILITY
+    );
+    expect(group.stockLabel).toBe("No stock record");
+  });
+
+  it("preserves multiple seals on one pump as independent groups, never collapsed", () => {
+    const groups = buildSealInventoryGroups(
+      [
+        { seal_code: "SC-TANDEM", quantity_on_hand: null, location: null },
+        { seal_code: "SC-T48MP", quantity_on_hand: 0, location: "Warehouse A" },
+      ],
+      SEALS,
+      COMPATIBILITY
+    );
+    expect(groups).toHaveLength(2);
+    expect(groups[0].sealCode).toBe("SC-TANDEM");
+    expect(groups[1].sealCode).toBe("SC-T48MP");
+  });
+
+  it("does not fabricate a seal name when the seal_code has no matching seal_registry record", () => {
+    const [group] = buildSealInventoryGroups(
+      [{ seal_code: "SC-UNKNOWN", quantity_on_hand: 2, location: null }],
+      SEALS,
+      COMPATIBILITY
+    );
+    expect(group.sealName).toBeNull();
+    expect(group.shaftSize).toBeNull();
+    expect(group.sealCode).toBe("SC-UNKNOWN");
   });
 });

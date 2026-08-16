@@ -86,6 +86,48 @@ export function resolveCompatibleSeals(pumpTagNumber, compatibilityRecords) {
 }
 
 /**
+ * MWO-LTSA-UI-V2-001 -- Pump Workspace "Seal & Inventory": one merged view
+ * replacing the old Compatibility/"Compatible Seals" and Related
+ * Engineering/"Inventory" RefGroups, which previously rendered the exact
+ * same array twice under two titles. Each lifecycle.relatedEngineering.
+ * inventory row (seal_code/quantity_on_hand/location, MWO-LTSA-065) is
+ * enriched with the seal's own Type+Size (from `seals`, the already-
+ * existing getSeals() endpoint Seal.jsx already fetches -- no new backend
+ * route) and its full compatible-pump list (reusing resolveCompatiblePumps
+ * above unmodified, over `compatibilityRecords` from getSealCompatibility()
+ * -- the same already-existing inverse-relationship utility, not a new
+ * resolver).
+ *
+ * Stock state is exactly quantity_on_hand's own null/0/>0 distinction,
+ * already established honestly by the backend (get_pump_spare_parts
+ * leaves quantity_on_hand null, never a fabricated zero, when no
+ * seal_stock row exists) -- never re-derived here, just labeled. Compatible-
+ * pump COUNT is always the seal_pump_compatibility row count
+ * (compatiblePumps.length), never quantity_on_hand -- the two are never
+ * the same number in this shape, so a caller cannot accidentally conflate
+ * "5 compatible pumps" with "5 in stock".
+ */
+export function buildSealInventoryGroups(inventoryItems, seals, compatibilityRecords) {
+  const sealByCode = new Map(seals.map((seal) => [seal.seal_code, seal]));
+
+  return inventoryItems.map((item) => {
+    const seal = sealByCode.get(item.seal_code) ?? null;
+    const quantity = item.quantity_on_hand ?? null;
+
+    return {
+      sealCode: item.seal_code ?? null,
+      sealName: seal?.seal_name ?? null,
+      shaftSize: seal?.shaft_size ?? null,
+      quantityOnHand: quantity,
+      location: item.location ?? null,
+      stockLabel:
+        quantity == null ? "No stock record" : quantity > 0 ? `Available · ${quantity}` : "Out of stock · 0",
+      compatiblePumps: item.seal_code ? resolveCompatiblePumps(item.seal_code, compatibilityRecords) : [],
+    };
+  });
+}
+
+/**
  * MWO-LTSA-042 -- real seal_stock record (BP-SEAL-STOCK/DATABASE/
  * 001_create_table.sql: seal_code, quantity_on_hand, reorder_point,
  * location, created_at, updated_at). null fields stay null (a seal with
