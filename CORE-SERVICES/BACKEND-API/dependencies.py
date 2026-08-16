@@ -4,6 +4,9 @@ import os
 import sys
 from pathlib import Path
 
+import jwt as _pyjwt
+from fastapi import Depends, Header, HTTPException
+
 BACKEND_API_DIR = Path(__file__).resolve().parent
 CORE_SERVICES_DIR = BACKEND_API_DIR.parent
 REPO_ROOT = CORE_SERVICES_DIR.parent
@@ -14,6 +17,8 @@ for _path in (BACKEND_API_DIR, CORE_SERVICES_DIR, AI5R_SDK_DIR, INGESTION_DIR):
     if str(_path) not in sys.path:
         sys.path.insert(0, str(_path))
 
+from API.auth_repository import AuthRepository
+from API.auth_service import AuthenticatedIdentity, AuthenticationError, decode_access_token, resolve_identity
 from API.cm_report_gateway import CMReportGateway
 from API.condition_monitoring_reading_gateway import ConditionMonitoringReadingGateway
 from API.condition_monitoring_schedule_gateway import ConditionMonitoringScheduleGateway
@@ -115,6 +120,13 @@ _import_database_runner = DatabaseRunner(_resolve_import_database_config())
 # repository() keeps the exact same object/interface -- durability is an
 # additive internal capability, not a new dependency to wire elsewhere.
 _import_session_repository = ImportSessionRepository(runner=_import_database_runner)
+
+# MWO-LTSA-AUTH-001 -- reuses the SAME DatabaseRunner singleton above, not
+# a second database connection -- users/organizations/organization_
+# memberships live in the same LTSA Postgres database as every other
+# canonical table (PRODUCTS/LTSA-BRAIN/DATABASE/MIGRATIONS/
+# 007_create_ltsa_auth_foundation.sql).
+_auth_repository = AuthRepository(_import_database_runner)
 
 # MWO-LTSA-031D -- built from the same singleton Gateway instances above,
 # not fresh ones -- no second set of Gateways is constructed anywhere.
@@ -235,3 +247,51 @@ def get_fleet_executive_summary_service() -> FleetExecutiveSummaryService:
 
 def get_engineering_context_engine() -> EngineeringContextEngine:
     return _engineering_context_engine
+
+
+def get_auth_repository() -> AuthRepository:
+    return _auth_repository
+
+
+# MWO-LTSA-AUTH-001 -- the two reusable dependencies this MWO requires:
+# get_current_user() (JWT -> live, re-verified AuthenticatedIdentity) and
+# require_permission(permission) (a factory returning a Depends-compatible
+# check). Both use the exact FastAPI Depends() pattern every other
+# dependency on this page already uses -- no new DI mechanism.
+#
+# get_current_user() is a single, stable module-level function (not a
+# factory) specifically so tests can override it once via FastAPI's own
+# app.dependency_overrides[get_current_user] = ... and have every
+# require_permission(...) closure across every router pick up the
+# override automatically (each closure's own Depends(get_current_user)
+# resolves through the same override map entry).
+def get_current_user(authorization: str | None = Header(default=None)) -> AuthenticatedIdentity:
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing bearer token")
+
+    token = authorization[len("Bearer "):].strip()
+    try:
+        payload = decode_access_token(token)
+    except _pyjwt.PyJWTError:
+        # Covers expired (ExpiredSignatureError), tampered/invalid
+        # signature, and malformed tokens alike -- all the same "this is
+        # not currently a valid authenticated request" outcome, 401.
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    try:
+        return resolve_identity(_auth_repository, payload["sub"], payload["org"])
+    except AuthenticationError as error:
+        # Disabled user / disabled or missing membership, re-checked live
+        # against the repository on every request (never trusted from the
+        # token's own claims) -- also 401, not 403: this is about WHO the
+        # caller currently is, not what a valid identity is allowed to do.
+        raise HTTPException(status_code=401, detail=str(error))
+
+
+def require_permission(permission: str):
+    def _check(current_user: AuthenticatedIdentity = Depends(get_current_user)) -> AuthenticatedIdentity:
+        if permission not in current_user.permissions:
+            raise HTTPException(status_code=403, detail=f"Missing permission: {permission}")
+        return current_user
+
+    return _check

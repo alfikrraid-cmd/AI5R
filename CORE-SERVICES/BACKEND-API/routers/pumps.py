@@ -24,10 +24,14 @@ from dependencies import (
     get_seal_pump_compatibility_gateway,
     get_seal_stock_gateway,
     get_work_order_gateway,
+    require_permission,
 )
 from models.responses import Payload
 
-router = APIRouter()
+# MWO-LTSA-AUTH-001 -- router-level permission, applied to every route in
+# this file via FastAPI's own dependencies=[...] mechanism (deny by
+# default; endpoints ask for permissions, never scattered role checks).
+router = APIRouter(dependencies=[Depends(require_permission("pump.read"))])
 
 
 @router.get("/pumps")

@@ -15,7 +15,7 @@ from API.import_queue import ImportQueueManager
 from API.import_session import build_canonical_packages, build_import_session
 from API.import_validator import parse_import_package, validate_import_package
 from API.import_worker import ImportWorker
-from dependencies import get_import_database_runner, get_import_session_repository
+from dependencies import get_import_database_runner, get_import_session_repository, require_permission
 from FACTORY.CORE.exceptions import ManufacturingValidationError
 from models.requests import (
     ImportConflictCheckRequest,
@@ -25,7 +25,14 @@ from models.requests import (
 )
 from models.responses import Payload
 
-router = APIRouter()
+# MWO-LTSA-AUTH-001 -- import.read gates every route (validate/conflicts/
+# session/status/dry-run are all read-only or dry-run-only, zero
+# production writes per this pipeline's own established discipline).
+# /execute additionally requires import.execute (stacked below) -- the
+# one real write path, and this MWO's explicit "Pertamina must never be
+# able to execute imports" requirement. TAP_ADMIN/TAP_ENGINEER hold both;
+# no Pertamina role holds either.
+router = APIRouter(dependencies=[Depends(require_permission("import.read"))])
 
 _PUMP_XLSX_EXTENSIONS = (".xlsx", ".xls")
 
@@ -144,6 +151,7 @@ def execute_import(
     payload: ImportExecuteRequest,
     import_session_repository=Depends(get_import_session_repository),
     database_runner=Depends(get_import_database_runner),
+    _execute_permission=Depends(require_permission("import.execute")),
 ) -> Payload:
     # MWO-LTSA-DATA-IMPORT-UI-001C-DURABLE -- atomic claim (see
     # ImportSessionRepository.claim_for_execution's own docstring)

@@ -6,10 +6,15 @@ from dependencies import (
     get_seal_gateway,
     get_seal_pump_compatibility_gateway,
     get_seal_stock_gateway,
+    require_permission,
 )
 from models.responses import Payload
 
-router = APIRouter()
+# MWO-LTSA-AUTH-001 -- seal.read gates seal identity/compatibility data
+# for the whole router; seal-stock additionally requires inventory.read
+# (stacked below), since stock QUANTITY is a distinct permission from
+# seal IDENTITY in this MWO's own requested permission set.
+router = APIRouter(dependencies=[Depends(require_permission("seal.read"))])
 
 # Mechanical Seal Workspace API (MWO-LTSA-041, per MWO-LTSA-040's
 # archaeology) -- reuses SealGateway/SealStockGateway/
@@ -28,7 +33,10 @@ def list_ltsa_seals(seal_gateway=Depends(get_seal_gateway)) -> Payload:
 
 
 @router.get("/api/ltsa/seal-stock")
-def list_ltsa_seal_stock(seal_stock_gateway=Depends(get_seal_stock_gateway)) -> Payload:
+def list_ltsa_seal_stock(
+    seal_stock_gateway=Depends(get_seal_stock_gateway),
+    _stock_permission=Depends(require_permission("inventory.read")),
+) -> Payload:
     return seal_stock_gateway.list_seal_stocks()
 
 

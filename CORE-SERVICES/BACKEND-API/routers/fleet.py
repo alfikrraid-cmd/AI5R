@@ -6,10 +6,11 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends
 
 from API.fleet_insight import build_fleet_insight
-from dependencies import get_fleet_executive_summary_service, get_fleet_reliability_service
+from dependencies import get_fleet_executive_summary_service, get_fleet_reliability_service, require_permission
 from models.responses import Payload
 
-router = APIRouter()
+# MWO-LTSA-AUTH-001
+router = APIRouter(dependencies=[Depends(require_permission("pump.read"))])
 
 # MWO-LTSA-038C -- Power BI dataset contract version. Reuses the exact
 # same constant-plus-isoformat-timestamp convention

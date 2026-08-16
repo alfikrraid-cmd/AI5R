@@ -13,7 +13,8 @@ for _path in (BACKEND_API_DIR, CORE_SERVICES_DIR, AI5R_SDK_DIR):
 
 from fastapi import FastAPI
 
-from routers import copilot, dashboard, health, import_router, maintenance, organization, pumps, seal, work_orders
+from API.auth_service import signing_secret
+from routers import auth, copilot, dashboard, health, import_router, maintenance, organization, pumps, seal, work_orders
 
 app = FastAPI(
     title="AI5R Enterprise OS Backend API",
@@ -27,7 +28,18 @@ app = FastAPI(
     ),
 )
 
+
+# MWO-LTSA-AUTH-001 -- "Fail startup clearly if production auth
+# configuration is unsafe or missing." signing_secret() itself already
+# raises AuthConfigurationError when AI5R_ENV=production and no
+# AI5R_AUTH_JWT_SECRET is set; calling it once here, at import time
+# (before uvicorn ever accepts a connection), turns that into a real
+# startup failure instead of a lazy failure on the first login request.
+# A no-op in dev/test (AI5R_ENV unset or != production).
+signing_secret()
+
 app.include_router(health.router)
+app.include_router(auth.router)
 app.include_router(organization.router)
 app.include_router(dashboard.router)
 app.include_router(pumps.router)

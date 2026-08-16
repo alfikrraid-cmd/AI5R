@@ -6,6 +6,7 @@ BACKEND_API_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_API_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_API_DIR))
 
+import pytest
 from fastapi.testclient import TestClient
 
 from main import app
@@ -13,6 +14,7 @@ from dependencies import (
     get_cm_report_gateway,
     get_condition_monitoring_reading_gateway,
     get_condition_monitoring_schedule_gateway,
+    get_current_user,
     get_engineering_context_engine,
     get_equipment_timeline_service,
     get_ltsa_knowledge_service,
@@ -25,10 +27,35 @@ from dependencies import (
     get_seal_stock_gateway,
     get_work_order_gateway,
 )
+from API.auth_service import ROLE_PERMISSIONS, AuthenticatedIdentity
 from API.ltsa_knowledge_service import LTSAKnowledge
 from API.recommendation_engine import Evidence, Recommendation
 
 client = TestClient(app)
+
+# MWO-LTSA-AUTH-001 -- every test in this file predates authorization and
+# exercises router-to-gateway DELEGATION, not authorization itself (that
+# is proven precisely, per-permission, in TESTS/test_auth_router.py).
+# Overriding get_current_user here (autouse, whole file) keeps these ~60
+# existing tests asserting exactly what they always asserted, rather than
+# rewriting every one of them to carry a bearer token. A full-permission
+# identity is used deliberately -- these tests must never be blocked by
+# authorization, only by whatever behavior they were written to check.
+_SUPERUSER_IDENTITY = AuthenticatedIdentity(
+    user_id="test-superuser",
+    email="test-superuser@tap.internal",
+    organization_id="test-org-tap",
+    organization_code="TAP",
+    role="TAP_ADMIN",
+    permissions=ROLE_PERMISSIONS["TAP_ADMIN"],
+)
+
+
+@pytest.fixture(autouse=True)
+def _bypass_authorization_for_delegation_tests():
+    app.dependency_overrides[get_current_user] = lambda: _SUPERUSER_IDENTITY
+    yield
+    app.dependency_overrides.pop(get_current_user, None)
 
 
 class FakePumpGateway:
@@ -1541,6 +1568,8 @@ def test_docs_and_openapi_are_available():
     paths = openapi_response.json()["paths"]
     for path in (
         "/health",
+        "/api/auth/login",
+        "/api/auth/me",
         "/organization",
         "/dashboard",
         "/pumps",

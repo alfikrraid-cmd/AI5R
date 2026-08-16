@@ -10,10 +10,12 @@ if str(BACKEND_API_DIR) not in sys.path:
 
 from main import app
 from dependencies import (
+    get_current_user,
     get_engineering_context_engine,
     get_equipment_timeline_service,
     get_ltsa_knowledge_service,
 )
+from API.auth_service import ROLE_PERMISSIONS, AuthenticatedIdentity
 from API.equipment_timeline_service import EquipmentTimeline, TimelineEvent
 from API.ltsa_knowledge_service import LTSAKnowledge
 from API.recommendation_engine import Evidence, Recommendation
@@ -22,6 +24,17 @@ from API.timeline_value_objects import TimelineCategory, TimelineSeverity, Timel
 client = TestClient(app)
 
 TAG = "641-P-5"
+
+# MWO-LTSA-AUTH-001 -- this suite predates authorization and tests router-
+# to-service delegation, not authorization (proven separately, per-
+# permission, in TESTS/test_auth_router.py).
+_SUPERUSER_IDENTITY = AuthenticatedIdentity(
+    user_id="test-superuser", email="test-superuser@tap.internal",
+    organization_id="test-org-tap", organization_code="TAP",
+    role="TAP_ADMIN", permissions=ROLE_PERMISSIONS["TAP_ADMIN"],
+)
+
+
 
 
 class FakeKnowledgeService:
@@ -121,7 +134,11 @@ def _override(knowledge=None, timeline=None, summary=None):
 
 @pytest.fixture(autouse=True)
 def clear_dependency_overrides():
+    # MWO-LTSA-AUTH-001 -- the auth override is set INSIDE this same
+    # existing clear-then-restore fixture, not a second autouse fixture,
+    # so ordering between the two is never ambiguous.
     app.dependency_overrides.clear()
+    app.dependency_overrides[get_current_user] = lambda: _SUPERUSER_IDENTITY
     yield
     app.dependency_overrides.clear()
 

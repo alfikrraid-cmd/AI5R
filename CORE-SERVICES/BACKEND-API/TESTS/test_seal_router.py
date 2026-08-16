@@ -10,12 +10,23 @@ if str(BACKEND_API_DIR) not in sys.path:
 
 from main import app
 from dependencies import (
+    get_current_user,
     get_seal_gateway,
     get_seal_pump_compatibility_gateway,
     get_seal_stock_gateway,
 )
+from API.auth_service import ROLE_PERMISSIONS, AuthenticatedIdentity
 
 client = TestClient(app)
+
+# MWO-LTSA-AUTH-001 -- see test_pumps_knowledge_router.py's identical fixture.
+_SUPERUSER_IDENTITY = AuthenticatedIdentity(
+    user_id="test-superuser", email="test-superuser@tap.internal",
+    organization_id="test-org-tap", organization_code="TAP",
+    role="TAP_ADMIN", permissions=ROLE_PERMISSIONS["TAP_ADMIN"],
+)
+
+
 
 # MWO-LTSA-041 -- Mechanical Seal Workspace Integration. Router only: no
 # filtering, no derivation, no business logic here -- each Gateway's own
@@ -61,7 +72,9 @@ def _response(data):
 
 @pytest.fixture(autouse=True)
 def clear_dependency_overrides():
+    # MWO-LTSA-AUTH-001 -- see test_pumps_knowledge_router.py's identical fixture.
     app.dependency_overrides.clear()
+    app.dependency_overrides[get_current_user] = lambda: _SUPERUSER_IDENTITY
     yield
     app.dependency_overrides.clear()
 

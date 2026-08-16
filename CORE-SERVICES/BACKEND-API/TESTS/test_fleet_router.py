@@ -9,11 +9,21 @@ if str(BACKEND_API_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_API_DIR))
 
 from main import app
-from dependencies import get_fleet_executive_summary_service, get_fleet_reliability_service
+from dependencies import get_current_user, get_fleet_executive_summary_service, get_fleet_reliability_service
+from API.auth_service import ROLE_PERMISSIONS, AuthenticatedIdentity
 from API.fleet_executive_summary import FleetExecutiveSummary, TopRisk
 from API.fleet_reliability_service import FleetReliability
 
 client = TestClient(app)
+
+# MWO-LTSA-AUTH-001 -- see test_pumps_knowledge_router.py's identical fixture.
+_SUPERUSER_IDENTITY = AuthenticatedIdentity(
+    user_id="test-superuser", email="test-superuser@tap.internal",
+    organization_id="test-org-tap", organization_code="TAP",
+    role="TAP_ADMIN", permissions=ROLE_PERMISSIONS["TAP_ADMIN"],
+)
+
+
 
 
 class FakeFleetReliabilityService:
@@ -48,7 +58,9 @@ def _override(result=None):
 
 @pytest.fixture(autouse=True)
 def clear_dependency_overrides():
+    # MWO-LTSA-AUTH-001 -- see test_pumps_knowledge_router.py's identical fixture.
     app.dependency_overrides.clear()
+    app.dependency_overrides[get_current_user] = lambda: _SUPERUSER_IDENTITY
     yield
     app.dependency_overrides.clear()
 

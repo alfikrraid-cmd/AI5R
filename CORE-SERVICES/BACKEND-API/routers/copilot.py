@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from dependencies import get_product_name
+from dependencies import get_product_name, require_permission
 from models.responses import Payload
 from API.maintenance_copilot import summarize_maintenance_situation as _summarize_maintenance_situation
 
-router = APIRouter()
+# MWO-LTSA-AUTH-001
+router = APIRouter(dependencies=[Depends(require_permission("maintenance.read"))])
 
 
 @router.get("/copilot/summary")

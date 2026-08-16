@@ -14,7 +14,13 @@ if str(_INGESTION_DIR) not in sys.path:
     sys.path.insert(0, str(_INGESTION_DIR))
 
 from main import app
-from dependencies import _resolve_import_database_config, get_import_database_runner, get_import_session_repository
+from dependencies import (
+    _resolve_import_database_config,
+    get_current_user,
+    get_import_database_runner,
+    get_import_session_repository,
+)
+from API.auth_service import ROLE_PERMISSIONS, AuthenticatedIdentity
 from API.conflict_resolution import build_conflict_report as _build_conflict_report
 from API.import_cli import dry_run_import
 from API.import_session import build_canonical_packages, build_import_session
@@ -23,6 +29,18 @@ from API.import_validator import ImportPackage, parse_import_package, validate_i
 from ltsa_pump_inventory_db_upsert import DatabaseConfig, DatabaseRunner, _json_query
 
 client = TestClient(app)
+
+# MWO-LTSA-AUTH-001 -- this suite predates authorization; import.read AND
+# import.execute are both granted here so existing tests keep exercising
+# exactly the behavior they always exercised. Deny-by-default for
+# import/execute specifically (including the PERTAMINA_VIEWER-cannot-
+# execute-import requirement) is proven separately in test_auth_router.py.
+_SUPERUSER_IDENTITY = AuthenticatedIdentity(
+    user_id="test-superuser", email="test-superuser@tap.internal",
+    organization_id="test-org-tap", organization_code="TAP",
+    role="TAP_ADMIN", permissions=ROLE_PERMISSIONS["TAP_ADMIN"],
+)
+
 
 _RUNTIME_DIR = _REPO_ROOT / "CORE-SERVICES" / "RUNTIME"
 
@@ -65,7 +83,13 @@ def real_db_cleanup():
 
 @pytest.fixture(autouse=True)
 def clear_dependency_overrides():
+    # MWO-LTSA-AUTH-001 -- the auth override is set INSIDE this same
+    # existing clear-then-restore fixture (not a second autouse fixture)
+    # specifically so the ordering is unambiguous: whichever autouse
+    # fixture clears overrides last would otherwise silently wipe a
+    # separately-defined auth override.
     app.dependency_overrides.clear()
+    app.dependency_overrides[get_current_user] = lambda: _SUPERUSER_IDENTITY
     yield
     app.dependency_overrides.clear()
 
