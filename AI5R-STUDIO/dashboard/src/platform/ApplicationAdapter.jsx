@@ -1,5 +1,5 @@
 import { Tabs } from "../design-system";
-import LTSAWorkspace from "../modules/ltsa/pages/LTSAWorkspace";
+import LTSAAuthGate from "../modules/ltsa/pages/LTSAAuthGate";
 import ODWorkspace from "../modules/od/pages/ODWorkspace";
 import Landing from "./Landing";
 
@@ -35,8 +35,7 @@ export default function ApplicationAdapter({
   if (application?.applicationId === "ltsa") {
     return (
       <ProductChrome activeKey="ltsa" applications={applications} onNavigateApplication={onNavigateApplication}>
-        <LTSAWorkspace
-          initialActiveKey="history"
+        <LTSAAuthGate
           organizationContext={organizationContext}
           platformContext={platformContext}
         />

@@ -65,11 +65,19 @@ const PAGES = {
   analytics: AnalyticsWorkspace,
 };
 
-export default function LTSAWorkspace({ initialActiveKey = "dashboard" }) {
+// `capabilities` is optional (MWO-LTSA-AUTH-OPEN-DESIGN-001) -- when
+// omitted, every tab renders exactly as before this MWO (every existing
+// caller/test keeps working unchanged). When provided by LTSAAuthGate,
+// `capabilities.allowedKeys` filters which TABS entries are shown; tab
+// content itself is untouched, this only gates navigation visibility.
+export default function LTSAWorkspace({ initialActiveKey = "dashboard", capabilities = null }) {
   const initialLocation = parseWorkspaceLocation(window.location.pathname);
   const [activeKey, setActiveKey] = useState(initialLocation?.key ?? initialActiveKey);
   const [navContext, setNavContext] = useState(initialLocation?.context ?? null);
   const ActivePage = PAGES[activeKey];
+  const visibleTabs = capabilities
+    ? TABS.filter((tab) => capabilities.allowedKeys.includes(tab.key))
+    : TABS;
 
   // Extended under APP-ASSET360-001 (per ADR-ASSET360-001) with an
   // optional payload -- { assetTag, selectId } -- carrying cross-domain
@@ -89,7 +97,7 @@ export default function LTSAWorkspace({ initialActiveKey = "dashboard" }) {
   return (
     <WorkspaceProvider value={{ navigate: handleNavigate }}><div>
       <div className="no-print">
-        <Tabs items={TABS} activeKey={activeKey} onChange={handleNavigate} />
+        <Tabs items={visibleTabs} activeKey={activeKey} onChange={handleNavigate} />
       </div>
 
       <div className="ltsa-workspace-content">

@@ -1,0 +1,59 @@
+/* MWO-LTSA-AUTH-OPEN-DESIGN-001 -- identity/account chrome, layered on the
+   canonical .chrome-bar (LTSAOpenDesign.css) rather than a new bar. */
+
+.auth-identity-bar .chrome-inner {
+  position: relative;
+}
+
+.auth-identity-menu {
+  position: relative;
+}
+
+.auth-identity-trigger {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.auth-identity-role {
+  font-size: var(--text-xs);
+  color: var(--muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+}
+
+.auth-identity-dropdown {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  right: 0;
+  min-width: 220px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-3);
+  z-index: 40;
+}
+
+.auth-identity-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-1) 0;
+  font-size: var(--text-sm);
+}
+
+.auth-identity-label {
+  color: var(--muted);
+}
+
+.auth-identity-logout {
+  margin-top: var(--space-2);
+  width: 100%;
+  justify-content: center;
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-2);
+}

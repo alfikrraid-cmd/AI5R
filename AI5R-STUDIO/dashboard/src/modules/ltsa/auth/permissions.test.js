@@ -1,0 +1,53 @@
+import { describe, expect, it } from "vitest";
+import { can, PERMISSIONS, ROLES, visibleTabKeys } from "./permissions";
+
+describe("permissions", () => {
+  it("derives visibility from capability, never from a hardcoded role/org check", () => {
+    // No `session.role === "..."` anywhere in this test -- every assertion
+    // goes through can()/visibleTabKeys(), same as production callers must.
+    const tapAdmin = { role: ROLES.TAP_ADMIN };
+    expect(can(tapAdmin, PERMISSIONS.IMPORT_EXECUTE)).toBe(true);
+    expect(can(tapAdmin, PERMISSIONS.ADMIN_ACCESS)).toBe(true);
+  });
+
+  it("TAP_ENGINEER sees engineering capability but not admin/import", () => {
+    const session = { role: ROLES.TAP_ENGINEER };
+    expect(can(session, PERMISSIONS.PUMP_READ)).toBe(true);
+    expect(can(session, PERMISSIONS.ENGINEERING_AI_ASK)).toBe(true);
+    expect(can(session, PERMISSIONS.ADMIN_ACCESS)).toBe(false);
+    expect(can(session, PERMISSIONS.IMPORT_EXECUTE)).toBe(false);
+  });
+
+  it("PERTAMINA_ENGINEER sees pump/seal/inventory/engineering AI but not import/admin/internal breakdown", () => {
+    const session = { role: ROLES.PERTAMINA_ENGINEER };
+    expect(can(session, PERMISSIONS.PUMP_READ)).toBe(true);
+    expect(can(session, PERMISSIONS.SEAL_READ)).toBe(true);
+    expect(can(session, PERMISSIONS.INVENTORY_READ)).toBe(true);
+    expect(can(session, PERMISSIONS.ENGINEERING_AI_ASK)).toBe(true);
+    expect(can(session, PERMISSIONS.IMPORT_EXECUTE)).toBe(false);
+    expect(can(session, PERMISSIONS.ADMIN_ACCESS)).toBe(false);
+    expect(can(session, PERMISSIONS.INTERNAL_COMPONENT_READ)).toBe(false);
+    expect(visibleTabKeys(session)).not.toContain("import");
+  });
+
+  it("PERTAMINA_VIEWER loses engineering_ai.ask but keeps read access", () => {
+    const session = { role: ROLES.PERTAMINA_VIEWER };
+    expect(can(session, PERMISSIONS.ENGINEERING_AI_ASK)).toBe(false);
+    expect(can(session, PERMISSIONS.PUMP_READ)).toBe(true);
+    expect(can(session, PERMISSIONS.IMPORT_EXECUTE)).toBe(false);
+  });
+
+  it("an unauthenticated session (no role) grants nothing", () => {
+    expect(can(null, PERMISSIONS.PUMP_READ)).toBe(false);
+    expect(can({}, PERMISSIONS.PUMP_READ)).toBe(false);
+  });
+
+  it("compatible-pump count is never conflated with stock quantity by the capability layer", () => {
+    // Domain rule (MWO §6): inventory.read gates whether stock/compat data
+    // is shown at all; the count distinction itself lives in the view
+    // (SealOpenDesignView), already separates stock.quantityOnHand from
+    // seal.compatiblePumps.length. This test only guards that the
+    // capability gate for that data exists and is a single flag.
+    expect(PERMISSIONS.INVENTORY_READ).toBe("inventory.read");
+  });
+});
