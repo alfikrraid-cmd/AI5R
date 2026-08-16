@@ -398,6 +398,25 @@ def _pump_notes(row: dict[str, Any]) -> str | None:
     return "; ".join(parts) or None
 
 
+# MWO-LTSA-SEAL-SIZE-PLACEHOLDER-FIX-001: the real workbook uses "-" as an
+# explicit "not recorded" marker in the Seal Size column (row 271's own raw
+# cell, carried forward to blank rows below it by the grouping logic in
+# project_grouped_inventory_rows -- that carry-forward is correct/intended
+# there and is NOT touched by this fix). The same placeholder-token
+# convention already exists one file over, in
+# ltsa_pump_inventory_db_upsert.py::_is_placeholder_pump_tag -- reused here
+# (identical token set) rather than inventing a second policy, applied at
+# identity-resolution time so _normalize_size()/the carry-forward mechanism
+# stay exactly as they were (changing _normalize_size itself to return None
+# for "-" would make blank rows silently inherit an unrelated EARLIER
+# group's real size instead of correctly inheriting "missing").
+_MISSING_SIZE_TOKENS = {"-", "n/a", "belum diketahui", "unknown"}
+
+
+def _is_missing_size(shaft_size: str | None) -> bool:
+    return shaft_size is None or shaft_size.casefold() in _MISSING_SIZE_TOKENS
+
+
 def _resolve_seal_codes(
     mechseal_rows: list[dict[str, Any]],
     kosong_rows: list[dict[str, str | None]],
@@ -424,10 +443,10 @@ def _resolve_seal_codes(
         seal_name, shaft_size = identity
         # MWO-LTSA-PUMP-SEAL-DATA-WIRING-001: Seal Type + Seal Size is the
         # frozen V1 compatibility identity -- a row with a type but no
-        # parseable size has no safe identity to resolve against (never
-        # fabricated as a synthetic "UNSPEC" size bucket, which would
-        # silently merge unrelated real sizes together).
-        if seal_name is None or shaft_size is None:
+        # real, parseable size has no safe identity to resolve against
+        # (never fabricated as a synthetic "UNSPEC" size bucket, which
+        # would silently merge unrelated real sizes together).
+        if seal_name is None or _is_missing_size(shaft_size):
             continue
         seal_code_by_identity[identity] = by_exact_identity.get(
             identity, build_seal_code(seal_name, shaft_size)

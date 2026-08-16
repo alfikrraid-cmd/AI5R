@@ -294,6 +294,66 @@ def test_missing_seal_size_does_not_fabricate_a_compatibility_relationship():
     assert projection["seal_pump_compatibility"] == []  # no fabricated seal identity/relationship
 
 
+# --- MWO-LTSA-SEAL-SIZE-PLACEHOLDER-FIX-001 -- "-" Seal Size placeholder ---
+#
+# Real workbook defect (MWO-LTSA-PUMP-SEAL-PRODUCTION-DRYRUN-001): 11 rows
+# carry the literal placeholder "-" as Seal Size, previously fabricating a
+# shared "UNSPEC" seal identity/compatibility instead of being treated as
+# missing, the same way None already was.
+
+
+def test_dash_seal_size_is_unresolved_like_missing_size():
+    mechseal_rows = [
+        {"row_number": 271, "tag_number": "212-P-11A", "shaft_size": "-", "area": "PL II", "seal_type": "8AB/8AB/8AB"}
+    ]
+
+    projection = build_projection(mechseal_rows, [], [])
+
+    assert projection["ltsa_pumps"][0]["tag_number"] == "212-P-11A"  # pump itself still imported
+    assert projection["seal_registry"] == []  # no fabricated "UNSPEC" seal identity
+    assert projection["seal_pump_compatibility"] == []  # no fabricated compatibility relationship
+
+
+def test_dash_seal_size_in_gudang_stock_row_does_not_fabricate_stock():
+    mechseal_rows = [
+        {"row_number": 271, "tag_number": "212-P-11A", "shaft_size": "-", "area": "PL II", "seal_type": "8AB/8AB/8AB"}
+    ]
+    gudang_rows = [
+        {"row_number": 271, "tag_number": "212-P-11A", "shaft_size": "-", "area": "PL II", "seal_type": "8AB/8AB/8AB", "stock_material": "3"}
+    ]
+
+    projection = build_projection(mechseal_rows, gudang_rows, [])
+
+    assert projection["seal_stock"] == []  # no stock record fabricated against an unresolved identity
+
+
+def test_real_size_alongside_a_dash_size_row_still_resolves_normally():
+    # Proves the fix is scoped to the placeholder row only -- a real size
+    # elsewhere for a DIFFERENT type is unaffected (no cross-contamination
+    # via the shared identities set/dict).
+    mechseal_rows = [
+        {"row_number": 271, "tag_number": "212-P-11A", "shaft_size": "-", "area": "PL II", "seal_type": "8AB/8AB/8AB"},
+        {"row_number": 272, "tag_number": "300-P-1A", "shaft_size": '2"', "area": "PL II", "seal_type": "T48MP"},
+    ]
+
+    projection = build_projection(mechseal_rows, [], [])
+
+    assert len(projection["seal_pump_compatibility"]) == 1
+    assert projection["seal_pump_compatibility"][0]["pump_tag_number"] == "300-P-1A"
+
+
+def test_other_missing_size_placeholder_tokens_are_also_unresolved():
+    mechseal_rows = [
+        {"row_number": 1, "tag_number": "P-1", "shaft_size": "N/A", "area": "A", "seal_type": "T48MP"},
+        {"row_number": 2, "tag_number": "P-2", "shaft_size": "Unknown", "area": "A", "seal_type": "T48MP"},
+    ]
+
+    projection = build_projection(mechseal_rows, [], [])
+
+    assert projection["seal_pump_compatibility"] == []
+    assert len(projection["ltsa_pumps"]) == 2  # both pumps still imported
+
+
 def test_one_pump_multiple_seals_when_source_reports_more_than_one_type():
     mechseal_rows = [
         {"row_number": 11, "tag_number": "700-P-1", "shaft_size": '2"', "area": "Reaktor", "seal_type": "T48MP"},
