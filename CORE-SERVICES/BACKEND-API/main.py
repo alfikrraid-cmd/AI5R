@@ -14,7 +14,25 @@ for _path in (BACKEND_API_DIR, CORE_SERVICES_DIR, AI5R_SDK_DIR):
 from fastapi import FastAPI
 
 from API.auth_service import signing_secret
-from routers import auth, copilot, dashboard, health, import_router, maintenance, organization, pumps, seal, work_orders
+from routers import (
+    auth,
+    cm_report,
+    condition_monitoring,
+    copilot,
+    dashboard,
+    document,
+    fleet,
+    health,
+    import_router,
+    installation,
+    maintenance,
+    organization,
+    pm_occurrence,
+    pm_schedule,
+    pumps,
+    seal,
+    work_orders,
+)
 
 app = FastAPI(
     title="AI5R Enterprise OS Backend API",
@@ -48,3 +66,19 @@ app.include_router(work_orders.router)
 app.include_router(maintenance.router)
 app.include_router(copilot.router)
 app.include_router(import_router.router)
+
+# MWO-LTSA-AUTH-001A -- these 7 routers were fully implemented, tested, and
+# already permission-gated (require_permission), but never registered here
+# -- a pre-existing gap, not new work. Each depends only on already-
+# constructed, real gateway singletons in dependencies.py (no placeholder/
+# None pattern), unlike engineering_ai (see routers/engineering_ai.py --
+# its orchestrator is never configured outside its own test file, so it
+# stays unwired; wiring it now would expose a 500-on-every-request
+# endpoint, not close a gap).
+app.include_router(fleet.router)
+app.include_router(document.router)
+app.include_router(installation.router)
+app.include_router(pm_schedule.router)
+app.include_router(pm_occurrence.router)
+app.include_router(cm_report.router)
+app.include_router(condition_monitoring.router)

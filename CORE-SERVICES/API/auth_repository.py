@@ -13,6 +13,7 @@ machinery than a handful of read/insert queries need.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -83,11 +84,21 @@ class AuthRepository:
     # --- writes (bootstrap-admin only; never called on the request path) --
 
     def create_user(self, *, email: str, password_hash: str) -> str:
-        rows = _json_query(
-            "INSERT INTO users (email, password_hash) VALUES "
-            f"({_sql(email)}, {_sql(password_hash)}) "
-            "RETURNING id",
-            self._runner,
+        # MWO-LTSA-AUTH-001A -- _json_query's own `FROM (sql) t` wrapping
+        # only works for a plain SELECT; a data-modifying INSERT...
+        # RETURNING needs a real CTE (same fix shape as
+        # import_session_repository.py's claim_for_execution()). Caught
+        # against real Postgres (Task 5) -- every prior test used a fake
+        # repository, which can't surface an invalid-SQL bug like this.
+        rows = json.loads(
+            self._runner.query_scalar(
+                "WITH ins AS ("
+                "INSERT INTO users (email, password_hash) VALUES "
+                f"({_sql(email)}, {_sql(password_hash)}) "
+                "RETURNING id"
+                ") SELECT COALESCE(json_agg(row_to_json(t))::text, '[]') FROM ins t;"
+            )
+            or "[]"
         )
         return rows[0]["id"]
 

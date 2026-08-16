@@ -219,3 +219,44 @@ def test_no_pertamina_role_has_any_write_permission():
 
 def test_unknown_role_resolves_to_zero_permissions_never_fabricated():
     assert permissions_for_role("NOT_A_REAL_ROLE") == frozenset()
+
+
+# --- MWO-LTSA-AUTH-001A Task 6: startup secret behavior --------------------
+
+
+def test_production_with_no_secret_fails_closed(monkeypatch):
+    from API.auth_service import AuthConfigurationError
+
+    monkeypatch.delenv("AI5R_AUTH_JWT_SECRET", raising=False)
+    monkeypatch.setenv("AI5R_ENV", "production")
+
+    with pytest.raises(AuthConfigurationError):
+        signing_secret()
+
+
+def test_production_with_a_real_secret_succeeds(monkeypatch):
+    monkeypatch.setenv("AI5R_ENV", "production")
+    monkeypatch.setenv("AI5R_AUTH_JWT_SECRET", "a-real-secret-provided-by-the-deployment-environment")
+
+    assert signing_secret() == "a-real-secret-provided-by-the-deployment-environment"
+
+
+def test_development_with_no_secret_remains_importable_and_testable(monkeypatch):
+    # Ordinary developer/test imports must never require
+    # AI5R_AUTH_JWT_SECRET to be set -- only production does. This is not
+    # a hardcoded PRODUCTION secret (guarded above by the AI5R_ENV ==
+    # "production" branch); it is an explicitly-named, obviously-fake
+    # placeholder that can never reach a production deployment.
+    monkeypatch.delenv("AI5R_AUTH_JWT_SECRET", raising=False)
+    monkeypatch.delenv("AI5R_ENV", raising=False)
+
+    secret = signing_secret()
+
+    assert secret == "INSECURE-DEV-ONLY-JWT-SECRET-DO-NOT-USE-IN-PRODUCTION"
+
+
+def test_non_production_env_value_with_no_secret_also_uses_the_dev_fallback(monkeypatch):
+    monkeypatch.delenv("AI5R_AUTH_JWT_SECRET", raising=False)
+    monkeypatch.setenv("AI5R_ENV", "development")
+
+    assert signing_secret() == "INSECURE-DEV-ONLY-JWT-SECRET-DO-NOT-USE-IN-PRODUCTION"

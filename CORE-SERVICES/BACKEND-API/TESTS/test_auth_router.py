@@ -222,6 +222,18 @@ def test_no_anonymous_fallback_exists_across_the_whole_router_surface():
         "/api/ltsa/seal-stock",
         "/api/ltsa/seal-compatibility",
         "/api/ltsa/import/status/whatever",
+        # MWO-LTSA-AUTH-001A -- these 7 were wired into main.py by this
+        # MWO (previously unreachable, now real endpoints); each must be
+        # just as deny-by-default as every route proven above.
+        "/api/ltsa/fleet/reliability",
+        "/api/ltsa/fleet/powerbi",
+        "/api/ltsa/documents",
+        "/api/ltsa/installations",
+        "/api/ltsa/pm-schedules",
+        "/api/ltsa/pm-occurrences",
+        "/api/ltsa/cm-reports",
+        "/api/ltsa/condition-monitoring-schedules",
+        "/api/ltsa/condition-monitoring-readings",
     ):
         response = client.get(path)
         assert response.status_code == 401, f"GET {path} was not rejected anonymously"
@@ -398,3 +410,72 @@ def test_active_membership_succeeds_end_to_end_through_the_real_repository_singl
     response = client.get("/api/ltsa/pumps", headers={"Authorization": f"Bearer {token}"})
 
     assert response.status_code == 200
+
+
+# --- MWO-LTSA-AUTH-001A Task 7: full role x permission security matrix ----
+#
+# engineering_ai.ask, admin.users, and internal_component.read have no
+# router currently wired that consumes them (engineering_ai is
+# deliberately unwired -- see above; admin.users/internal_component.read
+# have no endpoint at all yet -- BOQ/internal-component work is explicitly
+# out of this MWO's scope). Fabricating an HTTP endpoint just to exercise
+# them would test something that doesn't exist in production. Proven
+# instead directly against require_permission() -- the exact same
+# dependency callable every real router uses -- and against ROLE_
+# PERMISSIONS, the one canonical matrix every permission check reads from.
+
+
+def test_pertamina_viewer_can_read_allowed_resources():
+    app.dependency_overrides[get_current_user] = lambda: _identity("PERTAMINA_VIEWER")
+    app.dependency_overrides[get_pump_gateway] = lambda: FakePumpGateway()
+
+    response = client.get("/api/ltsa/pumps")
+
+    assert response.status_code == 200
+
+
+def test_pertamina_viewer_lacks_engineering_ai_ask():
+    assert "engineering_ai.ask" not in ROLE_PERMISSIONS["PERTAMINA_VIEWER"]
+
+
+def test_pertamina_viewer_lacks_internal_component_read():
+    assert "internal_component.read" not in ROLE_PERMISSIONS["PERTAMINA_VIEWER"]
+
+
+def test_pertamina_engineer_has_engineering_ai_ask():
+    assert "engineering_ai.ask" in ROLE_PERMISSIONS["PERTAMINA_ENGINEER"]
+
+
+def test_pertamina_engineer_lacks_internal_component_read():
+    assert "internal_component.read" not in ROLE_PERMISSIONS["PERTAMINA_ENGINEER"]
+
+
+def test_tap_engineer_has_engineering_ai_ask():
+    assert "engineering_ai.ask" in ROLE_PERMISSIONS["TAP_ENGINEER"]
+
+
+def test_tap_engineer_lacks_admin_users():
+    assert "admin.users" not in ROLE_PERMISSIONS["TAP_ENGINEER"]
+
+
+def test_tap_admin_has_admin_users():
+    assert "admin.users" in ROLE_PERMISSIONS["TAP_ADMIN"]
+
+
+@pytest.mark.parametrize("role", ["PERTAMINA_VIEWER", "PERTAMINA_ENGINEER", "TAP_ENGINEER", "TAP_ADMIN"])
+def test_require_permission_dependency_rejects_a_role_missing_engineering_ai_ask(role):
+    # Direct unit-level proof against the real require_permission()
+    # closure (not a reimplementation), since no live HTTP endpoint
+    # currently gates on engineering_ai.ask.
+    from fastapi import HTTPException
+
+    from dependencies import require_permission
+
+    check = require_permission("engineering_ai.ask")
+
+    if "engineering_ai.ask" in ROLE_PERMISSIONS[role]:
+        assert check(current_user=_identity(role)) is not None
+    else:
+        with pytest.raises(HTTPException) as exc_info:
+            check(current_user=_identity(role))
+        assert exc_info.value.status_code == 403

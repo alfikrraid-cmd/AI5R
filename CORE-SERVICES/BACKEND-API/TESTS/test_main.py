@@ -1595,7 +1595,6 @@ def test_docs_and_openapi_are_available():
         "/api/ltsa/condition-monitoring-schedules/{code}",
         "/api/ltsa/condition-monitoring-readings",
         "/api/ltsa/condition-monitoring-readings/{code}",
-        "/api/ltsa/engineering-ai",
         "/work-orders",
         "/work-orders/{id}",
         "/api/ltsa/workorders",
@@ -1606,3 +1605,10 @@ def test_docs_and_openapi_are_available():
         "/copilot/summary",
     ):
         assert path in paths
+
+    # MWO-LTSA-AUTH-001A -- engineering_ai is deliberately NOT wired: its
+    # orchestrator is never configured outside its own test file (see
+    # routers/engineering_ai.py), so wiring it would expose a 500-on-
+    # every-request endpoint rather than close a real gap. This asserts
+    # that omission is intentional and still true, not a silent gap.
+    assert "/api/ltsa/engineering-ai" not in paths
