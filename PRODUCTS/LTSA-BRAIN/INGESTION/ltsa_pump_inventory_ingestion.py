@@ -417,6 +417,24 @@ def _is_missing_size(shaft_size: str | None) -> bool:
     return shaft_size is None or shaft_size.casefold() in _MISSING_SIZE_TOKENS
 
 
+# MWO-LTSA-SEAL-TYPE-INVALID-GUARD-001: same placeholder-token convention
+# as _is_missing_size, now applied to Seal Type (e.g. a raw "N/A"/"Unknown"
+# cell -- _normalize_seal_name only ever collapsed a bare "-" to None, so
+# these previously survived as a "valid" seal_name). Also rejects
+# symbol-only junk (e.g. a real source cell containing a single stray "`",
+# confirmed row 142/946-P-4C) by reusing build_seal_code's OWN _slug()
+# reduction rather than a second parallel rule: any name that _slug()
+# itself would already collapse to "UNSPEC" is refused here, before a
+# fabricated LTSA-SEAL-UNSPEC-... identity is ever produced.
+_INVALID_SEAL_TYPE_TOKENS = {"-", "n/a", "belum diketahui", "unknown"}
+
+
+def _is_invalid_seal_type(seal_name: str | None) -> bool:
+    if seal_name is None or seal_name.casefold() in _INVALID_SEAL_TYPE_TOKENS:
+        return True
+    return _slug(seal_name) == "UNSPEC"
+
+
 def _resolve_seal_codes(
     mechseal_rows: list[dict[str, Any]],
     kosong_rows: list[dict[str, str | None]],
@@ -446,7 +464,7 @@ def _resolve_seal_codes(
         # real, parseable size has no safe identity to resolve against
         # (never fabricated as a synthetic "UNSPEC" size bucket, which
         # would silently merge unrelated real sizes together).
-        if seal_name is None or _is_missing_size(shaft_size):
+        if _is_invalid_seal_type(seal_name) or _is_missing_size(shaft_size):
             continue
         seal_code_by_identity[identity] = by_exact_identity.get(
             identity, build_seal_code(seal_name, shaft_size)

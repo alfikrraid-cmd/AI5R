@@ -375,3 +375,78 @@ def test_duplicate_identical_source_rows_produce_no_duplicate_compatibility_row(
     projection = build_projection(mechseal_rows, [], [])
 
     assert len(projection["seal_pump_compatibility"]) == 1
+
+
+# --- MWO-LTSA-SEAL-TYPE-INVALID-GUARD-001 -- invalid/junk Seal Type -------
+#
+# Real workbook defect: row 142 (tag 946-P-4C) has a literal "`" as its
+# Seal Type cell -- a real, valid Seal Size ('2.3/4"') alongside it -- which
+# previously survived _normalize_seal_name unchanged and, via
+# build_seal_code's own _slug() reduction (no alphanumeric characters left),
+# fabricated seal_code LTSA-SEAL-UNSPEC-2-3-4.
+
+
+def test_backtick_seal_type_does_not_fabricate_an_unspec_identity():
+    mechseal_rows = [
+        {"row_number": 142, "tag_number": "946-P-4C", "shaft_size": '2.3/4"', "area": "OM 2", "seal_type": "`"}
+    ]
+
+    projection = build_projection(mechseal_rows, [], [])
+
+    assert projection["ltsa_pumps"][0]["tag_number"] == "946-P-4C"  # pump itself still imported
+    assert projection["seal_registry"] == []
+    assert projection["seal_pump_compatibility"] == []
+    assert not any(row["seal_code"].startswith("LTSA-SEAL-UNSPEC") for row in projection["seal_registry"])
+
+
+def test_other_symbol_only_seal_types_also_rejected():
+    mechseal_rows = [
+        {"row_number": 1, "tag_number": "P-1", "shaft_size": '2"', "area": "A", "seal_type": "***"},
+        {"row_number": 2, "tag_number": "P-2", "shaft_size": '2"', "area": "A", "seal_type": "??"},
+    ]
+
+    projection = build_projection(mechseal_rows, [], [])
+
+    assert projection["seal_pump_compatibility"] == []
+    assert len(projection["ltsa_pumps"]) == 2  # both pumps still imported
+
+
+def test_placeholder_seal_type_tokens_rejected_alongside_valid_size():
+    mechseal_rows = [
+        {"row_number": 1, "tag_number": "P-1", "shaft_size": '2"', "area": "A", "seal_type": "N/A"},
+        {"row_number": 2, "tag_number": "P-2", "shaft_size": '2"', "area": "A", "seal_type": "Unknown"},
+        {"row_number": 3, "tag_number": "P-3", "shaft_size": '2"', "area": "A", "seal_type": "Belum Diketahui"},
+    ]
+
+    projection = build_projection(mechseal_rows, [], [])
+
+    assert projection["seal_pump_compatibility"] == []
+    assert len(projection["ltsa_pumps"]) == 3
+
+
+def test_valid_seal_type_still_resolves_normally_alongside_the_guard():
+    mechseal_rows = [
+        {"row_number": 1, "tag_number": "P-1", "shaft_size": '2"', "area": "A", "seal_type": "T48MP"}
+    ]
+
+    projection = build_projection(mechseal_rows, [], [])
+
+    assert len(projection["seal_registry"]) == 1
+    assert len(projection["seal_pump_compatibility"]) == 1
+    assert not projection["seal_registry"][0]["seal_code"].startswith("LTSA-SEAL-UNSPEC")
+
+
+def test_tandem_seal_55mm_still_resolves_once_and_covers_all_five_pumps():
+    mechseal_rows = [
+        {"row_number": 260, "tag_number": "945-P-7A", "shaft_size": "55MM", "area": "LPG", "seal_type": "TANDEM SEAL"},
+        {"row_number": 261, "tag_number": "945-P-7B", "shaft_size": "55MM", "area": "LPG", "seal_type": "TANDEM SEAL"},
+        {"row_number": 262, "tag_number": "945-P-7C", "shaft_size": "55MM", "area": "LPG", "seal_type": "TANDEM SEAL"},
+        {"row_number": 263, "tag_number": "140-P-24A", "shaft_size": "55MM", "area": "DCU", "seal_type": "TANDEM SEAL"},
+        {"row_number": 264, "tag_number": "140-P-24B", "shaft_size": "55MM", "area": "DCU", "seal_type": "TANDEM SEAL"},
+    ]
+
+    projection = build_projection(mechseal_rows, [], [])
+
+    assert len(projection["seal_registry"]) == 1
+    tags = {row["pump_tag_number"] for row in projection["seal_pump_compatibility"]}
+    assert tags == {"945-P-7A", "945-P-7B", "945-P-7C", "140-P-24A", "140-P-24B"}
