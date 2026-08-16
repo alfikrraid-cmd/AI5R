@@ -420,9 +420,14 @@ def _resolve_seal_codes(
         identities.add((_normalize_seal_name(row.get("seal_type")), _normalize_size(row.get("shaft_size"))))
 
     seal_code_by_identity: dict[tuple[str | None, str | None], str] = {}
-    for identity in sorted(identities):
+    for identity in sorted(identities, key=lambda pair: (pair[0] is None, pair[0] or "", pair[1] is None, pair[1] or "")):
         seal_name, shaft_size = identity
-        if seal_name is None:
+        # MWO-LTSA-PUMP-SEAL-DATA-WIRING-001: Seal Type + Seal Size is the
+        # frozen V1 compatibility identity -- a row with a type but no
+        # parseable size has no safe identity to resolve against (never
+        # fabricated as a synthetic "UNSPEC" size bucket, which would
+        # silently merge unrelated real sizes together).
+        if seal_name is None or shaft_size is None:
             continue
         seal_code_by_identity[identity] = by_exact_identity.get(
             identity, build_seal_code(seal_name, shaft_size)
