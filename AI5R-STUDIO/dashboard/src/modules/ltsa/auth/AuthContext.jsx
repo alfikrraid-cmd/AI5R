@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { onUnauthorized } from "../../../api/ai5rClient";
 import * as authClient from "./authClient";
 
 const AuthContext = createContext(null);
@@ -50,6 +51,19 @@ export function AuthProvider({ children, client = authClient }) {
     setStatus("unauthenticated");
     setError(null);
   }, [client]);
+
+  // MWO-LTSA-AUTH-002 Rule 6 -- a 401 from ANY protected LTSA request (not
+  // just /api/auth/me) must clear the session and return to LoginView.
+  // ai5rClient.js's apiFetch() already clears the stored session on 401;
+  // this registers the matching React-state clear so the UI actually
+  // reflects it, without ai5rClient depending on React.
+  useEffect(() => {
+    onUnauthorized(() => {
+      setSession(null);
+      setStatus("unauthenticated");
+      setError(null);
+    });
+  }, []);
 
   const value = useMemo(
     () => ({ status, session, error, login, logout }),

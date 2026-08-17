@@ -1,11 +1,68 @@
 ﻿const API_URL = import.meta.env.VITE_API_URL || "http://localhost:18000";
 
+// MWO-LTSA-AUTH-002 -- the one canonical session store + authenticated-
+// request mechanism every LTSA API call goes through (Authorization:
+// Bearer <token>, centrally, never duplicated per call site). authClient.js
+// (POST /api/auth/login, GET /api/auth/me) reads/writes the SAME session
+// record via these exports rather than keeping a second copy of the
+// storage key, so there is exactly one place a token can live.
+const SESSION_KEY = "ai5r.ltsa.session";
+
+export function getStoredSession() {
+  const raw = window.localStorage.getItem(SESSION_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    window.localStorage.removeItem(SESSION_KEY);
+    return null;
+  }
+}
+
+export function storeSession(session) {
+  window.localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+}
+
+export function clearStoredSession() {
+  window.localStorage.removeItem(SESSION_KEY);
+}
+
+// AuthContext registers itself here once (see AuthContext.jsx) so that a
+// 401 from ANY protected LTSA call -- not just /api/auth/me -- clears the
+// session and returns to LoginView (Rule 6), without ai5rClient importing
+// React state directly.
+let _unauthorizedHandler = null;
+export function onUnauthorized(handler) {
+  _unauthorizedHandler = handler;
+}
+
+// Every LTSA/platform fetch in this file goes through here instead of the
+// global fetch directly, so Bearer-token attachment and 401 handling are
+// implemented exactly once, not duplicated across every workspace's own
+// API function (per this MWO's Rule 5).
+async function apiFetch(input, options = {}) {
+  const session = getStoredSession();
+  const headers = { ...(options.headers || {}) };
+  if (session?.token) {
+    headers.Authorization = `Bearer ${session.token}`;
+  }
+
+  const response = await fetch(input, { ...options, headers });
+
+  if (response.status === 401) {
+    clearStoredSession();
+    _unauthorizedHandler?.();
+  }
+
+  return response;
+}
+
 
 export async function getSystemStatus(){
 
     try{
 
-        const response = await fetch(
+        const response = await apiFetch(
             `${API_URL}/health`
         );
 
@@ -44,7 +101,7 @@ export async function getDashboardData(){
 
     try{
 
-        const response = await fetch(
+        const response = await apiFetch(
             `${API_URL}/dashboard`
         );
 
@@ -100,7 +157,7 @@ function normalizeEquipmentList(payload) {
 
 
 export async function getEquipmentList() {
-    const response = await fetch(`${API_URL}/api/ltsa/equipment`);
+    const response = await apiFetch(`${API_URL}/api/ltsa/equipment`);
 
     if (!response.ok) {
         throw new Error("Equipment API unavailable");
@@ -111,7 +168,7 @@ export async function getEquipmentList() {
 
 
 export async function getEquipment(equipmentId) {
-    const response = await fetch(
+    const response = await apiFetch(
         `${API_URL}/api/ltsa/equipment/${encodeURIComponent(equipmentId)}`
     );
 
@@ -130,7 +187,7 @@ export async function getEquipment(equipmentId) {
 }
 
 export async function getEquipmentInspections(equipmentId) {
-    const response = await fetch(
+    const response = await apiFetch(
         `${API_URL}/api/ltsa/equipment/${encodeURIComponent(equipmentId)}/inspections`
     );
 
@@ -156,7 +213,7 @@ export async function getEquipmentInspections(equipmentId) {
 }
 
 export async function getInspectionFindings(inspectionId) {
-    const response = await fetch(
+    const response = await apiFetch(
         `${API_URL}/api/ltsa/inspections/${encodeURIComponent(inspectionId)}/findings`
     );
 
@@ -181,7 +238,7 @@ export async function getInspectionFindings(inspectionId) {
     throw new Error("Inspection findings API returned an invalid list");
 }
 export async function getFindingWorkOrders(findingId) {
-    const response = await fetch(
+    const response = await apiFetch(
         `${API_URL}/api/ltsa/findings/${encodeURIComponent(findingId)}/workorders`
     );
     if (!response.ok) throw new Error("Finding work orders API unavailable");
@@ -194,7 +251,7 @@ export async function getFindingWorkOrders(findingId) {
 }
 
 export async function getWorkOrders() {
-    const response = await fetch(`${API_URL}/api/ltsa/workorders`);
+    const response = await apiFetch(`${API_URL}/api/ltsa/workorders`);
 
     if (!response.ok) {
         throw new Error("Work orders API unavailable");
@@ -214,7 +271,7 @@ export async function getWorkOrders() {
 }
 
 export async function getWorkOrder(workOrderId) {
-    const response = await fetch(
+    const response = await apiFetch(
         `${API_URL}/api/ltsa/workorders/${encodeURIComponent(workOrderId)}`
     );
 
@@ -242,7 +299,7 @@ export async function getWorkOrder(workOrderId) {
 // legitimate, expected outcome per WO-BE-003, not treated as an error the
 // caller must catch. Callers read `.area`, which is null when unresolved.
 export async function getWorkOrderAsset(workOrderId) {
-    const response = await fetch(
+    const response = await apiFetch(
         `${API_URL}/api/ltsa/workorders/${encodeURIComponent(workOrderId)}/asset`
     );
 
@@ -254,7 +311,7 @@ export async function getWorkOrderAsset(workOrderId) {
 }
 
 export async function getPumps() {
-    const response = await fetch(`${API_URL}/api/ltsa/pumps`);
+    const response = await apiFetch(`${API_URL}/api/ltsa/pumps`);
 
     if (!response.ok) {
         throw new Error("Pumps API unavailable");
@@ -274,7 +331,7 @@ export async function getPumps() {
 }
 
 export async function getPump(tagNumber) {
-    const response = await fetch(`${API_URL}/api/ltsa/pumps/${encodeURIComponent(tagNumber)}`);
+    const response = await apiFetch(`${API_URL}/api/ltsa/pumps/${encodeURIComponent(tagNumber)}`);
 
     if (!response.ok) {
         throw new Error("Pump detail API unavailable");
@@ -300,7 +357,7 @@ export async function getPump(tagNumber) {
 // success: false, which is a legitimate "unresolved" outcome), so it is
 // treated as an error.
 export async function getPumpOpenWorkOrders(tagNumber) {
-    const response = await fetch(
+    const response = await apiFetch(
         `${API_URL}/api/ltsa/pumps/${encodeURIComponent(tagNumber)}/workorders`
     );
 
@@ -321,7 +378,7 @@ export async function getPumpOpenWorkOrders(tagNumber) {
 // reflects a real upstream failure (same convention as getPumpOpenWorkOrders),
 // so it is treated as an error.
 export async function getPumpLastPM(tagNumber) {
-    const response = await fetch(
+    const response = await apiFetch(
         `${API_URL}/api/ltsa/pumps/${encodeURIComponent(tagNumber)}/last-pm`
     );
 
@@ -339,7 +396,7 @@ export async function getPumpLastPM(tagNumber) {
 }
 
 export async function getPMSchedules() {
-    const response = await fetch(`${API_URL}/api/ltsa/pm-schedules`);
+    const response = await apiFetch(`${API_URL}/api/ltsa/pm-schedules`);
 
     if (!response.ok) {
         throw new Error("PM schedules API unavailable");
@@ -359,7 +416,7 @@ export async function getPMSchedules() {
 }
 
 export async function getCMReports() {
-    const response = await fetch(`${API_URL}/api/ltsa/cm-reports`);
+    const response = await apiFetch(`${API_URL}/api/ltsa/cm-reports`);
 
     if (!response.ok) {
         throw new Error("CM reports API unavailable");
@@ -385,7 +442,7 @@ export async function getCMReports() {
 // getCMReports, etc.), so none is added for these two.
 
 export async function getPMOccurrences() {
-    const response = await fetch(`${API_URL}/api/ltsa/pm-occurrences`);
+    const response = await apiFetch(`${API_URL}/api/ltsa/pm-occurrences`);
 
     if (!response.ok) {
         throw new Error("PM occurrences API unavailable");
@@ -405,7 +462,7 @@ export async function getPMOccurrences() {
 }
 
 export async function getConditionMonitoringReadings() {
-    const response = await fetch(`${API_URL}/api/ltsa/condition-monitoring-readings`);
+    const response = await apiFetch(`${API_URL}/api/ltsa/condition-monitoring-readings`);
 
     if (!response.ok) {
         throw new Error("Condition Monitoring readings API unavailable");
@@ -429,7 +486,7 @@ export async function getConditionMonitoringReadings() {
 // WO-CMON-002, but no client function ever called it. Required for the
 // Asset 360 Active Plans zone.
 export async function getConditionMonitoringSchedules() {
-    const response = await fetch(`${API_URL}/api/ltsa/condition-monitoring-schedules`);
+    const response = await apiFetch(`${API_URL}/api/ltsa/condition-monitoring-schedules`);
 
     if (!response.ok) {
         throw new Error("Condition Monitoring schedules API unavailable");
@@ -453,7 +510,7 @@ export async function getConditionMonitoringSchedules() {
 // has existed since WO-MH-002, but no client function ever called it.
 // Required for the Asset 360 History stream's MH event source.
 export async function getMaintenanceHistory() {
-    const response = await fetch(`${API_URL}/api/ltsa/maintenance-history`);
+    const response = await apiFetch(`${API_URL}/api/ltsa/maintenance-history`);
 
     if (!response.ok) {
         throw new Error("Maintenance history API unavailable");
@@ -476,7 +533,7 @@ export async function getMaintenanceHistory() {
 // here reflects a real upstream failure, so it is treated as an error, the
 // same convention as getPumpLastPM.
 export async function getPumpLastCM(tagNumber) {
-    const response = await fetch(
+    const response = await apiFetch(
         `${API_URL}/api/ltsa/pumps/${encodeURIComponent(tagNumber)}/last-cm`
     );
 
@@ -498,7 +555,7 @@ export async function getPumpLastCM(tagNumber) {
 // failure, so it is treated as an error, the same convention as
 // getPumpLastPM/getPumpLastCM.
 export async function getPumpConditionMonitoringFlag(tagNumber) {
-    const response = await fetch(
+    const response = await apiFetch(
         `${API_URL}/api/ltsa/pumps/${encodeURIComponent(tagNumber)}/condition-monitoring-flag`
     );
 
@@ -519,7 +576,7 @@ export async function getPumpConditionMonitoringFlag(tagNumber) {
 // here reflects a real upstream failure, same convention as getPumpLastPM/
 // getPumpLastCM/getPumpConditionMonitoringFlag.
 export async function getPumpSpareParts(tagNumber) {
-    const response = await fetch(
+    const response = await apiFetch(
         `${API_URL}/api/ltsa/pumps/${encodeURIComponent(tagNumber)}/spare-parts`
     );
 
@@ -537,7 +594,7 @@ export async function getPumpSpareParts(tagNumber) {
 }
 
 export async function createWorkOrder(payload) {
-    const response = await fetch(`${API_URL}/api/ltsa/workorders`, {
+    const response = await apiFetch(`${API_URL}/api/ltsa/workorders`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -557,7 +614,7 @@ export async function createWorkOrder(payload) {
 }
 
 export async function getWorkOrderTimeline(workOrderId) {
-    const response = await fetch(
+    const response = await apiFetch(
         `${API_URL}/api/ltsa/workorders/${encodeURIComponent(workOrderId)}/timeline`
     );
 
@@ -586,7 +643,7 @@ export async function getWorkOrderTimeline(workOrderId) {
 // failure it returns a FastAPI-style {"detail": "..."} body, read here the
 // same way every other error path in this file already surfaces a message.
 export async function postEngineeringAI(request) {
-    const response = await fetch(`${API_URL}/api/ltsa/engineering-ai`, {
+    const response = await apiFetch(`${API_URL}/api/ltsa/engineering-ai`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(request),
@@ -609,7 +666,7 @@ export async function postEngineeringAI(request) {
 // Knowledge Workspace). One endpoint, mirrors getPumpSpareParts/
 // getPumpConditionMonitoringFlag's own {success, tag_number, data} shape.
 export async function getPumpKnowledge(tagNumber) {
-    const response = await fetch(
+    const response = await apiFetch(
         `${API_URL}/api/ltsa/pumps/${encodeURIComponent(tagNumber)}/knowledge`
     );
 
@@ -633,7 +690,7 @@ export async function getPumpKnowledge(tagNumber) {
 // uses for current state, timeline, related engineering, and analytics --
 // see pumpLifecycleMapping.js for the field mapping.
 export async function getPumpLifecycle(tagNumber) {
-    const response = await fetch(
+    const response = await apiFetch(
         `${API_URL}/api/ltsa/pumps/${encodeURIComponent(tagNumber)}/lifecycle`
     );
 
@@ -654,7 +711,7 @@ export async function getPumpLifecycle(tagNumber) {
 // Dashboard). One endpoint, {success, data} shape -- same convention as
 // getPumpKnowledge.
 export async function getFleetReliability() {
-    const response = await fetch(`${API_URL}/api/ltsa/fleet/reliability`);
+    const response = await apiFetch(`${API_URL}/api/ltsa/fleet/reliability`);
 
     if (!response.ok) {
         throw new Error("Fleet reliability API unavailable");
@@ -673,7 +730,7 @@ export async function getFleetReliability() {
 // Dashboard foundation). One endpoint, {success, data} shape -- same
 // convention as getPumpKnowledge/getFleetReliability.
 export async function getFleetPowerBI() {
-    const response = await fetch(`${API_URL}/api/ltsa/fleet/powerbi`);
+    const response = await apiFetch(`${API_URL}/api/ltsa/fleet/powerbi`);
 
     if (!response.ok) {
         throw new Error("Fleet Power BI API unavailable");
@@ -691,7 +748,7 @@ export async function getFleetPowerBI() {
 // Mechanical Seal Workspace API (MWO-LTSA-041, per MWO-LTSA-040's
 // archaeology). Same list-unwrapping convention as getPumps().
 export async function getSeals() {
-    const response = await fetch(`${API_URL}/api/ltsa/seals`);
+    const response = await apiFetch(`${API_URL}/api/ltsa/seals`);
 
     if (!response.ok) {
         throw new Error("Seals API unavailable");
@@ -718,7 +775,7 @@ export async function getSeals() {
 // getSeals()/getPumps(). Drawing Workspace also calls this same function
 // to resolve its own Document/Seal relationships -- not a second fetcher.
 export async function getDocuments() {
-    const response = await fetch(`${API_URL}/api/ltsa/documents`);
+    const response = await apiFetch(`${API_URL}/api/ltsa/documents`);
 
     if (!response.ok) {
         throw new Error("Documents API unavailable");
@@ -741,7 +798,7 @@ export async function getDocuments() {
 // the Installation Workspace created by MWO-LTSA-056). Same
 // list-unwrapping convention as getSeals()/getPumps().
 export async function getInstallations() {
-    const response = await fetch(`${API_URL}/api/ltsa/installations`);
+    const response = await apiFetch(`${API_URL}/api/ltsa/installations`);
 
     if (!response.ok) {
         throw new Error("Installations API unavailable");
@@ -761,7 +818,7 @@ export async function getInstallations() {
 }
 
 export async function getSealStock() {
-    const response = await fetch(`${API_URL}/api/ltsa/seal-stock`);
+    const response = await apiFetch(`${API_URL}/api/ltsa/seal-stock`);
 
     if (!response.ok) {
         throw new Error("Seal Stock API unavailable");
@@ -781,7 +838,7 @@ export async function getSealStock() {
 }
 
 export async function getSealCompatibility() {
-    const response = await fetch(`${API_URL}/api/ltsa/seal-compatibility`);
+    const response = await apiFetch(`${API_URL}/api/ltsa/seal-compatibility`);
 
     if (!response.ok) {
         throw new Error("Seal Compatibility API unavailable");
@@ -814,7 +871,7 @@ export async function getSealCompatibility() {
 // execution outcome), never an exceptional crash. Only a genuine
 // HTTP-level failure or unparseable body throws.
 async function _postImportApi(path, body) {
-    const response = await fetch(`${API_URL}${path}`, {
+    const response = await apiFetch(`${API_URL}${path}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -849,7 +906,7 @@ export async function executeImportSession(sessionId) {
 }
 
 export async function getImportSessionStatus(sessionId) {
-    const response = await fetch(`${API_URL}/api/ltsa/import/status/${encodeURIComponent(sessionId)}`);
+    const response = await apiFetch(`${API_URL}/api/ltsa/import/status/${encodeURIComponent(sessionId)}`);
     const payload = await response.json().catch(() => null);
 
     if (!response.ok) {
@@ -871,7 +928,7 @@ export async function dryRunPumpXlsx(file) {
     const formData = new FormData();
     formData.append("file", file);
 
-    const response = await fetch(`${API_URL}/api/ltsa/import/pump-xlsx/dry-run`, {
+    const response = await apiFetch(`${API_URL}/api/ltsa/import/pump-xlsx/dry-run`, {
         method: "POST",
         body: formData,
     });

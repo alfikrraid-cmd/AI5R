@@ -14,19 +14,93 @@ vi.mock("./LTSAWorkspace", () => ({
   ),
 }));
 
+// MWO-LTSA-AUTH-002 -- authClient.js now talks to the real AUTH-001
+// backend (POST /api/auth/login, GET /api/auth/me); production code no
+// longer contains demo identities (Rule 2). This suite supplies its own
+// fixtures via the exact same login/getSession/logout contract instead,
+// per Rule 2's own "tests may use fixtures/mocks" carve-out -- the real
+// module is replaced wholesale for this file, not partially monkey-patched.
+const FIXTURES = {
+  "admin@tap.co.id": {
+    user: { id: "u-tap-admin", email: "admin@tap.co.id", name: "Andra Wicaksono" },
+    organization: { id: "org-tap", code: "TAP", displayName: "TAP" },
+    role: "TAP_ADMIN",
+    permissions: [
+      "pump.read", "seal.read", "inventory.read", "maintenance.read", "maintenance.write",
+      "condition.read", "drawing.read", "engineering_ai.ask", "import.read", "import.execute",
+      "master.edit", "internal_inventory.read", "internal_component.read", "admin.users",
+    ],
+    token: "fixture.tap-admin",
+  },
+  "engineer@tap.co.id": {
+    user: { id: "u-tap-engineer", email: "engineer@tap.co.id", name: "Rizal Pratama" },
+    organization: { id: "org-tap", code: "TAP", displayName: "TAP" },
+    role: "TAP_ENGINEER",
+    permissions: [
+      "pump.read", "seal.read", "inventory.read", "maintenance.read", "maintenance.write",
+      "condition.read", "drawing.read", "engineering_ai.ask", "import.read", "import.execute",
+      "internal_inventory.read", "internal_component.read",
+    ],
+    token: "fixture.tap-engineer",
+  },
+  "budi.santoso@pertamina.com": {
+    user: { id: "u-pertamina-engineer", email: "budi.santoso@pertamina.com", name: "Budi Santoso" },
+    organization: { id: "org-pertamina-ru2", code: "PERTAMINA_RU_II", displayName: "Pertamina RU II" },
+    role: "PERTAMINA_ENGINEER",
+    permissions: ["pump.read", "seal.read", "inventory.read", "maintenance.read", "condition.read", "drawing.read", "engineering_ai.ask"],
+    token: "fixture.pertamina-engineer",
+  },
+  "viewer@pertamina.com": {
+    user: { id: "u-pertamina-viewer", email: "viewer@pertamina.com", name: "Siti Rahayu" },
+    organization: { id: "org-pertamina-ru2", code: "PERTAMINA_RU_II", displayName: "Pertamina RU II" },
+    role: "PERTAMINA_VIEWER",
+    permissions: ["pump.read", "seal.read", "inventory.read", "maintenance.read"],
+    token: "fixture.pertamina-viewer",
+  },
+};
+
+// inactive@tap.co.id: the backend collapses unknown-user/wrong-password/
+// disabled-user into ONE generic invalid_credentials 401 (anti-enumeration
+// -- authClient.js's own real login() never distinguishes them). LoginView's
+// "inactive" state has no real backend trigger anymore, but Rule 3 requires
+// it stay visually reachable, so this fixture-only login exercises it
+// directly rather than through authClient's real (now-collapsed) code path.
+let mockLoginImpl;
+
+vi.mock("../auth/authClient", () => ({
+  login: (...args) => mockLoginImpl(...args),
+  getSession: async () => null,
+  logout: vi.fn(),
+}));
+
+beforeEach(() => {
+  window.localStorage.clear();
+  mockLoginImpl = async ({ email, password }) => {
+    if (email === "inactive@tap.co.id") {
+      const error = new Error("inactive_account");
+      error.code = "inactive_account";
+      throw error;
+    }
+    const fixture = FIXTURES[email];
+    if (!fixture || password !== "demo123") {
+      const error = new Error("invalid_credentials");
+      error.code = "invalid_credentials";
+      throw error;
+    }
+    return fixture;
+  };
+});
+
+afterEach(() => {
+  window.localStorage.clear();
+  vi.clearAllMocks();
+});
+
 async function login(email, password = "demo123") {
   fireEvent.change(screen.getByLabelText("Email"), { target: { value: email } });
   fireEvent.change(screen.getByLabelText("Password"), { target: { value: password } });
   fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
 }
-
-beforeEach(() => {
-  window.localStorage.clear();
-});
-
-afterEach(() => {
-  window.localStorage.clear();
-});
 
 describe("LTSAAuthGate", () => {
   it("shows the login screen when there is no session", async () => {
@@ -101,6 +175,5 @@ describe("LTSAAuthGate", () => {
     fireEvent.click(screen.getByRole("button", { name: /log out/i }));
 
     expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
-    expect(window.localStorage.getItem("ai5r.ltsa.session")).toBeNull();
   });
 });

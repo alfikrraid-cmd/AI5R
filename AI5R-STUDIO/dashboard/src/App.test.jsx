@@ -1,11 +1,28 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App, { PUMP_WORKSPACE_ROUTE } from "./App";
 
-// MWO-LTSA-AUTH-OPEN-DESIGN-001 -- the LTSA application is now behind
-// LTSAAuthGate, so reaching any LTSA route (including a direct deep link)
-// requires signing in first. This mirrors the demo credentials in
-// modules/ltsa/auth/authClient.js.
+// MWO-LTSA-AUTH-002 -- LTSAAuthGate's authClient now calls the real
+// AUTH-001 backend (POST /api/auth/login); this suite mocks global fetch
+// to return a real-shaped TAP_ADMIN identity for that one endpoint
+// (Rule 2: production code has no demo identities, but a test fixture is
+// fine), and falls through to a real fetch attempt for everything else,
+// matching this suite's pre-existing behavior (LTSA data calls already
+// hit real/absent endpoints in this test environment before this MWO;
+// unchanged).
+const TAP_ADMIN_LOGIN_RESPONSE = {
+  access_token: "test.tap-admin.token",
+  token_type: "bearer",
+  user: { id: "u-tap-admin", email: "admin@tap.co.id" },
+  organization: { id: "org-tap", code: "TAP" },
+  role: "TAP_ADMIN",
+  permissions: [
+    "pump.read", "seal.read", "inventory.read", "maintenance.read", "maintenance.write",
+    "condition.read", "drawing.read", "engineering_ai.ask", "import.read", "import.execute",
+    "master.edit", "internal_inventory.read", "internal_component.read", "admin.users",
+  ],
+};
+
 async function loginAsTapAdmin() {
   fireEvent.change(await screen.findByLabelText("Email"), { target: { value: "admin@tap.co.id" } });
   fireEvent.change(screen.getByLabelText("Password"), { target: { value: "demo123" } });
@@ -13,13 +30,27 @@ async function loginAsTapAdmin() {
   await screen.findByRole("heading", { name: "Pump Workspace" });
 }
 
+let realFetch;
+
 beforeEach(() => {
   window.localStorage.clear();
+  realFetch = global.fetch;
+  global.fetch = vi.fn((url, options) => {
+    if (String(url).includes("/api/auth/login")) {
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => TAP_ADMIN_LOGIN_RESPONSE,
+      });
+    }
+    return realFetch ? realFetch(url, options) : Promise.reject(new Error("no fetch"));
+  });
 });
 
 afterEach(() => {
   window.history.replaceState({}, "", "/");
   window.localStorage.clear();
+  global.fetch = realFetch;
 });
 
 describe("App", () => {

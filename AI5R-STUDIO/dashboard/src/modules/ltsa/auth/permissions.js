@@ -14,27 +14,44 @@ export const ROLES = Object.freeze({
   PERTAMINA_VIEWER: "PERTAMINA_VIEWER",
 });
 
+// MWO-LTSA-AUTH-002 -- these string VALUES are now the real AUTH-001
+// backend permission names (CORE-SERVICES/API/auth_service.py's own
+// ROLE_PERMISSIONS), not a separately-invented frontend catalog, per this
+// MWO's Rule 7 ("backend is authoritative... smallest safe reconciliation,
+// do not create a role-management system"). The backend has no per-tab
+// granularity (document/installation both gate on drawing.read; workorder/
+// pm both gate on maintenance.read; etc.) -- multiple KEYS below sharing
+// one backend permission VALUE is intentional, not a mistake. The JS
+// identifiers (PERMISSIONS.X) are unchanged, so no consuming code/test
+// needed to change, only what they resolve to.
 export const PERMISSIONS = Object.freeze({
-  DASHBOARD_READ: "dashboard.read",
-  EQUIPMENT_READ: "equipment.read",
+  // DASHBOARD_READ deliberately does NOT reuse pump.read: every role has
+  // pump.read (backend dashboard.py's own choice for ITS gate), but the
+  // frozen Open Design shows "Executive Dashboard" to TAP only, never
+  // Pertamina -- confirmed by MWO-LTSA-AUTH-OPEN-DESIGN-002B's own frozen
+  // screenshots. internal_inventory.read is the closest real backend
+  // permission that is TAP-only (TAP_ADMIN/TAP_ENGINEER) and absent from
+  // both Pertamina roles, preserving that frozen visibility split.
+  DASHBOARD_READ: "internal_inventory.read",
+  EQUIPMENT_READ: "pump.read",
   PUMP_READ: "pump.read",
   SEAL_READ: "seal.read",
   DRAWING_READ: "drawing.read",
-  DOCUMENT_READ: "document.read",
-  INSTALLATION_READ: "installation.read",
-  WORKORDER_READ: "workorder.read",
-  PM_READ: "pm.read",
-  CM_READ: "cm.read",
-  CMON_READ: "cmon.read",
-  KNOWLEDGEREVIEW_READ: "knowledgereview.read",
+  DOCUMENT_READ: "drawing.read",
+  INSTALLATION_READ: "drawing.read",
+  WORKORDER_READ: "maintenance.read",
+  PM_READ: "maintenance.read",
+  CM_READ: "condition.read",
+  CMON_READ: "condition.read",
+  KNOWLEDGEREVIEW_READ: "internal_component.read",
   IMPORT_EXECUTE: "import.execute",
   INVENTORY_READ: "inventory.read",
   INTERNAL_COMPONENT_READ: "internal_component.read",
   ENGINEERING_AI_ASK: "engineering_ai.ask",
-  REPORTS_READ: "reports.read",
-  ANALYTICS_READ: "analytics.read",
-  HISTORY_READ: "history.read",
-  ADMIN_ACCESS: "admin.access",
+  REPORTS_READ: "maintenance.read",
+  ANALYTICS_READ: "internal_component.read",
+  HISTORY_READ: "maintenance.read",
+  ADMIN_ACCESS: "admin.users",
 });
 
 const ENGINEERING_CORE = [
@@ -93,8 +110,20 @@ export const ROLE_PERMISSIONS = Object.freeze({
   ]),
 });
 
+// MWO-LTSA-AUTH-002 -- when session.permissions is present (every real
+// session from authClient.js's real /api/auth/me now carries it), that
+// REAL backend-granted array is authoritative, checked directly -- no
+// frontend role->permission duplication in the runtime path at all.
+// ROLE_PERMISSIONS below is kept only as the fallback for callers/tests
+// that pass a bare {role} fixture with no permissions array (Rule 2:
+// "tests may use fixtures/mocks"); it must stay a subset AUTH-001's own
+// matrix would grant, but is never consulted for a real session.
 export function can(session, permission) {
-  if (!session || !session.role) return false;
+  if (!session) return false;
+  if (Array.isArray(session.permissions)) {
+    return session.permissions.includes(permission);
+  }
+  if (!session.role) return false;
   const grants = ROLE_PERMISSIONS[session.role];
   return Array.isArray(grants) && grants.includes(permission);
 }

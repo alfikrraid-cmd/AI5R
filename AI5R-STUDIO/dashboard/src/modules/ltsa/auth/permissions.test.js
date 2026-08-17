@@ -42,6 +42,46 @@ describe("permissions", () => {
     expect(can({}, PERMISSIONS.PUMP_READ)).toBe(false);
   });
 
+  // MWO-LTSA-AUTH-002 -- can() now checks the REAL backend-granted
+  // session.permissions array first (from GET /api/auth/me), not a
+  // frontend role table, whenever it is present. These use the literal
+  // AUTH-001 backend permission strings (auth_service.py's own
+  // ROLE_PERMISSIONS), proving the real integration path, not the
+  // role-fixture fallback the tests above exercise.
+  it("TAP_ENGINEER (real backend session) is denied admin.users", () => {
+    const session = {
+      role: "TAP_ENGINEER",
+      permissions: ["pump.read", "seal.read", "maintenance.read", "maintenance.write", "engineering_ai.ask"],
+    };
+    expect(can(session, "admin.users")).toBe(false);
+    expect(can(session, PERMISSIONS.PUMP_READ)).toBe(true);
+  });
+
+  it("PERTAMINA_ENGINEER (real backend session) has engineering_ai.ask but not import.execute", () => {
+    const session = {
+      role: "PERTAMINA_ENGINEER",
+      permissions: ["pump.read", "seal.read", "inventory.read", "maintenance.read", "condition.read", "drawing.read", "engineering_ai.ask"],
+    };
+    expect(can(session, "engineering_ai.ask")).toBe(true);
+    expect(can(session, "import.execute")).toBe(false);
+  });
+
+  it("PERTAMINA_VIEWER (real backend session) is denied both engineering_ai.ask and import.execute", () => {
+    const session = {
+      role: "PERTAMINA_VIEWER",
+      permissions: ["pump.read", "seal.read", "inventory.read", "maintenance.read"],
+    };
+    expect(can(session, "engineering_ai.ask")).toBe(false);
+    expect(can(session, "import.execute")).toBe(false);
+  });
+
+  it("a real backend session.permissions array always wins over the role fallback table", () => {
+    // Proves the reconciliation direction: even if the fallback table
+    // would grant something, the real backend array is authoritative.
+    const session = { role: "TAP_ADMIN", permissions: [] };
+    expect(can(session, "admin.users")).toBe(false);
+  });
+
   it("compatible-pump count is never conflated with stock quantity by the capability layer", () => {
     // Domain rule (MWO §6): inventory.read gates whether stock/compat data
     // is shown at all; the count distinction itself lives in the view
