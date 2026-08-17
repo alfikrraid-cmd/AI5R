@@ -15,6 +15,7 @@ from fastapi import FastAPI
 
 from API.auth_service import signing_secret
 from routers import (
+    admin_users,
     auth,
     cm_report,
     condition_monitoring,
@@ -58,6 +59,11 @@ signing_secret()
 
 app.include_router(health.router)
 app.include_router(auth.router)
+# MWO-LTSA-AUTH-003A-FINAL -- User Administration. Every route requires
+# admin.users (get_current_user is the router's own module-level
+# dependency; per-route _require_admin_users()/authorize_user_management()
+# enforce the specific permission + delegation scope).
+app.include_router(admin_users.router)
 app.include_router(organization.router)
 app.include_router(dashboard.router)
 app.include_router(pumps.router)

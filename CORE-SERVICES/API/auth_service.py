@@ -69,14 +69,66 @@ class AuthenticationError(Exception):
 #     visibility rules in this MWO's own frozen decisions are entirely
 #     about READ scope; nothing authorizes customer users to create/
 #     modify TAP-owned maintenance records.
+#
+# MWO-LTSA-AUTH-003A-FINAL -- SUPERUSER and JOHN_CRANE_ENGINEER added; no
+# schema/migration required for this alone (organization_memberships.role
+# has deliberately never had a DB CHECK constraint, migration 007's own
+# documented reason -- "adding a role in code never requires a
+# migration"). Four new permission strings, reusing the existing
+# domain.action naming convention rather than inventing a new shape:
+#   - maintenance.technical_review: PM/CM technical review/acknowledge/
+#     technically-approve/return-for-correction (the exact PM/CM state
+#     machine itself belongs to the future PM/CM Intake MWO -- this MWO
+#     only establishes who is authorized to perform that action).
+#     JOHN_CRANE_ENGINEER only (+ SUPERUSER) -- TAP_ADMIN is deliberately
+#     EXCLUDED even though it is TAP's own administrative authority:
+#     JC's technical review exists specifically as an authority
+#     independent of TAP's own chain, and granting TAP_ADMIN the same
+#     permission would let TAP self-certify its own technical work.
+#   - maintenance.admin_review: TAP's own administrative review of
+#     submitted PM/CM, distinct from JC's technical review and from
+#     maintenance.write (create/edit). TAP_ADMIN only (+ SUPERUSER) --
+#     TAP_ENGINEER creates/edits/submits (maintenance.write) but does not
+#     review its own submissions.
+#   - installation.write: Installation create/edit/submit. No existing
+#     permission fit this (Installation has no write route today at all);
+#     mirrors maintenance.write's exact role grant (TAP_ADMIN/TAP_ENGINEER).
+#   - installation.review: administrative review/approval of a submitted
+#     Installation Report (the document_field_extraction ->
+#     installation_report promotion gate installation_review_service.py
+#     already enforces). TAP_ADMIN only (+ SUPERUSER), mirroring
+#     maintenance.admin_review -- TAP_ENGINEER submits but does not
+#     review its own submissions; JOHN_CRANE_ENGINEER reads Installation
+#     (via drawing.read, already wired to routers/installation.py) but
+#     does not administratively review it -- no MWO evidence establishes
+#     a JC Installation-review authority distinct from PM/CM.
+#   - admin.superuser: SUPERUSER-exclusive administrative actions (manage
+#     TAP_ADMIN and other privileged roles; full internal Audit History
+#     read -- see audit.read_full). Never delegated.
+#   - audit.read_full: full internal Audit History (actor/timestamp/
+#     entity/action/before/after), distinct from the Record Attribution
+#     (created_by/updated_by) every operational-record reader may see.
+#     SUPERUSER only -- see MWO-LTSA-AUTH-003A-FINAL's own Phase 12.
 ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
-    "TAP_ADMIN": frozenset(
+    "SUPERUSER": frozenset(
         {
             "pump.read", "seal.read", "inventory.read",
-            "maintenance.read", "maintenance.write",
+            "maintenance.read", "maintenance.write", "maintenance.technical_review", "maintenance.admin_review",
             "condition.read", "drawing.read", "engineering_ai.ask",
             "import.read", "import.execute", "master.edit",
             "internal_inventory.read", "internal_component.read",
+            "installation.write", "installation.review",
+            "admin.users", "admin.superuser", "audit.read_full",
+        }
+    ),
+    "TAP_ADMIN": frozenset(
+        {
+            "pump.read", "seal.read", "inventory.read",
+            "maintenance.read", "maintenance.write", "maintenance.admin_review",
+            "condition.read", "drawing.read", "engineering_ai.ask",
+            "import.read", "import.execute", "master.edit",
+            "internal_inventory.read", "internal_component.read",
+            "installation.write", "installation.review",
             "admin.users",
         }
     ),
@@ -87,6 +139,15 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "condition.read", "drawing.read", "engineering_ai.ask",
             "import.read", "import.execute",
             "internal_inventory.read", "internal_component.read",
+            "installation.write",
+        }
+    ),
+    "JOHN_CRANE_ENGINEER": frozenset(
+        {
+            "pump.read", "seal.read", "inventory.read",
+            "maintenance.read", "maintenance.technical_review",
+            "condition.read", "drawing.read", "engineering_ai.ask",
+            "internal_component.read",
         }
     ),
     "PERTAMINA_ENGINEER": frozenset(
@@ -99,6 +160,36 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
         {"pump.read", "seal.read", "inventory.read", "maintenance.read"}
     ),
 }
+
+# MWO-LTSA-AUTH-003A-FINAL -- delegation scope: which roles an actor with
+# admin.users may create/manage. SUPERUSER may manage every role (subject
+# to last-SUPERUSER safety, see auth_admin_service.py). TAP_ADMIN may only
+# manage ordinary TAP/Pertamina operational roles -- SUPERUSER and
+# JOHN_CRANE_ENGINEER are deliberately excluded from TAP_ADMIN's
+# delegation scope:
+#   - SUPERUSER: obviously never TAP-delegable (Hard Rule "TAP_ADMIN must
+#     never create/promote SUPERUSER").
+#   - JOHN_CRANE_ENGINEER: excluded on the same independence reasoning as
+#     maintenance.technical_review above -- JC's technical review exists
+#     specifically as an authority independent of TAP's own chain of
+#     command; letting TAP_ADMIN create/disable/demote the JC accounts
+#     that review TAP's own work would compromise that independence. This
+#     is a disclosed judgment call (the MWO asked this to be decided by
+#     "business/security reasoning", not assumed), reversible by explicit
+#     Chief Architect decision.
+# Also unresolved (disclosed, not fabricated): no "JOHN_CRANE" organization
+# row exists in `organizations` (migration 007 seeds only TAP and
+# PERTAMINA_RU_II) -- creating a real JOHN_CRANE_ENGINEER user today
+# requires an existing organization_id to be supplied by the caller (never
+# hardcoded here); this MWO does not invent that organization row.
+DELEGATION_SCOPE: dict[str, frozenset[str]] = {
+    "SUPERUSER": frozenset(ROLE_PERMISSIONS.keys()),
+    "TAP_ADMIN": frozenset({"TAP_ENGINEER", "PERTAMINA_ENGINEER", "PERTAMINA_VIEWER"}),
+}
+
+
+def can_delegate_role(actor_role: str, target_role: str) -> bool:
+    return target_role in DELEGATION_SCOPE.get(actor_role, frozenset())
 
 
 def permissions_for_role(role: str) -> frozenset[str]:

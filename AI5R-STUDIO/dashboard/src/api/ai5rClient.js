@@ -941,3 +941,57 @@ export async function dryRunPumpXlsx(file) {
 
     return payload;
 }
+
+// MWO-LTSA-AUTH-003A-FINAL -- Admin Users API. Every call requires
+// admin.users (enforced server-side, routers/admin_users.py); a 403 here
+// always means the real backend denied it (delegation scope), never a
+// frontend-only gate -- errors surface `detail` (FastAPI's own field,
+// e.g. "TAP_ADMIN is not authorized to manage SUPERUSER accounts") the
+// same way dryRunPumpXlsx() already does above.
+async function _adminUsersRequest(input, options) {
+    const response = await apiFetch(input, options);
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok) {
+        throw new Error(payload?.detail || payload?.message || "Admin Users API unavailable");
+    }
+
+    return payload;
+}
+
+export async function getAdminUsers() {
+    const payload = await _adminUsersRequest(`${API_URL}/api/admin/users`);
+    return Array.isArray(payload?.users) ? payload.users : [];
+}
+
+export async function createAdminUser({ email, password, organizationId, role }) {
+    return _adminUsersRequest(`${API_URL}/api/admin/users`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, organization_id: organizationId, role }),
+    });
+}
+
+export async function updateAdminUserStatus(userId, status) {
+    return _adminUsersRequest(`${API_URL}/api/admin/users/${encodeURIComponent(userId)}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+    });
+}
+
+export async function updateAdminUserRole(userId, organizationId, role) {
+    return _adminUsersRequest(`${API_URL}/api/admin/users/${encodeURIComponent(userId)}/role`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ organization_id: organizationId, role }),
+    });
+}
+
+export async function resetAdminUserPassword(userId, newPassword) {
+    return _adminUsersRequest(`${API_URL}/api/admin/users/${encodeURIComponent(userId)}/password-reset`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ new_password: newPassword }),
+    });
+}

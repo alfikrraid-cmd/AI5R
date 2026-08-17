@@ -11,6 +11,31 @@ class LoginRequest(BaseModel):
     email: str
     password: str
 
+
+# MWO-LTSA-AUTH-003A-FINAL -- Admin Users API request bodies. `password`/
+# `new_password` are plain strings ONLY in the request (never persisted or
+# logged as-is -- the router hashes via auth_password.hash_password()
+# before any repository call; no response model ever echoes a password
+# field back).
+class AdminCreateUserRequest(BaseModel):
+    email: str
+    password: str
+    organization_id: str
+    role: str
+
+
+class AdminUpdateUserStatusRequest(BaseModel):
+    status: str
+
+
+class AdminUpdateMembershipRoleRequest(BaseModel):
+    organization_id: str
+    role: str
+
+
+class AdminResetPasswordRequest(BaseModel):
+    new_password: str
+
 # Fields mirror exactly what WorkOrderGateway.create_work_order already
 # accepts (per the canonical Work Order Create workflow's Validate node) --
 # not new business fields, just typed for the request body.
@@ -25,6 +50,12 @@ class WorkOrderCreateRequest(BaseModel):
     priority: str | None = None
     status: str | None = None
     assigned_to: str | None = None
+    # title / work_type / due_date added per ADR-WO-003 (implements WO-BE-004).
+    # Nullable, matching the new work_order columns -- omitting them preserves
+    # existing caller behavior unchanged.
+    title: str | None = None
+    work_type: str | None = None
+    due_date: str | None = None
 
 
 # Fields mirror exactly what MaintenanceHistoryGateway.create_maintenance_history

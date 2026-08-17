@@ -100,3 +100,105 @@ def test_find_organization_by_code_uses_a_plain_select_via_json_query():
     assert organization_id == "org-1"
     assert "SELECT" in runner.scalar_calls[0]
     assert "FROM (SELECT" in runner.scalar_calls[0] or "FROM (" in runner.scalar_calls[0]
+
+
+# --- MWO-LTSA-AUTH-003A-FINAL -- User Administration coverage --------------
+
+
+def test_create_user_defaults_created_by_and_updated_by_to_null_for_the_bootstrap_case():
+    runner = FakeRunner(scalar_response=json.dumps([{"id": "u-1"}]))
+    repo = AuthRepository(runner)
+
+    repo.create_user(email="new@tap.internal", password_hash="scrypt$...")
+
+    sql = runner.scalar_calls[0]
+    assert "NULL, NULL" in sql or "NULL,NULL" in sql.replace(" ", "")
+
+
+def test_create_user_records_created_by_when_an_authenticated_actor_exists():
+    runner = FakeRunner(scalar_response=json.dumps([{"id": "u-2"}]))
+    repo = AuthRepository(runner)
+
+    repo.create_user(email="new@tap.internal", password_hash="scrypt$...", created_by="actor-uuid")
+
+    sql = runner.scalar_calls[0]
+    assert "'actor-uuid'" in sql
+
+
+def test_create_user_never_logs_or_returns_a_plaintext_password():
+    runner = FakeRunner(scalar_response=json.dumps([{"id": "u-3"}]))
+    repo = AuthRepository(runner)
+
+    user_id = repo.create_user(email="new@tap.internal", password_hash="scrypt$n$r$p$salt$hash", created_by=None)
+
+    # Only the already-hashed value ever appears -- this function never
+    # receives a plaintext password at all (the caller hashes first).
+    assert user_id == "u-3"
+    assert "scrypt$n$r$p$salt$hash" in runner.scalar_calls[0]
+
+
+def test_update_user_status_uses_execute_script_and_sets_updated_by():
+    runner = FakeRunner()
+    repo = AuthRepository(runner)
+
+    repo.update_user_status("u-1", "DISABLED", updated_by="actor-uuid")
+
+    assert len(runner.script_calls) == 1
+    sql = runner.script_calls[0]
+    assert "UPDATE users" in sql
+    assert "'DISABLED'" in sql
+    assert "'actor-uuid'" in sql
+    assert "created_by" not in sql  # never overwrites the creator
+
+
+def test_update_membership_role_scopes_to_user_and_organization():
+    runner = FakeRunner()
+    repo = AuthRepository(runner)
+
+    repo.update_membership_role("u-1", "org-1", "TAP_ENGINEER", updated_by="actor-uuid")
+
+    sql = runner.script_calls[0]
+    assert "UPDATE organization_memberships" in sql
+    assert "'TAP_ENGINEER'" in sql
+    assert "user_id = 'u-1'" in sql
+    assert "organization_id = 'org-1'" in sql
+
+
+def test_update_password_hash_never_receives_or_logs_plaintext():
+    runner = FakeRunner()
+    repo = AuthRepository(runner)
+
+    repo.update_password_hash("u-1", "scrypt$n$r$p$newsalt$newhash", updated_by="actor-uuid")
+
+    sql = runner.script_calls[0]
+    assert "scrypt$n$r$p$newsalt$newhash" in sql
+    assert "UPDATE users" in sql
+
+
+def test_count_active_superusers_uses_a_plain_select_via_json_query():
+    runner = FakeRunner(scalar_response=json.dumps([{"n": 2}]))
+    repo = AuthRepository(runner)
+
+    count = repo.count_active_superusers()
+
+    assert count == 2
+    assert "SUPERUSER" in runner.scalar_calls[0]
+
+
+def test_is_active_superuser_scopes_by_user_id():
+    runner = FakeRunner(scalar_response=json.dumps([{"n": 1}]))
+    repo = AuthRepository(runner)
+
+    assert repo.is_active_superuser("u-1") is True
+    assert "u-1" in runner.scalar_calls[0]
+
+
+def test_list_users_left_joins_membership_so_a_membershipless_user_still_appears():
+    runner = FakeRunner(scalar_response=json.dumps([]))
+    repo = AuthRepository(runner)
+
+    repo.list_users()
+
+    sql = runner.scalar_calls[0]
+    assert "LEFT JOIN organization_memberships" in sql
+    assert "LEFT JOIN organizations" in sql

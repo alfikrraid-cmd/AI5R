@@ -81,20 +81,75 @@ class AuthRepository:
         )
         return rows[0]["id"] if rows else None
 
-    # --- writes (bootstrap-admin only; never called on the request path) --
+    # --- MWO-LTSA-AUTH-003A-FINAL -- User Administration reads ------------
 
-    def create_user(self, *, email: str, password_hash: str) -> str:
+    def list_users(self) -> list[dict]:
+        """One row per (user, membership) pair -- a user with more than
+        one membership (not created by anything today, but not prevented
+        by schema) would appear once per membership, matching the Admin
+        Users UI's own per-organization row. LEFT JOIN so a user with no
+        membership yet (mid-creation) still appears."""
+        return _json_query(
+            "SELECT u.id, u.email, u.status AS user_status, "
+            "u.created_at, u.updated_at, u.created_by, u.updated_by, "
+            "m.organization_id, o.code AS organization_code, o.name AS organization_name, "
+            "m.role, m.status AS membership_status "
+            "FROM users u "
+            "LEFT JOIN organization_memberships m ON m.user_id = u.id "
+            "LEFT JOIN organizations o ON o.id = m.organization_id "
+            "ORDER BY u.created_at ASC",
+            self._runner,
+        )
+
+    def count_active_superusers(self) -> int:
+        """Last-SUPERUSER-safety's own source of truth -- always the CURRENT
+        count, queried fresh immediately before any disable/demote action
+        (auth_admin_service.guard_last_superuser expects the pre-action
+        count)."""
+        rows = _json_query(
+            "SELECT count(*) AS n FROM organization_memberships m "
+            "JOIN users u ON u.id = m.user_id "
+            "WHERE m.role = 'SUPERUSER' AND m.status = 'ACTIVE' AND u.status = 'ACTIVE'",
+            self._runner,
+        )
+        return int(rows[0]["n"]) if rows else 0
+
+    def is_active_superuser(self, user_id: str) -> bool:
+        rows = _json_query(
+            "SELECT count(*) AS n FROM organization_memberships m "
+            "JOIN users u ON u.id = m.user_id "
+            f"WHERE m.user_id = {_sql(user_id)} AND m.role = 'SUPERUSER' "
+            "AND m.status = 'ACTIVE' AND u.status = 'ACTIVE'",
+            self._runner,
+        )
+        return bool(rows) and int(rows[0]["n"]) > 0
+
+    # --- writes (bootstrap-admin script + the new Admin Users router;
+    # never called on the ordinary request path) ---------------------------
+
+    def create_user(self, *, email: str, password_hash: str, created_by: str | None = None) -> str:
         # MWO-LTSA-AUTH-001A -- _json_query's own `FROM (sql) t` wrapping
         # only works for a plain SELECT; a data-modifying INSERT...
         # RETURNING needs a real CTE (same fix shape as
         # import_session_repository.py's claim_for_execution()). Caught
         # against real Postgres (Task 5) -- every prior test used a fake
         # repository, which can't surface an invalid-SQL bug like this.
+        #
+        # MWO-LTSA-AUTH-003A-FINAL -- created_by/updated_by (migration
+        # 012); created_by defaults to NULL (the bootstrap-admin script's
+        # own first-user case, no prior authenticated actor exists yet;
+        # _sql(None) already renders NULL). updated_by is set equal to
+        # created_by at INSERT time (the creator is, trivially, also the
+        # first "last editor") -- never overwritten on subsequent reads,
+        # only on a real later UPDATE (Hard Rule 19: creator is never
+        # overwritten by a later editor -- created_by itself is never
+        # touched by update_user_status/update_membership_role/
+        # update_password_hash below).
         rows = json.loads(
             self._runner.query_scalar(
                 "WITH ins AS ("
-                "INSERT INTO users (email, password_hash) VALUES "
-                f"({_sql(email)}, {_sql(password_hash)}) "
+                "INSERT INTO users (email, password_hash, created_by, updated_by) VALUES "
+                f"({_sql(email)}, {_sql(password_hash)}, {_sql(created_by)}, {_sql(created_by)}) "
                 "RETURNING id"
                 ") SELECT COALESCE(json_agg(row_to_json(t))::text, '[]') FROM ins t;"
             )
@@ -102,11 +157,40 @@ class AuthRepository:
         )
         return rows[0]["id"]
 
-    def create_membership(self, *, user_id: str, organization_id: str, role: str) -> None:
+    def create_membership(
+        self, *, user_id: str, organization_id: str, role: str, created_by: str | None = None
+    ) -> None:
         self._runner.execute_script(
-            "INSERT INTO organization_memberships (user_id, organization_id, role) VALUES "
-            f"({_sql(user_id)}, {_sql(organization_id)}, {_sql(role)}) "
+            "INSERT INTO organization_memberships (user_id, organization_id, role, created_by, updated_by) VALUES "
+            f"({_sql(user_id)}, {_sql(organization_id)}, {_sql(role)}, {_sql(created_by)}, {_sql(created_by)}) "
             "ON CONFLICT (user_id, organization_id) DO NOTHING;"
+        )
+
+    def update_user_status(self, user_id: str, status: str, *, updated_by: str) -> None:
+        """Enable/disable (Phase 7). Never DELETEs -- FK integrity and
+        historical attribution (this user may be a created_by/updated_by
+        on other rows, or an installation_report reviewer) must remain
+        resolvable after disabling."""
+        self._runner.execute_script(
+            f"UPDATE users SET status = {_sql(status)}, updated_by = {_sql(updated_by)}, updated_at = NOW() "
+            f"WHERE id = {_sql(user_id)};"
+        )
+
+    def update_membership_role(self, user_id: str, organization_id: str, role: str, *, updated_by: str) -> None:
+        self._runner.execute_script(
+            f"UPDATE organization_memberships SET role = {_sql(role)}, "
+            f"updated_by = {_sql(updated_by)}, updated_at = NOW() "
+            f"WHERE user_id = {_sql(user_id)} AND organization_id = {_sql(organization_id)};"
+        )
+
+    def update_password_hash(self, user_id: str, password_hash: str, *, updated_by: str) -> None:
+        """Administrative password reset (Phase 8) -- the caller has
+        already hashed the new password (auth_password.hash_password());
+        this function never receives or logs a plaintext value."""
+        self._runner.execute_script(
+            f"UPDATE users SET password_hash = {_sql(password_hash)}, "
+            f"updated_by = {_sql(updated_by)}, updated_at = NOW() "
+            f"WHERE id = {_sql(user_id)};"
         )
 
 

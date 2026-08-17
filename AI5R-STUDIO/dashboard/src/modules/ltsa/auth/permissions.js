@@ -7,9 +7,13 @@
 // authoritative enforcement point; hiding something here is UX, not a
 // security boundary.
 
+// MWO-LTSA-AUTH-003A-FINAL -- widened from 4 to the final 6 canonical
+// roles (CORE-SERVICES/API/auth_service.py's own ROLE_PERMISSIONS).
 export const ROLES = Object.freeze({
+  SUPERUSER: "SUPERUSER",
   TAP_ADMIN: "TAP_ADMIN",
   TAP_ENGINEER: "TAP_ENGINEER",
+  JOHN_CRANE_ENGINEER: "JOHN_CRANE_ENGINEER",
   PERTAMINA_ENGINEER: "PERTAMINA_ENGINEER",
   PERTAMINA_VIEWER: "PERTAMINA_VIEWER",
 });
@@ -107,6 +111,34 @@ export const ROLE_PERMISSIONS = Object.freeze({
     ...ENGINEERING_CORE,
     // read-only: everything PERTAMINA_ENGINEER has except
     // engineering_ai.ask
+  ]),
+  // MWO-LTSA-AUTH-003A-FINAL -- SUPERUSER is the superset of TAP_ADMIN's
+  // fallback grant (the backend's own admin.superuser/audit.read_full are
+  // deliberately not mirrored here: no frontend UI element checks either
+  // yet, and this fallback array is never consulted for a real session
+  // per this file's own header -- session.permissions from a real
+  // /api/auth/me response is always authoritative).
+  [ROLES.SUPERUSER]: Object.freeze([
+    PERMISSIONS.DASHBOARD_READ,
+    ...ENGINEERING_CORE,
+    PERMISSIONS.KNOWLEDGEREVIEW_READ,
+    PERMISSIONS.IMPORT_EXECUTE,
+    PERMISSIONS.INTERNAL_COMPONENT_READ,
+    PERMISSIONS.ENGINEERING_AI_ASK,
+    PERMISSIONS.ANALYTICS_READ,
+    PERMISSIONS.ADMIN_ACCESS,
+  ]),
+  // JOHN_CRANE_ENGINEER: technical authority, not administrative -- reads
+  // (including internal_component.read for GPN/internal-component data)
+  // but no dashboard.read (internal_inventory.read), no import.execute,
+  // no admin.access. Matches ROLE_PERMISSIONS["JOHN_CRANE_ENGINEER"] on
+  // the backend exactly (maintenance.technical_review has no frontend
+  // PERMISSIONS constant yet -- no UI element consumes it until the
+  // PM/CM Intake MWO builds the technical-review screen).
+  [ROLES.JOHN_CRANE_ENGINEER]: Object.freeze([
+    ...ENGINEERING_CORE,
+    PERMISSIONS.INTERNAL_COMPONENT_READ,
+    PERMISSIONS.ENGINEERING_AI_ASK,
   ]),
 });
 

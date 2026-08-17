@@ -48,7 +48,7 @@ class FakeAuthRepository:
         )
 
 
-def _bootstrap(repo, email="admin@tap.internal", password="a-strong-password"):
+def _bootstrap(repo, email="admin@tap.internal", password="a-strong-password", **kwargs):
     # bootstrap_admin() takes a real DatabaseRunner in production; the
     # function itself only ever calls AuthRepository(runner) internally
     # via the runner param -- for this unit test we call the underlying
@@ -59,7 +59,7 @@ def _bootstrap(repo, email="admin@tap.internal", password="a-strong-password"):
     original = module.AuthRepository
     module.AuthRepository = lambda runner: repo
     try:
-        return bootstrap_admin(runner=None, email=email, password=password)
+        return bootstrap_admin(runner=None, email=email, password=password, **kwargs)
     finally:
         module.AuthRepository = original
 
@@ -115,6 +115,50 @@ def test_fails_clearly_when_tap_organization_does_not_exist():
 
     with pytest.raises(RuntimeError, match="TAP"):
         _bootstrap(repo)
+
+
+# MWO-LTSA-AUTH-003A-FINAL -- role/organization_code parameterization.
+def test_bootstraps_a_superuser_when_role_is_specified():
+    repo = FakeAuthRepository()
+
+    outcome = _bootstrap(repo, email="su@tap.internal", role="SUPERUSER")
+
+    assert "Created new SUPERUSER" in outcome
+    user = repo.find_user_by_email("su@tap.internal")
+    membership = repo.find_membership(user.id, "org-tap-id")
+    assert membership.role == "SUPERUSER"
+
+
+def test_bootstraps_a_john_crane_engineer_in_a_non_tap_organization_if_it_exists():
+    repo = FakeAuthRepository(organizations={"TAP": "org-tap-id", "JOHN_CRANE": "org-jc-id"})
+
+    outcome = _bootstrap(
+        repo, email="jc@johncrane.internal", role="JOHN_CRANE_ENGINEER", organization_code="JOHN_CRANE"
+    )
+
+    assert "Created new JOHN_CRANE_ENGINEER" in outcome and "JOHN_CRANE" in outcome
+    user = repo.find_user_by_email("jc@johncrane.internal")
+    membership = repo.find_membership(user.id, "org-jc-id")
+    assert membership.role == "JOHN_CRANE_ENGINEER"
+
+
+def test_never_fabricates_a_missing_organization():
+    import pytest
+
+    # No JOHN_CRANE organization row exists (disclosed, documented gap --
+    # this script must refuse cleanly, never invent the row itself.
+    repo = FakeAuthRepository(organizations={"TAP": "org-tap-id"})
+
+    with pytest.raises(RuntimeError, match="JOHN_CRANE"):
+        _bootstrap(repo, email="jc@johncrane.internal", role="JOHN_CRANE_ENGINEER", organization_code="JOHN_CRANE")
+
+
+def test_omitting_role_and_organization_reproduces_the_original_tap_admin_behavior():
+    repo = FakeAuthRepository()
+
+    outcome = _bootstrap(repo)
+
+    assert "Created new TAP_ADMIN" in outcome and "TAP" in outcome
 
 
 def test_cli_requires_environment_credentials_never_uses_a_default():

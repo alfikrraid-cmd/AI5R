@@ -82,6 +82,39 @@ describe("permissions", () => {
     expect(can(session, "admin.users")).toBe(false);
   });
 
+  // MWO-LTSA-AUTH-003A-FINAL -- SUPERUSER/JOHN_CRANE_ENGINEER fallback coverage.
+  it("SUPERUSER (fallback fixture) sees admin access and every engineering capability", () => {
+    const session = { role: ROLES.SUPERUSER };
+    expect(can(session, PERMISSIONS.ADMIN_ACCESS)).toBe(true);
+    expect(can(session, PERMISSIONS.IMPORT_EXECUTE)).toBe(true);
+    expect(can(session, PERMISSIONS.PUMP_READ)).toBe(true);
+  });
+
+  it("JOHN_CRANE_ENGINEER (fallback fixture) reads engineering/inventory/internal-component data but has no admin/import access", () => {
+    const session = { role: ROLES.JOHN_CRANE_ENGINEER };
+    expect(can(session, PERMISSIONS.PUMP_READ)).toBe(true);
+    expect(can(session, PERMISSIONS.INVENTORY_READ)).toBe(true);
+    expect(can(session, PERMISSIONS.INTERNAL_COMPONENT_READ)).toBe(true);
+    expect(can(session, PERMISSIONS.ENGINEERING_AI_ASK)).toBe(true);
+    expect(can(session, PERMISSIONS.ADMIN_ACCESS)).toBe(false);
+    expect(can(session, PERMISSIONS.IMPORT_EXECUTE)).toBe(false);
+    expect(can(session, PERMISSIONS.DASHBOARD_READ)).toBe(false);
+  });
+
+  it("JOHN_CRANE_ENGINEER (real backend session) can read Seal Stock and internal-component/GPN data", () => {
+    const session = {
+      role: "JOHN_CRANE_ENGINEER",
+      permissions: [
+        "pump.read", "seal.read", "inventory.read", "maintenance.read", "maintenance.technical_review",
+        "condition.read", "drawing.read", "engineering_ai.ask", "internal_component.read",
+      ],
+    };
+    expect(can(session, "inventory.read")).toBe(true);
+    expect(can(session, "internal_component.read")).toBe(true);
+    expect(can(session, "maintenance.write")).toBe(false);
+    expect(can(session, "admin.users")).toBe(false);
+  });
+
   it("compatible-pump count is never conflated with stock quantity by the capability layer", () => {
     // Domain rule (MWO §6): inventory.read gates whether stock/compat data
     // is shown at all; the count distinction itself lives in the view

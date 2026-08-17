@@ -16,6 +16,7 @@ from API.auth_service import (  # noqa: E402
     MembershipRecord,
     UserRecord,
     authenticate,
+    can_delegate_role,
     decode_access_token,
     issue_access_token,
     permissions_for_role,
@@ -191,8 +192,12 @@ def test_token_signed_with_a_different_secret_is_rejected():
 # --- ROLE_PERMISSIONS matrix -----------------------------------------------
 
 
+# MWO-LTSA-AUTH-003A-FINAL -- widened from 4 to the final 6 fixed roles.
 def test_role_permissions_matrix_covers_exactly_the_v1_fixed_roles():
-    assert set(ROLE_PERMISSIONS) == {"TAP_ADMIN", "TAP_ENGINEER", "PERTAMINA_ENGINEER", "PERTAMINA_VIEWER"}
+    assert set(ROLE_PERMISSIONS) == {
+        "SUPERUSER", "TAP_ADMIN", "TAP_ENGINEER", "JOHN_CRANE_ENGINEER",
+        "PERTAMINA_ENGINEER", "PERTAMINA_VIEWER",
+    }
 
 
 def test_pertamina_viewer_cannot_execute_import():
@@ -204,12 +209,66 @@ def test_pertamina_engineer_cannot_execute_import_either():
     assert "import.execute" not in permissions_for_role("PERTAMINA_ENGINEER")
 
 
-def test_only_tap_admin_has_admin_users_permission():
+# MWO-LTSA-AUTH-003A-FINAL -- SUPERUSER also administers users (the
+# highest LTSA authority), so "only TAP_ADMIN" is now "only SUPERUSER and
+# TAP_ADMIN".
+def test_only_superuser_and_tap_admin_have_admin_users_permission():
     for role, permissions in ROLE_PERMISSIONS.items():
-        if role == "TAP_ADMIN":
+        if role in ("SUPERUSER", "TAP_ADMIN"):
             assert "admin.users" in permissions
         else:
             assert "admin.users" not in permissions
+
+
+def test_only_superuser_has_admin_superuser_and_audit_read_full():
+    for role, permissions in ROLE_PERMISSIONS.items():
+        if role == "SUPERUSER":
+            assert "admin.superuser" in permissions
+            assert "audit.read_full" in permissions
+        else:
+            assert "admin.superuser" not in permissions
+            assert "audit.read_full" not in permissions
+
+
+def test_only_john_crane_engineer_has_technical_review_among_non_superuser_roles():
+    for role, permissions in ROLE_PERMISSIONS.items():
+        if role in ("SUPERUSER", "JOHN_CRANE_ENGINEER"):
+            assert "maintenance.technical_review" in permissions
+        else:
+            assert "maintenance.technical_review" not in permissions
+
+
+def test_tap_admin_does_not_get_technical_review_independence_from_tap():
+    # Disclosed judgment call: JC's technical review must remain an
+    # authority independent of TAP's own chain -- TAP_ADMIN must not be
+    # able to self-certify TAP's own PM/CM work.
+    assert "maintenance.technical_review" not in permissions_for_role("TAP_ADMIN")
+
+
+def test_john_crane_engineer_cannot_write_maintenance_or_installation():
+    jc = permissions_for_role("JOHN_CRANE_ENGINEER")
+    assert "maintenance.write" not in jc
+    assert "installation.write" not in jc
+    assert "admin.users" not in jc
+    assert "admin.superuser" not in jc
+
+
+def test_john_crane_engineer_can_read_seal_stock_and_internal_component_gpn():
+    jc = permissions_for_role("JOHN_CRANE_ENGINEER")
+    assert "inventory.read" in jc
+    assert "internal_component.read" in jc
+
+
+def test_pertamina_roles_never_get_internal_component_or_review_permissions():
+    for role in ("PERTAMINA_ENGINEER", "PERTAMINA_VIEWER"):
+        permissions = permissions_for_role(role)
+        for forbidden in (
+            "internal_component.read", "internal_inventory.read",
+            "maintenance.write", "maintenance.technical_review", "maintenance.admin_review",
+            "installation.write", "installation.review",
+            "admin.users", "admin.superuser", "audit.read_full",
+        ):
+            assert forbidden not in permissions, f"{role} must not have {forbidden}"
 
 
 def test_no_pertamina_role_has_any_write_permission():
@@ -219,6 +278,36 @@ def test_no_pertamina_role_has_any_write_permission():
 
 def test_unknown_role_resolves_to_zero_permissions_never_fabricated():
     assert permissions_for_role("NOT_A_REAL_ROLE") == frozenset()
+
+
+# MWO-LTSA-AUTH-003A-FINAL -- delegation scope tests.
+class TestCanDelegateRole:
+    def test_superuser_may_delegate_every_role_including_itself(self):
+        for role in ROLE_PERMISSIONS:
+            assert can_delegate_role("SUPERUSER", role) is True
+
+    def test_tap_admin_may_delegate_ordinary_operational_roles(self):
+        for role in ("TAP_ENGINEER", "PERTAMINA_ENGINEER", "PERTAMINA_VIEWER"):
+            assert can_delegate_role("TAP_ADMIN", role) is True
+
+    def test_tap_admin_can_never_delegate_superuser(self):
+        assert can_delegate_role("TAP_ADMIN", "SUPERUSER") is False
+
+    def test_tap_admin_cannot_delegate_john_crane_engineer(self):
+        # Disclosed judgment call: JC's technical-review independence from
+        # TAP's own chain means TAP_ADMIN must not control JC accounts.
+        assert can_delegate_role("TAP_ADMIN", "JOHN_CRANE_ENGINEER") is False
+
+    def test_tap_admin_cannot_delegate_itself_no_self_promotion_chain(self):
+        assert can_delegate_role("TAP_ADMIN", "TAP_ADMIN") is False
+
+    def test_non_admin_roles_can_delegate_nothing(self):
+        for actor in ("TAP_ENGINEER", "JOHN_CRANE_ENGINEER", "PERTAMINA_ENGINEER", "PERTAMINA_VIEWER"):
+            for target in ROLE_PERMISSIONS:
+                assert can_delegate_role(actor, target) is False
+
+    def test_unknown_actor_role_can_delegate_nothing(self):
+        assert can_delegate_role("NOT_A_REAL_ROLE", "TAP_ENGINEER") is False
 
 
 # --- MWO-LTSA-AUTH-001A Task 6: startup secret behavior --------------------
