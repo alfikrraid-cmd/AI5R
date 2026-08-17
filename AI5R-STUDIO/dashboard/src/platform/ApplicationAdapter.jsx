@@ -33,13 +33,15 @@ export default function ApplicationAdapter({
   platformContext,
 }) {
   if (application?.applicationId === "ltsa") {
+    // MWO-LTSA-STANDALONE-PRODUCT-SHELL-001 -- LTSA is a standalone
+    // product (ApplicationDescriptor.standalone): it must render without
+    // Studio's own ProductChrome (platform tab switcher), since LTSA owns
+    // its own auth gate and identity chrome (LTSAAuthGate/IdentityBar).
     return (
-      <ProductChrome activeKey="ltsa" applications={applications} onNavigateApplication={onNavigateApplication}>
-        <LTSAAuthGate
-          organizationContext={organizationContext}
-          platformContext={platformContext}
-        />
-      </ProductChrome>
+      <LTSAAuthGate
+        organizationContext={organizationContext}
+        platformContext={platformContext}
+      />
     );
   }
 

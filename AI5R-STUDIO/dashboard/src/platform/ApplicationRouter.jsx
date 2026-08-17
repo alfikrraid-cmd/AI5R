@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import DashboardLayout from "../layout/DashboardLayout";
 import ApplicationAdapter from "./ApplicationAdapter";
 import { resolveOrganization } from "./OrganizationResolver";
 import { usePlatformContext } from "./PlatformContext";
@@ -50,7 +51,7 @@ export default function ApplicationRouter() {
     setPathname(window.location.pathname);
   }
 
-  return (
+  const adapter = (
     <ApplicationAdapter
       application={application}
       applications={applications}
@@ -59,4 +60,13 @@ export default function ApplicationRouter() {
       platformContext={platformContext}
     />
   );
+
+  // MWO-LTSA-STANDALONE-PRODUCT-SHELL-001 -- a standalone application (LTSA)
+  // owns its own product shell end to end; Studio's DashboardLayout wraps
+  // every other (non-standalone) application, unchanged.
+  if (application?.standalone) {
+    return adapter;
+  }
+
+  return <DashboardLayout>{adapter}</DashboardLayout>;
 }

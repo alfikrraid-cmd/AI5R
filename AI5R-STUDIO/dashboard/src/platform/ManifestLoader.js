@@ -23,6 +23,10 @@ const APPLICATION_MANIFEST = [
     reservedRouteSegments: ["pump", "pump-workspace", "pump-workspace-legacy", "pm-workspace"],
     defaultPath: "/ltsa/pump-workspace",
     slug: "ltsa",
+    // MWO-LTSA-STANDALONE-PRODUCT-SHELL-001 -- LTSA is a standalone product:
+    // it owns its own auth gate and identity chrome, so it must render
+    // without the platform's own Studio DashboardLayout/ProductChrome.
+    standalone: true,
   },
   {
     applicationId: "od",

@@ -109,9 +109,10 @@ function LTSAAuthGateInner(props) {
   return <LoginView status={status} error={error} onSubmit={login} />;
 }
 
-// AUTHENTICATED LTSA SHELL layer (MWO-LTSA-AUTH-OPEN-DESIGN-001): sits
-// between the AI5R Studio product chrome (ApplicationAdapter's
-// ProductChrome, untouched) and the existing LTSAWorkspace. Authentication
+// AUTHENTICATED LTSA SHELL layer (MWO-LTSA-AUTH-OPEN-DESIGN-001). LTSA is a
+// standalone product (MWO-LTSA-STANDALONE-PRODUCT-SHELL-001): the platform
+// renders this with no surrounding Studio chrome, so this component owns
+// the entire LTSA-facing shell (IdentityBar + LTSAWorkspace). Authentication
 // is a state of this one product, not a second application -- when
 // authenticated this renders the exact same LTSAWorkspace every other MWO
 // already built, with only tab visibility now permission-driven.

@@ -88,45 +88,67 @@ describe("App", () => {
     expect(screen.queryByRole("heading", { level: 1, name: "AI5ROS" })).toBeNull();
   });
 
-  it("registers the Pump Workspace as a directly reachable route, after signing in", async () => {
+  // MWO-LTSA-STANDALONE-PRODUCT-SHELL-001 -- LTSA no longer renders inside
+  // Studio's ProductChrome, so there is no platform "LTSA"/"AI5ROS" tab
+  // once inside an LTSA route; LTSA's own IdentityBar crumb ("LTSA
+  // Engineering") is the in-product signal instead.
+  it("registers the Pump Workspace as a directly reachable route, after signing in, with no Studio chrome", async () => {
     window.history.replaceState({}, "", PUMP_WORKSPACE_ROUTE);
 
     render(<App />);
     await loginAsTapAdmin();
 
-    expect(screen.getByRole("tab", { name: "LTSA" }).getAttribute("aria-selected")).toBe("true");
     expect(screen.getByRole("heading", { name: "Pump Workspace" })).toBeTruthy();
+    expect(screen.getByText("LTSA Engineering")).toBeTruthy();
+    expect(screen.queryByRole("tab", { name: "LTSA" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "AI5ROS" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Open Design" })).toBeNull();
+    expect(screen.queryByText("AI5R STUDIO")).toBeNull();
+    expect(screen.queryByText("Control Tower")).toBeNull();
   });
 
-  it("registers /ltsa as the LTSA application entry route, after signing in", async () => {
+  it("registers /ltsa as the LTSA application entry route, after signing in, with no Studio chrome", async () => {
     window.history.replaceState({}, "", "/ltsa");
 
     render(<App />);
     await loginAsTapAdmin();
 
-    expect(screen.getByRole("tab", { name: "LTSA" }).getAttribute("aria-selected")).toBe("true");
     expect(screen.getByRole("heading", { name: "Pump Workspace" })).toBeTruthy();
+    expect(screen.queryByRole("tab", { name: "LTSA" })).toBeNull();
+    expect(screen.queryByText("AI5R STUDIO")).toBeNull();
   });
 
-  it("registers /ltsa/{organization} as an LTSA organization route, after signing in", async () => {
+  it("registers /ltsa/{organization} as an LTSA organization route, after signing in, with no Studio chrome", async () => {
     window.history.replaceState({}, "", "/ltsa/tap");
 
     render(<App />);
     await loginAsTapAdmin();
 
-    expect(screen.getByRole("tab", { name: "LTSA" }).getAttribute("aria-selected")).toBe("true");
     expect(screen.getByRole("heading", { name: "Pump Workspace" })).toBeTruthy();
     expect(screen.queryByRole("heading", { level: 1, name: "AI5ROS" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "LTSA" })).toBeNull();
+    expect(screen.queryByText("AI5R STUDIO")).toBeNull();
   });
 
-  it("switches back to the AI5ROS Landing when its tab is clicked again", () => {
+  it("opening LTSA from Landing leaves no Studio tab to navigate back with", () => {
     render(<App />);
 
     fireEvent.click(screen.getByRole("tab", { name: "LTSA" }));
-    fireEvent.click(screen.getByRole("tab", { name: "AI5ROS" }));
+
+    expect(screen.queryByRole("heading", { level: 1, name: "AI5ROS" })).toBeNull();
+    // No Studio tab exists inside LTSA -- returning to "/" is browser
+    // navigation now, not an in-product Studio control.
+    expect(screen.queryByRole("tab", { name: "AI5ROS" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "LTSA" })).toBeNull();
+  });
+
+  it("still renders Studio chrome (AI5R STUDIO / Control Tower + app-switcher tabs) on a fresh / visit", () => {
+    render(<App />);
 
     expect(screen.getByRole("heading", { level: 1, name: "AI5ROS" })).toBeTruthy();
-    expect(window.location.pathname).toBe("/");
-    expect(screen.queryByRole("heading", { name: "Pump Workspace" })).toBeNull();
+    expect(screen.getByText("AI5R STUDIO")).toBeTruthy();
+    expect(screen.getByText("Control Tower")).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "AI5ROS" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("tab", { name: "LTSA" })).toBeTruthy();
   });
 });
