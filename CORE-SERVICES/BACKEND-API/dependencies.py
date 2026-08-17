@@ -27,6 +27,7 @@ from API.equipment_timeline_service import EquipmentTimelineService
 from API.fleet_executive_summary import FleetExecutiveSummaryService
 from API.fleet_reliability_service import FleetReliabilityService
 from API.import_session_repository import ImportSessionRepository
+from API.installation_gateway import InstallationGateway
 from API.ltsa_knowledge_service import LTSAKnowledgeService
 from API.maintenance_history_gateway import MaintenanceHistoryGateway
 from API.pm_occurrence_gateway import PMOccurrenceGateway
@@ -53,6 +54,7 @@ _seal_gateway = SealGateway()
 _seal_stock_gateway = SealStockGateway()
 _seal_pump_compatibility_gateway = SealPumpCompatibilityGateway()
 _seal_engineering_document_gateway = SealEngineeringDocumentGateway()
+_installation_gateway = InstallationGateway()
 
 # MWO-LTSA-IMPORT-DIRECT-DB-001 -- superseded the docker-exec-only design
 # below (MWO-LTSA-IMPORT-PROD-DB-WIRING-001): the production api container
@@ -219,6 +221,14 @@ def get_seal_stock_gateway() -> SealStockGateway:
 
 def get_seal_pump_compatibility_gateway() -> SealPumpCompatibilityGateway:
     return _seal_pump_compatibility_gateway
+
+
+def get_seal_engineering_document_gateway() -> SealEngineeringDocumentGateway:
+    return _seal_engineering_document_gateway
+
+
+def get_installation_gateway() -> InstallationGateway:
+    return _installation_gateway
 
 
 def get_import_session_repository() -> ImportSessionRepository:
