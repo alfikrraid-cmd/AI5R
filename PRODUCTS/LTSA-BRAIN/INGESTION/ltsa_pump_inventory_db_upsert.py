@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
+import sys
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from fractions import Fraction
@@ -687,10 +689,47 @@ def main() -> int:
     parser.add_argument("--schema-file", type=Path, required=True)
     parser.add_argument("--mode", choices=("dry-run", "apply"), default="dry-run")
     parser.add_argument("--bootstrap-schema", action="store_true")
+    # MWO-LTSA-DB-UPSERT-TARGET-001 -- this CLI never passed `database=` to
+    # DatabaseConfig, so it always silently fell back to the dataclass's
+    # own default ("ai5r_runtime") regardless of which database the caller
+    # actually meant -- ltsa_bootstrap_admin.py and BACKEND-API/
+    # dependencies.py already resolve the real LTSA database the same way
+    # (AI5R_LTSA_POSTGRES_DB, defaulting to "ai5r_runtime"); this CLI now
+    # follows that same existing convention, with an explicit --database
+    # flag layered on top for zero-ambiguity production invocations.
+    parser.add_argument(
+        "--database",
+        default=None,
+        help="Target Postgres database. Defaults to AI5R_LTSA_POSTGRES_DB "
+        "if set, else 'ai5r_runtime' (DatabaseConfig's own default).",
+    )
     args = parser.parse_args()
 
+    env_database = os.getenv("AI5R_LTSA_POSTGRES_DB")
+    database = args.database or env_database or DatabaseConfig.database
+    database_source = "--database" if args.database else ("AI5R_LTSA_POSTGRES_DB" if env_database else "default")
+
+    # Apply is the one mode that writes. Refusing to apply against the bare,
+    # unconfigured fallback (neither an explicit --database nor the
+    # canonical env var was actually supplied) is the "must not accidentally
+    # write to ai5r_runtime" property this MWO requires, without demanding
+    # --database on every single invocation (the canonical env var alone,
+    # already correctly set in every real .env file, remains sufficient).
+    if args.mode == "apply" and database_source == "default":
+        print(
+            "Refusing to apply with no explicit database target: pass --database "
+            "or set AI5R_LTSA_POSTGRES_DB. (Currently would default to "
+            f"'{database}', which is almost never the intended LTSA database.)",
+            file=sys.stderr,
+        )
+        return 1
+
+    # Fail-safe observability (never logs credentials) -- the resolved
+    # target must be visible before any read/write happens.
+    print(f"Target database: {database} (source: {database_source})", file=sys.stderr)
+
     projection = json.loads(args.projection.read_text(encoding="utf-8"))
-    runner = DatabaseRunner(DatabaseConfig(env_file=args.env_file, compose_file=args.compose_file))
+    runner = DatabaseRunner(DatabaseConfig(env_file=args.env_file, compose_file=args.compose_file, database=database))
 
     if args.bootstrap_schema:
         bootstrap_schema(runner, args.schema_file)
