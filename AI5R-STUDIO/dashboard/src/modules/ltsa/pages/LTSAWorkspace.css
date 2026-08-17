@@ -1,3 +1,13 @@
 .ltsa-workspace-content {
   margin-top: 16px;
 }
+
+/* MWO-LTSA-AUTH-OPEN-DESIGN-002B -- TAP's full tab set (15 tabs) overflows
+   and clips at 1440px width (evidenced in screenshot review: "Import" and
+   "Analytics" cut off past the container edge). Scoped to this one wrapper,
+   not the shared Tabs.jsx primitive, so no other Tabs consumer is affected.
+   Scrolls horizontally instead of clipping; unaffected when tabs fit. */
+.ltsa-tabs-row {
+  overflow-x: auto;
+  scrollbar-width: thin;
+}

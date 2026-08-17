@@ -96,7 +96,7 @@ export default function LTSAWorkspace({ initialActiveKey = "dashboard", capabili
 
   return (
     <WorkspaceProvider value={{ navigate: handleNavigate }}><div>
-      <div className="no-print">
+      <div className="no-print ltsa-tabs-row">
         <Tabs items={visibleTabs} activeKey={activeKey} onChange={handleNavigate} />
       </div>
 

@@ -5,7 +5,13 @@
    new type scale -- only new layout classes. */
 
 .login-screen {
-  min-height: 100vh;
+  /* MWO-LTSA-AUTH-OPEN-DESIGN-002B -- was min-height: 100vh, which assumed
+     this screen owns the full viewport. It is actually nested below the
+     existing AI5R Studio product chrome (header + tabs), so 100vh centered
+     the card far down the page, leaving ~300px of dead white space above
+     it (evidenced in 1440x900 screenshot review). A smaller box keeps the
+     card close under the chrome instead. */
+  min-height: 60vh;
   display: flex;
   align-items: center;
   justify-content: center;
