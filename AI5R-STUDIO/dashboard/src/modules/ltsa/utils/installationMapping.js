@@ -111,5 +111,14 @@ export function mapInstallationRecord(record) {
     // MWO-LTSA-068 -- previously-unmapped, already-existing NOT NULL
     // column; the "Attachments" section reuses this single real fact.
     sourceDocumentName: record.source_document_name ?? null,
+
+    // MWO-LTSA-INSTALLATION-REPORT-STRUCTURAL-CORRECTION-001 -- nullable
+    // JSONB (migration 011); null stays null (honestly "no such section on
+    // this report"), never defaulted to [] the way the always-present
+    // observation/BOM/signature lists are -- see the column's own
+    // CANONICAL_SCHEMA.sql comment.
+    postInstallationReadings: Array.isArray(record.post_installation_readings)
+      ? record.post_installation_readings
+      : null,
   };
 }

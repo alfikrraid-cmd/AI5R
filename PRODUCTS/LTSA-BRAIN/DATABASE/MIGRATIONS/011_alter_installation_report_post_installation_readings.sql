@@ -1,0 +1,26 @@
+-- MWO-LTSA-INSTALLATION-REPORT-STRUCTURAL-CORRECTION-001 -- closes the
+-- evidence-backed MISSING gap found by
+-- MWO-LTSA-INSTALLATION-GOLDEN-SAMPLE-VALIDATION-001: 2 of 5 real golden
+-- reports (211-P-2A DE, 212-P-13AR) carry a post-installation
+-- Condition-Monitoring-shaped measurement table directly on the same
+-- signed document (dated/timestamped, DE/NDE split point measurements),
+-- and installation_report had no column to preserve them.
+--
+-- This is historical evidence belonging to the installation report, not a
+-- live Condition Monitoring reading -- it has no other canonical home
+-- today (condition_monitoring_reading itself is still uncommitted, gated
+-- behind ADR-CM-001/ADR-CONDITION-MONITORING-001, both PROPOSED, not
+-- ACCEPTED). This migration does NOT touch those ADRs, does NOT create a
+-- second Condition Monitoring engine, and does NOT insert anything into
+-- any CMON table -- it only adds one nullable JSONB column to the
+-- already-existing installation_report table.
+--
+-- NULL for reports that carry no such table (3 of 5 golden samples) --
+-- deliberately NOT defaulted to an empty array, which would falsely
+-- assert "zero readings were taken" rather than "this report has no such
+-- section."
+--
+-- Idempotent: ADD COLUMN IF NOT EXISTS is a no-op on a table that already
+-- has this column, so re-running this file is always safe.
+
+ALTER TABLE public.installation_report ADD COLUMN IF NOT EXISTS post_installation_readings JSONB;

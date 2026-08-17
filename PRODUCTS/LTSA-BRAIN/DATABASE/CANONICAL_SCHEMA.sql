@@ -501,9 +501,36 @@ CREATE TABLE IF NOT EXISTS public.installation_report (
 
     source_document_name TEXT NOT NULL,
 
+    -- MWO-LTSA-INSTALLATION-REPORT-STRUCTURAL-CORRECTION-001 -- 2 of 5
+    -- golden-sample reports (211-P-2A DE, 212-P-13AR) carry a
+    -- post-installation Condition-Monitoring-shaped measurement table
+    -- directly on the same signed document (dated/timestamped, DE/NDE
+    -- split point measurements). This is historical evidence belonging to
+    -- THIS report, not a live Condition Monitoring reading -- it has no
+    -- other canonical home today (condition_monitoring_reading itself is
+    -- still uncommitted, gated behind a PROPOSED, not ACCEPTED, ADR). NULL
+    -- for the 3 of 5 reports that carry no such table (not every report
+    -- has one) -- an empty array would falsely assert "zero readings were
+    -- taken" rather than "this report has no such section". Array shape
+    -- (one element per point measurement row): { measurement, value, unit,
+    -- location, de, nde, dateTime, condition } -- variable/optional keys
+    -- per entry, matching the report's own variable row-set (10-16 rows
+    -- observed, no two reports identical). No thresholds, no alarm
+    -- states, no CMON linkage: this column preserves only what the report
+    -- itself prints.
+    post_installation_readings JSONB,
+
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
+
+-- Idempotent upgrade path for a database that already has the pre-
+-- MWO-LTSA-INSTALLATION-REPORT-STRUCTURAL-CORRECTION-001 shape of this
+-- table -- CREATE TABLE IF NOT EXISTS above is a no-op once the table
+-- exists, so this statement is what actually brings an existing
+-- deployment (including a89369e's own installation_report, migration 009)
+-- to the current shape. Safe to re-run.
+ALTER TABLE public.installation_report ADD COLUMN IF NOT EXISTS post_installation_readings JSONB;
 
 CREATE INDEX IF NOT EXISTS idx_installation_report_installation_code
 ON public.installation_report (installation_code);

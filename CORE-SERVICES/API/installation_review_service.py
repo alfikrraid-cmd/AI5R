@@ -133,27 +133,124 @@ class UnresolvedIdentityError(ValueError):
     pass
 
 
-# document_field_extraction column name -> installation_report column name,
-# for the subset of fields document_field_extraction actually carries.
-# Deliberately partial: only fields a real extraction can plausibly
-# populate today (report/pump/seal identity + provenance). Every other
-# installation_report column (BOM, observations, signatures, ...) is
-# reviewer-authored/corrected in `reviewed_fields` under its own
-# installation_report column name already -- this map does not invent new
-# field names, it only documents the ones extraction can autofill.
+# document_field_extraction key (camelCase, matching sampleInstallations.js/
+# AI-EXTRACTION/installationMapping.js's own field names 1:1) -> canonical
+# installation_report column (snake_case). Full parity with every real
+# installation_report column, per MWO-LTSA-INSTALLATION-REPORT-STRUCTURAL-
+# CORRECTION-001's Phase 10 round-trip requirement ("no meaningful field
+# loss") -- the JSONB-shaped fields (site_activities, bill_of_material, the
+# four observation lists, post_installation_readings) pass through
+# untouched: reviewed_fields/extracted_fields already carry them in the
+# exact installation_report-ready shape (date-grouped activities,
+# location-aware observation entries), never re-flattened here.
 EXTRACTED_TO_INSTALLATION_REPORT_FIELDS: dict[str, str] = {
     "reportNo": "report_no",
+    "tsoNo": "tso_no",
     "reportDate": "report_date",
     "customer": "customer",
+    "address": "address",
     "plant": "plant",
     "unit": "unit",
-    "plantEquipNo": "plant_equip_no",
+    "poNo": "po_no",
+    "packingListNo": "packing_list_no",
+    "location": "location",
     "equipmentMfr": "equipment_mfr",
-    "sealType": "seal_type",
+    "modelType": "model_type",
+    "size": "size",
+    "configuration": "configuration",
+    "serialNo": "serial_no",
+    "plantEquipNo": "plant_equip_no",
+    "pumpType": "pump_type",
+    "shaftSpeed": "shaft_speed",
+    "rotation": "rotation",
     "sealManufacture": "seal_manufacture",
+    "sealType": "seal_type",
     "sealArrangement": "seal_arrangement",
+    "sealSize": "seal_size",
+    "materialCode": "material_code",
+    "drawingNo": "drawing_no",
+    "sealLocation": "seal_location",
+    "liquid": "liquid",
+    "temperatureRange": "temperature_range",
+    "specificGravity": "specific_gravity",
+    "viscosity": "viscosity",
+    "flashPoint": "flash_point",
+    "boilingPoint": "boiling_point",
+    "freezePoint": "freeze_point",
+    "vaporPress": "vapor_press",
+    "dischargePress": "discharge_press",
+    "suctionPress": "suction_press",
+    "differentialPress": "differential_press",
+    "stuffingBoxPress": "stuffing_box_press",
+    "sealPress": "seal_press",
+    "corrosionErosionBy": "corrosion_erosion_by",
+    "apiPlan": "api_plan",
+    "flushLiquid": "flush_liquid",
+    "flushPressure": "flush_pressure",
+    "flushTemp": "flush_temp",
+    "flushFlowrate": "flush_flowrate",
+    "bufferBarrierPress": "buffer_barrier_press",
+    "bufferBarrierFluid": "buffer_barrier_fluid",
+    "quenchFluid": "quench_fluid",
+    "sealChamberShaftInspection": "seal_chamber_shaft_inspection",
+    "basicSealCondition": "basic_seal_condition",
+    "glandCondition": "gland_condition",
+    "sleeveCondition": "sleeve_condition",
+    "shaftCondition": "shaft_condition",
+    "bearingCondition": "bearing_condition",
+    "gasketCondition": "gasket_condition",
+    "radialBearingNo": "radial_bearing_no",
+    "thrustBearingNo": "thrust_bearing_no",
+    "summaryIntro": "summary_intro",
+    "siteActivityIntro": "site_activity_intro",
+    "siteActivities": "site_activities",
+    "bomCaption": "bom_caption",
+    "billOfMaterial": "bill_of_material",
+    "glandObservationNote": "gland_observation_note",
+    "glandObservation": "gland_observation",
+    "sleeveObservationNote": "sleeve_observation_note",
+    "sleeveObservation": "sleeve_observation",
+    "retainerDiscObservationNote": "retainer_disc_observation_note",
+    "retainerDiscObservation": "retainer_disc_observation",
+    "cartridgeDriveCollarObservationNote": "cartridge_drive_collar_observation_note",
+    "cartridgeDriveCollarObservation": "cartridge_drive_collar_observation",
+    "signatures": "signatures",
     "sourceDocumentName": "source_document_name",
+    "postInstallationReadings": "post_installation_readings",
 }
+
+# Phase 7 (MWO-LTSA-INSTALLATION-REPORT-STRUCTURAL-CORRECTION-001):
+# critical identity fields that must never enter canonical Installation
+# merely because a value exists -- their AI-extracted value must also
+# carry a confidence score. This is a diagnostic/advisory contract (not a
+# hard Save-time block: a human reviewer who has already corrected/
+# confirmed a value in reviewed_fields has already done the safety work
+# resolve_pump_review_gate/match_pump/match_seal exist to force), used by
+# a caller (future review UI/API) to flag which extracted_fields entries
+# lack real provenance before asking a human to trust them.
+CRITICAL_PROVENANCE_FIELDS: frozenset[str] = frozenset(
+    {"reportNo", "plantEquipNo", "reportDate", "sealType", "sealSize", "apiPlan"}
+)
+
+
+def missing_field_provenance(extracted_fields: dict[str, Any]) -> list[str]:
+    """Returns the CRITICAL_PROVENANCE_FIELDS keys that are either absent
+    from extracted_fields or present as a bare value instead of
+    AI-EXTRACTION/models.py's own FieldValue(value, confidence) shape --
+    i.e. a value exists but its confidence was never recorded. Strengthens
+    the existing JSON contract (Phase 7's own preferred direction) rather
+    than adding new document_field_extraction columns: field-level
+    confidence was already representable by convention; this function
+    makes "representable" into an enforceable, testable definition.
+    """
+    missing = []
+    for key in CRITICAL_PROVENANCE_FIELDS:
+        entry = extracted_fields.get(key)
+        if entry is None:
+            missing.append(key)
+        elif not (isinstance(entry, dict) and "value" in entry and "confidence" in entry):
+            missing.append(key)
+    return missing
 
 
 def build_installation_report_row(
