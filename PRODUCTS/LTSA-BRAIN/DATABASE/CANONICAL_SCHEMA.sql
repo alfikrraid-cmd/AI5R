@@ -379,6 +379,75 @@ ALTER TABLE public.seal_engineering_document
     FOREIGN KEY (knowledge_source_id) REFERENCES public.knowledge_source_registry(knowledge_source_id);
 
 -- ============================================================
+-- INTERNAL COMPONENT INVENTORY
+-- Manufactured under MWO-LTSA-057E (Internal Component Inventory Canonical Model).
+--
+-- Strictly internal AI5R / engineering inventory, separate from user-facing
+-- seal_stock. GPN may be temporarily pending during workbook migration, but
+-- every internal component is expected to eventually have exactly one real GPN.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS public.internal_component_master (
+    component_id TEXT PRIMARY KEY NOT NULL,
+    component_class TEXT NOT NULL,
+    gpn_number TEXT,
+    gpn_status TEXT NOT NULL,
+    identity_fingerprint TEXT NOT NULL,
+    description TEXT NOT NULL,
+    size_text TEXT,
+    specification TEXT,
+    source_workbook_name TEXT,
+    source_sheet_name TEXT,
+    source_row_number INTEGER,
+    remarks TEXT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    CONSTRAINT internal_component_class_check CHECK (component_class IN (
+        'O_RING', 'MATING_RING', 'SEAL_PART', 'MECHANICAL_SEAL',
+        'MECHANICAL_SEAL_ASSY', 'SHAFT_SLEEVE', 'SET_SCREW',
+        'RETAINER', 'SPARE_PART'
+    )),
+    CONSTRAINT internal_component_gpn_status_check CHECK (gpn_status IN ('GPN_PENDING', 'GPN_ASSIGNED')),
+    CONSTRAINT internal_component_gpn_consistency_check CHECK (
+        (gpn_status = 'GPN_PENDING' AND gpn_number IS NULL)
+        OR (gpn_status = 'GPN_ASSIGNED' AND gpn_number IS NOT NULL)
+    ),
+    CONSTRAINT internal_component_identity_fingerprint_unique UNIQUE (identity_fingerprint)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_internal_component_master_gpn_unique
+    ON public.internal_component_master (gpn_number)
+    WHERE gpn_number IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS public.internal_component_stock (
+    component_stock_id TEXT PRIMARY KEY NOT NULL,
+    component_id TEXT NOT NULL REFERENCES public.internal_component_master(component_id),
+    quantity_on_hand NUMERIC,
+    warehouse_name TEXT,
+    rack_name TEXT,
+    location_tag TEXT,
+    source_workbook_name TEXT NOT NULL,
+    source_sheet_name TEXT NOT NULL,
+    source_row_number INTEGER NOT NULL,
+    remarks TEXT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    CONSTRAINT internal_component_stock_source_unique UNIQUE (source_workbook_name, source_sheet_name, source_row_number)
+);
+
+CREATE TABLE IF NOT EXISTS public.seal_internal_component_link (
+    seal_code TEXT NOT NULL REFERENCES public.seal_registry(seal_code),
+    component_id TEXT NOT NULL REFERENCES public.internal_component_master(component_id),
+    relationship_basis TEXT NOT NULL,
+    source_workbook_name TEXT NOT NULL,
+    source_sheet_name TEXT NOT NULL,
+    source_row_number INTEGER NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+    PRIMARY KEY (seal_code, component_id, source_sheet_name, source_row_number),
+    CONSTRAINT seal_internal_component_relationship_basis_check CHECK (relationship_basis IN ('WORKBOOK_ROW'))
+);
+
+-- ============================================================
 -- WORKBOOK, WORKSHEET, WORKSHEET TABLE, MAPPING PROFILE,
 -- COLUMN MAPPING, ACQUISITION JOB
 -- Manufactured under MWO-LTSA-040C (Universal Tabular Data Acquisition).
