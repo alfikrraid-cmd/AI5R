@@ -379,6 +379,145 @@ ALTER TABLE public.seal_engineering_document
     FOREIGN KEY (knowledge_source_id) REFERENCES public.knowledge_source_registry(knowledge_source_id);
 
 -- ============================================================
+-- INSTALLATION REPORT
+-- Manufactured under MWO-LTSA-060 (production persistence path for the
+-- Installation Workspace created by MWO-LTSA-056).
+--
+-- One row per real, signed mechanical-seal installation report -- a
+-- historical engineering record, not a live registry item. Every column
+-- traces 1:1 to a field already represented in
+-- AI5R-STUDIO/dashboard/src/modules/ltsa/data/sampleInstallations.js
+-- (MWO-LTSA-056's literal transcription of the one real source document).
+--
+-- installation_code is a deterministic code derived from the report's own
+-- printed sequence number and year (matches sampleInstallations.js's
+-- pre-existing "INSTL-001-2026" id convention), never a random UUID, so
+-- re-seeding the same source report always resolves to the same row.
+-- report_no is the report's own printed number, its own UNIQUE column,
+-- separate from installation_code -- the same PK/business-key split
+-- seal_engineering_document draws between document_code/document_number.
+--
+-- plant_equip_no is an informal reference with NO foreign key -- the same
+-- "asset_code TEXT, resolved at the application layer" convention
+-- pm_schedule/cm_report/work_order/maintenance_history already use (see
+-- PM SCHEDULE section above); multiple Installation Reports for the same
+-- pump must be possible, so there is deliberately no UNIQUE constraint on
+-- it either. seal_code is a real, nullable FK to seal_registry ("Seal
+-- relationship where supported" -- NULL on the one real seed row, since
+-- the source report carries no seal_registry identifier, only descriptive
+-- text). drawing_no is a plain column, not a FK -- Drawing Workspace has
+-- no document_number-keyed lookup path today, so drawing_no is reused as
+-- an identity string for navigation only.
+--
+-- seal_chamber_shaft_inspection, site_activities, bill_of_material, the
+-- four observation checklists, and signatures are all JSONB -- each is an
+-- owned, bounded, ordered list with no independent identity outside its
+-- report, the same convention pm_schedule.checklist already establishes.
+-- Source: ../BUILD-PACKS/BP-INSTALLATION/DATABASE/001_create_table.sql
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS public.installation_report (
+    installation_code TEXT PRIMARY KEY NOT NULL,
+    report_no TEXT NOT NULL UNIQUE,
+    tso_no TEXT,
+    report_date TEXT,
+    customer TEXT,
+    address TEXT,
+    plant TEXT,
+    unit TEXT,
+    po_no TEXT,
+    packing_list_no TEXT,
+    location TEXT,
+
+    equipment_mfr TEXT,
+    model_type TEXT,
+    size TEXT,
+    configuration TEXT,
+    serial_no TEXT,
+    plant_equip_no TEXT,
+    pump_type TEXT,
+    shaft_speed TEXT,
+    rotation TEXT,
+    seal_manufacture TEXT,
+    seal_type TEXT,
+    seal_arrangement TEXT,
+    seal_size TEXT,
+    material_code TEXT,
+    drawing_no TEXT,
+    seal_location TEXT,
+    seal_code TEXT REFERENCES public.seal_registry(seal_code),
+
+    liquid TEXT,
+    temperature_range TEXT,
+    specific_gravity TEXT,
+    viscosity TEXT,
+    flash_point TEXT,
+    boiling_point TEXT,
+    freeze_point TEXT,
+    vapor_press TEXT,
+    discharge_press TEXT,
+    suction_press TEXT,
+    differential_press TEXT,
+    stuffing_box_press TEXT,
+    seal_press TEXT,
+    corrosion_erosion_by TEXT,
+    api_plan TEXT,
+    flush_liquid TEXT,
+    flush_pressure TEXT,
+    flush_temp TEXT,
+    flush_flowrate TEXT,
+    buffer_barrier_press TEXT,
+    buffer_barrier_fluid TEXT,
+    quench_fluid TEXT,
+
+    seal_chamber_shaft_inspection JSONB,
+
+    basic_seal_condition TEXT,
+    gland_condition TEXT,
+    sleeve_condition TEXT,
+    shaft_condition TEXT,
+    bearing_condition TEXT,
+    gasket_condition TEXT,
+    radial_bearing_no TEXT,
+    thrust_bearing_no TEXT,
+
+    summary_intro TEXT,
+    site_activity_intro TEXT,
+    site_activities JSONB,
+
+    bom_caption TEXT,
+    bill_of_material JSONB,
+
+    gland_observation_note TEXT,
+    gland_observation JSONB,
+    sleeve_observation_note TEXT,
+    sleeve_observation JSONB,
+    retainer_disc_observation_note TEXT,
+    retainer_disc_observation JSONB,
+    cartridge_drive_collar_observation_note TEXT,
+    cartridge_drive_collar_observation JSONB,
+
+    signatures JSONB,
+
+    source_document_name TEXT NOT NULL,
+
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_installation_report_installation_code
+ON public.installation_report (installation_code);
+
+CREATE INDEX IF NOT EXISTS idx_installation_report_report_no
+ON public.installation_report (report_no);
+
+CREATE INDEX IF NOT EXISTS idx_installation_report_plant_equip_no
+ON public.installation_report (plant_equip_no);
+
+CREATE INDEX IF NOT EXISTS idx_installation_report_seal_code
+ON public.installation_report (seal_code);
+
+-- ============================================================
 -- INTERNAL COMPONENT INVENTORY
 -- Manufactured under MWO-LTSA-057E (Internal Component Inventory Canonical Model).
 --
@@ -904,6 +1043,26 @@ CREATE TABLE IF NOT EXISTS public.document_field_extraction (
     status TEXT NOT NULL DEFAULT 'PENDING_REVIEW',
     pump_tag_number VARCHAR(100) REFERENCES public.ltsa_pumps(tag_number),
     seal_code TEXT REFERENCES public.seal_registry(seal_code),
+    -- MWO-LTSA-INSTALLATION-REPORT-INGESTION-001 -- source_page/reviewed_by/
+    -- reviewed_at close the provenance gap for a human-reviewed extraction
+    -- (Phase 5's required source_page/reviewed_by/reviewed_at fields; every
+    -- other required field -- source_document_id, extracted_value,
+    -- confidence, review_status -- already existed). reviewed_by holds the
+    -- reviewing user's id (auth foundation, migration 007) but carries NO
+    -- database-level FK -- CANONICAL_SCHEMA.sql's own engineering-domain
+    -- bootstrap never creates public.users (only migration 007 does, as a
+    -- separate step; no table in this file references it), so a hard FK
+    -- here would break `--bootstrap-schema` on a fresh database. This is
+    -- the same "informal reference, resolved at the application layer"
+    -- convention pm_schedule.asset_code/installation_report.plant_equip_no
+    -- already establish. REJECTED is a genuinely new terminal status: a
+    -- human reviewer determining a draft is unusable (duplicate, illegible,
+    -- wrong document) previously had no terminal state distinct from
+    -- PENDING_REVIEW/REVIEWED; a REJECTED row is never promoted to any
+    -- canonical table (installation_report or otherwise) by any code path.
+    source_page INTEGER,
+    reviewed_by UUID,
+    reviewed_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW(),
     CONSTRAINT document_field_extraction_source_type_check
@@ -914,11 +1073,24 @@ CREATE TABLE IF NOT EXISTS public.document_field_extraction (
             'MECHANICAL_SEAL_DRAWING', 'PUMP_DRAWING', 'NAMEPLATE', 'UNKNOWN'
         )),
     CONSTRAINT document_field_extraction_status_check
-        CHECK (status IN ('PENDING_REVIEW', 'REVIEWED', 'SAVED')),
+        CHECK (status IN ('PENDING_REVIEW', 'REVIEWED', 'SAVED', 'REJECTED')),
     CONSTRAINT document_field_extraction_confidence_check
         CHECK (detected_document_type_confidence IS NULL
             OR (detected_document_type_confidence >= 0 AND detected_document_type_confidence <= 1))
 );
+
+-- Idempotent upgrade path for a database that already has the pre-
+-- MWO-LTSA-INSTALLATION-REPORT-INGESTION-001 shape of this table --
+-- CREATE TABLE IF NOT EXISTS above is a no-op once the table exists, so
+-- these statements are what actually bring an existing deployment to the
+-- current shape. Safe to re-run (DROP CONSTRAINT IF EXISTS then re-ADD).
+ALTER TABLE public.document_field_extraction ADD COLUMN IF NOT EXISTS source_page INTEGER;
+ALTER TABLE public.document_field_extraction ADD COLUMN IF NOT EXISTS reviewed_by UUID;
+ALTER TABLE public.document_field_extraction ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMP;
+
+ALTER TABLE public.document_field_extraction DROP CONSTRAINT IF EXISTS document_field_extraction_status_check;
+ALTER TABLE public.document_field_extraction ADD CONSTRAINT document_field_extraction_status_check
+    CHECK (status IN ('PENDING_REVIEW', 'REVIEWED', 'SAVED', 'REJECTED'));
 
 CREATE INDEX IF NOT EXISTS idx_document_field_extraction_source
     ON public.document_field_extraction(source_document_id, source_document_type);
