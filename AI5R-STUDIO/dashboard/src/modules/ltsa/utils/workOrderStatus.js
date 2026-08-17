@@ -3,6 +3,7 @@ const STATUS_VARIANT = {
   IN_PROGRESS: "warning",
   ON_HOLD: "purple",
   COMPLETED: "success",
+  CANCELLED: "danger",
 };
 
 const STATUS_LABEL = {
@@ -10,6 +11,7 @@ const STATUS_LABEL = {
   IN_PROGRESS: "In Progress",
   ON_HOLD: "On Hold",
   COMPLETED: "Completed",
+  CANCELLED: "Cancelled",
 };
 
 const PRIORITY_VARIANT = {
