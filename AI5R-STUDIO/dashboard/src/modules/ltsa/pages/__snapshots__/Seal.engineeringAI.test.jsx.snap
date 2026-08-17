@@ -1,0 +1,1380 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Snapshot > matches the SealOpenDesignView Engineering AI section snapshot when ready 1`] = `
+<div
+  class="seal-workspace-detail"
+>
+  <div
+    class="ltsa-open-design"
+    data-testid="seal-open-design"
+  >
+    <div
+      class="chrome-bar"
+      data-od-id="chrome-bar"
+    >
+      <div
+        class="chrome-inner"
+      >
+        <div
+          class="crumb"
+        >
+          <button
+            class="crumb-link"
+            data-od-id="crumb-pump-link"
+            type="button"
+          >
+            211-P-1A
+          </button>
+          <span
+            class="sep"
+          >
+            ›
+          </span>
+          <span>
+            Mechanical Seal
+          </span>
+          <span
+            class="sep"
+          >
+            ›
+          </span>
+          <b>
+            SC-001
+          </b>
+        </div>
+      </div>
+    </div>
+    <div
+      class="workspace-grid"
+    >
+      <main
+        class="object-column"
+      >
+        <section
+          class="identity"
+          data-od-id="identity-section"
+        >
+          <h1>
+            John Crane Type 21
+          </h1>
+          <div
+            class="identity-status"
+          >
+            <span
+              class="status-signal normal"
+            >
+              <span
+                class="dot-lg"
+              />
+               
+              Sesuai Spesifikasi
+            </span>
+            <span
+              class="running-line"
+            >
+              <span
+                class="dot-sm"
+              />
+              Terpasang di 211-P-1A
+            </span>
+          </div>
+          <div
+            style="margin-top: var(--space-4);"
+          >
+            <div
+              class="eyebrow"
+              style="margin-bottom: var(--space-2);"
+            >
+              Identity
+            </div>
+            <div
+              class="info-row"
+            >
+              <span
+                class="k"
+              >
+                Code
+              </span>
+              <span
+                class="v mono"
+              >
+                SC-001
+              </span>
+            </div>
+            <div
+              class="info-row"
+            >
+              <span
+                class="k"
+              >
+                Manufacturer
+              </span>
+              <span
+                class="v"
+              >
+                John Crane
+              </span>
+            </div>
+            <div
+              class="info-row"
+            >
+              <span
+                class="k"
+              >
+                Model
+              </span>
+              <span
+                class="v"
+              >
+                —
+              </span>
+            </div>
+          </div>
+          <div
+            style="margin-top: var(--space-4);"
+          >
+            <div
+              class="eyebrow"
+              style="margin-bottom: var(--space-2);"
+            >
+              Technical
+            </div>
+            <div
+              class="info-row"
+            >
+              <span
+                class="k"
+              >
+                Seal Type
+              </span>
+              <span
+                class="v"
+              >
+                Single Mechanical Seal
+              </span>
+            </div>
+            <div
+              class="info-row"
+            >
+              <span
+                class="k"
+              >
+                Material
+              </span>
+              <span
+                class="v"
+              >
+                —
+              </span>
+            </div>
+            <div
+              class="info-row"
+            >
+              <span
+                class="k"
+              >
+                Shaft
+              </span>
+              <span
+                class="v"
+              >
+                —
+              </span>
+            </div>
+            <div
+              class="info-row"
+            >
+              <span
+                class="k"
+              >
+                Operating Temperature
+              </span>
+              <span
+                class="v"
+              >
+                —
+              </span>
+            </div>
+          </div>
+        </section>
+        <section
+          class="assessment-section"
+          data-od-id="engineering-overview-section"
+        >
+          <span
+            class="eyebrow"
+          >
+            Seal Engineering Overview
+          </span>
+          <div
+            class="assessment-columns"
+            style="margin-top: var(--space-3);"
+          >
+            <div>
+              <div
+                class="eyebrow"
+              >
+                Operating Limits
+              </div>
+              <div
+                class="info-row"
+              >
+                <span
+                  class="k"
+                >
+                  Suhu Operasi
+                </span>
+                <span
+                  class="v"
+                >
+                  —
+                </span>
+              </div>
+              <div
+                class="info-row"
+              >
+                <span
+                  class="k"
+                >
+                  Tekanan Maks.
+                </span>
+                <span
+                  class="v"
+                >
+                  —
+                </span>
+              </div>
+            </div>
+            <div>
+              <div
+                class="eyebrow"
+              >
+                Materials & Construction
+              </div>
+              <div
+                class="info-row"
+              >
+                <span
+                  class="k"
+                >
+                  Material
+                </span>
+                <span
+                  class="v"
+                >
+                  —
+                </span>
+              </div>
+              <div
+                class="info-row"
+              >
+                <span
+                  class="k"
+                >
+                  Shaft Size
+                </span>
+                <span
+                  class="v"
+                >
+                  —
+                </span>
+              </div>
+            </div>
+          </div>
+        </section>
+        <section
+          class="assessment-section"
+          data-od-id="current-status-section"
+        >
+          <span
+            class="eyebrow"
+          >
+            Current Status
+          </span>
+          <div
+            class="info-panel"
+            style="margin-top: var(--space-3);"
+          >
+            <div
+              class="info-row"
+            >
+              <span
+                class="k"
+              >
+                Stock
+              </span>
+              <span
+                class="v"
+              >
+                Unknown
+              </span>
+            </div>
+            <div
+              class="info-row"
+            >
+              <span
+                class="k"
+              >
+                Coverage
+              </span>
+              <span
+                class="v"
+              >
+                LTSA Covered
+              </span>
+            </div>
+          </div>
+        </section>
+        <section
+          class="assessment-section"
+          data-od-id="coverage-section"
+        >
+          <span
+            class="eyebrow"
+          >
+            LTSA Coverage
+          </span>
+          <div
+            class="identity-status"
+            style="margin-top: var(--space-3);"
+          >
+            <span
+              class="status-signal normal"
+            >
+              <span
+                class="dot-lg"
+              />
+               
+              LTSA Covered
+            </span>
+          </div>
+          <p
+            class="confidence-label"
+            style="margin-top: var(--space-2);"
+          >
+            Linked to an LTSA-covered pump.
+          </p>
+        </section>
+        <section
+          class="assessment-section"
+          data-od-id="engineering-context-section"
+        >
+          <span
+            class="eyebrow"
+          >
+            Engineering Context
+          </span>
+          <div
+            style="margin-top: var(--space-2);"
+          >
+            <div
+              class="info-row"
+            >
+              <span
+                class="k"
+              >
+                Engineering Reference
+              </span>
+              <span
+                class="v"
+              >
+                Unknown
+              </span>
+            </div>
+            <div
+              class="info-row"
+            >
+              <span
+                class="k"
+              >
+                Equipment Type
+              </span>
+              <span
+                class="v"
+              >
+                Unknown
+              </span>
+            </div>
+            <div
+              class="info-row"
+            >
+              <span
+                class="k"
+              >
+                LTSA Coverage
+              </span>
+              <span
+                class="v"
+              >
+                LTSA Covered
+              </span>
+            </div>
+          </div>
+        </section>
+        <section
+          class="assessment-section"
+          data-od-id="stock-section"
+        >
+          <span
+            class="eyebrow"
+          >
+            Stock Status
+          </span>
+          <div
+            style="margin-top: var(--space-2);"
+          >
+            <div
+              class="info-row"
+            >
+              <span
+                class="k"
+              >
+                Inventory Status
+              </span>
+              <span
+                class="v ref-group-empty"
+              >
+                Unknown
+              </span>
+            </div>
+            <div
+              class="info-row"
+            >
+              <span
+                class="k"
+              >
+                Warehouse
+              </span>
+              <span
+                class="v ref-group-empty"
+              >
+                Unknown
+              </span>
+            </div>
+            <div
+              class="info-row"
+            >
+              <span
+                class="k"
+              >
+                ETA
+              </span>
+              <span
+                class="v ref-group-empty"
+              >
+                Unknown
+              </span>
+            </div>
+          </div>
+        </section>
+        <section
+          class="assessment-section"
+          data-od-id="recommended-replacement-section"
+        >
+          <span
+            class="eyebrow"
+          >
+            Engineering Recommendation
+          </span>
+          <h2
+            class="assessment-headline"
+          >
+            No action required. In service on both Boiler Feedwater units.
+          </h2>
+          <div
+            style="margin-bottom: var(--space-5);"
+          >
+            <span
+              class="eyebrow"
+              style="display: block; margin-bottom: var(--space-2);"
+            >
+              Preferred Seal
+            </span>
+            <div
+              class="part-item"
+            >
+              <div
+                class="part-row"
+              >
+                <span
+                  class="part-name"
+                >
+                  SC-002
+                </span>
+                <span
+                  class="stock-flag ok"
+                >
+                  Direkomendasikan
+                </span>
+              </div>
+              <div
+                class="part-meta"
+              >
+                Interchange tercatat pada Seal Registry
+              </div>
+            </div>
+          </div>
+          <div
+            class="assessment-footer"
+          >
+            <span
+              class="status-signal normal"
+            >
+              <span
+                class="dot-lg"
+              />
+               
+              Sesuai Spesifikasi
+            </span>
+            <button
+              class="btn-link"
+              data-od-id="cta-generate-recommendation"
+              type="button"
+            >
+              Lihat detail rekomendasi →
+            </button>
+          </div>
+        </section>
+        <section
+          class="assessment-section"
+          data-od-id="engineering-ai-section"
+        >
+          <span
+            class="eyebrow"
+          >
+            Engineering AI
+          </span>
+          <div
+            class="info-panel"
+            style="margin-top: var(--space-3);"
+          >
+            <span
+              class="status-signal normal"
+            >
+              SUCCESS
+            </span>
+            <p
+              class="v"
+            >
+              Seal SC-001 is in service with no abnormal indications.
+            </p>
+            <div
+              class="info-row"
+            >
+              <span
+                class="k"
+              >
+                Provider
+              </span>
+              <span
+                class="v"
+              >
+                CLAUDE
+              </span>
+            </div>
+            <div
+              class="info-row"
+            >
+              <span
+                class="k"
+              >
+                Latency
+              </span>
+              <span
+                class="v"
+              >
+                615 ms
+              </span>
+            </div>
+            <div
+              class="info-row"
+            >
+              <span
+                class="k"
+              >
+                Trace ID
+              </span>
+              <span
+                class="v"
+              >
+                trace-seal-001
+              </span>
+            </div>
+            <div
+              class="info-row"
+            >
+              <span
+                class="k"
+              >
+                Confidence
+              </span>
+              <span
+                class="v"
+              >
+                81%
+              </span>
+            </div>
+            <div
+              class="info-row"
+            >
+              <span
+                class="k"
+              >
+                Risk
+              </span>
+              <span
+                class="v"
+              >
+                LOW
+              </span>
+            </div>
+            <div
+              class="info-row"
+            >
+              <span
+                class="k"
+              >
+                Remaining Life
+              </span>
+              <span
+                class="v"
+              >
+                240 days
+              </span>
+            </div>
+          </div>
+        </section>
+        <section
+          class="assessment-section"
+          data-testid="ai-findings"
+        >
+          <div
+            class="section-head"
+          >
+            <h2>
+              Engineering Findings
+            </h2>
+          </div>
+          <div
+            class="info-row"
+          >
+            <span
+              class="v"
+            >
+              No leak indications recorded in the last 30 days.
+            </span>
+          </div>
+        </section>
+        <section
+          class="assessment-section"
+          data-testid="ai-evidence"
+        >
+          <div
+            class="section-head"
+          >
+            <h2>
+              Evidence Strip
+            </h2>
+          </div>
+          <div
+            class="info-row"
+          >
+            <span
+              class="v"
+            >
+              CMON-2001
+            </span>
+          </div>
+        </section>
+        <section
+          class="assessment-section"
+          data-testid="ai-recommendation"
+        >
+          <div
+            class="section-head"
+          >
+            <h2>
+              Recommendation
+            </h2>
+          </div>
+          <div
+            class="info-row"
+          >
+            <span
+              class="v"
+            >
+              Continue routine monitoring.
+            </span>
+          </div>
+        </section>
+        <section
+          class="rail-section"
+          data-testid="ai-source-references"
+        >
+          <h3>
+            Source References
+          </h3>
+          <div
+            class="info-row"
+          >
+            <span
+              class="v"
+            >
+              CMON-2001
+            </span>
+          </div>
+        </section>
+        <section
+          class="assessment-section"
+          data-od-id="compatibility-section"
+        >
+          <span
+            class="eyebrow"
+          >
+            Compatibility
+          </span>
+          <div
+            style="margin-top: var(--space-3);"
+          >
+            <div
+              style="margin-bottom: var(--space-5);"
+            >
+              <span
+                class="eyebrow"
+                style="display: block; margin-bottom: var(--space-2);"
+              >
+                Compatible Pumps
+              </span>
+              <div
+                class="part-item"
+              >
+                <div
+                  class="part-row"
+                >
+                  <span
+                    class="part-name"
+                  >
+                    PMP-001
+                  </span>
+                  <span
+                    class="stock-flag ok"
+                  >
+                    Kompatibel
+                  </span>
+                </div>
+              </div>
+              <div
+                class="part-item"
+              >
+                <div
+                  class="part-row"
+                >
+                  <span
+                    class="part-name"
+                  >
+                    PMP-002
+                  </span>
+                  <span
+                    class="stock-flag ok"
+                  >
+                    Kompatibel
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div
+              class="info-row"
+            >
+              <span
+                class="k"
+              >
+                Compatible API Plans
+              </span>
+              <span
+                class="v ref-group-empty"
+              >
+                0
+                 · No engineering data
+              </span>
+            </div>
+            <div
+              class="info-row"
+            >
+              <span
+                class="k"
+              >
+                Compatible Services
+              </span>
+              <span
+                class="v ref-group-empty"
+              >
+                0
+                 · No engineering data
+              </span>
+            </div>
+            <div
+              class="info-row"
+            >
+              <span
+                class="k"
+              >
+                Compatible Materials
+              </span>
+              <span
+                class="v ref-group-empty"
+              >
+                0
+                 · No engineering data
+              </span>
+            </div>
+            <div
+              style="margin-bottom: var(--space-5);"
+            >
+              <span
+                class="eyebrow"
+                style="display: block; margin-bottom: var(--space-2);"
+              >
+                Compatible Replacements
+              </span>
+              <div
+                class="part-item"
+              >
+                <div
+                  class="part-row"
+                >
+                  <span
+                    class="part-name"
+                  >
+                    SC-002
+                  </span>
+                  <span
+                    class="stock-flag ok"
+                  >
+                    Kompatibel
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+        <section
+          class="assessment-section"
+          data-od-id="related-engineering-section"
+        >
+          <span
+            class="eyebrow"
+          >
+            Related Engineering
+          </span>
+          <div
+            style="margin-top: var(--space-3);"
+          >
+            <div
+              class="info-row"
+            >
+              <span
+                class="k"
+              >
+                Related PM
+              </span>
+              <span
+                class="v ref-group-empty"
+              >
+                0
+                 · No engineering data
+              </span>
+            </div>
+            <div
+              class="info-row"
+            >
+              <span
+                class="k"
+              >
+                Related Condition Monitoring
+              </span>
+              <span
+                class="v ref-group-empty"
+              >
+                0
+                 · No engineering data
+              </span>
+            </div>
+            <div
+              class="info-row"
+            >
+              <span
+                class="k"
+              >
+                Related Failure Analysis
+              </span>
+              <span
+                class="v ref-group-empty"
+              >
+                0
+                 · No engineering data
+              </span>
+            </div>
+            <div
+              class="info-row"
+            >
+              <span
+                class="k"
+              >
+                Related CM Reports
+              </span>
+              <span
+                class="v ref-group-empty"
+              >
+                0
+                 · No engineering data
+              </span>
+            </div>
+            <div
+              class="info-row"
+            >
+              <span
+                class="k"
+              >
+                Related Work Orders
+              </span>
+              <span
+                class="v ref-group-empty"
+              >
+                0
+                 · No engineering data
+              </span>
+            </div>
+          </div>
+        </section>
+        <section
+          class="assessment-section"
+          data-od-id="documents-section"
+        >
+          <div
+            class="section-head"
+          >
+            <span
+              class="eyebrow"
+            >
+              Documents
+            </span>
+            <button
+              class="btn-link"
+              data-od-id="open-drawing-link"
+              type="button"
+            >
+              Buka Drawing →
+            </button>
+          </div>
+          <div
+            style="margin-top: var(--space-2);"
+          >
+            <div
+              class="eyebrow"
+              style="margin-bottom: var(--space-2);"
+            >
+              Document Types
+            </div>
+            <div
+              class="info-row"
+            >
+              <span
+                class="k"
+              >
+                Drawing
+              </span>
+              <span
+                class="v ref-group-empty"
+              >
+                —
+              </span>
+            </div>
+            <div
+              class="info-row"
+            >
+              <span
+                class="k"
+              >
+                Datasheet
+              </span>
+              <span
+                class="v ref-group-empty"
+              >
+                —
+              </span>
+            </div>
+            <div
+              class="info-row"
+            >
+              <span
+                class="k"
+              >
+                Installation Procedure
+              </span>
+              <span
+                class="v ref-group-empty"
+              >
+                —
+              </span>
+            </div>
+            <div
+              class="info-row"
+            >
+              <span
+                class="k"
+              >
+                Certificates
+              </span>
+              <span
+                class="v ref-group-empty"
+              >
+                —
+              </span>
+            </div>
+            <div
+              class="info-row"
+            >
+              <span
+                class="k"
+              >
+                Revision History
+              </span>
+              <span
+                class="v ref-group-empty"
+              >
+                —
+              </span>
+            </div>
+          </div>
+        </section>
+      </main>
+      <aside
+        class="inspector-rail"
+        data-od-id="inspector-rail"
+      >
+        <div
+          class="rail-section"
+          data-od-id="seal-health-section"
+        >
+          <h3
+            class="rail-title"
+          >
+            Seal Health
+          </h3>
+          <span
+            class="status-signal normal"
+          >
+            <span
+              class="dot-lg"
+            />
+             
+            Sesuai Spesifikasi
+          </span>
+        </div>
+        <div
+          class="rail-section"
+          data-od-id="lifecycle-section"
+        >
+          <h3
+            class="rail-title"
+          >
+            Lifecycle
+          </h3>
+          <div
+            class="stepper"
+            data-od-id="lifecycle-stepper"
+          >
+            <div
+              class="step-item"
+              data-state="done"
+            >
+              <span
+                class="step-dot"
+              />
+              <div
+                class="step-label"
+              >
+                Dipasang
+              </div>
+            </div>
+            <div
+              class="step-item"
+              data-state="current"
+            >
+              <span
+                class="step-dot"
+              />
+              <div
+                class="step-label"
+              >
+                Masa Pakai Normal
+              </div>
+            </div>
+            <div
+              class="step-item"
+              data-state="upcoming"
+            >
+              <span
+                class="step-dot"
+              />
+              <div
+                class="step-label"
+              >
+                Dipantau
+              </div>
+            </div>
+            <div
+              class="step-item"
+              data-state="upcoming"
+            >
+              <span
+                class="step-dot"
+              />
+              <div
+                class="step-label"
+              >
+                Akhir Masa Pakai
+              </div>
+            </div>
+          </div>
+        </div>
+        <div
+          class="rail-section"
+          data-od-id="criticality-section"
+        >
+          <h3
+            class="rail-title"
+          >
+            Criticality
+          </h3>
+          <div
+            class="confidence-label ref-group-empty"
+          >
+            Belum ada data kritikalitas.
+          </div>
+        </div>
+        <div
+          class="rail-section"
+          data-od-id="recommendation-section"
+        >
+          <h3
+            class="rail-title"
+          >
+            Recommendation
+          </h3>
+          <div
+            class="confidence-label"
+          >
+            No action required. In service on both Boiler Feedwater units.
+          </div>
+        </div>
+        <div
+          class="rail-section"
+          data-od-id="recent-activities-section"
+        >
+          <h3
+            class="rail-title"
+          >
+            Recent Activities
+          </h3>
+          <div
+            class="confidence-label ref-group-empty"
+          >
+            Belum ada aktivitas terbaru.
+          </div>
+        </div>
+      </aside>
+    </div>
+    <div
+      class="action-bar"
+      data-od-id="action-bar"
+    >
+      <div
+        class="action-bar-inner"
+      >
+        <div
+          class="action-bar-status"
+        >
+          <span
+            class="label"
+          >
+            SC-001 · Sesuai Spesifikasi
+          </span>
+          <span
+            class="meta"
+          >
+            LTSA Covered
+             · 
+            Stock
+             
+            Unknown
+          </span>
+        </div>
+        <div
+          class="action-bar-actions"
+        >
+          <button
+            class="btn-link"
+            data-od-id="action-bar-open-pump"
+            type="button"
+          >
+            Buka Pump →
+          </button>
+          <button
+            class="btn-primary"
+            data-od-id="action-bar-generate-recommendation"
+            type="button"
+          >
+            Buat Rekomendasi
+          </button>
+        </div>
+      </div>
+    </div>
+    <div
+      class="drawer-overlay"
+      data-open="false"
+    />
+    <div
+      aria-label="Seal Drawing"
+      class="drawer"
+      data-open="false"
+      role="dialog"
+    >
+      <div
+        class="drawer-head"
+      >
+        <h3
+          class="drawer-title"
+        >
+          Seal Drawing
+        </h3>
+        <button
+          aria-label="Close"
+          class="icon-btn"
+          data-od-id="drawer-close"
+          type="button"
+        >
+          <svg
+            fill="none"
+            height="16"
+            stroke="currentColor"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="1.6"
+            viewBox="0 0 24 24"
+            width="16"
+          >
+            <path
+              d="M18 6 6 18M6 6l12 12"
+            />
+          </svg>
+        </button>
+      </div>
+      <div
+        class="drawer-body"
+      >
+        <div
+          class="drawing-thumb"
+        />
+        <p>
+          Belum ada data drawing — Drawing Workspace belum memiliki backend.
+        </p>
+      </div>
+    </div>
+    <div
+      class="drawer-overlay"
+      data-open="false"
+    />
+    <div
+      aria-label="Generate Recommendation"
+      class="drawer"
+      data-open="false"
+      role="dialog"
+    >
+      <div
+        class="drawer-head"
+      >
+        <h3
+          class="drawer-title"
+        >
+          Generate Recommendation
+        </h3>
+        <button
+          aria-label="Close"
+          class="icon-btn"
+          data-od-id="drawer-close"
+          type="button"
+        >
+          <svg
+            fill="none"
+            height="16"
+            stroke="currentColor"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="1.6"
+            viewBox="0 0 24 24"
+            width="16"
+          >
+            <path
+              d="M18 6 6 18M6 6l12 12"
+            />
+          </svg>
+        </button>
+      </div>
+      <div
+        class="drawer-body"
+      >
+        <p>
+          No action required. In service on both Boiler Feedwater units.
+        </p>
+        <div
+          style="margin-bottom: var(--space-5);"
+        >
+          <span
+            class="eyebrow"
+            style="display: block; margin-bottom: var(--space-2);"
+          >
+            Preferred Seal
+          </span>
+          <div
+            class="part-item"
+          >
+            <div
+              class="part-row"
+            >
+              <span
+                class="part-name"
+              >
+                SC-002
+              </span>
+              <span
+                class="stock-flag ok"
+              >
+                Direkomendasikan
+              </span>
+            </div>
+            <div
+              class="part-meta"
+            >
+              Interchange tercatat pada Seal Registry
+            </div>
+          </div>
+        </div>
+        <button
+          class="btn-primary"
+          data-od-id="mark-reviewed-btn"
+          style="margin-top: var(--space-2);"
+          type="button"
+        >
+          Tandai Sudah Ditinjau
+        </button>
+      </div>
+    </div>
+    <div
+      class="toast"
+      data-od-id="toast"
+      data-open="false"
+    />
+  </div>
+</div>
+`;
