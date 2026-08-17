@@ -31,6 +31,12 @@ services:
       - n8n
     environment:
       AI5R_ENV: ${AI5R_ENV}
+      # MWO-LTSA-AUTH-COMPOSE-SECRET-WIRING-001 -- auth_service.signing_secret()
+      # requires this in the api process's own environment (AI5R_ENV=production
+      # + a missing secret raises AuthConfigurationError, by design -- no
+      # fallback). Never given a default here: an unset AI5R_AUTH_JWT_SECRET in
+      # .env must surface as an empty value, not a hardcoded secret.
+      AI5R_AUTH_JWT_SECRET: ${AI5R_AUTH_JWT_SECRET}
       AI5R_VERSION: ${AI5R_VERSION}
       AI5R_DOMAIN: ${AI5R_DOMAIN}
       AI5R_PRODUCT_NAME: ${AI5R_PRODUCT_NAME}
