@@ -52,10 +52,24 @@ const DEMO_USERS = [
   {
     email: "viewer@pertamina.com",
     password: "demo123",
-    status: "inactive",
+    status: "active",
     user: { userId: "u-pertamina-viewer", name: "Siti Rahayu" },
     organization: PERTAMINA_RU2,
     role: ROLES.PERTAMINA_VIEWER,
+  },
+  // MWO-LTSA-AUTH-OPEN-DESIGN-002 -- dedicated fixture for the "inactive
+  // account" login state. Previously viewer@pertamina.com carried
+  // status: "inactive", which made PERTAMINA_VIEWER itself unreachable
+  // for visual validation (one of this MWO's four required authenticated
+  // states). That state now needs its own account, separate from a real
+  // role's demo login.
+  {
+    email: "inactive@tap.co.id",
+    password: "demo123",
+    status: "inactive",
+    user: { userId: "u-tap-inactive", name: "Dedi Kurniawan" },
+    organization: TAP,
+    role: ROLES.TAP_ENGINEER,
   },
 ];
 

@@ -72,11 +72,23 @@ describe("LTSAAuthGate", () => {
   it("rejects an inactive account with an honest status message, not a technical auth error", async () => {
     render(<LTSAAuthGate />);
     await screen.findByRole("heading", { name: "Sign in" });
-    await login("viewer@pertamina.com");
+    await login("inactive@tap.co.id");
 
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent(/inactive/i);
     expect(alert.textContent).not.toMatch(/jwt|token|401|500/i);
+  });
+
+  it("PERTAMINA_VIEWER signs in successfully with read access but no import", async () => {
+    render(<LTSAAuthGate />);
+    await screen.findByRole("heading", { name: "Sign in" });
+    await login("viewer@pertamina.com");
+
+    const stub = await screen.findByTestId("ltsa-workspace-stub");
+    const allowedKeys = stub.textContent.split(",");
+    expect(allowedKeys).toEqual(expect.arrayContaining(["pump", "seal"]));
+    expect(allowedKeys).not.toContain("import");
+    expect(await screen.findByText("Siti Rahayu")).toBeInTheDocument();
   });
 
   it("logs out back to the login screen and clears the session", async () => {
