@@ -14,6 +14,17 @@ vi.mock("./LTSAWorkspace", () => ({
   ),
 }));
 
+// MWO-LTSA-ADMIN-USERS-WIRING-001 -- AdminUsersView itself is already
+// fully tested (AdminUsersView.test.jsx); this suite only proves the
+// GATE (capability-driven visibility + direct-route security), the same
+// "stub the child, test the shell" split this file already establishes
+// for LTSAWorkspace above.
+vi.mock("./AdminUsersView", () => ({
+  default: ({ canManageUsers }) => (
+    <div data-testid="admin-users-view-stub">{String(canManageUsers)}</div>
+  ),
+}));
+
 // MWO-LTSA-AUTH-002 -- authClient.js now talks to the real AUTH-001
 // backend (POST /api/auth/login, GET /api/auth/me); production code no
 // longer contains demo identities (Rule 2). This suite supplies its own
@@ -56,6 +67,30 @@ const FIXTURES = {
     role: "PERTAMINA_VIEWER",
     permissions: ["pump.read", "seal.read", "inventory.read", "maintenance.read"],
     token: "fixture.pertamina-viewer",
+  },
+  // MWO-LTSA-AUTH-003A-FINAL roles.
+  "su@tap.co.id": {
+    user: { id: "u-superuser", email: "su@tap.co.id", name: "Sari Wulandari" },
+    organization: { id: "org-tap", code: "TAP", displayName: "TAP" },
+    role: "SUPERUSER",
+    permissions: [
+      "pump.read", "seal.read", "inventory.read", "maintenance.read", "maintenance.write",
+      "maintenance.technical_review", "maintenance.admin_review", "condition.read", "drawing.read",
+      "engineering_ai.ask", "import.read", "import.execute", "master.edit", "internal_inventory.read",
+      "internal_component.read", "installation.write", "installation.review",
+      "admin.users", "admin.superuser", "audit.read_full",
+    ],
+    token: "fixture.superuser",
+  },
+  "jc@johncrane.internal": {
+    user: { id: "u-jc-engineer", email: "jc@johncrane.internal", name: "Kenji Watanabe" },
+    organization: { id: "org-tap", code: "TAP", displayName: "TAP" },
+    role: "JOHN_CRANE_ENGINEER",
+    permissions: [
+      "pump.read", "seal.read", "inventory.read", "maintenance.read", "maintenance.technical_review",
+      "condition.read", "drawing.read", "engineering_ai.ask", "internal_component.read",
+    ],
+    token: "fixture.jc-engineer",
   },
 };
 
@@ -175,5 +210,118 @@ describe("LTSAAuthGate", () => {
     fireEvent.click(screen.getByRole("button", { name: /log out/i }));
 
     expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
+  });
+});
+
+// MWO-LTSA-ADMIN-USERS-WIRING-001
+describe("Admin Users navigation visibility (capability-driven, never role === \"...\")", () => {
+  afterEach(() => {
+    window.history.pushState({}, "", "/ltsa");
+  });
+
+  async function loginAndOpenMenu(email, nameMatch) {
+    render(<LTSAAuthGate />);
+    await screen.findByRole("heading", { name: "Sign in" });
+    await login(email);
+    await screen.findByText(nameMatch);
+    fireEvent.click(screen.getByRole("button", { name: new RegExp(nameMatch, "i") }));
+  }
+
+  it("SUPERUSER sees the Admin — Users menu item", async () => {
+    await loginAndOpenMenu("su@tap.co.id", "Sari Wulandari");
+    expect(screen.getByText("Admin — Users")).toBeInTheDocument();
+  });
+
+  it("TAP_ADMIN sees the Admin — Users menu item", async () => {
+    await loginAndOpenMenu("admin@tap.co.id", "Andra Wicaksono");
+    expect(screen.getByText("Admin — Users")).toBeInTheDocument();
+  });
+
+  it("TAP_ENGINEER does not see the Admin — Users menu item", async () => {
+    await loginAndOpenMenu("engineer@tap.co.id", "Rizal Pratama");
+    expect(screen.queryByText("Admin — Users")).not.toBeInTheDocument();
+  });
+
+  it("JOHN_CRANE_ENGINEER does not see the Admin — Users menu item", async () => {
+    await loginAndOpenMenu("jc@johncrane.internal", "Kenji Watanabe");
+    expect(screen.queryByText("Admin — Users")).not.toBeInTheDocument();
+  });
+
+  it("PERTAMINA_ENGINEER does not see the Admin — Users menu item", async () => {
+    await loginAndOpenMenu("budi.santoso@pertamina.com", "Budi Santoso");
+    expect(screen.queryByText("Admin — Users")).not.toBeInTheDocument();
+  });
+
+  it("PERTAMINA_VIEWER does not see the Admin — Users menu item", async () => {
+    await loginAndOpenMenu("viewer@pertamina.com", "Siti Rahayu");
+    expect(screen.queryByText("Admin — Users")).not.toBeInTheDocument();
+  });
+});
+
+describe("Direct route: /ltsa/admin/users (Phase 3 -- hiding the nav item is not security)", () => {
+  afterEach(() => {
+    window.history.pushState({}, "", "/ltsa");
+  });
+
+  it("clicking Admin — Users navigates to AdminUsersView with canManageUsers=true for TAP_ADMIN, and hides LTSAWorkspace", async () => {
+    render(<LTSAAuthGate />);
+    await screen.findByRole("heading", { name: "Sign in" });
+    await login("admin@tap.co.id");
+    await screen.findByTestId("ltsa-workspace-stub");
+
+    fireEvent.click(screen.getByRole("button", { name: /andra wicaksono/i }));
+    fireEvent.click(screen.getByText("Admin — Users"));
+
+    const stub = await screen.findByTestId("admin-users-view-stub");
+    expect(stub.textContent).toBe("true");
+    expect(screen.queryByTestId("ltsa-workspace-stub")).not.toBeInTheDocument();
+    expect(window.location.pathname).toBe("/ltsa/admin/users");
+  });
+
+  it("a TAP_ENGINEER who manually navigates to the route reaches AdminUsersView only with canManageUsers=false -- the real gate stays in AdminUsersView/the backend, not a blocked render", async () => {
+    window.history.pushState({}, "", "/ltsa/admin/users");
+    render(<LTSAAuthGate />);
+    await screen.findByRole("heading", { name: "Sign in" });
+    await login("engineer@tap.co.id");
+
+    const stub = await screen.findByTestId("admin-users-view-stub");
+    expect(stub.textContent).toBe("false");
+  });
+
+  it("a JOHN_CRANE_ENGINEER who manually navigates to the route also gets canManageUsers=false", async () => {
+    window.history.pushState({}, "", "/ltsa/admin/users");
+    render(<LTSAAuthGate />);
+    await screen.findByRole("heading", { name: "Sign in" });
+    await login("jc@johncrane.internal");
+
+    const stub = await screen.findByTestId("admin-users-view-stub");
+    expect(stub.textContent).toBe("false");
+  });
+
+  it("a PERTAMINA_VIEWER who manually navigates to the route also gets canManageUsers=false", async () => {
+    window.history.pushState({}, "", "/ltsa/admin/users");
+    render(<LTSAAuthGate />);
+    await screen.findByRole("heading", { name: "Sign in" });
+    await login("viewer@pertamina.com");
+
+    const stub = await screen.findByTestId("admin-users-view-stub");
+    expect(stub.textContent).toBe("false");
+  });
+
+  it("Back to LTSA Workspace returns from the admin route to the normal capability-gated workspace", async () => {
+    render(<LTSAAuthGate />);
+    await screen.findByRole("heading", { name: "Sign in" });
+    await login("admin@tap.co.id");
+    await screen.findByTestId("ltsa-workspace-stub");
+
+    fireEvent.click(screen.getByRole("button", { name: /andra wicaksono/i }));
+    fireEvent.click(screen.getByText("Admin — Users"));
+    await screen.findByTestId("admin-users-view-stub");
+
+    fireEvent.click(screen.getByText("Back to LTSA Workspace"));
+
+    expect(await screen.findByTestId("ltsa-workspace-stub")).toBeInTheDocument();
+    expect(screen.queryByTestId("admin-users-view-stub")).not.toBeInTheDocument();
+    expect(window.location.pathname).toBe("/ltsa");
   });
 });

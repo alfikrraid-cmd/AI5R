@@ -171,6 +171,23 @@ export default function AdminUsersView({ canManageUsers = false }) {
               <option key={role} value={role}>{role}</option>
             ))}
           </select>
+          {/* MWO-LTSA-ADMIN-USERS-WIRING-001 -- Phase 5: no "JOHN_CRANE"
+              organization exists yet (AUTH-003A-FINAL's own disclosed gap;
+              not fabricated here). This is a visible warning, not a
+              block -- the backend accepts any existing organization_id
+              the caller supplies, and only a SUPERUSER can even reach
+              this form for this role (JOHN_CRANE_ENGINEER is outside
+              TAP_ADMIN's delegation scope). Assigning the new account to
+              TAP's own organization is never done silently by this form;
+              the operator must type that organization id themselves,
+              with this warning visible. */}
+          {createForm.role === "JOHN_CRANE_ENGINEER" && (
+            <p className="confidence-label" data-testid="admin-users-jc-org-warning" style={{ color: "var(--color-warning, #b58900)" }}>
+              No JOHN_CRANE organization currently exists. Assigning this account to an
+              existing organization (e.g. TAP) is a manual choice, not a default -- confirm
+              the correct Organization ID before creating this user.
+            </p>
+          )}
           <Button type="submit">Create</Button>
         </form>
       )}

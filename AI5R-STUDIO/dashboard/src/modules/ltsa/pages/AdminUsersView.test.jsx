@@ -123,6 +123,21 @@ describe("AdminUsersView actions", () => {
     expect(screen.queryByText("a-new-password")).toBeNull();
   });
 
+  // MWO-LTSA-ADMIN-USERS-WIRING-001 -- Phase 5: JOHN_CRANE organization gap.
+  it("shows a visible warning when JOHN_CRANE_ENGINEER is selected, never silently assigning an organization", async () => {
+    render(<AdminUsersView canManageUsers={true} />);
+    await waitFor(() => expect(screen.getByText("tap-eng@tap.internal")).toBeTruthy());
+
+    fireEvent.click(screen.getByText("Create User"));
+    expect(screen.queryByTestId("admin-users-jc-org-warning")).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("Role"), { target: { value: "JOHN_CRANE_ENGINEER" } });
+
+    expect(screen.getByTestId("admin-users-jc-org-warning")).toBeTruthy();
+    // Organization ID stays whatever the operator typed -- never auto-filled.
+    expect(screen.getByLabelText("Organization ID").value).toBe("");
+  });
+
   it("creating a user submits the form fields to createAdminUser", async () => {
     render(<AdminUsersView canManageUsers={true} />);
     await waitFor(() => expect(screen.getByText("tap-eng@tap.internal")).toBeTruthy());
