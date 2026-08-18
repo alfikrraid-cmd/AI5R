@@ -198,6 +198,221 @@ CREATE TABLE IF NOT EXISTS public.maintenance_history (
 );
 
 -- ============================================================
+-- PM SCHEDULE
+-- Manufactured under WO-PM-001 (implements ADR-PM-001).
+--
+-- Models only the recurring PLAN. Each occurrence of the plan being
+-- performed is already fully canonical via work_order (work_type = 'PM')
+-- and maintenance_history above -- no columns for that half exist here,
+-- by design (see ADR-PM-001's Canonical Model). asset_code/asset_type is
+-- the same polymorphic reference used by work_order/maintenance_history.
+-- checklist is JSONB: an owned, bounded, ordered list with no independent
+-- identity outside its schedule, the same convention already used by
+-- document_field_extraction.extracted_fields. last_performed/next_due/
+-- status are stored, not derived -- see ADR-PM-001's Open Question for why.
+-- Source: ../BUILD-PACKS/BP-PM-SCHEDULE/DATABASE/001_create_table.sql
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS public.pm_schedule (
+    pm_schedule_code TEXT PRIMARY KEY NOT NULL,
+    asset_code TEXT,
+    asset_type TEXT,
+    procedure TEXT NOT NULL,
+    frequency TEXT NOT NULL,
+    trigger_type TEXT NOT NULL,
+    checklist JSONB,
+    assigned_to TEXT,
+    estimated_duration_hours NUMERIC,
+    next_due TIMESTAMP,
+    last_performed TIMESTAMP,
+    status TEXT DEFAULT 'ACTIVE',
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- ============================================================
+-- PM OCCURRENCE
+-- Manufactured under WO-PMOCC-001 (implements ADR-PM-OCCURRENCE-001).
+--
+-- The Occurrence half of pm_schedule's Plan/Occurrence split, superseding
+-- ADR-PM-001's original "PM Occurrence = a maintenance_history record,
+-- optionally linked to a Work Order with work_type = 'PM'" ruling once
+-- real evidence (DISCOVERY-LTSA-REPORT-001's report section 5, "PM Mech
+-- Seal") showed routine PM visits are not Work-Order-dispatched and carry
+-- a per-accessory checklist-completion matrix neither work_order nor
+-- maintenance_history can hold. Structurally the direct counterpart to
+-- condition_monitoring_reading below: asset_code/asset_type denormalized
+-- for query convenience; api_plan/area are Derived from ltsa_pumps/the
+-- Asset registry, never duplicated here. pm_schedule_code is a required,
+-- informal reference (no FK) to the owning Schedule. work_order_code is
+-- optional and informal (no FK) -- not evidenced as typical, included
+-- only for consistency with maintenance_history.work_order_code /
+-- cm_report.work_order_code's established convention. status defaults to
+-- 'DONE' -- the only value evidenced in the source report's sampled rows.
+-- Source: ../BUILD-PACKS/BP-PM-OCCURRENCE/DATABASE/001_create_table.sql
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS public.pm_occurrence (
+    pm_occurrence_code TEXT PRIMARY KEY NOT NULL,
+    pm_schedule_code TEXT NOT NULL,
+    asset_code TEXT,
+    asset_type TEXT,
+    occurrence_date TIMESTAMP,
+    status TEXT DEFAULT 'DONE',
+    checklist_completion JSONB,
+    work_order_code TEXT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- ============================================================
+-- CM REPORT
+-- Manufactured under WO-CM-001 (implements ADR-CM-001).
+--
+-- A standalone Corrective Maintenance failure record. asset_code/
+-- asset_type is the same polymorphic reference used by work_order/
+-- maintenance_history/pm_schedule. work_order_code is an optional,
+-- informal reference -- a CM Report may exist without ever having a
+-- Work Order (ADR-CM-001's Canonical Model), so no FK is declared.
+-- priority/assigned_to/failure_description intentionally overlap in
+-- shape with work_order's own priority/assigned_to/description --
+-- a disclosed, non-duplicative overlap per ADR-CM-001 (the two
+-- objects have independent existence and may legitimately diverge
+-- once both exist). status uses its own OPEN/IN_PROGRESS/RESOLVED/
+-- CLOSED vocabulary, distinct from work_order.status.
+-- Source: ../BUILD-PACKS/BP-CM-REPORT/DATABASE/001_create_table.sql
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS public.cm_report (
+    cm_report_code TEXT PRIMARY KEY NOT NULL,
+    asset_code TEXT,
+    asset_type TEXT,
+    work_order_code TEXT,
+    failure_category TEXT NOT NULL,
+    severity TEXT NOT NULL,
+    priority TEXT,
+    failure_description TEXT NOT NULL,
+    root_cause TEXT,
+    immediate_action TEXT,
+    corrective_action TEXT,
+    downtime_hours NUMERIC,
+    assigned_to TEXT,
+    status TEXT DEFAULT 'OPEN',
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- ============================================================
+-- CONDITION MONITORING SCHEDULE / READING
+-- Manufactured under WO-CMON-001 (implements ADR-CONDITION-MONITORING-001).
+--
+-- A recurring, scheduled mechanical-seal inspection domain -- deliberately
+-- NOT the same domain as cm_report (Corrective Maintenance) above. Real-
+-- world "Condition Monitoring" (a scheduled, weekly-per-pump inspection)
+-- and cm_report's "CM Report" (Corrective Maintenance, a reactive
+-- failure record) share an acronym only, per DISCOVERY-LTSA-REPORT-001 /
+-- DISCOVERY-CONDITION-MONITORING-001 -- hence this domain's short code is
+-- CMON, never a bare CM, and neither table references cm_report.
+--
+-- Two entities, a Plan and its Occurrence:
+--   condition_monitoring_schedule owns frequency and applicable_parameters
+--   (JSONB) only -- api_plan and area are Derived from ltsa_pumps, never
+--   duplicated here. No status column: no vocabulary is evidenced in the
+--   source document, left as an Open Question rather than fabricated.
+--
+--   condition_monitoring_reading is a dense, append-only measurement log:
+--   DE/NDE-split temperatures, a leak Y/N flag per side, single-point
+--   suction/discharge, and a nullable pump_operating_state (present in the
+--   source report's own format definition; population in the sampled data
+--   was unconfirmed, so it is stored honestly nullable).
+--   condition_monitoring_schedule_code is a required, informal reference
+--   back to the owning Schedule (no DB-level FK, same non-FK convention as
+--   every cross-entity reference in this product).
+-- Source: ../BUILD-PACKS/BP-CONDITION-MONITORING/DATABASE/001_create_table.sql
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS public.condition_monitoring_schedule (
+    condition_monitoring_schedule_code TEXT PRIMARY KEY NOT NULL,
+    asset_code TEXT,
+    asset_type TEXT,
+    frequency TEXT,
+    applicable_parameters JSONB,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS public.condition_monitoring_reading (
+    condition_monitoring_reading_code TEXT PRIMARY KEY NOT NULL,
+    condition_monitoring_schedule_code TEXT NOT NULL,
+    asset_code TEXT,
+    asset_type TEXT,
+    reading_date TIMESTAMP,
+    flushing_temp_de NUMERIC,
+    flushing_temp_nde NUMERIC,
+    quench_temp_de NUMERIC,
+    quench_temp_nde NUMERIC,
+    flushing_in_temp_de NUMERIC,
+    flushing_in_temp_nde NUMERIC,
+    flushing_out_temp_de NUMERIC,
+    flushing_out_temp_nde NUMERIC,
+    cooling_water_in_temp_de NUMERIC,
+    cooling_water_in_temp_nde NUMERIC,
+    cooling_water_out_temp_de NUMERIC,
+    cooling_water_out_temp_nde NUMERIC,
+    mechseal_temp_de NUMERIC,
+    mechseal_temp_nde NUMERIC,
+    mechanical_seal_leak_de BOOLEAN,
+    mechanical_seal_leak_nde BOOLEAN,
+    water_jacket_temp_de NUMERIC,
+    water_jacket_temp_nde NUMERIC,
+    suction_temp NUMERIC,
+    discharge_temp NUMERIC,
+    pump_operating_state TEXT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- ============================================================
+-- MWO-LTSA-HOC-PM-CM (HOC PM/CM Historical Data Ingestion) -- idempotent
+-- upgrade path, applied against a database that already has pm_occurrence/
+-- cm_report/condition_monitoring_reading in their pre-HOC shape.
+--
+-- Provenance: pm_occurrence, cm_report, and condition_monitoring_reading
+-- previously had no way to trace an imported row back to its source cell,
+-- unlike internal_component_master/internal_component_stock above (which
+-- already established source_workbook_name/source_sheet_name/
+-- source_row_number). Extended with the exact same 3-column convention so
+-- a bulk-imported historical workbook (e.g. "CM & PM Summary HOC
+-- JUNI.xlsx") is auditable the same way.
+--
+-- failure_date (cm_report only): every other occurrence-shaped table here
+-- already has a real "when did this happen" column distinct from
+-- created_at/updated_at (pm_occurrence.occurrence_date,
+-- condition_monitoring_reading.reading_date) -- cm_report did not. Without
+-- it, a historical finding's real date is unrecoverable from import time.
+-- Nullable: a live-entered CM Report with no explicit failure date is
+-- unaffected.
+--
+-- Sources:
+--   ../BUILD-PACKS/BP-PM-OCCURRENCE/DATABASE/004_alter_add_hoc_provenance_fields.sql
+--   ../BUILD-PACKS/BP-CM-REPORT/DATABASE/004_alter_add_hoc_provenance_fields.sql
+--   ../BUILD-PACKS/BP-CONDITION-MONITORING/DATABASE/004_alter_add_hoc_provenance_fields.sql
+-- ============================================================
+
+ALTER TABLE public.pm_occurrence ADD COLUMN IF NOT EXISTS source_workbook_name TEXT;
+ALTER TABLE public.pm_occurrence ADD COLUMN IF NOT EXISTS source_sheet_name TEXT;
+ALTER TABLE public.pm_occurrence ADD COLUMN IF NOT EXISTS source_row_number INTEGER;
+
+ALTER TABLE public.cm_report ADD COLUMN IF NOT EXISTS source_workbook_name TEXT;
+ALTER TABLE public.cm_report ADD COLUMN IF NOT EXISTS source_sheet_name TEXT;
+ALTER TABLE public.cm_report ADD COLUMN IF NOT EXISTS source_row_number INTEGER;
+ALTER TABLE public.cm_report ADD COLUMN IF NOT EXISTS failure_date TIMESTAMP;
+
+ALTER TABLE public.condition_monitoring_reading ADD COLUMN IF NOT EXISTS source_workbook_name TEXT;
+ALTER TABLE public.condition_monitoring_reading ADD COLUMN IF NOT EXISTS source_sheet_name TEXT;
+ALTER TABLE public.condition_monitoring_reading ADD COLUMN IF NOT EXISTS source_row_number INTEGER;
+
+-- ============================================================
 -- KNOWLEDGE SOURCE REGISTRY
 -- Manufactured under MWO-LTSA-040A (Knowledge Source Registry).
 --
