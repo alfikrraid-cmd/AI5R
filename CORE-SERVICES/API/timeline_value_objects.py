@@ -62,6 +62,10 @@ class TimelineSource(str, Enum):
     INSTALLATION_REPORT = "INSTALLATION_REPORT"
     WORK_ORDER = "WORK_ORDER"
     SEAL_REGISTRY = "SEAL_REGISTRY"
+    # MWO-LTSA-PM-CM-INTAKE-001 -- backs TimelineCategory.INSPECTION,
+    # now populated from condition_monitoring_reading (never cm_report --
+    # see ADR-CONDITION-MONITORING-001's own "CMON, never a bare CM").
+    CONDITION_MONITORING_READING = "CONDITION_MONITORING_READING"
     UNKNOWN = "UNKNOWN"
 
 

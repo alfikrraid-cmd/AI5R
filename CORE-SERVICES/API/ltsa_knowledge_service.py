@@ -64,6 +64,7 @@ from typing import Any
 
 from . import maintenance_intelligence_service as mis
 from .cm_report_gateway import CMReportGateway
+from .condition_monitoring_reading_gateway import ConditionMonitoringReadingGateway
 from .condition_monitoring_schedule_gateway import ConditionMonitoringScheduleGateway
 from .maintenance_history_gateway import MaintenanceHistoryGateway
 from .pm_occurrence_gateway import PMOccurrenceGateway
@@ -93,6 +94,7 @@ class LTSAKnowledge:
     recommendation: Any
     pm_schedules: list[dict[str, Any]]
     condition_monitoring_schedules: list[dict[str, Any]]
+    condition_monitoring_readings: list[dict[str, Any]]
 
 
 class LTSAKnowledgeService:
@@ -114,6 +116,7 @@ class LTSAKnowledgeService:
         seal_engineering_document_gateway: SealEngineeringDocumentGateway | None = None,
         pm_schedule_gateway: PMScheduleGateway | None = None,
         condition_monitoring_schedule_gateway: ConditionMonitoringScheduleGateway | None = None,
+        condition_monitoring_reading_gateway: ConditionMonitoringReadingGateway | None = None,
     ) -> None:
         self.pump_gateway = pump_gateway or PumpGateway()
         self.maintenance_history_gateway = maintenance_history_gateway or MaintenanceHistoryGateway()
@@ -132,6 +135,9 @@ class LTSAKnowledgeService:
         self.pm_schedule_gateway = pm_schedule_gateway or PMScheduleGateway()
         self.condition_monitoring_schedule_gateway = (
             condition_monitoring_schedule_gateway or ConditionMonitoringScheduleGateway()
+        )
+        self.condition_monitoring_reading_gateway = (
+            condition_monitoring_reading_gateway or ConditionMonitoringReadingGateway()
         )
 
     def build(self, tag_number: str) -> LTSAKnowledge:
@@ -160,6 +166,7 @@ class LTSAKnowledgeService:
             recommendation=(),
             pm_schedules=self._build_pm_schedules(tag_number),
             condition_monitoring_schedules=self._build_condition_monitoring_schedules(tag_number),
+            condition_monitoring_readings=self._build_condition_monitoring_readings(tag_number),
         )
 
         return replace(knowledge, recommendation=self.recommendation_engine.recommend(knowledge))
@@ -206,6 +213,14 @@ class LTSAKnowledgeService:
 
     def _build_condition_monitoring_schedules(self, tag_number: str) -> list[dict[str, Any]]:
         response = self.condition_monitoring_schedule_gateway.list_condition_monitoring_schedules()
+        return [
+            record
+            for record in (response.get("data") or [])
+            if record.get("asset_code") == tag_number
+        ]
+
+    def _build_condition_monitoring_readings(self, tag_number: str) -> list[dict[str, Any]]:
+        response = self.condition_monitoring_reading_gateway.list_condition_monitoring_readings()
         return [
             record
             for record in (response.get("data") or [])

@@ -113,7 +113,7 @@ class EquipmentTimelineService:
         events.extend(self._build_cm_events(knowledge.cm_history))
         events.extend(self._build_breakdown_events(knowledge.breakdown_history))
         events.extend(self._build_seal_replacement_events(tag_number))
-        events.extend(self._build_inspection_events(tag_number))
+        events.extend(self._build_inspection_events(knowledge.condition_monitoring_readings))
         events.extend(self._build_inventory_events(tag_number))
         events.extend(self._build_recommendation_events(tag_number))
 
@@ -137,6 +137,7 @@ class EquipmentTimelineService:
         lifecycle_events.extend(installation_events)
         lifecycle_events.extend(self._build_pm_events(knowledge.pm_history))
         lifecycle_events.extend(self._build_cm_events(knowledge.cm_history))
+        lifecycle_events.extend(self._build_inspection_events(knowledge.condition_monitoring_readings))
         lifecycle_events.extend(failure_events)
         lifecycle_events.extend(work_order_events)
         lifecycle_events.extend(replacement_events)
@@ -201,6 +202,7 @@ class EquipmentTimelineService:
             drawings=knowledge.drawings,
             documents=self._list_documents(knowledge.inventory),
             inventory=knowledge.inventory,
+            condition_monitoring_readings=knowledge.condition_monitoring_readings,
         )
 
         # MWO-LTSA-064A -- CurrentInstallation/CurrentSeal are no longer
@@ -383,8 +385,27 @@ class EquipmentTimelineService:
     def _build_seal_replacement_events(self, tag_number: str) -> tuple[TimelineEvent, ...]:
         return ()
 
-    def _build_inspection_events(self, tag_number: str) -> tuple[TimelineEvent, ...]:
-        return ()
+    def _build_inspection_events(self, records: list[dict[str, Any]]) -> tuple[TimelineEvent, ...]:
+        # MWO-LTSA-PM-CM-INTAKE-001 -- Condition Monitoring readings
+        # (condition_monitoring_reading, "CMON" -- deliberately not
+        # cm_report/TimelineCategory.CM, see ADR-CONDITION-MONITORING-001
+        # and this MWO's own domain-correction discussion). Same shape as
+        # _build_pm_events/_build_cm_events above: real records only,
+        # never fabricated.
+        return tuple(
+            TimelineEvent(
+                id=f"INSPECTION:{record.get('condition_monitoring_reading_code')}",
+                event_type=TimelineCategory.INSPECTION,
+                occurred_at=record.get("reading_date"),
+                title=f"Condition Monitoring {record.get('condition_monitoring_reading_code')}",
+                description=record.get("finding"),
+                severity=TimelineSeverity.UNKNOWN,
+                source=TimelineSource.CONDITION_MONITORING_READING,
+                derived=True,
+                payload=record,
+            )
+            for record in records
+        )
 
     def _build_inventory_events(self, tag_number: str) -> tuple[TimelineEvent, ...]:
         return ()

@@ -1398,6 +1398,7 @@ def _knowledge_for_route_test(recommendation=(), drawings=None):
         recommendation=recommendation,
         pm_schedules=[],
         condition_monitoring_schedules=[],
+        condition_monitoring_readings=[],
     )
 
 

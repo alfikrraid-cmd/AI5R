@@ -33,6 +33,7 @@ def _knowledge(
         recommendation=recommendation,
         pm_schedules=pm_schedules or [],
         condition_monitoring_schedules=[],
+        condition_monitoring_readings=[],
     )
 
 

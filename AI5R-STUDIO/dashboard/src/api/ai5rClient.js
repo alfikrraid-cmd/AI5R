@@ -1009,3 +1009,125 @@ export async function updateSealIdentifiers(sealCode, { kimapPertamina, gpnJohnC
         body: JSON.stringify({ kimap_pertamina: kimapPertamina, gpn_john_crane: gpnJohnCrane }),
     });
 }
+
+// MWO-LTSA-PM-CM-INTAKE-001 -- real PM Occurrence / Condition Monitoring
+// Reading draft-create/update/submit/review persistence, plus evidence
+// attachments. Reuses _adminUsersRequest's verbatim-backend-error
+// discipline (a 403/404/409 detail string is surfaced as-is, never
+// swallowed) -- it is generic over URL/options despite its name, not
+// admin-users-specific.
+
+export async function createPMOccurrence({ pmScheduleCode, assetCode, assetType, occurrenceDate, activities, remarks }) {
+    return _adminUsersRequest(`${API_URL}/api/ltsa/pm-occurrences`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            pm_schedule_code: pmScheduleCode, asset_code: assetCode, asset_type: assetType,
+            occurrence_date: occurrenceDate, activities, remarks,
+        }),
+    });
+}
+
+export async function updatePMOccurrenceDraft(code, { occurrenceDate, activities, finding, preliminaryRecommendation, remarks }) {
+    return _adminUsersRequest(`${API_URL}/api/ltsa/pm-occurrences/${encodeURIComponent(code)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            occurrence_date: occurrenceDate, activities, finding,
+            preliminary_recommendation: preliminaryRecommendation, remarks,
+        }),
+    });
+}
+
+export async function submitPMOccurrence(code) {
+    return _adminUsersRequest(`${API_URL}/api/ltsa/pm-occurrences/${encodeURIComponent(code)}/submit`, {
+        method: "POST",
+    });
+}
+
+export async function adminReviewPMOccurrence(code, returnReason) {
+    return _adminUsersRequest(`${API_URL}/api/ltsa/pm-occurrences/${encodeURIComponent(code)}/admin-review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ return_reason: returnReason }),
+    });
+}
+
+export async function technicalReviewPMOccurrence(code, { action, comment, recommendation }) {
+    return _adminUsersRequest(`${API_URL}/api/ltsa/pm-occurrences/${encodeURIComponent(code)}/technical-review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, comment, recommendation }),
+    });
+}
+
+export async function createConditionMonitoringReading({
+    conditionMonitoringScheduleCode, assetCode, assetType, readingDate, measurements,
+}) {
+    return _adminUsersRequest(`${API_URL}/api/ltsa/condition-monitoring-readings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            condition_monitoring_schedule_code: conditionMonitoringScheduleCode, asset_code: assetCode,
+            asset_type: assetType, reading_date: readingDate, measurements,
+        }),
+    });
+}
+
+export async function updateConditionMonitoringReadingDraft(code, { readingDate, measurements, finding }) {
+    return _adminUsersRequest(`${API_URL}/api/ltsa/condition-monitoring-readings/${encodeURIComponent(code)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reading_date: readingDate, measurements, finding }),
+    });
+}
+
+export async function submitConditionMonitoringReading(code) {
+    return _adminUsersRequest(`${API_URL}/api/ltsa/condition-monitoring-readings/${encodeURIComponent(code)}/submit`, {
+        method: "POST",
+    });
+}
+
+export async function adminReviewConditionMonitoringReading(code, returnReason) {
+    return _adminUsersRequest(
+        `${API_URL}/api/ltsa/condition-monitoring-readings/${encodeURIComponent(code)}/admin-review`,
+        {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ return_reason: returnReason }),
+        }
+    );
+}
+
+export async function technicalReviewConditionMonitoringReading(code, { action, comment, recommendation }) {
+    return _adminUsersRequest(
+        `${API_URL}/api/ltsa/condition-monitoring-readings/${encodeURIComponent(code)}/technical-review`,
+        {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action, comment, recommendation }),
+        }
+    );
+}
+
+// Evidence upload is multipart, not JSON -- FormData, no Content-Type
+// header (the browser sets the multipart boundary itself).
+export async function uploadPMCMEvidence({ recordType, recordCode, category, file }) {
+    const formData = new FormData();
+    formData.append("record_type", recordType);
+    formData.append("record_code", recordCode);
+    if (category) formData.append("category", category);
+    formData.append("file", file);
+    return _adminUsersRequest(`${API_URL}/api/ltsa/pm-cm-evidence`, { method: "POST", body: formData });
+}
+
+export async function getPMCMEvidence(recordType, recordCode) {
+    const payload = await _adminUsersRequest(
+        `${API_URL}/api/ltsa/pm-cm-evidence?record_type=${encodeURIComponent(recordType)}&record_code=${encodeURIComponent(recordCode)}`
+    );
+    return Array.isArray(payload?.data) ? payload.data : [];
+}
+
+export function pmCMEvidenceDownloadUrl(evidenceId) {
+    return `${API_URL}/api/ltsa/pm-cm-evidence/${encodeURIComponent(evidenceId)}/download`;
+}

@@ -21,6 +21,7 @@ from API.auth_repository import AuthRepository
 from API.auth_service import AuthenticatedIdentity, AuthenticationError, decode_access_token, resolve_identity
 from API.cm_report_gateway import CMReportGateway
 from API.condition_monitoring_reading_gateway import ConditionMonitoringReadingGateway
+from API.condition_monitoring_reading_repository import ConditionMonitoringReadingRepository
 from API.condition_monitoring_schedule_gateway import ConditionMonitoringScheduleGateway
 from API.engineering_context_engine import EngineeringContextEngine
 from API.equipment_timeline_service import EquipmentTimelineService
@@ -30,7 +31,9 @@ from API.import_session_repository import ImportSessionRepository
 from API.installation_gateway import InstallationGateway
 from API.ltsa_knowledge_service import LTSAKnowledgeService
 from API.maintenance_history_gateway import MaintenanceHistoryGateway
+from API.pm_cm_evidence_repository import PMCMEvidenceRepository
 from API.pm_occurrence_gateway import PMOccurrenceGateway
+from API.pm_occurrence_repository import PMOccurrenceRepository
 from API.pm_schedule_gateway import PMScheduleGateway
 from API.pump_gateway import PumpGateway
 from API.seal_engineering_document_gateway import SealEngineeringDocumentGateway
@@ -137,6 +140,17 @@ _auth_repository = AuthRepository(_import_database_runner)
 # four columns migration 013 added.
 _seal_master_data_repository = SealMasterDataRepository(_import_database_runner)
 
+# MWO-LTSA-PM-CM-INTAKE-001 -- same singleton again. pm_occurrence/
+# condition_monitoring_reading/pm_cm_evidence all live in this same
+# database (migration 014). Bypasses PMOccurrenceGateway/
+# ConditionMonitoringReadingGateway for writes -- both are deliberately
+# append-only (no n8n update workflow exists for either) -- while their
+# existing GET routes remain unchanged and continue to read the same
+# underlying rows this repository writes.
+_pm_occurrence_repository = PMOccurrenceRepository(_import_database_runner)
+_condition_monitoring_reading_repository = ConditionMonitoringReadingRepository(_import_database_runner)
+_pm_cm_evidence_repository = PMCMEvidenceRepository(_import_database_runner)
+
 # MWO-LTSA-031D -- built from the same singleton Gateway instances above,
 # not fresh ones -- no second set of Gateways is constructed anywhere.
 _ltsa_knowledge_service = LTSAKnowledgeService(
@@ -151,6 +165,7 @@ _ltsa_knowledge_service = LTSAKnowledgeService(
     seal_engineering_document_gateway=_seal_engineering_document_gateway,
     pm_schedule_gateway=_pm_schedule_gateway,
     condition_monitoring_schedule_gateway=_condition_monitoring_schedule_gateway,
+    condition_monitoring_reading_gateway=_condition_monitoring_reading_gateway,
 )
 
 _equipment_timeline_service = EquipmentTimelineService(knowledge_service=_ltsa_knowledge_service)
@@ -272,6 +287,18 @@ def get_auth_repository() -> AuthRepository:
 
 def get_seal_master_data_repository() -> SealMasterDataRepository:
     return _seal_master_data_repository
+
+
+def get_pm_occurrence_repository() -> PMOccurrenceRepository:
+    return _pm_occurrence_repository
+
+
+def get_condition_monitoring_reading_repository() -> ConditionMonitoringReadingRepository:
+    return _condition_monitoring_reading_repository
+
+
+def get_pm_cm_evidence_repository() -> PMCMEvidenceRepository:
+    return _pm_cm_evidence_repository
 
 
 # MWO-LTSA-AUTH-001 -- the two reusable dependencies this MWO requires:

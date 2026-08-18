@@ -35,6 +35,7 @@ def _knowledge(
         recommendation=None,
         pm_schedules=[],
         condition_monitoring_schedules=[],
+        condition_monitoring_readings=[],
     )
 
 

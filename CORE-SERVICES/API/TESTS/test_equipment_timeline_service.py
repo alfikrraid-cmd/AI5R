@@ -24,7 +24,7 @@ class FakeKnowledgeService:
 TAG = "641-P-5"
 
 
-def _knowledge(pm_history=None, cm_history=None, breakdown_history=None):
+def _knowledge(pm_history=None, cm_history=None, breakdown_history=None, condition_monitoring_readings=None):
     return LTSAKnowledge(
         tag_number=TAG,
         pump=None,
@@ -37,11 +37,12 @@ def _knowledge(pm_history=None, cm_history=None, breakdown_history=None):
         recommendation=None,
         pm_schedules=[],
         condition_monitoring_schedules=[],
+        condition_monitoring_readings=condition_monitoring_readings or [],
     )
 
 
-def _service(pm_history=None, cm_history=None, breakdown_history=None):
-    knowledge = _knowledge(pm_history, cm_history, breakdown_history)
+def _service(pm_history=None, cm_history=None, breakdown_history=None, condition_monitoring_readings=None):
+    knowledge = _knowledge(pm_history, cm_history, breakdown_history, condition_monitoring_readings)
     return EquipmentTimelineService(knowledge_service=FakeKnowledgeService(knowledge))
 
 
@@ -184,6 +185,47 @@ def test_unavailable_categories_return_empty_collection_never_none(category):
     matching = _events_by_category(timeline, category)
     assert matching == []
     assert matching is not None
+
+
+# MWO-LTSA-PM-CM-INTAKE-001 -- INSPECTION is no longer permanently
+# unpopulated: condition_monitoring_reading now feeds it (never cm_report/
+# TimelineCategory.CM -- see ADR-CONDITION-MONITORING-001's own "CMON,
+# never a bare CM").
+def test_inspection_event_has_correct_canonical_fields():
+    service = _service(
+        condition_monitoring_readings=[
+            {
+                "condition_monitoring_reading_code": "CMONR-1",
+                "asset_code": TAG,
+                "reading_date": "2026-07-13",
+                "finding": "Vibration elevated on DE side",
+            }
+        ]
+    )
+
+    event = _events_by_category(service.build(TAG), TimelineCategory.INSPECTION)[0]
+
+    assert event.id == "INSPECTION:CMONR-1"
+    assert event.occurred_at == "2026-07-13"
+    assert event.title == "Condition Monitoring CMONR-1"
+    assert event.description == "Vibration elevated on DE side"
+    assert event.source == TimelineSource.CONDITION_MONITORING_READING
+    assert event.derived is True
+
+
+def test_timeline_merges_inspection_events_alongside_pm_cm_and_breakdown():
+    service = _service(
+        pm_history=[{"pm_occurrence_code": "PM-1", "asset_code": TAG, "occurrence_date": "2026-06-01"}],
+        condition_monitoring_readings=[
+            {"condition_monitoring_reading_code": "CMONR-1", "asset_code": TAG, "reading_date": "2026-06-02"}
+        ],
+    )
+
+    timeline = service.build(TAG)
+
+    categories = {event.event_type for event in timeline.events}
+    assert TimelineCategory.INSPECTION in categories
+    assert TimelineCategory.PM in categories
 
 
 def test_empty_history_produces_empty_timeline():

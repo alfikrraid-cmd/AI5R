@@ -119,13 +119,13 @@ class ImportConflictCheckRequest(BaseModel):
 # import_session.py's own "no uuid.uuid4()/datetime.now()" determinism
 # rule.
 #
-# database_snapshot: same ImportPackageRequest shape ImportConflictCheckRequest
-# already uses for its own field of the same name (reused, not a new type).
-# Optional, defaulting to an empty package (every list empty) -- a caller
-# with no live-database snapshot to supply gets a real ConflictReport
-# computed against nothing, where every incoming record legitimately
-# resolves as CREATE_NEW, rather than this endpoint skipping conflict-
-# checking altogether.
+# MWO-LTSA-103A -- database_snapshot added, same ImportPackageRequest shape
+# ImportConflictCheckRequest already uses for its own field of the same
+# name (reused, not a new type). Optional, defaulting to an empty package
+# (every list empty) -- a caller with no live-database snapshot to supply
+# gets a real ConflictReport computed against nothing, where every incoming
+# record legitimately resolves as CREATE_NEW, rather than this endpoint
+# skipping conflict-checking altogether.
 
 
 class ImportSessionCreateRequest(BaseModel):
@@ -140,3 +140,113 @@ class ImportSessionCreateRequest(BaseModel):
 
 class ImportExecuteRequest(BaseModel):
     session_id: str
+
+
+# MWO-LTSA-PM-CM-INTAKE-001 -- PM Occurrence / Condition Monitoring
+# Reading draft-create/update/submit/review request bodies. Neither model
+# has an updated_by/submitted_by/reviewed_by/technical_reviewed_by field
+# anywhere -- every actor is always server-derived from the authenticated
+# identity (Phase 26/Hard Rule 15), so there is nothing for a client to
+# spoof by including one; pydantic silently drops any extra field a
+# caller sends anyway (e.g. a smuggled "submitted_by").
+class PMActivityEntry(BaseModel):
+    # Golden evidence (Laporan PM, CM & Pemasangan Seal, page 34/35): a
+    # fixed, named 33-item checklist -- code/description identify which
+    # item, side is DE/NDE/None (most items are side-less, e.g. "Quench
+    # Line"; a few are explicitly split, e.g. "Flushing Line DE Side").
+    code: str
+    description: str
+    side: str | None = None
+    done: bool = False
+
+
+class PMOccurrenceCreateRequest(BaseModel):
+    pm_schedule_code: str
+    asset_code: str
+    asset_type: str | None = None
+    occurrence_date: str | None = None
+    activities: list[PMActivityEntry] | None = None
+    remarks: str | None = None
+
+
+class PMOccurrenceUpdateRequest(BaseModel):
+    occurrence_date: str | None = None
+    activities: list[PMActivityEntry] | None = None
+    finding: str | None = None
+    preliminary_recommendation: str | None = None
+    remarks: str | None = None
+
+
+class AdminReturnForCorrectionRequest(BaseModel):
+    return_reason: str
+
+
+class TechnicalReviewRequest(BaseModel):
+    # action is a real command the server interprets, never a client-
+    # written workflow_status string (Phase 26) -- RETURN/ACKNOWLEDGE/
+    # APPROVE are the only three technical actions John Crane can take
+    # (Phase 13).
+    action: str = Field(pattern="^(RETURN|ACKNOWLEDGE|APPROVE)$")
+    comment: str | None = None
+    recommendation: str | None = None
+
+
+# Every Check Points field the golden "Mechanical Seal Condition
+# Monitoring" report's DE/NDE table exposes (this MWO's Phase 1 audit),
+# matching condition_monitoring_reading_repository.py's own
+# _MEASUREMENT_COLUMNS tuple exactly -- kept as named fields (not a bare
+# dict) so FastAPI validates types (NUMERIC columns as float, the two
+# leak flags as bool) before anything reaches SQL.
+class ConditionMonitoringMeasurements(BaseModel):
+    flushing_temp_de: float | None = None
+    flushing_temp_nde: float | None = None
+    quench_temp_de: float | None = None
+    quench_temp_nde: float | None = None
+    flushing_in_temp_de: float | None = None
+    flushing_in_temp_nde: float | None = None
+    flushing_out_temp_de: float | None = None
+    flushing_out_temp_nde: float | None = None
+    cooling_water_in_temp_de: float | None = None
+    cooling_water_in_temp_nde: float | None = None
+    cooling_water_out_temp_de: float | None = None
+    cooling_water_out_temp_nde: float | None = None
+    mechseal_temp_de: float | None = None
+    mechseal_temp_nde: float | None = None
+    mechanical_seal_leak_de: bool | None = None
+    mechanical_seal_leak_nde: bool | None = None
+    water_jacket_temp_de: float | None = None
+    water_jacket_temp_nde: float | None = None
+    suction_temp: float | None = None
+    discharge_temp: float | None = None
+    pump_operating_state: str | None = None
+    suction_pressure: float | None = None
+    discharge_pressure: float | None = None
+    quench_pressure_de: float | None = None
+    quench_pressure_nde: float | None = None
+    stuffing_box_temp_de: float | None = None
+    stuffing_box_temp_nde: float | None = None
+    seal_gland_temp_de: float | None = None
+    seal_gland_temp_nde: float | None = None
+    vertical_vibration_de: float | None = None
+    vertical_vibration_nde: float | None = None
+    horizontal_vibration_de: float | None = None
+    horizontal_vibration_nde: float | None = None
+    axial_vibration_de: float | None = None
+    axial_vibration_nde: float | None = None
+    bearing_temp_de: float | None = None
+    bearing_temp_nde: float | None = None
+    motor_current: float | None = None
+
+
+class ConditionMonitoringReadingCreateRequest(BaseModel):
+    condition_monitoring_schedule_code: str
+    asset_code: str
+    asset_type: str | None = None
+    reading_date: str | None = None
+    measurements: ConditionMonitoringMeasurements = Field(default_factory=ConditionMonitoringMeasurements)
+
+
+class ConditionMonitoringReadingUpdateRequest(BaseModel):
+    reading_date: str | None = None
+    measurements: ConditionMonitoringMeasurements = Field(default_factory=ConditionMonitoringMeasurements)
+    finding: str | None = None

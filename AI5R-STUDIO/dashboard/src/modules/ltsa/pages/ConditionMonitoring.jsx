@@ -8,7 +8,9 @@ import ConditionMonitoringReadingTable from "../components/ConditionMonitoringRe
 import ConditionMonitoringReadingDetailPanel from "../components/ConditionMonitoringReadingDetailPanel";
 import CreateConditionMonitoringReadingModal from "../components/CreateConditionMonitoringReadingModal";
 import SuccessToast from "../components/SuccessToast";
-import { getConditionMonitoringReadings, getConditionMonitoringSchedules } from "../../../api/ai5rClient";
+import {
+  getConditionMonitoringReadings, getConditionMonitoringSchedules, createConditionMonitoringReading,
+} from "../../../api/ai5rClient";
 import {
   mapConditionMonitoringReadingRecord,
   mapConditionMonitoringScheduleRecord,
@@ -45,15 +47,6 @@ function matchesReadingSearch(reading, search) {
     (reading.id || "").toLowerCase().includes(term) ||
     (reading.equipmentTag || "").toLowerCase().includes(term)
   );
-}
-
-function nextReadingId(readings) {
-  const maxNumber = readings.reduce((max, reading) => {
-    const number = Number.parseInt((reading.id || "").replace("CMON-READING-", ""), 10);
-    return Number.isNaN(number) ? max : Math.max(max, number);
-  }, 0);
-
-  return `CMON-READING-${maxNumber + 1}`;
 }
 
 /**
@@ -191,47 +184,44 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
     setSelectedScheduleId(scheduleCode);
   }
 
-  // Client-state-only: no backend create route exists for
-  // condition_monitoring_reading (WO-CMON-002 scoped to list/detail; the
-  // Reading gateway itself has no update/delete either, per WO-CMON-001's
-  // disclosed append-only judgment call) -- this MWO's "No new backend"
-  // constraint forbids adding one. Mirrors CreatePMScheduleModal's/
-  // CreateCMReportModal's identical, already-established limitation.
-  function handleCreateReading(formValues) {
-    const newReading = {
-      id: nextReadingId(readings),
-      scheduleCode: formValues.scheduleCode,
-      equipmentTag: formValues.equipmentTag,
-      area: null,
-      readingDate: formValues.readingDate || null,
-      flushingTempDe: null,
-      flushingTempNde: null,
-      quenchTempDe: null,
-      quenchTempNde: null,
-      flushingInTempDe: null,
-      flushingInTempNde: null,
-      flushingOutTempDe: null,
-      flushingOutTempNde: null,
-      coolingWaterInTempDe: null,
-      coolingWaterInTempNde: null,
-      coolingWaterOutTempDe: null,
-      coolingWaterOutTempNde: null,
-      mechsealTempDe: formValues.mechsealTempDe,
-      mechsealTempNde: formValues.mechsealTempNde,
-      leakDe: formValues.leakDe,
-      leakNde: formValues.leakNde,
-      waterJacketTempDe: null,
-      waterJacketTempNde: null,
-      suctionTemp: formValues.suctionTemp,
-      dischargeTemp: formValues.dischargeTemp,
-      pumpOperatingState: formValues.pumpOperatingState,
-    };
+  // MWO-LTSA-PM-CM-INTAKE-001 -- real persistence: POST /api/ltsa/
+  // condition-monitoring-readings (condition_monitoring_reading_
+  // repository.py, bypassing the deliberately append-only Reading
+  // gateway -- see that repository's own header). The response is run
+  // through the exact same mapConditionMonitoringReadingRecord() the
+  // real getConditionMonitoringReadings() fetch path already uses, so
+  // the newly-created reading renders identically to one loaded from a
+  // page reload -- not a separately-shaped local object.
+  const [createError, setCreateError] = useState(null);
 
-    setReadings((current) => [...current, newReading]);
-    setIsCreateModalOpen(false);
-    setView("readings");
-    setSelectedReadingId(newReading.id);
-    setSuccessMessage(`Condition Monitoring reading ${newReading.id} created.`);
+  async function handleCreateReading(formValues) {
+    setCreateError(null);
+    try {
+      const result = await createConditionMonitoringReading({
+        conditionMonitoringScheduleCode: formValues.scheduleCode,
+        assetCode: formValues.equipmentTag,
+        readingDate: formValues.readingDate || null,
+        measurements: {
+          mechseal_temp_de: formValues.mechsealTempDe,
+          mechseal_temp_nde: formValues.mechsealTempNde,
+          mechanical_seal_leak_de: formValues.leakDe,
+          mechanical_seal_leak_nde: formValues.leakNde,
+          suction_temp: formValues.suctionTemp,
+          discharge_temp: formValues.dischargeTemp,
+          pump_operating_state: formValues.pumpOperatingState,
+        },
+      });
+      const newReading = mapConditionMonitoringReadingRecord(result.data);
+      setReadings((current) => [...current, newReading]);
+      setIsCreateModalOpen(false);
+      setView("readings");
+      setSelectedReadingId(newReading.id);
+      setSuccessMessage(`Condition Monitoring reading ${newReading.id} created (DRAFT).`);
+    } catch (err) {
+      // Verbatim backend detail (e.g. a 403 if permissions changed
+      // mid-session) -- never a generic "failed" message.
+      setCreateError(err.message);
+    }
   }
 
   return (
@@ -243,6 +233,11 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
       />
 
       <SuccessToast message={successMessage} onDismiss={() => setSuccessMessage(null)} />
+      {createError && (
+        <p className="confidence-label" style={{ color: "var(--color-danger, #d33)" }} data-testid="cmon-create-error">
+          {createError}
+        </p>
+      )}
 
       <Tabs items={VIEWS} activeKey={view} onChange={setView} />
 

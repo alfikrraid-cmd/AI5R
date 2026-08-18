@@ -75,6 +75,7 @@ def _knowledge(tag, recommendation=()):
         recommendation=recommendation,
         pm_schedules=[],
         condition_monitoring_schedules=[],
+        condition_monitoring_readings=[],
     )
 
 

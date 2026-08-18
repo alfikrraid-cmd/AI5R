@@ -66,6 +66,7 @@ def _knowledge(**overrides):
         recommendation=(),
         pm_schedules=[{"pm_schedule_code": "PMS-1", "asset_code": TAG, "next_due": "2026-09-01"}],
         condition_monitoring_schedules=[],
+        condition_monitoring_readings=[],
     )
     defaults.update(overrides)
     return LTSAKnowledge(**defaults)

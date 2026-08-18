@@ -101,6 +101,11 @@ class PumpLifecycleRelatedEngineering:
     # each is populated from.
     drawings: list[dict[str, Any]] = field(default_factory=list)
     documents: list[dict[str, Any]] = field(default_factory=list)
+    # MWO-LTSA-PM-CM-INTAKE-001 -- Condition Monitoring readings for this
+    # pump, same "reuse data already produced elsewhere" convention as
+    # pm_schedules/cm_reports above (knowledge.condition_monitoring_readings,
+    # LTSAKnowledgeService.build()'s own field).
+    condition_monitoring_readings: list[dict[str, Any]] = field(default_factory=list)
     inventory: list[dict[str, Any]] = field(default_factory=list)
 
 

@@ -80,6 +80,7 @@ def _knowledge(**overrides):
         recommendation=None,
         pm_schedules=[],
         condition_monitoring_schedules=[],
+        condition_monitoring_readings=[],
     )
     defaults.update(overrides)
     return LTSAKnowledge(**defaults)

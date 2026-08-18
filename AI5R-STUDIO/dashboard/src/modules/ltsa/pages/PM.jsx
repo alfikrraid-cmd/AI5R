@@ -4,8 +4,9 @@ import PMFilterBar from "../components/PMFilterBar";
 import PMScheduleTable from "../components/PMScheduleTable";
 import PMOpenDesignView from "../components/PMOpenDesignView";
 import CreatePMScheduleModal from "../components/CreatePMScheduleModal";
+import CreatePMOccurrenceModal from "../components/CreatePMOccurrenceModal";
 import SuccessToast from "../components/SuccessToast";
-import { getPMSchedules, getCMReports } from "../../../api/ai5rClient";
+import { getPMSchedules, getCMReports, createPMOccurrence } from "../../../api/ai5rClient";
 import { mapPMScheduleRecord, withResolvedArea } from "../utils/pmMapping";
 import { mapCMReportRecord } from "../utils/cmMapping";
 import "./PM.css";
@@ -50,6 +51,13 @@ export default function PM({ onNavigate, navContext }) {
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [selectedId, setSelectedId] = useState(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  // MWO-LTSA-PM-CM-INTAKE-001 -- a real PM Occurrence (an actual field
+  // visit: activities/finding/preliminary recommendation), distinct from
+  // pm_schedule above (the recurring plan/template this page's own
+  // "Create PM Schedule" button already manages -- see
+  // CreatePMOccurrenceModal.jsx's own header for why these are two
+  // different entities, not the same create flow).
+  const [isCreateOccurrenceModalOpen, setIsCreateOccurrenceModalOpen] = useState(false);
   const [successMessage, setSuccessMessage] = useState(null);
   // MWO-LTSA-053 -- Related CM Reports, resolved the same "fetch once,
   // derive many client-side" way Pump.jsx/Seal.jsx already resolve their
@@ -178,12 +186,37 @@ export default function PM({ onNavigate, navContext }) {
     setSuccessMessage(`PM Schedule ${newPM.id} created.`);
   }
 
+  // MWO-LTSA-PM-CM-INTAKE-001 -- real persistence: POST /api/ltsa/
+  // pm-occurrences (pm_occurrence_repository.py, bypassing the
+  // deliberately append-only PM Occurrence gateway). Requires an already-
+  // selected pm_schedule (pm_occurrence.pm_schedule_code is NOT NULL,
+  // matching the real committed schema) -- the button that opens this
+  // modal is only rendered once a schedule is selected.
+  async function handleRecordOccurrence({ occurrenceDate, activities, remarks }) {
+    const result = await createPMOccurrence({
+      pmScheduleCode: selectedPM.id,
+      assetCode: selectedPM.equipmentTag,
+      occurrenceDate,
+      activities,
+      remarks,
+    });
+    setIsCreateOccurrenceModalOpen(false);
+    setSuccessMessage(`PM Occurrence ${result.data.pm_occurrence_code} recorded (DRAFT).`);
+  }
+
   return (
     <div>
       <PageHeader
         title="Preventive Maintenance Workspace"
         subtitle="LTSA Engineering — PM Schedule Registry"
-        actions={<Button onClick={() => setIsCreateModalOpen(true)}>+ Create PM Schedule</Button>}
+        actions={
+          <span style={{ display: "flex", gap: "var(--space-2)" }}>
+            {selectedPM && (
+              <Button onClick={() => setIsCreateOccurrenceModalOpen(true)}>+ Record PM Occurrence</Button>
+            )}
+            <Button onClick={() => setIsCreateModalOpen(true)}>+ Create PM Schedule</Button>
+          </span>
+        }
       />
 
       <SuccessToast message={successMessage} onDismiss={() => setSuccessMessage(null)} />
@@ -239,6 +272,16 @@ export default function PM({ onNavigate, navContext }) {
         onClose={() => setIsCreateModalOpen(false)}
         onCreate={handleCreate}
       />
+
+      {selectedPM && (
+        <CreatePMOccurrenceModal
+          isOpen={isCreateOccurrenceModalOpen}
+          onClose={() => setIsCreateOccurrenceModalOpen(false)}
+          onCreate={handleRecordOccurrence}
+          pmScheduleCode={selectedPM.id}
+          equipmentTag={selectedPM.equipmentTag}
+        />
+      )}
     </div>
   );
 }

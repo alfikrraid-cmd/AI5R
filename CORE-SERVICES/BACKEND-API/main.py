@@ -28,6 +28,7 @@ from routers import (
     installation,
     maintenance,
     organization,
+    pm_cm_evidence,
     pm_occurrence,
     pm_schedule,
     pumps,
@@ -88,3 +89,4 @@ app.include_router(pm_schedule.router)
 app.include_router(pm_occurrence.router)
 app.include_router(cm_report.router)
 app.include_router(condition_monitoring.router)
+app.include_router(pm_cm_evidence.router)

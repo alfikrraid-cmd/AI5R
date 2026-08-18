@@ -43,6 +43,7 @@ def _service(
     seal_engineering_documents=None,
     pm_schedules=None,
     condition_monitoring_schedules=None,
+    condition_monitoring_readings=None,
 ):
     return LTSAKnowledgeService(
         pump_gateway=pump or FakePumpGateway(),
@@ -60,6 +61,9 @@ def _service(
         pm_schedule_gateway=FakeGateway("list_pm_schedules", pm_schedules),
         condition_monitoring_schedule_gateway=FakeGateway(
             "list_condition_monitoring_schedules", condition_monitoring_schedules
+        ),
+        condition_monitoring_reading_gateway=FakeGateway(
+            "list_condition_monitoring_readings", condition_monitoring_readings
         ),
     )
 

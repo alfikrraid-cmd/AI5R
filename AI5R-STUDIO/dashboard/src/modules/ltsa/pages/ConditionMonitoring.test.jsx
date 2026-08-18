@@ -1,12 +1,15 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import ConditionMonitoring from "./ConditionMonitoring";
-import { getConditionMonitoringReadings, getConditionMonitoringSchedules, getPump } from "../../../api/ai5rClient";
+import {
+  getConditionMonitoringReadings, getConditionMonitoringSchedules, getPump, createConditionMonitoringReading,
+} from "../../../api/ai5rClient";
 
 vi.mock("../../../api/ai5rClient", () => ({
   getConditionMonitoringReadings: vi.fn(),
   getConditionMonitoringSchedules: vi.fn(),
   getPump: vi.fn(),
+  createConditionMonitoringReading: vi.fn(),
 }));
 
 const SCHEDULES = [
@@ -172,8 +175,17 @@ describe("Condition Monitoring workspace page", () => {
     expect(screen.getByRole("heading", { name: "Create Condition Monitoring Reading" })).toBeTruthy();
   });
 
-  it("creates a new reading via the modal (client-state-only, no backend create route yet), closes it, switches to Readings, and selects the new entry", async () => {
+  it("creates a new reading via the real API (MWO-LTSA-PM-CM-INTAKE-001), closes the modal, switches to Readings, and selects the new entry", async () => {
     loadDefaults();
+    createConditionMonitoringReading.mockResolvedValue({
+      data: {
+        condition_monitoring_reading_code: "CMONR-NEW-1",
+        condition_monitoring_schedule_code: "CMON-SCHED-001",
+        asset_code: "641-P-5",
+        reading_date: "2026-08-01",
+        workflow_status: "DRAFT",
+      },
+    });
     render(<ConditionMonitoring />);
     await screen.findByText("CMON-SCHED-001");
 
@@ -181,12 +193,27 @@ describe("Condition Monitoring workspace page", () => {
     fireEvent.change(screen.getByLabelText("Schedule"), { target: { value: "CMON-SCHED-001" } });
     fireEvent.click(screen.getByRole("button", { name: "Create Reading" }));
 
+    expect(createConditionMonitoringReading).toHaveBeenCalledWith(
+      expect.objectContaining({ conditionMonitoringScheduleCode: "CMON-SCHED-001", assetCode: "641-P-5" })
+    );
+    await screen.findByRole("heading", { name: "CMONR-NEW-1" });
     expect(screen.queryByRole("heading", { name: "Create Condition Monitoring Reading" })).toBeNull();
-    // The new reading is both listed and auto-selected -- its id appears
-    // in the table row and the detail panel's <h2>.
-    expect(await screen.findByRole("heading", { name: "CMON-READING-1" })).toBeTruthy();
-    expect(screen.getAllByText("CMON-READING-1").length).toBe(2);
-    expect(screen.getByRole("status").textContent).toContain("CMON-READING-1 created.");
+    expect(screen.getAllByText("CMONR-NEW-1").length).toBe(2);
+    expect(screen.getByRole("status").textContent).toContain("CMONR-NEW-1 created (DRAFT).");
+  });
+
+  it("surfaces a verbatim backend error and keeps the modal open when create fails", async () => {
+    loadDefaults();
+    createConditionMonitoringReading.mockRejectedValueOnce(new Error("maintenance.write required"));
+    render(<ConditionMonitoring />);
+    await screen.findByText("CMON-SCHED-001");
+
+    fireEvent.click(screen.getByRole("button", { name: "+ Create Reading" }));
+    fireEvent.change(screen.getByLabelText("Schedule"), { target: { value: "CMON-SCHED-001" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create Reading" }));
+
+    expect(await screen.findByTestId("cmon-create-error")).toHaveProperty("textContent", "maintenance.write required");
+    expect(screen.getByRole("heading", { name: "Create Condition Monitoring Reading" })).toBeTruthy();
   });
 
   it("navigates to Asset 360 when View Asset 360 is clicked from schedule detail", async () => {
