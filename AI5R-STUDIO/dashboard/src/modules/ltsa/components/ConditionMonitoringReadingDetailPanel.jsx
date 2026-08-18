@@ -4,6 +4,13 @@ import colors from "../../../design-system/theme/colors";
 import spacing from "../../../design-system/theme/spacing";
 import EvidenceAttachments, { EVIDENCE_RECORD_TYPES } from "./EvidenceAttachments";
 import { TechnicalOutcomeBadge, WorkflowStatusBadge } from "./WorkflowStatusBadge";
+import {
+  MEASUREMENT_PAIR_FIELDS,
+  MEASUREMENT_SINGLE_FIELDS,
+  LEAK_FIELD,
+  buildMeasurementsPayload as buildManagedMeasurementsPayload,
+  measurementFormValuesFromReading,
+} from "../utils/conditionMonitoringMeasurementFields";
 
 function Field({ label, value }) {
   return (
@@ -26,6 +33,12 @@ function vibrationValue(value) {
   return value != null ? `${value} mm/s` : "—";
 }
 
+function leakLabel(value) {
+  if (value === true) return "Leak Detected";
+  if (value === false) return "No Leak";
+  return "Not Recorded";
+}
+
 // MWO-LTSA-PM-CM-REVIEW-UI-001, Phase 12: honest raw actor identifier +
 // timestamp -- no display-name resolution exists in this codebase and
 // this MWO forbids building one.
@@ -44,15 +57,26 @@ const fieldStyle = {
   boxSizing: "border-box",
 };
 
+const LEAK_OPTIONS = [
+  { value: "", label: "Not Recorded" },
+  { value: "false", label: "No Leak" },
+  { value: "true", label: "Leak Detected" },
+];
+
+const OPERATING_STATE_OPTIONS = ["Running", "Standby", "Repair"];
+
 // condition_monitoring_reading_repository.py's update_draft SETs every
-// one of these columns from the `measurements` object it is given --
-// there is no partial-column PATCH. To edit only `finding` without
-// silently nulling out every temperature/pressure/vibration reading
-// already on the record, this panel must always resend the record's own
-// current values for every column not being edited here. Matches
-// _MEASUREMENT_COLUMNS in that repository exactly (this session's own
-// re-read of that file).
-function buildMeasurementsPayload(reading) {
+// one of _MEASUREMENT_COLUMNS from the `measurements` object it is given
+// -- there is no partial-column PATCH. This panel edits the fields listed
+// in conditionMonitoringMeasurementFields.js (migration-014's own
+// canonical set, plus the pre-existing mechseal/suction/discharge/leak/
+// pump-state fields, per MWO-LTSA-PM-CM-REVIEW-PRE-PUSH-CLOSURE-001's own
+// scope). The remaining pre-existing columns (flushing/quench temp,
+// flushing-in/out, cooling-water-in/out, water-jacket) have no entry UI
+// yet (disclosed, out of this MWO's scope) and must always be resent
+// unmodified from the record's own current values, or a save would
+// silently null them out.
+function passthroughMeasurements(reading) {
   return {
     flushing_temp_de: reading.flushingTempDe,
     flushing_temp_nde: reading.flushingTempNde,
@@ -66,36 +90,75 @@ function buildMeasurementsPayload(reading) {
     cooling_water_in_temp_nde: reading.coolingWaterInTempNde,
     cooling_water_out_temp_de: reading.coolingWaterOutTempDe,
     cooling_water_out_temp_nde: reading.coolingWaterOutTempNde,
-    mechseal_temp_de: reading.mechsealTempDe,
-    mechseal_temp_nde: reading.mechsealTempNde,
-    mechanical_seal_leak_de: reading.leakDe,
-    mechanical_seal_leak_nde: reading.leakNde,
     water_jacket_temp_de: reading.waterJacketTempDe,
     water_jacket_temp_nde: reading.waterJacketTempNde,
-    suction_temp: reading.suctionTemp,
-    discharge_temp: reading.dischargeTemp,
-    pump_operating_state: reading.pumpOperatingState,
-    suction_pressure: reading.suctionPressure,
-    discharge_pressure: reading.dischargePressure,
-    quench_pressure_de: reading.quenchPressureDe,
-    quench_pressure_nde: reading.quenchPressureNde,
-    stuffing_box_temp_de: reading.stuffingBoxTempDe,
-    stuffing_box_temp_nde: reading.stuffingBoxTempNde,
-    seal_gland_temp_de: reading.sealGlandTempDe,
-    seal_gland_temp_nde: reading.sealGlandTempNde,
-    vertical_vibration_de: reading.verticalVibrationDe,
-    vertical_vibration_nde: reading.verticalVibrationNde,
-    horizontal_vibration_de: reading.horizontalVibrationDe,
-    horizontal_vibration_nde: reading.horizontalVibrationNde,
-    axial_vibration_de: reading.axialVibrationDe,
-    axial_vibration_nde: reading.axialVibrationNde,
-    bearing_temp_de: reading.bearingTempDe,
-    bearing_temp_nde: reading.bearingTempNde,
-    motor_current: reading.motorCurrent,
   };
 }
 
 const EDITABLE_STATUSES = new Set(["DRAFT", "RETURNED_FOR_CORRECTION"]);
+
+// One shared row renderer for a DE/NDE measurement pair -- read-only
+// combined display (existing convention) when not editable, two
+// separately-labeled inputs (never collapsed) when editable. Local to
+// this panel, not a new CM form.
+function MeasurementPairRow({ field, editable, values, onChange, formatValue }) {
+  if (!editable) {
+    return (
+      <Field
+        label={`${field.group} (${field.unit})`}
+        value={`${formatValue(values[field.deKey])} / ${formatValue(values[field.ndeKey])}`}
+      />
+    );
+  }
+
+  return (
+    <div style={{ marginBottom: spacing.sm }}>
+      <div style={{ color: colors.textMuted, fontSize: 12 }}>
+        {field.group} ({field.unit})
+      </div>
+      <div style={{ display: "flex", gap: spacing.sm }}>
+        <input
+          aria-label={`${field.group} DE`}
+          type="number"
+          step="any"
+          style={fieldStyle}
+          value={values[field.deKey]}
+          onChange={(event) => onChange(field.deKey, event.target.value)}
+        />
+        <input
+          aria-label={`${field.group} NDE`}
+          type="number"
+          step="any"
+          style={fieldStyle}
+          value={values[field.ndeKey]}
+          onChange={(event) => onChange(field.ndeKey, event.target.value)}
+        />
+      </div>
+    </div>
+  );
+}
+
+function MeasurementSingleRow({ field, editable, values, onChange, formatValue }) {
+  if (!editable) {
+    return <Field label={`${field.label} (${field.unit})`} value={formatValue(values[field.key])} />;
+  }
+
+  return (
+    <div style={{ marginBottom: spacing.sm }}>
+      <div style={{ color: colors.textMuted, fontSize: 12 }}>
+        {field.label} ({field.unit})
+      </div>
+      <input
+        aria-label={field.label}
+        type="number"
+        step="any"
+        style={fieldStyle}
+        value={values[field.key]}
+        onChange={(event) => onChange(field.key, event.target.value)}
+      />
+    </div>
+  );
+}
 
 export default function ConditionMonitoringReadingDetailPanel({
   reading,
@@ -110,6 +173,7 @@ export default function ConditionMonitoringReadingDetailPanel({
   onTechnicalReview,
 }) {
   const [finding, setFinding] = useState("");
+  const [measurementForm, setMeasurementForm] = useState({});
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
@@ -127,6 +191,7 @@ export default function ConditionMonitoringReadingDetailPanel({
   useEffect(() => {
     if (!reading) return;
     setFinding(reading.finding ?? "");
+    setMeasurementForm(measurementFormValuesFromReading(reading));
     setSaveError(null);
     setSubmitError(null);
     setReturnReason("");
@@ -149,13 +214,17 @@ export default function ConditionMonitoringReadingDetailPanel({
   const editable = Boolean(canWrite) && EDITABLE_STATUSES.has(reading.workflowStatus);
   const reviewable = reading.workflowStatus === "SUBMITTED";
 
+  function setMeasurementField(key, value) {
+    setMeasurementForm((current) => ({ ...current, [key]: value }));
+  }
+
   async function handleSaveDraft() {
     setSaving(true);
     setSaveError(null);
     try {
       await onSaveDraft?.(reading.id, {
         readingDate: reading.readingDate,
-        measurements: buildMeasurementsPayload(reading),
+        measurements: { ...passthroughMeasurements(reading), ...buildManagedMeasurementsPayload(measurementForm) },
         finding: finding || null,
       });
     } catch (err) {
@@ -247,7 +316,27 @@ export default function ConditionMonitoringReadingDetailPanel({
           value={reading.area ? `${reading.equipmentTag} — ${reading.area}` : reading.equipmentTag}
         />
         <Field label="Reading Date" value={reading.readingDate ?? "—"} />
-        <Field label="Pump Operating State" value={reading.pumpOperatingState ?? "Not recorded"} />
+
+        {editable ? (
+          <div style={{ marginBottom: spacing.sm }}>
+            <div style={{ color: colors.textMuted, fontSize: 12 }}>Pump Operating State</div>
+            <select
+              aria-label="Pump Operating State"
+              style={fieldStyle}
+              value={measurementForm.pumpOperatingState ?? ""}
+              onChange={(event) => setMeasurementField("pumpOperatingState", event.target.value)}
+            >
+              <option value="">Not Recorded</option>
+              {OPERATING_STATE_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <Field label="Pump Operating State" value={reading.pumpOperatingState ?? "Not recorded"} />
+        )}
 
         <div style={{ marginBottom: spacing.sm }}>
           <div style={{ color: colors.textMuted, fontSize: 12 }}>Seal Leak</div>
@@ -257,75 +346,126 @@ export default function ConditionMonitoringReadingDetailPanel({
         </div>
       </Card>
 
+      <Card title="Mechanical Seal Leak Status (DE / NDE)">
+        {/* Tri-state, explicit -- never inferred from a blank field. */}
+        {editable ? (
+          <div style={{ display: "flex", gap: spacing.sm }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ color: colors.textMuted, fontSize: 12, marginBottom: spacing.xs }}>DE</div>
+              <select
+                aria-label="Leak Status DE"
+                style={fieldStyle}
+                value={measurementForm[LEAK_FIELD.deKey] ?? ""}
+                onChange={(event) => setMeasurementField(LEAK_FIELD.deKey, event.target.value)}
+              >
+                {LEAK_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ color: colors.textMuted, fontSize: 12, marginBottom: spacing.xs }}>NDE</div>
+              <select
+                aria-label="Leak Status NDE"
+                style={fieldStyle}
+                value={measurementForm[LEAK_FIELD.ndeKey] ?? ""}
+                onChange={(event) => setMeasurementField(LEAK_FIELD.ndeKey, event.target.value)}
+              >
+                {LEAK_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        ) : (
+          <Field label="DE / NDE" value={`${leakLabel(reading.leakDe)} / ${leakLabel(reading.leakNde)}`} />
+        )}
+      </Card>
+
       <Card title="Temperatures (DE / NDE)">
         <Field
-          label="Flushing"
+          label="Flushing (°C)"
           value={`${tempValue(reading.flushingTempDe)} / ${tempValue(reading.flushingTempNde)}`}
         />
         <Field
-          label="Quench"
+          label="Quench (°C)"
           value={`${tempValue(reading.quenchTempDe)} / ${tempValue(reading.quenchTempNde)}`}
         />
         <Field
-          label="Flushing In (LBI)"
+          label="Flushing In (LBI) (°C)"
           value={`${tempValue(reading.flushingInTempDe)} / ${tempValue(reading.flushingInTempNde)}`}
         />
         <Field
-          label="Flushing Out (LBO)"
+          label="Flushing Out (LBO) (°C)"
           value={`${tempValue(reading.flushingOutTempDe)} / ${tempValue(reading.flushingOutTempNde)}`}
         />
         <Field
-          label="Cooling Water In"
+          label="Cooling Water In (°C)"
           value={`${tempValue(reading.coolingWaterInTempDe)} / ${tempValue(reading.coolingWaterInTempNde)}`}
         />
         <Field
-          label="Cooling Water Out"
+          label="Cooling Water Out (°C)"
           value={`${tempValue(reading.coolingWaterOutTempDe)} / ${tempValue(reading.coolingWaterOutTempNde)}`}
         />
         <Field
-          label="Mechseal"
-          value={`${tempValue(reading.mechsealTempDe)} / ${tempValue(reading.mechsealTempNde)}`}
-        />
-        <Field
-          label="Water Jacket"
+          label="Water Jacket (°C)"
           value={`${tempValue(reading.waterJacketTempDe)} / ${tempValue(reading.waterJacketTempNde)}`}
         />
-        <Field
-          label="Stuffing Box"
-          value={`${tempValue(reading.stuffingBoxTempDe)} / ${tempValue(reading.stuffingBoxTempNde)}`}
-        />
-        <Field
-          label="Seal Gland"
-          value={`${tempValue(reading.sealGlandTempDe)} / ${tempValue(reading.sealGlandTempNde)}`}
-        />
-        <Field
-          label="Bearing"
-          value={`${tempValue(reading.bearingTempDe)} / ${tempValue(reading.bearingTempNde)}`}
-        />
-        <Field label="Suction" value={tempValue(reading.suctionTemp)} />
-        <Field label="Discharge" value={tempValue(reading.dischargeTemp)} />
+
+        {/* MWO-LTSA-PM-CM-REVIEW-PRE-PUSH-CLOSURE-001 -- Mechseal/Bearing/
+            Seal Gland/Stuffing Box temps and Suction/Discharge temps are
+            enterable (shared field list), rendered as inputs when editable. */}
+        {MEASUREMENT_PAIR_FIELDS.filter((field) =>
+          ["mechsealTempDe", "stuffingBoxTempDe", "sealGlandTempDe", "bearingTempDe"].includes(field.deKey)
+        ).map((field) => (
+          <MeasurementPairRow
+            key={field.group}
+            field={field}
+            editable={editable}
+            values={editable ? measurementForm : reading}
+            onChange={setMeasurementField}
+            formatValue={tempValue}
+          />
+        ))}
+        {MEASUREMENT_SINGLE_FIELDS.filter((field) => field.unit === "°C").map((field) => (
+          <MeasurementSingleRow
+            key={field.key}
+            field={field}
+            editable={editable}
+            values={editable ? measurementForm : reading}
+            onChange={setMeasurementField}
+            formatValue={tempValue}
+          />
+        ))}
       </Card>
 
       <Card title="Pressure / Vibration / Motor (DE / NDE)">
-        <Field label="Suction Pressure" value={pressureValue(reading.suctionPressure)} />
-        <Field label="Discharge Pressure" value={pressureValue(reading.dischargePressure)} />
-        <Field
-          label="Quench Pressure"
-          value={`${pressureValue(reading.quenchPressureDe)} / ${pressureValue(reading.quenchPressureNde)}`}
-        />
-        <Field
-          label="Vertical Vibration"
-          value={`${vibrationValue(reading.verticalVibrationDe)} / ${vibrationValue(reading.verticalVibrationNde)}`}
-        />
-        <Field
-          label="Horizontal Vibration"
-          value={`${vibrationValue(reading.horizontalVibrationDe)} / ${vibrationValue(reading.horizontalVibrationNde)}`}
-        />
-        <Field
-          label="Axial Vibration"
-          value={`${vibrationValue(reading.axialVibrationDe)} / ${vibrationValue(reading.axialVibrationNde)}`}
-        />
-        <Field label="Motor Current" value={reading.motorCurrent != null ? `${reading.motorCurrent} A` : "—"} />
+        {MEASUREMENT_SINGLE_FIELDS.filter((field) => field.unit === "bar" || field.unit === "A").map((field) => (
+          <MeasurementSingleRow
+            key={field.key}
+            field={field}
+            editable={editable}
+            values={editable ? measurementForm : reading}
+            onChange={setMeasurementField}
+            formatValue={field.unit === "A" ? (value) => (value != null ? `${value} A` : "—") : pressureValue}
+          />
+        ))}
+        {MEASUREMENT_PAIR_FIELDS.filter((field) =>
+          ["quenchPressureDe", "verticalVibrationDe", "horizontalVibrationDe", "axialVibrationDe"].includes(field.deKey)
+        ).map((field) => (
+          <MeasurementPairRow
+            key={field.group}
+            field={field}
+            editable={editable}
+            values={editable ? measurementForm : reading}
+            onChange={setMeasurementField}
+            formatValue={field.unit === "bar" ? pressureValue : vibrationValue}
+          />
+        ))}
       </Card>
 
       <Card title="Finding">
@@ -345,7 +485,8 @@ export default function ConditionMonitoringReadingDetailPanel({
           preliminary_recommendation column (migration 014's own schema);
           only pm_occurrence does. technical_recommendation still renders
           as its own card, honest about JC-only authority, never merged
-          with Finding above. */}
+          with Finding above. Read-only always: JC provenance, TAP can
+          never edit this even while the record is otherwise editable. */}
       <Card title="Technical Recommendation — John Crane Engineer">
         <p style={{ color: colors.text, margin: 0 }}>
           {reading.technicalRecommendation || "No technical recommendation yet."}

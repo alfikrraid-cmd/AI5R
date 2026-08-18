@@ -223,4 +223,151 @@ describe("ConditionMonitoringReadingDetailPanel (MWO-LTSA-PM-CM-REVIEW-UI-001 ex
     expect(screen.getByText("FINALIZED")).toBeTruthy();
     expect(screen.getByText("Acknowledged")).toBeTruthy();
   });
+
+  // MWO-LTSA-PM-CM-REVIEW-PRE-PUSH-CLOSURE-001 -- golden migration-014
+  // measurement entry, DRAFT and RETURNED_FOR_CORRECTION edit paths.
+  describe("golden CMON measurement editing (Create + Edit parity)", () => {
+    it("DRAFT: renders every migration-014 field as an editable input, pre-filled from the real record", async () => {
+      const onSaveDraft = vi.fn().mockResolvedValue();
+      render(
+        <ConditionMonitoringReadingDetailPanel
+          reading={baseReading({ bearingTempDe: 61, bearingTempNde: 58, motorCurrent: 22.1 })}
+          canWrite
+          onSaveDraft={onSaveDraft}
+        />
+      );
+
+      expect(await screen.findByLabelText("Bearing Temp DE")).toHaveProperty("value", "61");
+      expect(screen.getByLabelText("Bearing Temp NDE")).toHaveProperty("value", "58");
+      expect(screen.getByLabelText("Motor Current")).toHaveProperty("value", "22.1");
+    });
+
+    it("DRAFT: saving sends null (not 0) for a measurement never entered", async () => {
+      const onSaveDraft = vi.fn().mockResolvedValue();
+      render(<ConditionMonitoringReadingDetailPanel reading={baseReading()} canWrite onSaveDraft={onSaveDraft} />);
+
+      fireEvent.click(await screen.findByRole("button", { name: "Save Draft" }));
+
+      await waitFor(() => expect(onSaveDraft).toHaveBeenCalled());
+      const payload = onSaveDraft.mock.calls[0][1];
+      expect(payload.measurements.suction_pressure).toBeNull();
+      expect(payload.measurements.motor_current).toBeNull();
+      expect(payload.measurements.bearing_temp_de).toBeNull();
+    });
+
+    it("DRAFT: editing one field and saving preserves DE/NDE as independent values, never collapsed", async () => {
+      const onSaveDraft = vi.fn().mockResolvedValue();
+      render(
+        <ConditionMonitoringReadingDetailPanel
+          reading={baseReading({ bearingTempDe: 61, bearingTempNde: 58 })}
+          canWrite
+          onSaveDraft={onSaveDraft}
+        />
+      );
+
+      fireEvent.change(await screen.findByLabelText("Bearing Temp DE"), { target: { value: "65" } });
+      fireEvent.click(screen.getByRole("button", { name: "Save Draft" }));
+
+      await waitFor(() => expect(onSaveDraft).toHaveBeenCalled());
+      const { measurements } = onSaveDraft.mock.calls[0][1];
+      expect(measurements.bearing_temp_de).toBe(65);
+      expect(measurements.bearing_temp_nde).toBe(58); // untouched sibling preserved, not wiped
+    });
+
+    it("DRAFT: saving preserves an explicitly-entered zero", async () => {
+      const onSaveDraft = vi.fn().mockResolvedValue();
+      render(<ConditionMonitoringReadingDetailPanel reading={baseReading()} canWrite onSaveDraft={onSaveDraft} />);
+
+      fireEvent.change(await screen.findByLabelText("Motor Current"), { target: { value: "0" } });
+      fireEvent.click(screen.getByRole("button", { name: "Save Draft" }));
+
+      await waitFor(() => expect(onSaveDraft).toHaveBeenCalled());
+      expect(onSaveDraft.mock.calls[0][1].measurements.motor_current).toBe(0);
+    });
+
+    it("DRAFT: saving passes through the pre-existing out-of-scope fields unmodified, never nulling them", async () => {
+      const onSaveDraft = vi.fn().mockResolvedValue();
+      render(
+        <ConditionMonitoringReadingDetailPanel
+          reading={baseReading({ flushingTempDe: 45, flushingTempNde: 44 })}
+          canWrite
+          onSaveDraft={onSaveDraft}
+        />
+      );
+
+      fireEvent.click(await screen.findByRole("button", { name: "Save Draft" }));
+
+      await waitFor(() => expect(onSaveDraft).toHaveBeenCalled());
+      const { measurements } = onSaveDraft.mock.calls[0][1];
+      expect(measurements.flushing_temp_de).toBe(45);
+      expect(measurements.flushing_temp_nde).toBe(44);
+    });
+
+    it("leak tri-state: not recorded stays null, never inferred as No Leak", async () => {
+      const onSaveDraft = vi.fn().mockResolvedValue();
+      render(
+        <ConditionMonitoringReadingDetailPanel
+          reading={baseReading({ leakDe: null, leakNde: null })}
+          canWrite
+          onSaveDraft={onSaveDraft}
+        />
+      );
+
+      expect(await screen.findByLabelText("Leak Status DE")).toHaveProperty("value", "");
+      fireEvent.click(screen.getByRole("button", { name: "Save Draft" }));
+
+      await waitFor(() => expect(onSaveDraft).toHaveBeenCalled());
+      const { measurements } = onSaveDraft.mock.calls[0][1];
+      expect(measurements.mechanical_seal_leak_de).toBeNull();
+      expect(measurements.mechanical_seal_leak_nde).toBeNull();
+    });
+
+    it("leak tri-state: DE and NDE are captured independently", async () => {
+      const onSaveDraft = vi.fn().mockResolvedValue();
+      render(<ConditionMonitoringReadingDetailPanel reading={baseReading()} canWrite onSaveDraft={onSaveDraft} />);
+
+      fireEvent.change(await screen.findByLabelText("Leak Status DE"), { target: { value: "true" } });
+      fireEvent.change(screen.getByLabelText("Leak Status NDE"), { target: { value: "false" } });
+      fireEvent.click(screen.getByRole("button", { name: "Save Draft" }));
+
+      await waitFor(() => expect(onSaveDraft).toHaveBeenCalled());
+      const { measurements } = onSaveDraft.mock.calls[0][1];
+      expect(measurements.mechanical_seal_leak_de).toBe(true);
+      expect(measurements.mechanical_seal_leak_nde).toBe(false);
+    });
+
+    it("RETURNED_FOR_CORRECTION: measurement fields remain editable, pre-filled from the real record", async () => {
+      render(
+        <ConditionMonitoringReadingDetailPanel
+          reading={baseReading({ workflowStatus: "RETURNED_FOR_CORRECTION", motorCurrent: 22.1 })}
+          canWrite
+        />
+      );
+
+      expect(await screen.findByLabelText("Motor Current")).toHaveProperty("value", "22.1");
+    });
+
+    it("SUBMITTED/FINALIZED: measurement fields are read-only, not editable inputs", async () => {
+      render(<ConditionMonitoringReadingDetailPanel reading={baseReading({ workflowStatus: "SUBMITTED" })} canWrite />);
+
+      await screen.findByText("Reading Summary");
+      expect(screen.queryByLabelText("Motor Current")).toBeNull();
+      expect(screen.queryByLabelText("Bearing Temp DE")).toBeNull();
+      expect(screen.queryByLabelText("Leak Status DE")).toBeNull();
+    });
+
+    it("JC never sees measurement edit inputs (no impersonation of TAP-recorded values)", async () => {
+      render(
+        <ConditionMonitoringReadingDetailPanel
+          reading={baseReading({ workflowStatus: "SUBMITTED", bearingTempDe: 61 })}
+          canTechnicalReview
+        />
+      );
+
+      await screen.findByText("John Crane Technical Review");
+      expect(screen.queryByLabelText("Bearing Temp DE")).toBeNull();
+      // The real TAP-recorded value is still visible, just not editable.
+      expect(screen.getByText("61 °C / —")).toBeTruthy();
+    });
+  });
 });

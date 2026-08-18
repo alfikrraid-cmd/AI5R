@@ -211,19 +211,17 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
   async function handleCreateReading(formValues) {
     setCreateError(null);
     try {
+      // MWO-LTSA-PM-CM-REVIEW-PRE-PUSH-CLOSURE-001 -- formValues.measurements
+      // is already the complete, correctly-null-coerced snake_case payload
+      // (built by CreateConditionMonitoringReadingModal.jsx via the shared
+      // buildMeasurementsPayload() helper, conditionMonitoringMeasurementFields.js)
+      // covering every canonical migration-014 field, not just the 7-field
+      // subset this handler previously hand-mapped.
       const result = await createConditionMonitoringReading({
         conditionMonitoringScheduleCode: formValues.scheduleCode,
         assetCode: formValues.equipmentTag,
         readingDate: formValues.readingDate || null,
-        measurements: {
-          mechseal_temp_de: formValues.mechsealTempDe,
-          mechseal_temp_nde: formValues.mechsealTempNde,
-          mechanical_seal_leak_de: formValues.leakDe,
-          mechanical_seal_leak_nde: formValues.leakNde,
-          suction_temp: formValues.suctionTemp,
-          discharge_temp: formValues.dischargeTemp,
-          pump_operating_state: formValues.pumpOperatingState,
-        },
+        measurements: formValues.measurements,
       });
       const newReading = mapConditionMonitoringReadingRecord(result.data);
       setReadings((current) => [...current, newReading]);
