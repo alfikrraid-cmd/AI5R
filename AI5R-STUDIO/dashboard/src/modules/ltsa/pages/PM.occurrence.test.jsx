@@ -1,7 +1,8 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import PM from "./PM";
-import { getPMSchedules, getPump, getCMReports, createPMOccurrence } from "../../../api/ai5rClient";
+import { getPMSchedules, getPump, getCMReports, getPMOccurrences, createPMOccurrence } from "../../../api/ai5rClient";
+import { AuthProvider } from "../auth/AuthContext";
 
 // MWO-LTSA-PM-CM-INTAKE-001 -- real PM Occurrence creation. A separate
 // file from PM.test.jsx (same convention as Seal.identifiers.test.jsx),
@@ -10,8 +11,36 @@ vi.mock("../../../api/ai5rClient", () => ({
   getPMSchedules: vi.fn(),
   getPump: vi.fn(),
   getCMReports: vi.fn(),
+  getPMOccurrences: vi.fn(),
   createPMOccurrence: vi.fn(),
+  onUnauthorized: vi.fn(),
 }));
+
+// MWO-LTSA-PM-CM-REVIEW-UI-001, Phase 6/13 -- "+ Record PM Occurrence" is
+// now gated on MAINTENANCE_WRITE (previously ungated, a Phase 13
+// violation this MWO fixed: Pertamina must never see a write control).
+// Same AuthProvider-with-fake-client wrapping Seal.identifiers.test.jsx's
+// own renderWithSession() established.
+function renderWithSession(permissions, role = "TAP_ENGINEER") {
+  const client = {
+    getSession: () =>
+      Promise.resolve({
+        user: { name: "Test User" },
+        organization: { displayName: "TAP" },
+        role,
+        permissions,
+      }),
+  };
+  return render(
+    <AuthProvider client={client}>
+      <PM />
+    </AuthProvider>
+  );
+}
+
+function renderWithWritePermission() {
+  return renderWithSession(["maintenance.read", "maintenance.write"]);
+}
 
 const PM_SCHEDULES = [
   {
@@ -29,6 +58,7 @@ function loadPMSchedules() {
   getPMSchedules.mockResolvedValue(PM_SCHEDULES);
   getPump.mockResolvedValue({ tag_number: null, area: "Boiler House" });
   getCMReports.mockResolvedValue([]);
+  getPMOccurrences.mockResolvedValue([]);
 }
 
 afterEach(() => {
@@ -47,7 +77,7 @@ describe("PM workspace -- Record PM Occurrence (real persistence)", () => {
   it("creates a PM Occurrence via the real API once a schedule is selected", async () => {
     loadPMSchedules();
     createPMOccurrence.mockResolvedValue({ data: { pm_occurrence_code: "PMOCC-NEW-1", workflow_status: "DRAFT" } });
-    render(<PM />);
+    renderWithWritePermission();
     await screen.findByText("PM-2001");
     fireEvent.click(screen.getByText("PM-2001"));
 
@@ -72,7 +102,7 @@ describe("PM workspace -- Record PM Occurrence (real persistence)", () => {
   it("surfaces a verbatim backend error and keeps the form open", async () => {
     loadPMSchedules();
     createPMOccurrence.mockRejectedValueOnce(new Error("maintenance.write required"));
-    render(<PM />);
+    renderWithWritePermission();
     await screen.findByText("PM-2001");
     fireEvent.click(screen.getByText("PM-2001"));
 
@@ -86,7 +116,7 @@ describe("PM workspace -- Record PM Occurrence (real persistence)", () => {
   it("never sends created_by/updated_by from the client -- the request body has no such fields", async () => {
     loadPMSchedules();
     createPMOccurrence.mockResolvedValue({ data: { pm_occurrence_code: "PMOCC-NEW-2", workflow_status: "DRAFT" } });
-    render(<PM />);
+    renderWithWritePermission();
     await screen.findByText("PM-2001");
     fireEvent.click(screen.getByText("PM-2001"));
 
@@ -97,5 +127,15 @@ describe("PM workspace -- Record PM Occurrence (real persistence)", () => {
     const call = createPMOccurrence.mock.calls[0][0];
     expect(call).not.toHaveProperty("createdBy");
     expect(call).not.toHaveProperty("updatedBy");
+  });
+
+  it("hides '+ Record PM Occurrence' for a Pertamina session (no maintenance.write) -- Phase 13", async () => {
+    loadPMSchedules();
+    renderWithSession(["maintenance.read"], "PERTAMINA_ENGINEER");
+    await screen.findByText("PM-2001");
+    fireEvent.click(screen.getByText("PM-2001"));
+
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Lubrication & Vibration Check" })).toBeTruthy());
+    expect(screen.queryByText("+ Record PM Occurrence")).toBeNull();
   });
 });

@@ -1,16 +1,23 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import PM from "./PM";
-import { getPMSchedules, getPump, getCMReports } from "../../../api/ai5rClient";
+import { getPMSchedules, getPump, getCMReports, getPMOccurrences } from "../../../api/ai5rClient";
 
 // MWO-LTSA-053 -- getCMReports added: PM.jsx now fetches Related CM
 // Reports (mirroring Pump.jsx/Seal.jsx's own Related Engineering pattern)
 // alongside getPMSchedules, so every test that renders <PM /> now
 // triggers this call too.
+//
+// MWO-LTSA-PM-CM-REVIEW-UI-001 -- getPMOccurrences added: PM.jsx now also
+// fetches the real PM Occurrence list on mount (the disclosed gap from
+// MWO-LTSA-PM-CM-INTAKE-001's own completion report). Occurrence-specific
+// review/evidence flows are covered by PM.occurrence.test.jsx and
+// PM.review.test.jsx, same convention as PM.test.jsx's own header note.
 vi.mock("../../../api/ai5rClient", () => ({
   getPMSchedules: vi.fn(),
   getPump: vi.fn(),
   getCMReports: vi.fn(),
+  getPMOccurrences: vi.fn(),
 }));
 
 function daysFromToday(offset) {
@@ -82,6 +89,7 @@ function loadPMSchedules(records = PM_SCHEDULES) {
   getPMSchedules.mockResolvedValue(records);
   getPump.mockResolvedValue({ tag_number: null, area: "Boiler House" });
   getCMReports.mockResolvedValue([]);
+  getPMOccurrences.mockResolvedValue([]);
 }
 
 describe("Preventive Maintenance workspace page", () => {
@@ -96,6 +104,7 @@ describe("Preventive Maintenance workspace page", () => {
   it("renders a loading state before the API resolves", () => {
     getPMSchedules.mockReturnValue(new Promise(() => {}));
     getCMReports.mockResolvedValue([]);
+    getPMOccurrences.mockResolvedValue([]);
     render(<PM />);
 
     expect(screen.getByText("Loading PM schedules...")).toBeTruthy();
@@ -104,6 +113,7 @@ describe("Preventive Maintenance workspace page", () => {
   it("renders list API errors without fallback mock data", async () => {
     getPMSchedules.mockRejectedValue(new Error("API unavailable"));
     getCMReports.mockResolvedValue([]);
+    getPMOccurrences.mockResolvedValue([]);
     render(<PM />);
 
     expect(await screen.findByText("PM schedules could not be loaded.")).toBeTruthy();

@@ -123,4 +123,76 @@ describe("permissions", () => {
     // capability gate for that data exists and is a single flag.
     expect(PERMISSIONS.INVENTORY_READ).toBe("inventory.read");
   });
+
+  // MWO-LTSA-PM-CM-REVIEW-UI-001, Phase 17 -- the exact PM/Condition
+  // Monitoring workflow role matrix the MWO requires proven: TAP_ENGINEER
+  // writes but never reviews; TAP_ADMIN writes+admin-reviews but never
+  // performs technical review; JOHN_CRANE_ENGINEER technically-reviews
+  // only, never writes/admin-reviews (no field impersonation); both
+  // Pertamina roles get none of the three. Matches
+  // auth_service.py's real ROLE_PERMISSIONS grants exactly (this
+  // session's own re-read of that file), not a frontend invention.
+  describe("PM/Condition Monitoring workflow role matrix (Phase 17)", () => {
+    it("TAP_ENGINEER: write YES, admin_review NO, technical_review NO", () => {
+      const session = { role: ROLES.TAP_ENGINEER };
+      expect(can(session, PERMISSIONS.MAINTENANCE_WRITE)).toBe(true);
+      expect(can(session, PERMISSIONS.MAINTENANCE_ADMIN_REVIEW)).toBe(false);
+      expect(can(session, PERMISSIONS.MAINTENANCE_TECHNICAL_REVIEW)).toBe(false);
+    });
+
+    it("TAP_ADMIN: write YES, admin_review YES, technical_review NO", () => {
+      const session = { role: ROLES.TAP_ADMIN };
+      expect(can(session, PERMISSIONS.MAINTENANCE_WRITE)).toBe(true);
+      expect(can(session, PERMISSIONS.MAINTENANCE_ADMIN_REVIEW)).toBe(true);
+      expect(can(session, PERMISSIONS.MAINTENANCE_TECHNICAL_REVIEW)).toBe(false);
+    });
+
+    it("JOHN_CRANE_ENGINEER: write NO (no field impersonation), admin_review NO, technical_review YES", () => {
+      const session = { role: ROLES.JOHN_CRANE_ENGINEER };
+      expect(can(session, PERMISSIONS.MAINTENANCE_WRITE)).toBe(false);
+      expect(can(session, PERMISSIONS.MAINTENANCE_ADMIN_REVIEW)).toBe(false);
+      expect(can(session, PERMISSIONS.MAINTENANCE_TECHNICAL_REVIEW)).toBe(true);
+    });
+
+    it("PERTAMINA_ENGINEER: write NO, admin_review NO, technical_review NO (read-only)", () => {
+      const session = { role: ROLES.PERTAMINA_ENGINEER };
+      expect(can(session, PERMISSIONS.MAINTENANCE_WRITE)).toBe(false);
+      expect(can(session, PERMISSIONS.MAINTENANCE_ADMIN_REVIEW)).toBe(false);
+      expect(can(session, PERMISSIONS.MAINTENANCE_TECHNICAL_REVIEW)).toBe(false);
+    });
+
+    it("PERTAMINA_VIEWER: write NO, admin_review NO, technical_review NO (read-only)", () => {
+      const session = { role: ROLES.PERTAMINA_VIEWER };
+      expect(can(session, PERMISSIONS.MAINTENANCE_WRITE)).toBe(false);
+      expect(can(session, PERMISSIONS.MAINTENANCE_ADMIN_REVIEW)).toBe(false);
+      expect(can(session, PERMISSIONS.MAINTENANCE_TECHNICAL_REVIEW)).toBe(false);
+    });
+
+    it("SUPERUSER: all three grants (fallback fixture superset)", () => {
+      const session = { role: ROLES.SUPERUSER };
+      expect(can(session, PERMISSIONS.MAINTENANCE_WRITE)).toBe(true);
+      expect(can(session, PERMISSIONS.MAINTENANCE_ADMIN_REVIEW)).toBe(true);
+      expect(can(session, PERMISSIONS.MAINTENANCE_TECHNICAL_REVIEW)).toBe(true);
+    });
+
+    it("real backend sessions: TAP_ADMIN's array-based session never grants technical_review even if role fallback would", () => {
+      const session = {
+        role: "TAP_ADMIN",
+        permissions: ["pump.read", "maintenance.read", "maintenance.write", "maintenance.admin_review"],
+      };
+      expect(can(session, "maintenance.write")).toBe(true);
+      expect(can(session, "maintenance.admin_review")).toBe(true);
+      expect(can(session, "maintenance.technical_review")).toBe(false);
+    });
+
+    it("real backend sessions: JOHN_CRANE_ENGINEER's array-based session never grants write or admin_review", () => {
+      const session = {
+        role: "JOHN_CRANE_ENGINEER",
+        permissions: ["pump.read", "maintenance.read", "maintenance.technical_review"],
+      };
+      expect(can(session, "maintenance.technical_review")).toBe(true);
+      expect(can(session, "maintenance.write")).toBe(false);
+      expect(can(session, "maintenance.admin_review")).toBe(false);
+    });
+  });
 });

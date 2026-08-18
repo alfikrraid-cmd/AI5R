@@ -10,12 +10,16 @@ import CreateConditionMonitoringReadingModal from "../components/CreateCondition
 import SuccessToast from "../components/SuccessToast";
 import {
   getConditionMonitoringReadings, getConditionMonitoringSchedules, createConditionMonitoringReading,
+  updateConditionMonitoringReadingDraft, submitConditionMonitoringReading,
+  adminReviewConditionMonitoringReading, technicalReviewConditionMonitoringReading,
 } from "../../../api/ai5rClient";
 import {
   mapConditionMonitoringReadingRecord,
   mapConditionMonitoringScheduleRecord,
   withResolvedArea,
 } from "../utils/conditionMonitoringMapping";
+import { useOptionalAuth } from "../auth/AuthContext";
+import { can, PERMISSIONS } from "../auth/permissions";
 import "./ConditionMonitoring.css";
 
 const VIEWS = [
@@ -81,6 +85,16 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [successMessage, setSuccessMessage] = useState(null);
+
+  // MWO-LTSA-PM-CM-REVIEW-UI-001, Phase 6/7/8 -- role-gated review action
+  // visibility, the same useOptionalAuth()/can() pattern PM.jsx/Seal.jsx
+  // already use. useOptionalAuth() never throws with no AuthProvider, so
+  // every existing bare-render test (<ConditionMonitoring />) keeps
+  // working unchanged; can(null, ...) degrades to false.
+  const authContext = useOptionalAuth();
+  const canWriteMaintenance = can(authContext?.session, PERMISSIONS.MAINTENANCE_WRITE);
+  const canAdminReviewMaintenance = can(authContext?.session, PERMISSIONS.MAINTENANCE_ADMIN_REVIEW);
+  const canTechnicalReviewMaintenance = can(authContext?.session, PERMISSIONS.MAINTENANCE_TECHNICAL_REVIEW);
 
   useEffect(() => {
     let active = true;
@@ -224,12 +238,58 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
     }
   }
 
+  function upsertReading(rawRecord) {
+    const mapped = mapConditionMonitoringReadingRecord(rawRecord);
+    setReadings((current) => {
+      const exists = current.some((reading) => reading.id === mapped.id);
+      return exists ? current.map((reading) => (reading.id === mapped.id ? mapped : reading)) : [...current, mapped];
+    });
+    return mapped;
+  }
+
+  // MWO-LTSA-PM-CM-REVIEW-UI-001, Phase 6/7/8/9 -- draft edit/submit/
+  // admin-review/technical-review handlers, mirroring PM.jsx's own
+  // handleSaveOccurrenceDraft/handleSubmitOccurrence/etc. exactly (same
+  // shared pm_cm_workflow_service.py state machine, Phase 10). Errors are
+  // re-thrown so ConditionMonitoringReadingDetailPanel's own per-action
+  // error state (never a fake success) can display them verbatim.
+  async function handleSaveReadingDraft(code, payload) {
+    const result = await updateConditionMonitoringReadingDraft(code, payload);
+    upsertReading(result.data);
+    setSuccessMessage(`Condition Monitoring reading ${code} saved.`);
+  }
+
+  async function handleSubmitReading(code) {
+    const result = await submitConditionMonitoringReading(code);
+    upsertReading(result.data);
+    setSuccessMessage(`Condition Monitoring reading ${code} submitted for review.`);
+  }
+
+  async function handleAdminReturnReading(code, returnReason) {
+    const result = await adminReviewConditionMonitoringReading(code, returnReason);
+    upsertReading(result.data);
+    setSuccessMessage(`Condition Monitoring reading ${code} returned for correction.`);
+  }
+
+  async function handleTechnicalReviewReading(code, payload) {
+    const result = await technicalReviewConditionMonitoringReading(code, payload);
+    upsertReading(result.data);
+    setSuccessMessage(`Condition Monitoring reading ${code} technical review recorded.`);
+  }
+
   return (
     <div>
       <PageHeader
         title="Condition Monitoring"
         subtitle="LTSA Engineering — Condition Monitoring Registry"
-        actions={<Button onClick={() => setIsCreateModalOpen(true)}>+ Create Reading</Button>}
+        actions={
+          // MWO-LTSA-PM-CM-REVIEW-UI-001, Phase 6/13 -- previously
+          // ungated (any authenticated role could open the create-reading
+          // modal); Pertamina must never see a write control. Gated on
+          // the same MAINTENANCE_WRITE capability the resulting create
+          // call requires server-side.
+          canWriteMaintenance && <Button onClick={() => setIsCreateModalOpen(true)}>+ Create Reading</Button>
+        }
       />
 
       <SuccessToast message={successMessage} onDismiss={() => setSuccessMessage(null)} />
@@ -307,6 +367,13 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
                   reading={selectedReading}
                   onViewAsset360={handleViewAsset360}
                   onViewSchedule={handleViewSchedule}
+                  canWrite={canWriteMaintenance}
+                  canAdminReview={canAdminReviewMaintenance}
+                  canTechnicalReview={canTechnicalReviewMaintenance}
+                  onSaveDraft={handleSaveReadingDraft}
+                  onSubmit={handleSubmitReading}
+                  onAdminReturn={handleAdminReturnReading}
+                  onTechnicalReview={handleTechnicalReviewReading}
                 />
               </div>
             </div>

@@ -1,15 +1,51 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import ConditionMonitoring from "./ConditionMonitoring";
 import {
   getConditionMonitoringReadings, getConditionMonitoringSchedules, getPump, createConditionMonitoringReading,
+  getPMCMEvidence,
 } from "../../../api/ai5rClient";
+import { AuthProvider } from "../auth/AuthContext";
 
+// MWO-LTSA-PM-CM-REVIEW-UI-001, Phase 6/13 -- "+ Create Reading" is now
+// gated on MAINTENANCE_WRITE (previously ungated, a Phase 13 violation
+// this MWO fixed: Pertamina must never see a write control). Same
+// AuthProvider-with-fake-client wrapping Seal.identifiers.test.jsx's own
+// renderWithSession() established.
+function renderWithSession(permissions, role = "TAP_ENGINEER", props) {
+  const client = {
+    getSession: () =>
+      Promise.resolve({
+        user: { name: "Test User" },
+        organization: { displayName: "TAP" },
+        role,
+        permissions,
+      }),
+  };
+  return render(
+    <AuthProvider client={client}>
+      <ConditionMonitoring {...props} />
+    </AuthProvider>
+  );
+}
+
+function renderWithWritePermission(props) {
+  return renderWithSession(["maintenance.read", "condition.read", "maintenance.write"], "TAP_ENGINEER", props);
+}
+
+// MWO-LTSA-PM-CM-REVIEW-UI-001 -- ConditionMonitoringReadingDetailPanel
+// now always renders the shared EvidenceAttachments widget once a reading
+// is selected, so getPMCMEvidence must be mocked here too (the other new
+// review-action API functions are exercised by
+// ConditionMonitoring.review.test.jsx, a separate file, same convention
+// as PM.occurrence.test.jsx alongside PM.test.jsx).
 vi.mock("../../../api/ai5rClient", () => ({
   getConditionMonitoringReadings: vi.fn(),
   getConditionMonitoringSchedules: vi.fn(),
   getPump: vi.fn(),
   createConditionMonitoringReading: vi.fn(),
+  getPMCMEvidence: vi.fn(),
+  onUnauthorized: vi.fn(),
 }));
 
 const SCHEDULES = [
@@ -58,6 +94,7 @@ function loadDefaults() {
   getConditionMonitoringSchedules.mockResolvedValue(SCHEDULES);
   getConditionMonitoringReadings.mockResolvedValue(READINGS);
   getPump.mockResolvedValue({ tag_number: null, area: null });
+  getPMCMEvidence.mockResolvedValue([]);
 }
 
 describe("Condition Monitoring workspace page", () => {
@@ -167,10 +204,10 @@ describe("Condition Monitoring workspace page", () => {
 
   it("opens the Create Reading modal when the header action is clicked", async () => {
     loadDefaults();
-    render(<ConditionMonitoring />);
+    renderWithWritePermission();
     await screen.findByText("CMON-SCHED-001");
 
-    fireEvent.click(screen.getByRole("button", { name: "+ Create Reading" }));
+    fireEvent.click(await screen.findByRole("button", { name: "+ Create Reading" }));
 
     expect(screen.getByRole("heading", { name: "Create Condition Monitoring Reading" })).toBeTruthy();
   });
@@ -186,10 +223,10 @@ describe("Condition Monitoring workspace page", () => {
         workflow_status: "DRAFT",
       },
     });
-    render(<ConditionMonitoring />);
+    renderWithWritePermission();
     await screen.findByText("CMON-SCHED-001");
 
-    fireEvent.click(screen.getByRole("button", { name: "+ Create Reading" }));
+    fireEvent.click(await screen.findByRole("button", { name: "+ Create Reading" }));
     fireEvent.change(screen.getByLabelText("Schedule"), { target: { value: "CMON-SCHED-001" } });
     fireEvent.click(screen.getByRole("button", { name: "Create Reading" }));
 
@@ -205,10 +242,10 @@ describe("Condition Monitoring workspace page", () => {
   it("surfaces a verbatim backend error and keeps the modal open when create fails", async () => {
     loadDefaults();
     createConditionMonitoringReading.mockRejectedValueOnce(new Error("maintenance.write required"));
-    render(<ConditionMonitoring />);
+    renderWithWritePermission();
     await screen.findByText("CMON-SCHED-001");
 
-    fireEvent.click(screen.getByRole("button", { name: "+ Create Reading" }));
+    fireEvent.click(await screen.findByRole("button", { name: "+ Create Reading" }));
     fireEvent.change(screen.getByLabelText("Schedule"), { target: { value: "CMON-SCHED-001" } });
     fireEvent.click(screen.getByRole("button", { name: "Create Reading" }));
 
@@ -272,5 +309,13 @@ describe("Condition Monitoring workspace page", () => {
 
     expect(getPump).toHaveBeenCalledWith("641-P-5");
     expect(screen.getByText("SWS Unit")).toBeTruthy();
+  });
+
+  it("hides '+ Create Reading' for a Pertamina session (no maintenance.write) -- Phase 13", async () => {
+    loadDefaults();
+    renderWithSession(["maintenance.read", "condition.read"], "PERTAMINA_ENGINEER");
+    await screen.findByText("CMON-SCHED-001");
+
+    await waitFor(() => expect(screen.queryByRole("button", { name: "+ Create Reading" })).toBeNull());
   });
 });

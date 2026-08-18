@@ -59,6 +59,49 @@ export function mapConditionMonitoringReadingRecord(record) {
     suctionTemp: record.suction_temp,
     dischargeTemp: record.discharge_temp,
     pumpOperatingState: record.pump_operating_state,
+    // MWO-LTSA-PM-CM-REVIEW-UI-001 -- migration-014 additions
+    // (_MEASUREMENT_COLUMNS in condition_monitoring_reading_repository.py,
+    // this session's own re-read of that file): pressure/vibration/
+    // bearing-temp/motor-current fields the golden reports' Check Points
+    // table has but the pre-existing mapping above did not yet surface.
+    suctionPressure: record.suction_pressure,
+    dischargePressure: record.discharge_pressure,
+    quenchPressureDe: record.quench_pressure_de,
+    quenchPressureNde: record.quench_pressure_nde,
+    stuffingBoxTempDe: record.stuffing_box_temp_de,
+    stuffingBoxTempNde: record.stuffing_box_temp_nde,
+    sealGlandTempDe: record.seal_gland_temp_de,
+    sealGlandTempNde: record.seal_gland_temp_nde,
+    verticalVibrationDe: record.vertical_vibration_de,
+    verticalVibrationNde: record.vertical_vibration_nde,
+    horizontalVibrationDe: record.horizontal_vibration_de,
+    horizontalVibrationNde: record.horizontal_vibration_nde,
+    axialVibrationDe: record.axial_vibration_de,
+    axialVibrationNde: record.axial_vibration_nde,
+    bearingTempDe: record.bearing_temp_de,
+    bearingTempNde: record.bearing_temp_nde,
+    motorCurrent: record.motor_current,
+    // Workflow/attribution columns (_WORKFLOW_COLUMNS, same repository) --
+    // identical shape to mapPMOccurrenceRecord's own fields in
+    // pmMapping.js, since pm_cm_workflow_service.py is the one shared
+    // state machine for both domains (Phase 10).
+    finding: record.finding,
+    provenance: record.provenance,
+    workflowStatus: record.workflow_status,
+    submittedBy: record.submitted_by,
+    submittedAt: record.submitted_at,
+    reviewedBy: record.reviewed_by,
+    reviewedAt: record.reviewed_at,
+    returnReason: record.return_reason,
+    technicalReviewedBy: record.technical_reviewed_by,
+    technicalReviewedAt: record.technical_reviewed_at,
+    technicalOutcome: record.technical_outcome,
+    technicalComment: record.technical_comment,
+    technicalRecommendation: record.technical_recommendation,
+    createdBy: record.created_by,
+    updatedBy: record.updated_by,
+    createdAt: record.created_at,
+    updatedAt: record.updated_at,
   };
 }
 

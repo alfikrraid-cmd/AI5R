@@ -63,6 +63,15 @@ export const PERMISSIONS = Object.freeze({
   // DATA edit -- pumps/seals canonical definitions, no current route",
   // auth_service.py's own ROLE_PERMISSIONS header).
   MASTER_EDIT: "master.edit",
+  // MWO-LTSA-PM-CM-REVIEW-UI-001 -- the three PM/Condition Monitoring
+  // workflow permissions reserved in advance by MWO-LTSA-AUTH-003A-FINAL
+  // ("no UI element consumes it until the PM/CM Intake MWO builds the
+  // technical-review screen", this file's own prior comment) and already
+  // enforced server-side by MWO-LTSA-PM-CM-INTAKE-001's routers. Reused
+  // verbatim, no new backend permission invented.
+  MAINTENANCE_WRITE: "maintenance.write",
+  MAINTENANCE_ADMIN_REVIEW: "maintenance.admin_review",
+  MAINTENANCE_TECHNICAL_REVIEW: "maintenance.technical_review",
 });
 
 const ENGINEERING_CORE = [
@@ -98,6 +107,12 @@ export const ROLE_PERMISSIONS = Object.freeze({
     PERMISSIONS.ANALYTICS_READ,
     PERMISSIONS.ADMIN_ACCESS,
     PERMISSIONS.MASTER_EDIT,
+    // real backend grant: maintenance.write + maintenance.admin_review,
+    // NOT maintenance.technical_review (TAP_ADMIN cannot technically
+    // review its own team's work -- Hard Rule, unchanged from
+    // MWO-LTSA-AUTH-003A-FINAL/MWO-LTSA-PM-CM-INTAKE-001).
+    PERMISSIONS.MAINTENANCE_WRITE,
+    PERMISSIONS.MAINTENANCE_ADMIN_REVIEW,
   ]),
   [ROLES.TAP_ENGINEER]: Object.freeze([
     PERMISSIONS.DASHBOARD_READ,
@@ -106,6 +121,9 @@ export const ROLE_PERMISSIONS = Object.freeze({
     PERMISSIONS.INTERNAL_COMPONENT_READ,
     PERMISSIONS.ENGINEERING_AI_ASK,
     PERMISSIONS.ANALYTICS_READ,
+    // real backend grant: maintenance.write only -- no admin_review, no
+    // technical_review.
+    PERMISSIONS.MAINTENANCE_WRITE,
     // no import.execute, no admin.access, no master.edit (the real
     // backend ROLE_PERMISSIONS matrix does not grant master.edit to
     // TAP_ENGINEER today -- MWO-LTSA-SEAL-INVENTORY-IDENTIFIERS-001
@@ -117,7 +135,9 @@ export const ROLE_PERMISSIONS = Object.freeze({
     PERMISSIONS.ENGINEERING_AI_ASK,
     // no dashboard.read (TAP fleet executive view), no analytics.read
     // (cross-customer), no knowledgereview.read (internal curation), no
-    // import.execute, no internal_component.read, no admin.access
+    // import.execute, no internal_component.read, no admin.access, no
+    // maintenance.write/admin_review/technical_review (Pertamina is
+    // read-only for PM/Condition Monitoring, unchanged).
   ]),
   [ROLES.PERTAMINA_VIEWER]: Object.freeze([
     ...ENGINEERING_CORE,
@@ -140,18 +160,22 @@ export const ROLE_PERMISSIONS = Object.freeze({
     PERMISSIONS.ANALYTICS_READ,
     PERMISSIONS.ADMIN_ACCESS,
     PERMISSIONS.MASTER_EDIT,
+    PERMISSIONS.MAINTENANCE_WRITE,
+    PERMISSIONS.MAINTENANCE_ADMIN_REVIEW,
+    PERMISSIONS.MAINTENANCE_TECHNICAL_REVIEW,
   ]),
   // JOHN_CRANE_ENGINEER: technical authority, not administrative -- reads
   // (including internal_component.read for GPN/internal-component data)
   // but no dashboard.read (internal_inventory.read), no import.execute,
   // no admin.access. Matches ROLE_PERMISSIONS["JOHN_CRANE_ENGINEER"] on
-  // the backend exactly (maintenance.technical_review has no frontend
-  // PERMISSIONS constant yet -- no UI element consumes it until the
-  // PM/CM Intake MWO builds the technical-review screen).
+  // the backend exactly -- maintenance.technical_review only (no write,
+  // no admin_review: JC reviews, it does not create/edit field records
+  // or perform TAP's own administrative review).
   [ROLES.JOHN_CRANE_ENGINEER]: Object.freeze([
     ...ENGINEERING_CORE,
     PERMISSIONS.INTERNAL_COMPONENT_READ,
     PERMISSIONS.ENGINEERING_AI_ASK,
+    PERMISSIONS.MAINTENANCE_TECHNICAL_REVIEW,
   ]),
 });
 

@@ -3,12 +3,18 @@ import { Button, EmptyState, PageHeader, Panel } from "../../../design-system";
 import PMFilterBar from "../components/PMFilterBar";
 import PMScheduleTable from "../components/PMScheduleTable";
 import PMOpenDesignView from "../components/PMOpenDesignView";
+import PMOccurrenceDetailPanel from "../components/PMOccurrenceDetailPanel";
 import CreatePMScheduleModal from "../components/CreatePMScheduleModal";
 import CreatePMOccurrenceModal from "../components/CreatePMOccurrenceModal";
 import SuccessToast from "../components/SuccessToast";
-import { getPMSchedules, getCMReports, createPMOccurrence } from "../../../api/ai5rClient";
-import { mapPMScheduleRecord, withResolvedArea } from "../utils/pmMapping";
+import {
+  getPMSchedules, getCMReports, getPMOccurrences, createPMOccurrence,
+  updatePMOccurrenceDraft, submitPMOccurrence, adminReviewPMOccurrence, technicalReviewPMOccurrence,
+} from "../../../api/ai5rClient";
+import { mapPMScheduleRecord, mapPMOccurrenceRecord, withResolvedArea } from "../utils/pmMapping";
 import { mapCMReportRecord } from "../utils/cmMapping";
+import { useOptionalAuth } from "../auth/AuthContext";
+import { can, PERMISSIONS } from "../auth/permissions";
 import "./PM.css";
 import "./LTSAOpenDesign.css";
 
@@ -64,6 +70,32 @@ export default function PM({ onNavigate, navContext }) {
   // own Related Engineering groups (getCMReports is the same already-wired
   // endpoint, nothing new).
   const [cmReports, setCmReports] = useState([]);
+  // MWO-LTSA-PM-CM-REVIEW-UI-001 -- real PM Occurrence listing (the
+  // disclosed gap from MWO-LTSA-PM-CM-INTAKE-001's own completion report:
+  // occurrences could be created but never displayed anywhere). Same
+  // "fetch once, derive many client-side" pattern as cmReports above --
+  // getPMOccurrences() has no per-schedule filter, so occurrences for the
+  // selected schedule are derived below via pmScheduleCode.
+  const [pmOccurrences, setPmOccurrences] = useState([]);
+  const [selectedOccurrenceId, setSelectedOccurrenceId] = useState(null);
+
+  // MWO-LTSA-AUTH-003A-FINAL / MWO-LTSA-PM-CM-REVIEW-UI-001 -- role-gated
+  // review action visibility (Phase 6/7/8): useOptionalAuth() never
+  // throws with no AuthProvider, so every existing bare-render test
+  // (<PM />) keeps working unchanged; can(null, ...) degrades to false.
+  const authContext = useOptionalAuth();
+  const canWriteMaintenance = can(authContext?.session, PERMISSIONS.MAINTENANCE_WRITE);
+  const canAdminReviewMaintenance = can(authContext?.session, PERMISSIONS.MAINTENANCE_ADMIN_REVIEW);
+  const canTechnicalReviewMaintenance = can(authContext?.session, PERMISSIONS.MAINTENANCE_TECHNICAL_REVIEW);
+
+  function upsertOccurrence(rawRecord) {
+    const mapped = mapPMOccurrenceRecord(rawRecord);
+    setPmOccurrences((current) => {
+      const exists = current.some((occ) => occ.id === mapped.id);
+      return exists ? current.map((occ) => (occ.id === mapped.id ? mapped : occ)) : [...current, mapped];
+    });
+    return mapped;
+  }
 
   useEffect(() => {
     let active = true;
@@ -90,6 +122,10 @@ export default function PM({ onNavigate, navContext }) {
     getCMReports()
       .then((records) => { if (active) setCmReports(records.map(mapCMReportRecord)); })
       .catch(() => { if (active) setCmReports([]); });
+
+    getPMOccurrences()
+      .then((records) => { if (active) setPmOccurrences(records.map(mapPMOccurrenceRecord)); })
+      .catch(() => { if (active) setPmOccurrences([]); });
 
     return () => {
       active = false;
@@ -144,6 +180,15 @@ export default function PM({ onNavigate, navContext }) {
   const relatedCMRecords = selectedPM
     ? cmReports.filter((cm) => cm.equipmentTag === selectedPM.equipmentTag)
     : [];
+
+  // MWO-LTSA-PM-CM-REVIEW-UI-001 -- occurrences recorded against the
+  // selected schedule, derived from the already-fetched pmOccurrences
+  // list the same "filter, don't re-fetch" way relatedPMRecords/
+  // relatedCMRecords already do above.
+  const occurrencesForSelectedPM = selectedPM
+    ? pmOccurrences.filter((occ) => occ.pmScheduleCode === selectedPM.id)
+    : [];
+  const selectedOccurrence = occurrencesForSelectedPM.find((occ) => occ.id === selectedOccurrenceId) ?? null;
 
   // MWO-LTSA-053 -- Open Pump / Open Drawing reuse the exact same
   // onNavigate(key, context) mechanism Seal.jsx/Pump.jsx already use for
@@ -200,8 +245,43 @@ export default function PM({ onNavigate, navContext }) {
       activities,
       remarks,
     });
+    const newOccurrence = upsertOccurrence(result.data);
     setIsCreateOccurrenceModalOpen(false);
-    setSuccessMessage(`PM Occurrence ${result.data.pm_occurrence_code} recorded (DRAFT).`);
+    setSelectedOccurrenceId(newOccurrence.id);
+    setSuccessMessage(`PM Occurrence ${newOccurrence.id} recorded (DRAFT).`);
+  }
+
+  // MWO-LTSA-PM-CM-REVIEW-UI-001, Phase 6/7/8/9 -- draft edit/submit/
+  // admin-review/technical-review handlers. Each calls the already-real
+  // backend route (ai5rClient.js, built by MWO-LTSA-PM-CM-INTAKE-001) and
+  // reconciles local state from the RETURNING response, never from a
+  // locally-fabricated guess -- the same "server response is truth"
+  // convention handleRecordOccurrence above and ConditionMonitoring.jsx's
+  // handleCreateReading already use. Errors are re-thrown so
+  // PMOccurrenceDetailPanel's own per-action error state (never a fake
+  // success) can display them verbatim.
+  async function handleSaveOccurrenceDraft(code, payload) {
+    const result = await updatePMOccurrenceDraft(code, payload);
+    upsertOccurrence(result.data);
+    setSuccessMessage(`PM Occurrence ${code} saved.`);
+  }
+
+  async function handleSubmitOccurrence(code) {
+    const result = await submitPMOccurrence(code);
+    upsertOccurrence(result.data);
+    setSuccessMessage(`PM Occurrence ${code} submitted for review.`);
+  }
+
+  async function handleAdminReturnOccurrence(code, returnReason) {
+    const result = await adminReviewPMOccurrence(code, returnReason);
+    upsertOccurrence(result.data);
+    setSuccessMessage(`PM Occurrence ${code} returned for correction.`);
+  }
+
+  async function handleTechnicalReviewOccurrence(code, payload) {
+    const result = await technicalReviewPMOccurrence(code, payload);
+    upsertOccurrence(result.data);
+    setSuccessMessage(`PM Occurrence ${code} technical review recorded.`);
   }
 
   return (
@@ -211,7 +291,12 @@ export default function PM({ onNavigate, navContext }) {
         subtitle="LTSA Engineering — PM Schedule Registry"
         actions={
           <span style={{ display: "flex", gap: "var(--space-2)" }}>
-            {selectedPM && (
+            {/* MWO-LTSA-PM-CM-REVIEW-UI-001, Phase 6/13 -- this button was
+                previously ungated (any authenticated role could open the
+                create-occurrence modal); Pertamina must never see a write
+                control. Gated on the same MAINTENANCE_WRITE capability
+                the resulting create call requires server-side. */}
+            {selectedPM && canWriteMaintenance && (
               <Button onClick={() => setIsCreateOccurrenceModalOpen(true)}>+ Record PM Occurrence</Button>
             )}
             <Button onClick={() => setIsCreateModalOpen(true)}>+ Create PM Schedule</Button>
@@ -249,14 +334,51 @@ export default function PM({ onNavigate, navContext }) {
 
           <div className="pm-workspace-detail">
             {selectedPM ? (
-              <PMOpenDesignView
-                pm={selectedPM}
-                relatedPMRecords={relatedPMRecords}
-                cmRecords={relatedCMRecords}
-                onOpenPump={handleOpenPump}
-                onOpenDrawing={handleOpenDrawing}
-                onCreatePM={() => setIsCreateModalOpen(true)}
-              />
+              <>
+                <PMOpenDesignView
+                  pm={selectedPM}
+                  relatedPMRecords={relatedPMRecords}
+                  cmRecords={relatedCMRecords}
+                  onOpenPump={handleOpenPump}
+                  onOpenDrawing={handleOpenDrawing}
+                  onCreatePM={() => setIsCreateModalOpen(true)}
+                />
+
+                {/* MWO-LTSA-PM-CM-REVIEW-UI-001 -- real PM Occurrence
+                    records for this schedule, the disclosed gap from
+                    MWO-LTSA-PM-CM-INTAKE-001's own completion report
+                    ("occurrences could be created but never displayed"). */}
+                <div style={{ marginTop: "var(--space-4, 24px)" }}>
+                  <h3>PM Occurrences</h3>
+                  {occurrencesForSelectedPM.length === 0 ? (
+                    <Panel>
+                      <p>No PM occurrences recorded for this schedule yet.</p>
+                    </Panel>
+                  ) : (
+                    <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap", marginBottom: "var(--space-3)" }}>
+                      {occurrencesForSelectedPM.map((occ) => (
+                        <Button key={occ.id} onClick={() => setSelectedOccurrenceId(occ.id)}>
+                          {occ.id} ({occ.workflowStatus})
+                        </Button>
+                      ))}
+                    </div>
+                  )}
+
+                  {selectedOccurrence && (
+                    <PMOccurrenceDetailPanel
+                      occurrence={selectedOccurrence}
+                      canWrite={canWriteMaintenance}
+                      canAdminReview={canAdminReviewMaintenance}
+                      canTechnicalReview={canTechnicalReviewMaintenance}
+                      onSaveDraft={handleSaveOccurrenceDraft}
+                      onSubmit={handleSubmitOccurrence}
+                      onAdminReturn={handleAdminReturnOccurrence}
+                      onTechnicalReview={handleTechnicalReviewOccurrence}
+                      onOpenPump={handleOpenPump}
+                    />
+                  )}
+                </div>
+              </>
             ) : (
               <EmptyState
                 title="No PM schedule selected"
