@@ -98,6 +98,46 @@ describe("buildMeasurementsPayload", () => {
     expect(buildMeasurementsPayload(values).motor_current).toBe(0);
   });
 
+  // MWO-LTSA-PM-CMON-FOUNDATION-CLEANUP-001 -- the legacy WO-CMON-001
+  // fields (golden-evidence-backed by ADR-CONDITION-MONITORING-001,
+  // predating migration 014), now managed by this shared module.
+  it("maps every legacy golden CMON field (flushing/quench/flushing-in-out/cooling-water-in-out/water-jacket) to its real column, DE and NDE kept separate", () => {
+    const values = emptyMeasurementFormValues();
+    values.flushingTempDe = "45";
+    values.flushingTempNde = "44";
+    values.quenchTempDe = "38";
+    values.quenchTempNde = "";
+    values.flushingInTempDe = "30";
+    values.flushingInTempNde = "31";
+    values.flushingOutTempDe = "50";
+    values.flushingOutTempNde = "51";
+    values.coolingWaterInTempDe = "25";
+    values.coolingWaterInTempNde = "26";
+    values.coolingWaterOutTempDe = "35";
+    values.coolingWaterOutTempNde = "36";
+    values.waterJacketTempDe = "60";
+    values.waterJacketTempNde = "";
+
+    const payload = buildMeasurementsPayload(values);
+
+    expect(payload).toMatchObject({
+      flushing_temp_de: 45, flushing_temp_nde: 44,
+      quench_temp_de: 38, quench_temp_nde: null,
+      flushing_in_temp_de: 30, flushing_in_temp_nde: 31,
+      flushing_out_temp_de: 50, flushing_out_temp_nde: 51,
+      cooling_water_in_temp_de: 25, cooling_water_in_temp_nde: 26,
+      cooling_water_out_temp_de: 35, cooling_water_out_temp_nde: 36,
+      water_jacket_temp_de: 60, water_jacket_temp_nde: null,
+    });
+  });
+
+  it("water jacket is honestly null when not applicable to a pump's seal arrangement (never fabricated)", () => {
+    const payload = buildMeasurementsPayload(emptyMeasurementFormValues());
+
+    expect(payload.water_jacket_temp_de).toBeNull();
+    expect(payload.water_jacket_temp_nde).toBeNull();
+  });
+
   it("maps leak DE/NDE independently -- one leaking, one not recorded", () => {
     const values = emptyMeasurementFormValues();
     values.leakDe = "true";

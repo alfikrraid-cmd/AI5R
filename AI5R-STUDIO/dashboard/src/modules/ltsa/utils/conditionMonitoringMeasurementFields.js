@@ -16,8 +16,31 @@
 
 // DE/NDE paired NUMERIC fields. Every entry maps 1:1 to a real column pair
 // already returned by mapConditionMonitoringReadingRecord() (conditionMonitoringMapping.js).
+//
+// MWO-LTSA-PM-CMON-FOUNDATION-CLEANUP-001 -- the seven "legacy" pairs
+// below (Flushing/Quench/Flushing In/Flushing Out/Cooling Water In/
+// Cooling Water Out/Water Jacket) are the ORIGINAL WO-CMON-001 columns,
+// predating migration 014 entirely. Confirmed golden-evidence-backed by
+// ADR-CONDITION-MONITORING-001's own Investigation section (sourced from
+// DISCOVERY-CONDITION-MONITORING-001 §4/§6, "the CM Measuring Report
+// (p.27-33 of the source PDF) logs up to 20 individual DE/NDE-split
+// fields per visit -- temperatures for flushing, quench, flushing
+// in/out, cooling water in/out, mechseal, and water jacket") -- not
+// invented here. "Flushing In/Out" (LBI/LBO) and "Cooling Water In/Out"
+// are each their own distinct measurement point per that ADR's Canonical
+// Model table, never merged with plain Flushing/Quench. Water Jacket is
+// explicitly nullable (applicable to a subset of pumps only, per that
+// ADR's own worked example: `211-P-14A` has it, `211-P-21A` doesn't) --
+// blank-stays-null already covers that correctly, no extra flag needed.
 export const MEASUREMENT_PAIR_FIELDS = [
   { group: "Mechanical Seal Temp", deKey: "mechsealTempDe", ndeKey: "mechsealTempNde", deColumn: "mechseal_temp_de", ndeColumn: "mechseal_temp_nde", unit: "°C" },
+  { group: "Flushing Temp", deKey: "flushingTempDe", ndeKey: "flushingTempNde", deColumn: "flushing_temp_de", ndeColumn: "flushing_temp_nde", unit: "°C" },
+  { group: "Quench Temp", deKey: "quenchTempDe", ndeKey: "quenchTempNde", deColumn: "quench_temp_de", ndeColumn: "quench_temp_nde", unit: "°C" },
+  { group: "Flushing In Temp (LBI)", deKey: "flushingInTempDe", ndeKey: "flushingInTempNde", deColumn: "flushing_in_temp_de", ndeColumn: "flushing_in_temp_nde", unit: "°C" },
+  { group: "Flushing Out Temp (LBO)", deKey: "flushingOutTempDe", ndeKey: "flushingOutTempNde", deColumn: "flushing_out_temp_de", ndeColumn: "flushing_out_temp_nde", unit: "°C" },
+  { group: "Cooling Water In Temp", deKey: "coolingWaterInTempDe", ndeKey: "coolingWaterInTempNde", deColumn: "cooling_water_in_temp_de", ndeColumn: "cooling_water_in_temp_nde", unit: "°C" },
+  { group: "Cooling Water Out Temp", deKey: "coolingWaterOutTempDe", ndeKey: "coolingWaterOutTempNde", deColumn: "cooling_water_out_temp_de", ndeColumn: "cooling_water_out_temp_nde", unit: "°C" },
+  { group: "Water Jacket Temp", deKey: "waterJacketTempDe", ndeKey: "waterJacketTempNde", deColumn: "water_jacket_temp_de", ndeColumn: "water_jacket_temp_nde", unit: "°C" },
   { group: "Quench Pressure", deKey: "quenchPressureDe", ndeKey: "quenchPressureNde", deColumn: "quench_pressure_de", ndeColumn: "quench_pressure_nde", unit: "bar" },
   { group: "Stuffing Box Temp", deKey: "stuffingBoxTempDe", ndeKey: "stuffingBoxTempNde", deColumn: "stuffing_box_temp_de", ndeColumn: "stuffing_box_temp_nde", unit: "°C" },
   { group: "Seal Gland Temp", deKey: "sealGlandTempDe", ndeKey: "sealGlandTempNde", deColumn: "seal_gland_temp_de", ndeColumn: "seal_gland_temp_nde", unit: "°C" },

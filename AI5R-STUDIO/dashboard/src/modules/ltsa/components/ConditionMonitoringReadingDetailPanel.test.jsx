@@ -285,7 +285,12 @@ describe("ConditionMonitoringReadingDetailPanel (MWO-LTSA-PM-CM-REVIEW-UI-001 ex
       expect(onSaveDraft.mock.calls[0][1].measurements.motor_current).toBe(0);
     });
 
-    it("DRAFT: saving passes through the pre-existing out-of-scope fields unmodified, never nulling them", async () => {
+    // MWO-LTSA-PM-CMON-FOUNDATION-CLEANUP-001 -- flushing/quench/flushing-
+    // in-out/cooling-water-in-out/water-jacket are no longer out-of-scope
+    // passthrough fields; they are fully managed, editable, golden-
+    // evidence-backed fields (ADR-CONDITION-MONITORING-001) like every
+    // other measurement.
+    it("DRAFT: an untouched legacy field (flushing temp) is preserved unmodified on save", async () => {
       const onSaveDraft = vi.fn().mockResolvedValue();
       render(
         <ConditionMonitoringReadingDetailPanel
@@ -301,6 +306,29 @@ describe("ConditionMonitoringReadingDetailPanel (MWO-LTSA-PM-CM-REVIEW-UI-001 ex
       const { measurements } = onSaveDraft.mock.calls[0][1];
       expect(measurements.flushing_temp_de).toBe(45);
       expect(measurements.flushing_temp_nde).toBe(44);
+    });
+
+    it("DRAFT: every legacy golden CMON field is editable and pre-filled from the real record", async () => {
+      const onSaveDraft = vi.fn().mockResolvedValue();
+      render(
+        <ConditionMonitoringReadingDetailPanel
+          reading={baseReading({ waterJacketTempDe: 60, waterJacketTempNde: null })}
+          canWrite
+          onSaveDraft={onSaveDraft}
+        />
+      );
+
+      expect(await screen.findByLabelText("Water Jacket Temp DE")).toHaveProperty("value", "60");
+      expect(screen.getByLabelText("Water Jacket Temp NDE")).toHaveProperty("value", "");
+
+      fireEvent.change(screen.getByLabelText("Cooling Water In Temp DE"), { target: { value: "25" } });
+      fireEvent.click(screen.getByRole("button", { name: "Save Draft" }));
+
+      await waitFor(() => expect(onSaveDraft).toHaveBeenCalled());
+      const { measurements } = onSaveDraft.mock.calls[0][1];
+      expect(measurements.cooling_water_in_temp_de).toBe(25);
+      expect(measurements.water_jacket_temp_de).toBe(60);
+      expect(measurements.water_jacket_temp_nde).toBeNull(); // honestly null, not fabricated
     });
 
     it("leak tri-state: not recorded stays null, never inferred as No Leak", async () => {

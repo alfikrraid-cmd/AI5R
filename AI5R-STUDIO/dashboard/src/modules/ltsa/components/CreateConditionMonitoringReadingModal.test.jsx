@@ -91,6 +91,37 @@ describe("CreateConditionMonitoringReadingModal -- golden CMON measurement entry
     expect(measurements.mechanical_seal_leak_nde).toBe(false);
   });
 
+  // MWO-LTSA-PM-CMON-FOUNDATION-CLEANUP-001 -- the legacy golden CMON
+  // fields (ADR-CONDITION-MONITORING-001: flushing/quench/flushing-in-out/
+  // cooling-water-in-out/water-jacket), now enterable via the same shared
+  // field list.
+  it("captures every legacy golden CMON field, water jacket honestly left null when not applicable", () => {
+    const onCreate = vi.fn();
+    renderModal(onCreate);
+
+    fireEvent.change(screen.getByLabelText("Flushing Temp DE"), { target: { value: "45" } });
+    fireEvent.change(screen.getByLabelText("Flushing Temp NDE"), { target: { value: "44" } });
+    fireEvent.change(screen.getByLabelText("Quench Temp DE"), { target: { value: "38" } });
+    fireEvent.change(screen.getByLabelText("Flushing In Temp (LBI) DE"), { target: { value: "30" } });
+    fireEvent.change(screen.getByLabelText("Flushing Out Temp (LBO) DE"), { target: { value: "50" } });
+    fireEvent.change(screen.getByLabelText("Cooling Water In Temp DE"), { target: { value: "25" } });
+    fireEvent.change(screen.getByLabelText("Cooling Water Out Temp DE"), { target: { value: "35" } });
+    // Water Jacket intentionally left blank -- this pump has no water jacket.
+
+    fireEvent.click(screen.getByRole("button", { name: "Create Reading" }));
+
+    const { measurements } = onCreate.mock.calls[0][0];
+    expect(measurements.flushing_temp_de).toBe(45);
+    expect(measurements.flushing_temp_nde).toBe(44);
+    expect(measurements.quench_temp_de).toBe(38);
+    expect(measurements.flushing_in_temp_de).toBe(30);
+    expect(measurements.flushing_out_temp_de).toBe(50);
+    expect(measurements.cooling_water_in_temp_de).toBe(25);
+    expect(measurements.cooling_water_out_temp_de).toBe(35);
+    expect(measurements.water_jacket_temp_de).toBeNull();
+    expect(measurements.water_jacket_temp_nde).toBeNull();
+  });
+
   it("resets the full form after a successful create", () => {
     const onCreate = vi.fn();
     renderModal(onCreate);

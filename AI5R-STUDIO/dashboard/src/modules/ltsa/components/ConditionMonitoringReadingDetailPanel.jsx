@@ -67,33 +67,13 @@ const OPERATING_STATE_OPTIONS = ["Running", "Standby", "Repair"];
 
 // condition_monitoring_reading_repository.py's update_draft SETs every
 // one of _MEASUREMENT_COLUMNS from the `measurements` object it is given
-// -- there is no partial-column PATCH. This panel edits the fields listed
-// in conditionMonitoringMeasurementFields.js (migration-014's own
-// canonical set, plus the pre-existing mechseal/suction/discharge/leak/
-// pump-state fields, per MWO-LTSA-PM-CM-REVIEW-PRE-PUSH-CLOSURE-001's own
-// scope). The remaining pre-existing columns (flushing/quench temp,
-// flushing-in/out, cooling-water-in/out, water-jacket) have no entry UI
-// yet (disclosed, out of this MWO's scope) and must always be resent
-// unmodified from the record's own current values, or a save would
-// silently null them out.
-function passthroughMeasurements(reading) {
-  return {
-    flushing_temp_de: reading.flushingTempDe,
-    flushing_temp_nde: reading.flushingTempNde,
-    quench_temp_de: reading.quenchTempDe,
-    quench_temp_nde: reading.quenchTempNde,
-    flushing_in_temp_de: reading.flushingInTempDe,
-    flushing_in_temp_nde: reading.flushingInTempNde,
-    flushing_out_temp_de: reading.flushingOutTempDe,
-    flushing_out_temp_nde: reading.flushingOutTempNde,
-    cooling_water_in_temp_de: reading.coolingWaterInTempDe,
-    cooling_water_in_temp_nde: reading.coolingWaterInTempNde,
-    cooling_water_out_temp_de: reading.coolingWaterOutTempDe,
-    cooling_water_out_temp_nde: reading.coolingWaterOutTempNde,
-    water_jacket_temp_de: reading.waterJacketTempDe,
-    water_jacket_temp_nde: reading.waterJacketTempNde,
-  };
-}
+// -- there is no partial-column PATCH. As of
+// MWO-LTSA-PM-CMON-FOUNDATION-CLEANUP-001, conditionMonitoringMeasurement
+// Fields.js manages the COMPLETE _MEASUREMENT_COLUMNS set (the migration-
+// 014 fields plus the golden-evidence-backed legacy WO-CMON-001 fields --
+// flushing/quench/flushing-in-out/cooling-water-in-out/water-jacket,
+// ADR-CONDITION-MONITORING-001), so no separate passthrough is needed
+// anymore -- buildManagedMeasurementsPayload() alone is always complete.
 
 const EDITABLE_STATUSES = new Set(["DRAFT", "RETURNED_FOR_CORRECTION"]);
 
@@ -224,7 +204,7 @@ export default function ConditionMonitoringReadingDetailPanel({
     try {
       await onSaveDraft?.(reading.id, {
         readingDate: reading.readingDate,
-        measurements: { ...passthroughMeasurements(reading), ...buildManagedMeasurementsPayload(measurementForm) },
+        measurements: buildManagedMeasurementsPayload(measurementForm),
         finding: finding || null,
       });
     } catch (err) {
@@ -387,40 +367,20 @@ export default function ConditionMonitoringReadingDetailPanel({
       </Card>
 
       <Card title="Temperatures (DE / NDE)">
-        <Field
-          label="Flushing (°C)"
-          value={`${tempValue(reading.flushingTempDe)} / ${tempValue(reading.flushingTempNde)}`}
-        />
-        <Field
-          label="Quench (°C)"
-          value={`${tempValue(reading.quenchTempDe)} / ${tempValue(reading.quenchTempNde)}`}
-        />
-        <Field
-          label="Flushing In (LBI) (°C)"
-          value={`${tempValue(reading.flushingInTempDe)} / ${tempValue(reading.flushingInTempNde)}`}
-        />
-        <Field
-          label="Flushing Out (LBO) (°C)"
-          value={`${tempValue(reading.flushingOutTempDe)} / ${tempValue(reading.flushingOutTempNde)}`}
-        />
-        <Field
-          label="Cooling Water In (°C)"
-          value={`${tempValue(reading.coolingWaterInTempDe)} / ${tempValue(reading.coolingWaterInTempNde)}`}
-        />
-        <Field
-          label="Cooling Water Out (°C)"
-          value={`${tempValue(reading.coolingWaterOutTempDe)} / ${tempValue(reading.coolingWaterOutTempNde)}`}
-        />
-        <Field
-          label="Water Jacket (°C)"
-          value={`${tempValue(reading.waterJacketTempDe)} / ${tempValue(reading.waterJacketTempNde)}`}
-        />
-
-        {/* MWO-LTSA-PM-CM-REVIEW-PRE-PUSH-CLOSURE-001 -- Mechseal/Bearing/
-            Seal Gland/Stuffing Box temps and Suction/Discharge temps are
-            enterable (shared field list), rendered as inputs when editable. */}
+        {/* MWO-LTSA-PM-CM-REVIEW-PRE-PUSH-CLOSURE-001 /
+            MWO-LTSA-PM-CMON-FOUNDATION-CLEANUP-001 -- every canonical
+            golden-evidence-backed temperature pair (migration-014's
+            Mechseal/Bearing/Seal Gland/Stuffing Box, plus the legacy
+            WO-CMON-001 Flushing/Quench/Flushing In/Flushing Out/Cooling
+            Water In/Cooling Water Out/Water Jacket, ADR-CONDITION-
+            MONITORING-001) is enterable from the one shared field list,
+            rendered as inputs when editable. */}
         {MEASUREMENT_PAIR_FIELDS.filter((field) =>
-          ["mechsealTempDe", "stuffingBoxTempDe", "sealGlandTempDe", "bearingTempDe"].includes(field.deKey)
+          [
+            "mechsealTempDe", "flushingTempDe", "quenchTempDe", "flushingInTempDe", "flushingOutTempDe",
+            "coolingWaterInTempDe", "coolingWaterOutTempDe", "waterJacketTempDe",
+            "stuffingBoxTempDe", "sealGlandTempDe", "bearingTempDe",
+          ].includes(field.deKey)
         ).map((field) => (
           <MeasurementPairRow
             key={field.group}
