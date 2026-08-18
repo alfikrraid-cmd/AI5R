@@ -116,7 +116,18 @@ CREATE TABLE IF NOT EXISTS public.seal_registry (
     pressure_limit NUMERIC,
     status TEXT,
     created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
+    updated_at TIMESTAMP DEFAULT NOW(),
+    -- MWO-LTSA-SEAL-INVENTORY-IDENTIFIERS-001 -- business identifiers
+    -- hanging off canonical seal identity, not part of that identity;
+    -- nullable, manually completable, never fabricated. No DB-level FK
+    -- to users on created_by/updated_by: `users` does not exist in this
+    -- bootstrap file at all (only migration 007 creates it) -- see
+    -- migration 013's header for the full reasoning (same pattern
+    -- already used by document_field_extraction.reviewed_by).
+    kimap_pertamina TEXT,
+    gpn_john_crane TEXT,
+    created_by UUID,
+    updated_by UUID
 );
 
 -- ============================================================

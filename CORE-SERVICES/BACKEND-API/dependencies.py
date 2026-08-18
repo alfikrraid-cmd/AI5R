@@ -35,6 +35,7 @@ from API.pm_schedule_gateway import PMScheduleGateway
 from API.pump_gateway import PumpGateway
 from API.seal_engineering_document_gateway import SealEngineeringDocumentGateway
 from API.seal_gateway import SealGateway
+from API.seal_master_data_repository import SealMasterDataRepository
 from API.seal_pump_compatibility_gateway import SealPumpCompatibilityGateway
 from API.seal_stock_gateway import SealStockGateway
 from API.work_order_gateway import WorkOrderGateway
@@ -129,6 +130,12 @@ _import_session_repository = ImportSessionRepository(runner=_import_database_run
 # canonical table (PRODUCTS/LTSA-BRAIN/DATABASE/MIGRATIONS/
 # 007_create_ltsa_auth_foundation.sql).
 _auth_repository = AuthRepository(_import_database_runner)
+
+# MWO-LTSA-SEAL-INVENTORY-IDENTIFIERS-001 -- same singleton again, not a
+# third connection. seal_registry already lives in this database (it is
+# ingestion's own target table); this repository only ever touches the
+# four columns migration 013 added.
+_seal_master_data_repository = SealMasterDataRepository(_import_database_runner)
 
 # MWO-LTSA-031D -- built from the same singleton Gateway instances above,
 # not fresh ones -- no second set of Gateways is constructed anywhere.
@@ -261,6 +268,10 @@ def get_engineering_context_engine() -> EngineeringContextEngine:
 
 def get_auth_repository() -> AuthRepository:
     return _auth_repository
+
+
+def get_seal_master_data_repository() -> SealMasterDataRepository:
+    return _seal_master_data_repository
 
 
 # MWO-LTSA-AUTH-001 -- the two reusable dependencies this MWO requires:

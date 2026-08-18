@@ -36,6 +36,21 @@ class AdminUpdateMembershipRoleRequest(BaseModel):
 class AdminResetPasswordRequest(BaseModel):
     new_password: str
 
+
+# MWO-LTSA-SEAL-INVENTORY-IDENTIFIERS-001 -- manual completion of
+# seal_registry.kimap_pertamina/gpn_john_crane. Both fields are always
+# submitted together (the caller sends the seal's whole desired
+# identifier state, not a sparse per-field patch) -- str | None with
+# default None so an omitted field means "clear it", the same
+# empty-string/None equivalence seal_master_data_repository.
+# normalize_identifier_field enforces server-side. Never carries
+# quantity_on_hand or any seal_stock field -- Phase 10's "stock quantity
+# is not editable through this API" is a fact about this model's shape,
+# not just a router check.
+class SealIdentifierUpdateRequest(BaseModel):
+    kimap_pertamina: str | None = None
+    gpn_john_crane: str | None = None
+
 # Fields mirror exactly what WorkOrderGateway.create_work_order already
 # accepts (per the canonical Work Order Create workflow's Validate node) --
 # not new business fields, just typed for the request body.

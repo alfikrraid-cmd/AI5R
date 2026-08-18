@@ -85,6 +85,8 @@ export default function SealOpenDesignView({
   pmRecords = [],
   cmRecords = [],
   workOrderRecords = [],
+  canEditIdentifiers = false,
+  onUpdateIdentifiers,
   onOpenPump,
   onOpenDrawing,
   aiResponse,
@@ -96,6 +98,44 @@ export default function SealOpenDesignView({
   const [drawer, setDrawer] = useState(null); // null | "drawing" | "recommendation"
   const [toast, setToast] = useState(null);
   const [reviewed, setReviewed] = useState(false);
+
+  // MWO-LTSA-SEAL-INVENTORY-IDENTIFIERS-001 -- KIMAP Pertamina / GPN John
+  // Crane manual completion. View mode always renders (every role with
+  // seal.read, including JOHN_CRANE_ENGINEER and both Pertamina roles);
+  // the edit form only ever renders when canEditIdentifiers is true
+  // (Seal.jsx derives this from master.edit) -- the backend PATCH route
+  // remains the real enforcement point regardless (same "prop hides UI,
+  // backend decides" discipline AdminUsersView.jsx already established).
+  const [editingIdentifiers, setEditingIdentifiers] = useState(false);
+  const [identifierForm, setIdentifierForm] = useState({ kimapPertamina: "", gpnJohnCrane: "" });
+  const [identifierError, setIdentifierError] = useState(null);
+  const [savingIdentifiers, setSavingIdentifiers] = useState(false);
+
+  function startEditingIdentifiers() {
+    setIdentifierForm({
+      kimapPertamina: seal.kimapPertamina ?? "",
+      gpnJohnCrane: seal.gpnJohnCrane ?? "",
+    });
+    setIdentifierError(null);
+    setEditingIdentifiers(true);
+  }
+
+  async function handleSaveIdentifiers(event) {
+    event.preventDefault();
+    setIdentifierError(null);
+    setSavingIdentifiers(true);
+    try {
+      await onUpdateIdentifiers?.(seal.code, identifierForm);
+      setEditingIdentifiers(false);
+    } catch (err) {
+      // Verbatim backend detail (e.g. a 403 if permissions changed
+      // mid-session, or a 404 if the seal was removed) -- never a
+      // generic "failed" message, same discipline as AdminUsersView.jsx.
+      setIdentifierError(err.message);
+    } finally {
+      setSavingIdentifiers(false);
+    }
+  }
 
   function showToast(message) {
     setToast(message);
@@ -209,6 +249,75 @@ export default function SealOpenDesignView({
               <InfoRow label="Manufacturer" value={seal.manufacturer ?? "—"} />
               <InfoRow label="Model" value={seal.model ?? "—"} />
             </div>
+
+            <div style={{ marginTop: "var(--space-4)" }} data-od-id="seal-identifiers-section">
+              <div className="eyebrow" style={{ marginBottom: "var(--space-2)" }}>Identifiers</div>
+              {!editingIdentifiers ? (
+                <>
+                  <InfoRow
+                    label="KIMAP Pertamina"
+                    value={seal.kimapPertamina ?? "Not yet completed"}
+                    valueClassName={seal.kimapPertamina ? undefined : "ref-group-empty"}
+                  />
+                  <InfoRow
+                    label="GPN John Crane"
+                    value={seal.gpnJohnCrane ?? "Not yet completed"}
+                    valueClassName={seal.gpnJohnCrane ? undefined : "ref-group-empty"}
+                  />
+                  <InfoRow
+                    label="Last Updated"
+                    value={seal.updatedAt ? String(seal.updatedAt).slice(0, 19).replace("T", " ") : "—"}
+                  />
+                  <InfoRow
+                    label="Updated By (User ID)"
+                    value={seal.updatedBy ?? "Imported / system data"}
+                  />
+                  {canEditIdentifiers && (
+                    <button
+                      type="button"
+                      className="btn-link"
+                      onClick={startEditingIdentifiers}
+                      data-od-id="edit-identifiers-btn"
+                    >
+                      Edit KIMAP / GPN →
+                    </button>
+                  )}
+                </>
+              ) : (
+                <form onSubmit={handleSaveIdentifiers} data-testid="seal-identifiers-form">
+                  {identifierError && (
+                    <p
+                      className="confidence-label"
+                      style={{ color: "var(--color-danger, #d33)" }}
+                      data-testid="seal-identifiers-error"
+                    >
+                      {identifierError}
+                    </p>
+                  )}
+                  <label htmlFor={`kimap-${seal.code}`} className="confidence-label">KIMAP Pertamina</label>
+                  <input
+                    id={`kimap-${seal.code}`}
+                    value={identifierForm.kimapPertamina}
+                    onChange={(e) => setIdentifierForm((f) => ({ ...f, kimapPertamina: e.target.value }))}
+                  />
+                  <label htmlFor={`gpn-${seal.code}`} className="confidence-label">GPN John Crane</label>
+                  <input
+                    id={`gpn-${seal.code}`}
+                    value={identifierForm.gpnJohnCrane}
+                    onChange={(e) => setIdentifierForm((f) => ({ ...f, gpnJohnCrane: e.target.value }))}
+                  />
+                  <div style={{ display: "flex", gap: "var(--space-2)", marginTop: "var(--space-2)" }}>
+                    <button type="submit" className="btn-primary" disabled={savingIdentifiers}>
+                      {savingIdentifiers ? "Saving…" : "Save"}
+                    </button>
+                    <button type="button" className="btn-link" onClick={() => setEditingIdentifiers(false)}>
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+
             <div style={{ marginTop: "var(--space-4)" }}>
               <div className="eyebrow" style={{ marginBottom: "var(--space-2)" }}>Technical</div>
               <InfoRow label="Seal Type" value={seal.type ?? "—"} />

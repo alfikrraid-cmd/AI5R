@@ -6,9 +6,11 @@ import SealOpenDesignView from "../components/SealOpenDesignView";
 import samplePumps from "../data/samplePumps";
 import {
   getSeals, getSealCompatibility, getSealStock, postEngineeringAI,
-  getPMSchedules, getCMReports, getWorkOrders,
+  getPMSchedules, getCMReports, getWorkOrders, updateSealIdentifiers,
 } from "../../../api/ai5rClient";
 import { mapSealRecord, resolveCompatiblePumps, resolveStock } from "../utils/sealMapping";
+import { useOptionalAuth } from "../auth/AuthContext";
+import { can, PERMISSIONS } from "../auth/permissions";
 import { mapPMScheduleRecord } from "../utils/pmMapping";
 import { mapCMReportRecord } from "../utils/cmMapping";
 import { mapWorkOrderRecord } from "../utils/workOrderMapping";
@@ -54,6 +56,15 @@ function resolveAssetCode(seal) {
   return pump?.tag ?? pumpCode;
 }
 
+// MWO-LTSA-SEAL-INVENTORY-IDENTIFIERS-001 Phase 11 -- extended to KIMAP
+// Pertamina, GPN John Crane, and compatible Pump Tag. Client-side is the
+// correct place for this: seal.py has no backend search/filter query
+// param today (GET /api/ltsa/seals is a full-list endpoint only, per the
+// Phase 0 architecture audit), so extending the existing mechanism is
+// additive, not a new search layer invented ahead of a real need.
+// kimapPertamina/gpnJohnCrane are nullable (Hard Rule 6: missing
+// identifiers must not block operations) -- `?? ""` before lowercasing
+// avoids crashing search on every not-yet-completed seal.
 function matchesSearch(seal, search) {
   const term = search.trim().toLowerCase();
 
@@ -64,7 +75,10 @@ function matchesSearch(seal, search) {
   return (
     seal.name.toLowerCase().includes(term) ||
     seal.type.toLowerCase().includes(term) ||
-    seal.manufacturer.toLowerCase().includes(term)
+    seal.manufacturer.toLowerCase().includes(term) ||
+    (seal.kimapPertamina ?? "").toLowerCase().includes(term) ||
+    (seal.gpnJohnCrane ?? "").toLowerCase().includes(term) ||
+    seal.compatiblePumps.some((tag) => tag.toLowerCase().includes(term))
   );
 }
 
@@ -142,7 +156,48 @@ export default function Seal({ seals: sealsProp, onNavigate }) {
     [fetchedSeals, compatibilityRecords]
   );
 
-  const seals = sealsProp !== undefined ? sealsProp : mergedFetchedSeals;
+  // MWO-LTSA-SEAL-INVENTORY-IDENTIFIERS-001 -- a successful manual
+  // KIMAP/GPN edit is merged in here, on top of either data source
+  // (sealsProp or the fetched path), so the UI reflects it immediately
+  // without a full refetch. Keyed by seal code; empty by default, so
+  // this is a pure no-op until an edit actually succeeds.
+  const [identifierOverrides, setIdentifierOverrides] = useState({});
+
+  const seals = useMemo(() => {
+    const base = sealsProp !== undefined ? sealsProp : mergedFetchedSeals;
+    if (Object.keys(identifierOverrides).length === 0) return base;
+    return base.map((seal) =>
+      identifierOverrides[seal.code] ? { ...seal, ...identifierOverrides[seal.code] } : seal
+    );
+  }, [sealsProp, mergedFetchedSeals, identifierOverrides]);
+
+  // Session read via context, not a prop: LTSAWorkspace.jsx (confirmed
+  // unrelated in-progress WIP, see useOptionalAuth's own header comment)
+  // does not pass capabilities/session through to tab pages today, and
+  // must not be edited here. useOptionalAuth() never throws when no
+  // AuthProvider wraps this component (every existing "with injected
+  // data" test renders <Seal seals={...} /> bare) -- can(undefined, ...)
+  // already returns false in that case, so canEditIdentifiers is simply
+  // false, matching this component's pre-existing behavior exactly.
+  const authContext = useOptionalAuth();
+  const canEditIdentifiers = can(authContext?.session, PERMISSIONS.MASTER_EDIT);
+
+  async function handleUpdateIdentifiers(sealCode, { kimapPertamina, gpnJohnCrane }) {
+    const result = await updateSealIdentifiers(sealCode, { kimapPertamina, gpnJohnCrane });
+    const updated = result?.data;
+    if (updated) {
+      setIdentifierOverrides((prev) => ({
+        ...prev,
+        [sealCode]: {
+          kimapPertamina: updated.kimap_pertamina ?? null,
+          gpnJohnCrane: updated.gpn_john_crane ?? null,
+          updatedBy: updated.updated_by ?? null,
+          updatedAt: updated.updated_at ?? null,
+        },
+      }));
+    }
+    return updated;
+  }
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
@@ -327,6 +382,8 @@ export default function Seal({ seals: sealsProp, onNavigate }) {
               pmRecords={relatedPM}
               cmRecords={relatedCM}
               workOrderRecords={relatedWorkOrders}
+              canEditIdentifiers={canEditIdentifiers}
+              onUpdateIdentifiers={handleUpdateIdentifiers}
               onOpenPump={handleOpenPump}
               onOpenDrawing={handleOpenDrawing}
               aiResponse={aiResponse}

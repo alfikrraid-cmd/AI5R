@@ -56,6 +56,13 @@ export const PERMISSIONS = Object.freeze({
   ANALYTICS_READ: "internal_component.read",
   HISTORY_READ: "maintenance.read",
   ADMIN_ACCESS: "admin.users",
+  // MWO-LTSA-SEAL-INVENTORY-IDENTIFIERS-001 -- manual completion of
+  // seal_registry.kimap_pertamina/gpn_john_crane (PATCH /api/ltsa/seals/
+  // {seal_code}). Reuses master.edit verbatim, not a new permission --
+  // it was reserved in advance on the backend for exactly this ("master
+  // DATA edit -- pumps/seals canonical definitions, no current route",
+  // auth_service.py's own ROLE_PERMISSIONS header).
+  MASTER_EDIT: "master.edit",
 });
 
 const ENGINEERING_CORE = [
@@ -90,6 +97,7 @@ export const ROLE_PERMISSIONS = Object.freeze({
     PERMISSIONS.ENGINEERING_AI_ASK,
     PERMISSIONS.ANALYTICS_READ,
     PERMISSIONS.ADMIN_ACCESS,
+    PERMISSIONS.MASTER_EDIT,
   ]),
   [ROLES.TAP_ENGINEER]: Object.freeze([
     PERMISSIONS.DASHBOARD_READ,
@@ -98,7 +106,11 @@ export const ROLE_PERMISSIONS = Object.freeze({
     PERMISSIONS.INTERNAL_COMPONENT_READ,
     PERMISSIONS.ENGINEERING_AI_ASK,
     PERMISSIONS.ANALYTICS_READ,
-    // no import.execute, no admin.access
+    // no import.execute, no admin.access, no master.edit (the real
+    // backend ROLE_PERMISSIONS matrix does not grant master.edit to
+    // TAP_ENGINEER today -- MWO-LTSA-SEAL-INVENTORY-IDENTIFIERS-001
+    // Phase 6 explicitly allows staying read-only here rather than
+    // widening an existing permission to fit this UI)
   ]),
   [ROLES.PERTAMINA_ENGINEER]: Object.freeze([
     ...ENGINEERING_CORE,
@@ -127,6 +139,7 @@ export const ROLE_PERMISSIONS = Object.freeze({
     PERMISSIONS.ENGINEERING_AI_ASK,
     PERMISSIONS.ANALYTICS_READ,
     PERMISSIONS.ADMIN_ACCESS,
+    PERMISSIONS.MASTER_EDIT,
   ]),
   // JOHN_CRANE_ENGINEER: technical authority, not administrative -- reads
   // (including internal_component.read for GPN/internal-component data)

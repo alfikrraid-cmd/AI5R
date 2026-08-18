@@ -26,6 +26,18 @@
  * compatiblePumps is resolved separately (real, per MWO-LTSA-042 /
  * resolveCompatiblePumps below), same "resolved separately, never
  * fabricated" convention pumpMapping.js's own openWO/lastPM already use.
+ *
+ * MWO-LTSA-SEAL-INVENTORY-IDENTIFIERS-001 -- kimapPertamina/gpnJohnCrane
+ * (migration 013's own new, nullable seal_registry columns) and
+ * createdBy/updatedBy (Record Attribution -- immutable actor UUIDs, never
+ * display names). SealOpenDesignView renders updatedBy as the raw user
+ * id, not a resolved display name -- a disclosed gap (Phase 8's "resolved
+ * user display identity" is not implemented this MWO; doing so would
+ * need a new, broadly-readable user-lookup surface this MWO has no
+ * evidence is safe to add, given /api/admin/users is admin.users-gated).
+ * All four default to null exactly like every other real-but-possibly-
+ * absent column above -- an unset identifier is never rendered as
+ * anything but an honest "not yet completed" state.
  */
 export function mapSealRecord(record) {
   return {
@@ -40,6 +52,10 @@ export function mapSealRecord(record) {
     pressureLimit: record.pressure_limit ?? null,
     createdAt: record.created_at ?? null,
     updatedAt: record.updated_at ?? null,
+    kimapPertamina: record.kimap_pertamina ?? null,
+    gpnJohnCrane: record.gpn_john_crane ?? null,
+    createdBy: record.created_by ?? null,
+    updatedBy: record.updated_by ?? null,
     status: record.status,
     compatiblePumps: [],
     compatibleSeals: [],

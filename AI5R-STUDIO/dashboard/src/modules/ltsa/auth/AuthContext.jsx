@@ -80,3 +80,20 @@ export function useAuth() {
   }
   return ctx;
 }
+
+// MWO-LTSA-SEAL-INVENTORY-IDENTIFIERS-001 -- lets a workspace tab page
+// (Seal.jsx) read the current session via context, bypassing prop
+// drilling through LTSAWorkspace.jsx/WorkspaceRegistry.js. Those files
+// are confirmed, currently-uncommitted, unrelated in-progress WIP (see
+// MWO-LTSA-ADMIN-USERS-WIRING-001's own archaeology: LTSAWorkspace.jsx's
+// <ActivePage> render passes no capabilities/session prop through at
+// all today, and its TABS/PAGES insertion points sit inside that WIP's
+// own already-modified hunks) -- editing them here to add a new prop
+// would risk corrupting that work. Unlike useAuth(), this NEVER throws
+// when no AuthProvider is present: every existing Seal.jsx test renders
+// <Seal seals={...} /> directly, with no AuthProvider wrapper, and must
+// keep working unchanged (can(null, ...) already returns false, so an
+// absent provider degrades to "no edit capability", never a crash).
+export function useOptionalAuth() {
+  return useContext(AuthContext);
+}

@@ -995,3 +995,17 @@ export async function resetAdminUserPassword(userId, newPassword) {
         body: JSON.stringify({ new_password: newPassword }),
     });
 }
+
+// MWO-LTSA-SEAL-INVENTORY-IDENTIFIERS-001 -- manual completion of KIMAP
+// Pertamina / GPN John Crane (PATCH /api/ltsa/seals/{seal_code},
+// master.edit). Same verbatim-backend-error-surfacing discipline as
+// _adminUsersRequest above (a 403/404 detail string is thrown as-is, not
+// swallowed into a generic message) -- reused directly rather than a
+// second near-identical helper.
+export async function updateSealIdentifiers(sealCode, { kimapPertamina, gpnJohnCrane }) {
+    return _adminUsersRequest(`${API_URL}/api/ltsa/seals/${encodeURIComponent(sealCode)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kimap_pertamina: kimapPertamina, gpn_john_crane: gpnJohnCrane }),
+    });
+}

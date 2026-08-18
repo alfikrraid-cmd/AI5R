@@ -131,6 +131,73 @@ exports[`Snapshot > matches the SealOpenDesignView Engineering AI section snapsh
             </div>
           </div>
           <div
+            data-od-id="seal-identifiers-section"
+            style="margin-top: var(--space-4);"
+          >
+            <div
+              class="eyebrow"
+              style="margin-bottom: var(--space-2);"
+            >
+              Identifiers
+            </div>
+            <div
+              class="info-row"
+            >
+              <span
+                class="k"
+              >
+                KIMAP Pertamina
+              </span>
+              <span
+                class="v ref-group-empty"
+              >
+                Not yet completed
+              </span>
+            </div>
+            <div
+              class="info-row"
+            >
+              <span
+                class="k"
+              >
+                GPN John Crane
+              </span>
+              <span
+                class="v ref-group-empty"
+              >
+                Not yet completed
+              </span>
+            </div>
+            <div
+              class="info-row"
+            >
+              <span
+                class="k"
+              >
+                Last Updated
+              </span>
+              <span
+                class="v"
+              >
+                —
+              </span>
+            </div>
+            <div
+              class="info-row"
+            >
+              <span
+                class="k"
+              >
+                Updated By (User ID)
+              </span>
+              <span
+                class="v"
+              >
+                Imported / system data
+              </span>
+            </div>
+          </div>
+          <div
             style="margin-top: var(--space-4);"
           >
             <div
