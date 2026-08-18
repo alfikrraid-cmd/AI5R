@@ -262,7 +262,30 @@ CREATE TABLE IF NOT EXISTS public.pm_occurrence (
     checklist_completion JSONB,
     work_order_code TEXT,
     created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
+    updated_at TIMESTAMP DEFAULT NOW(),
+    -- MWO-LTSA-PM-CM-INTAKE-001 -- real draft/submit/review workflow;
+    -- see migration 014's own header for the full column-by-column
+    -- reasoning (activities is additive alongside checklist_completion,
+    -- workflow_status is a new column deliberately distinct from the
+    -- pre-existing status column above).
+    activities JSONB,
+    finding TEXT,
+    preliminary_recommendation TEXT,
+    remarks TEXT,
+    provenance TEXT DEFAULT 'MANUAL',
+    workflow_status TEXT DEFAULT 'DRAFT',
+    submitted_by UUID,
+    submitted_at TIMESTAMP,
+    reviewed_by UUID,
+    reviewed_at TIMESTAMP,
+    return_reason TEXT,
+    technical_reviewed_by UUID,
+    technical_reviewed_at TIMESTAMP,
+    technical_outcome TEXT,
+    technical_comment TEXT,
+    technical_recommendation TEXT,
+    created_by UUID,
+    updated_by UUID
 );
 
 -- ============================================================
@@ -369,8 +392,78 @@ CREATE TABLE IF NOT EXISTS public.condition_monitoring_reading (
     discharge_temp NUMERIC,
     pump_operating_state TEXT,
     created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
+    updated_at TIMESTAMP DEFAULT NOW(),
+    -- MWO-LTSA-PM-CM-INTAKE-001 -- measurement fields confirmed present
+    -- in the golden "Mechanical Seal Condition Monitoring" reports but
+    -- missing from the columns above, plus the same workflow/attribution
+    -- shape pm_occurrence gains above; see migration 014's header for the
+    -- full reasoning (mechseal_temp_de/nde above is left untouched and
+    -- ambiguous relative to the golden report's separate "Stuffing box
+    -- temp"/"Seal gland temp" rows -- both are added here as their own
+    -- named columns rather than guessing which one mechseal_temp meant).
+    suction_pressure NUMERIC,
+    discharge_pressure NUMERIC,
+    quench_pressure_de NUMERIC,
+    quench_pressure_nde NUMERIC,
+    stuffing_box_temp_de NUMERIC,
+    stuffing_box_temp_nde NUMERIC,
+    seal_gland_temp_de NUMERIC,
+    seal_gland_temp_nde NUMERIC,
+    vertical_vibration_de NUMERIC,
+    vertical_vibration_nde NUMERIC,
+    horizontal_vibration_de NUMERIC,
+    horizontal_vibration_nde NUMERIC,
+    axial_vibration_de NUMERIC,
+    axial_vibration_nde NUMERIC,
+    bearing_temp_de NUMERIC,
+    bearing_temp_nde NUMERIC,
+    motor_current NUMERIC,
+    finding TEXT,
+    provenance TEXT DEFAULT 'MANUAL',
+    workflow_status TEXT DEFAULT 'DRAFT',
+    submitted_by UUID,
+    submitted_at TIMESTAMP,
+    reviewed_by UUID,
+    reviewed_at TIMESTAMP,
+    return_reason TEXT,
+    technical_reviewed_by UUID,
+    technical_reviewed_at TIMESTAMP,
+    technical_outcome TEXT,
+    technical_comment TEXT,
+    technical_recommendation TEXT,
+    created_by UUID,
+    updated_by UUID
 );
+
+-- ============================================================
+-- PM / CONDITION MONITORING EVIDENCE
+-- Manufactured under MWO-LTSA-PM-CM-INTAKE-001.
+--
+-- No object-storage/S3/filesystem mechanism exists anywhere in this
+-- repository (confirmed by architecture audit before writing this table);
+-- file bytes are stored in the same canonical Postgres database every
+-- other durable LTSA table already uses, a disclosed minimal choice, not
+-- a mock. record_type/record_code is an informal polymorphic reference
+-- (the same non-FK convention already used throughout this schema),
+-- shared by both PM Occurrence and Condition Monitoring Reading rather
+-- than duplicated per domain.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS public.pm_cm_evidence (
+    evidence_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    record_type TEXT NOT NULL CHECK (record_type IN ('PM_OCCURRENCE', 'CONDITION_MONITORING_READING')),
+    record_code TEXT NOT NULL,
+    file_name TEXT NOT NULL,
+    content_type TEXT NOT NULL,
+    file_size_bytes INTEGER NOT NULL,
+    file_data BYTEA NOT NULL,
+    category TEXT CHECK (category IS NULL OR category IN ('PHOTO', 'REPORT', 'MEASUREMENT', 'OTHER')),
+    source TEXT DEFAULT 'MANUAL',
+    uploaded_by UUID,
+    uploaded_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_pm_cm_evidence_record ON public.pm_cm_evidence(record_type, record_code);
 
 -- ============================================================
 -- MWO-LTSA-HOC-PM-CM (HOC PM/CM Historical Data Ingestion) -- idempotent
