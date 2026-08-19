@@ -72,6 +72,15 @@ export const PERMISSIONS = Object.freeze({
   MAINTENANCE_WRITE: "maintenance.write",
   MAINTENANCE_ADMIN_REVIEW: "maintenance.admin_review",
   MAINTENANCE_TECHNICAL_REVIEW: "maintenance.technical_review",
+  // MWO-LTSA-AUDIT-CHANGE-HISTORY-001 / MWO-LTSA-HISTORICAL-REVIEW-UI-001
+  // -- reused verbatim, both reserved/added on the backend for exactly
+  // this (record.edit gates the generic Edit Value engine AND the
+  // historical-review/resolve/reject/promote layer built over it, per
+  // the latter MWO's own "reuse record.edit, no second permission"
+  // decision; audit.read_full is the pre-existing, SUPERUSER-only Full
+  // Change History permission, unchanged).
+  RECORD_EDIT: "record.edit",
+  AUDIT_HISTORY_READ: "audit.read_full",
 });
 
 const ENGINEERING_CORE = [
@@ -113,6 +122,7 @@ export const ROLE_PERMISSIONS = Object.freeze({
     // MWO-LTSA-AUTH-003A-FINAL/MWO-LTSA-PM-CM-INTAKE-001).
     PERMISSIONS.MAINTENANCE_WRITE,
     PERMISSIONS.MAINTENANCE_ADMIN_REVIEW,
+    PERMISSIONS.RECORD_EDIT,
   ]),
   [ROLES.TAP_ENGINEER]: Object.freeze([
     PERMISSIONS.DASHBOARD_READ,
@@ -163,6 +173,8 @@ export const ROLE_PERMISSIONS = Object.freeze({
     PERMISSIONS.MAINTENANCE_WRITE,
     PERMISSIONS.MAINTENANCE_ADMIN_REVIEW,
     PERMISSIONS.MAINTENANCE_TECHNICAL_REVIEW,
+    PERMISSIONS.RECORD_EDIT,
+    PERMISSIONS.AUDIT_HISTORY_READ,
   ]),
   // JOHN_CRANE_ENGINEER: technical authority, not administrative -- reads
   // (including internal_component.read for GPN/internal-component data)
@@ -217,6 +229,12 @@ export const TAB_PERMISSIONS = Object.freeze({
   history: PERMISSIONS.HISTORY_READ,
   reports: PERMISSIONS.REPORTS_READ,
   analytics: PERMISSIONS.ANALYTICS_READ,
+  // MWO-LTSA-HISTORICAL-REVIEW-UI-001 -- gated on record.edit (SUPERUSER
+  // + TAP_ADMIN only), the same backend permission the review/resolve/
+  // reject/promote API itself requires -- this is presentation-only tab
+  // visibility (this file's own header rule); the backend 403 is what
+  // actually stops the other four roles.
+  "historical-review": PERMISSIONS.RECORD_EDIT,
 });
 
 export function visibleTabKeys(session) {

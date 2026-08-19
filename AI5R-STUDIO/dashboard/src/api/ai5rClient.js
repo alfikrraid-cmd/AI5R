@@ -1131,3 +1131,69 @@ export async function getPMCMEvidence(recordType, recordCode) {
 export function pmCMEvidenceDownloadUrl(evidenceId) {
     return `${API_URL}/api/ltsa/pm-cm-evidence/${encodeURIComponent(evidenceId)}/download`;
 }
+
+// MWO-LTSA-HISTORICAL-REVIEW-UI-001 -- the review/resolve/reject/promote
+// layer over the existing July staging pipeline (13a970d/5a5e186).
+// record.edit-gated on the backend (SUPERUSER + TAP_ADMIN only) -- these
+// calls simply surface whatever 403 the backend already returns for
+// every other role; no frontend-only enforcement.
+export async function getHistoricalReviewCandidates({ detectedDocumentType, status } = {}) {
+    const params = new URLSearchParams();
+    if (detectedDocumentType) params.set("detected_document_type", detectedDocumentType);
+    if (status) params.set("status", status);
+    const query = params.toString();
+    const payload = await _adminUsersRequest(
+        `${API_URL}/api/ltsa/historical-review/candidates${query ? `?${query}` : ""}`
+    );
+    return Array.isArray(payload?.data) ? payload.data : [];
+}
+
+export async function getHistoricalReviewCandidate(candidateId) {
+    const payload = await _adminUsersRequest(
+        `${API_URL}/api/ltsa/historical-review/candidates/${encodeURIComponent(candidateId)}`
+    );
+    return payload?.data ?? null;
+}
+
+export async function reviewHistoricalReviewCandidate(candidateId, { reviewedFields, pumpTagNumber, reason } = {}) {
+    const payload = await _adminUsersRequest(
+        `${API_URL}/api/ltsa/historical-review/candidates/${encodeURIComponent(candidateId)}/review`,
+        {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                reviewed_fields: reviewedFields ?? null,
+                pump_tag_number: pumpTagNumber ?? null,
+                reason: reason ?? null,
+            }),
+        }
+    );
+    return payload?.data ?? null;
+}
+
+export async function rejectHistoricalReviewCandidate(candidateId, reason) {
+    const payload = await _adminUsersRequest(
+        `${API_URL}/api/ltsa/historical-review/candidates/${encodeURIComponent(candidateId)}/reject`,
+        {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ reason }),
+        }
+    );
+    return payload?.data ?? null;
+}
+
+export async function promoteHistoricalReviewCandidate(candidateId) {
+    const payload = await _adminUsersRequest(
+        `${API_URL}/api/ltsa/historical-review/candidates/${encodeURIComponent(candidateId)}/promote`,
+        { method: "POST" }
+    );
+    return payload?.data ?? null;
+}
+
+export async function getRecordChangeHistory(entityType, entityId) {
+    const payload = await _adminUsersRequest(
+        `${API_URL}/api/ltsa/records/history?entity_type=${encodeURIComponent(entityType)}&entity_id=${encodeURIComponent(entityId)}`
+    );
+    return Array.isArray(payload?.data) ? payload.data : [];
+}

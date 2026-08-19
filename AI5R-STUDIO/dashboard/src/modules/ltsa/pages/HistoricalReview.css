@@ -1,0 +1,31 @@
+.ltsa-historical-review-summary {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.ltsa-historical-review-filters {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.ltsa-historical-review-field-table {
+  width: 100%;
+  margin-bottom: 12px;
+}
+
+.ltsa-historical-review-actions {
+  display: flex;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.ltsa-historical-review-error {
+  color: #d32f2f;
+}
+
+.ltsa-historical-review-success {
+  color: #2e7d32;
+}

@@ -235,8 +235,14 @@ def edit_value(
 
 
 def get_history(entity_type: str, entity_id: str, *, history_repository) -> list[dict]:
-    if entity_type not in ADAPTERS:
-        raise UnknownEntityTypeError(f"unknown entity_type {entity_type!r}")
+    # MWO-LTSA-HISTORICAL-REVIEW-UI-001 -- deliberately NOT validated
+    # against ADAPTERS: record_change_history is a generic ledger reused
+    # by entity types that have no EDIT adapter here at all (e.g.
+    # HISTORICAL_STAGING_CANDIDATE, corrected via apply_review() in
+    # historical_review.py, not edit_value()) -- reading history must
+    # never be coupled to whether a *correction* mechanism happens to be
+    # registered in THIS module. An unknown/never-logged entity_type
+    # simply returns an empty list -- honest, not an error.
     return history_repository.list_for_entity(entity_type, entity_id)
 
 

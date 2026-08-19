@@ -33,6 +33,7 @@ from API.ltsa_knowledge_service import LTSAKnowledgeService
 from API.maintenance_history_gateway import MaintenanceHistoryGateway
 from API.pm_cm_evidence_repository import PMCMEvidenceRepository
 from API.record_change_history_repository import RecordChangeHistoryRepository
+from API.historical_pm_cmon_staging_repository import HistoricalPMCMONStagingRepository
 from API.pm_occurrence_gateway import PMOccurrenceGateway
 from API.pm_occurrence_repository import PMOccurrenceRepository
 from API.pm_schedule_gateway import PMScheduleGateway
@@ -156,6 +157,12 @@ _pm_cm_evidence_repository = PMCMEvidenceRepository(_import_database_runner)
 # canonical, append-only ledger every domain's record_edit_service.py
 # correction writes to and reads from.
 _record_change_history_repository = RecordChangeHistoryRepository(_import_database_runner)
+
+# MWO-LTSA-HISTORICAL-REVIEW-UI-001 -- same singleton again; the existing
+# July staging pipeline (13a970d/5a5e186) never had an HTTP router until
+# this MWO. No new staging table, no new promotion logic -- this is the
+# only new wiring needed to expose it.
+_historical_pm_cmon_staging_repository = HistoricalPMCMONStagingRepository(_import_database_runner)
 
 # MWO-LTSA-031D -- built from the same singleton Gateway instances above,
 # not fresh ones -- no second set of Gateways is constructed anywhere.
@@ -309,6 +316,10 @@ def get_pm_cm_evidence_repository() -> PMCMEvidenceRepository:
 
 def get_record_change_history_repository() -> RecordChangeHistoryRepository:
     return _record_change_history_repository
+
+
+def get_historical_pm_cmon_staging_repository() -> HistoricalPMCMONStagingRepository:
+    return _historical_pm_cmon_staging_repository
 
 
 # MWO-LTSA-AUTH-001 -- the two reusable dependencies this MWO requires:

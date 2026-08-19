@@ -24,6 +24,7 @@ from routers import (
     document,
     fleet,
     health,
+    historical_review,
     import_router,
     installation,
     maintenance,
@@ -92,3 +93,4 @@ app.include_router(cm_report.router)
 app.include_router(condition_monitoring.router)
 app.include_router(pm_cm_evidence.router)
 app.include_router(record_edit.router)
+app.include_router(historical_review.router)
