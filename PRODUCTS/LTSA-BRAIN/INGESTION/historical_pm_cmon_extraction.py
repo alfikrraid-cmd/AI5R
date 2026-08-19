@@ -183,15 +183,26 @@ def match_pump_tag(extracted_tag: str, canonical_tags: set[str]) -> PumpMatchRes
     if tag in canonical_tags:
         return PumpMatchResult(outcome="EXACT_MATCH", extracted_tag=tag, matched_tag=tag)
 
-    # A whitespace-only variant (same characters, different spacing) is
-    # strong evidence of the same physical tag -- but per Phase 6 ("human
-    # review remains required before promotion") it is still surfaced for
-    # confirmation, never silently promoted to EXACT_MATCH.
+    # MWO-LTSA-HISTORICAL-JULY-INGESTION-PRE-PUSH-CLOSURE-001 -- Chief
+    # Architect ruling: pure whitespace/typography differences around a
+    # tag's existing separator characters (e.g. '200 - P - 1A' vs
+    # '200-P-1A') are NOT an identity ambiguity -- they are the same pump,
+    # written two ways. When collapsing whitespace makes the source tag
+    # match EXACTLY ONE canonical roster tag, that is EXACT_MATCH, not a
+    # human-review case. This is deliberately narrower than the suffix
+    # near-miss path below: whitespace normalization never touches a
+    # letter, digit, or separator CHARACTER -- it only removes characters
+    # that are not part of the tag's identity at all. If collapsing
+    # whitespace maps to more than one canonical tag, the match is not
+    # unique and must NOT be auto-resolved -- stays REVIEW_REQUIRED,
+    # falling through to the near-miss check below (which also uses the
+    # collapsed form so a whitespace-and-suffix-ambiguous tag is still
+    # correctly flagged rather than silently dropped to NO_MATCH).
     collapsed = _collapse_whitespace(tag)
     whitespace_matches = {t for t in canonical_tags if _collapse_whitespace(t) == collapsed}
     if len(whitespace_matches) == 1:
         (only_match,) = whitespace_matches
-        return PumpMatchResult(outcome="REVIEW_REQUIRED", extracted_tag=tag, matched_tag=only_match)
+        return PumpMatchResult(outcome="EXACT_MATCH", extracted_tag=tag, matched_tag=only_match)
 
     # A near-miss (same digits, different/missing suffix) is exactly the
     # case that must NEVER be auto-resolved -- flagged for human review,

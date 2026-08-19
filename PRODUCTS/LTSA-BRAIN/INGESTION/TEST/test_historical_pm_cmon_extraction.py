@@ -78,20 +78,78 @@ class TestMatchPumpTag:
         assert result.outcome == "REVIEW_REQUIRED"
         assert result.matched_tag is None
 
-    def test_whitespace_variant_is_review_required_with_matched_tag_hint(self):
-        # Real HSC July CM Measuring Report data: '200 - P - 1A' in the
-        # source vs '200-P-1A' in the canonical roster -- pure typography,
-        # not identity. Surfaced for confirmation, never silently promoted.
+    def test_whitespace_variant_uniquely_normalizing_is_exact_match(self):
+        # MWO-LTSA-HISTORICAL-JULY-INGESTION-PRE-PUSH-CLOSURE-001 ruling:
+        # pure whitespace/typography differences around separators are NOT
+        # an identity ambiguity. Real HSC July CM Measuring Report data:
+        # '200 - P - 1A' in the source vs '200-P-1A' in the canonical
+        # roster -- the same pump, written two ways.
         result = match_pump_tag("200 - P - 1A", {"200-P-1A"})
-        assert result.outcome == "REVIEW_REQUIRED"
+        assert result.outcome == "EXACT_MATCH"
         assert result.matched_tag == "200-P-1A"
+
+    def test_whitespace_variant_already_canonical_form_is_exact_match(self):
+        result = match_pump_tag("200-P-1A", {"200-P-1A"})
+        assert result.outcome == "EXACT_MATCH"
+        assert result.matched_tag == "200-P-1A"
+
+    def test_another_real_area_whitespace_variant_is_exact_match(self):
+        # Real HSC data: '300 - P - 7A' vs roster '300-P-7A'.
+        result = match_pump_tag("300 - P - 7A", {"300-P-7A"})
+        assert result.outcome == "EXACT_MATCH"
+        assert result.matched_tag == "300-P-7A"
+
+    def test_outer_whitespace_variant_is_exact_match(self):
+        result = match_pump_tag(" 200 - P - 1A ", {"200-P-1A"})
+        assert result.outcome == "EXACT_MATCH"
+        assert result.matched_tag == "200-P-1A"
+
+    def test_raw_source_tag_preserved_on_whitespace_exact_match(self):
+        # Hard Rule 1: preserve raw source Pump Tag exactly for
+        # provenance -- extracted_tag must remain the (outer-stripped)
+        # source string, never silently rewritten to the canonical form.
+        result = match_pump_tag("200 - P - 1A", {"200-P-1A"})
+        assert result.extracted_tag == "200 - P - 1A"
+        assert result.matched_tag == "200-P-1A"
+
+    def test_whitespace_normalization_never_repairs_a_wrong_numeric_portion(self):
+        # '200 - P - 9A' (typo'd digit) must NOT be repaired to '200-P-1A'.
+        result = match_pump_tag("200 - P - 9A", {"200-P-1A"})
+        assert result.outcome != "EXACT_MATCH"
+
+    def test_whitespace_normalization_never_infers_a_missing_suffix(self):
+        # '110 - P - 9' (no suffix) must never resolve to '110-P-9A'.
+        result = match_pump_tag("110 - P - 9", {"110-P-9A", "110-P-9B"})
+        assert result.outcome != "EXACT_MATCH"
+
+    def test_motor_tag_is_not_converted_into_a_pump_tag(self):
+        # '701-MM-51' must never match a pump tag merely because it
+        # appears in a pump-related report.
+        result = match_pump_tag("701 - MM - 51", {"701-P-51", "701-MM-51A"})
+        assert result.outcome != "EXACT_MATCH"
 
     def test_whitespace_variant_ambiguous_across_multiple_canonical_tags_stays_unmatched_hint(self):
         # If whitespace-collapsing produces more than one candidate, no
-        # single matched_tag hint is offered -- still REVIEW_REQUIRED via
-        # the suffix-near-miss path, but never guessed.
+        # single matched_tag hint is offered -- must NOT be promoted to
+        # EXACT_MATCH, stays REVIEW_REQUIRED (or NO_MATCH), never guessed.
         result = match_pump_tag("110 - P - 9 X", {"110-P-9A", "110-P-9B"})
         assert result.outcome in ("REVIEW_REQUIRED", "NO_MATCH")
+
+    def test_whitespace_collapse_mapping_to_two_canonical_tags_is_never_promoted(self):
+        # Phase 4 safety check: if normalize(raw) matches MORE THAN ONE
+        # distinct canonical roster string (a roster data-quality issue --
+        # the same identity spelled two ways), the match is not unique and
+        # must never be auto-resolved to EXACT_MATCH.
+        roster = {"110-P-9A", "110 -P- 9A"}  # same collapsed form, two distinct roster strings
+        result = match_pump_tag("110-P-9A ", roster)
+        # The literal exact-hit branch fires first here (raw already equals
+        # one roster entry verbatim), which is correct and expected --
+        # the ambiguity guard matters for a raw tag that is NOT itself a
+        # literal roster entry.
+        assert result.outcome == "EXACT_MATCH"
+
+        ambiguous_result = match_pump_tag("110 - P - 9A", roster)
+        assert ambiguous_result.outcome != "EXACT_MATCH"
 
     def test_blank_tag_is_no_match(self):
         assert match_pump_tag("", {"110-P-9A"}).outcome == "NO_MATCH"
