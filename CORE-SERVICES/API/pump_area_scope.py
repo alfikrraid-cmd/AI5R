@@ -59,4 +59,80 @@ def filter_records_by_scope(
     return [r for r in records if is_area_in_scope(r.get(area_field), scope)]
 
 
-__all__ = ["AREA_CODES", "MA_AREA_GROUPS", "is_area_in_scope", "filter_records_by_scope"]
+# MWO-LTSA-AUTH-DATA-SCOPE-ROUTE-CLOSURE-001 -- every LTSA domain OTHER
+# than ltsa_pumps itself carries only an asset_code/pump-tag reference
+# (work_order, maintenance_history, cm_report, pm_schedule,
+# condition_monitoring_schedule/reading, pm_occurrence), never an `area`
+# column of its own -- resolving scope for those records requires a
+# 1-hop lookup back to the canonical pump. This reuses the EXACT same
+# resolution routers/work_orders.py::get_ltsa_work_order_asset already
+# established (pump_gateway.get_pump(asset_code) -> data["area"]) rather
+# than inventing a second lookup path or trusting any client-supplied
+# area value (Hard Rule: "Do NOT trust client-supplied area to authorize
+# access").
+
+
+def resolve_asset_area(asset_code: str | None, pump_gateway: Any) -> str | None:
+    """Canonical asset_code -> area lookup. Returns None if asset_code is
+    blank or the pump cannot be resolved -- callers must treat None as
+    "not provably in any area" (denied for a restricted identity), never
+    guessed or treated as unrestricted."""
+    if not asset_code:
+        return None
+    try:
+        response = pump_gateway.get_pump(asset_code)
+    except Exception:
+        return None
+    if not isinstance(response, dict):
+        return None
+    data = response.get("data")
+    if not isinstance(data, dict):
+        return None
+    return data.get("area")
+
+
+class _AssetAreaCache:
+    """Memoizes resolve_asset_area() within one request/list response --
+    a list of N records referencing the same handful of pumps must not
+    perform N redundant gateway round-trips for the same asset_code."""
+
+    def __init__(self, pump_gateway: Any):
+        self._pump_gateway = pump_gateway
+        self._cache: dict[str, str | None] = {}
+
+    def area_for(self, asset_code: str | None) -> str | None:
+        if not asset_code:
+            return None
+        if asset_code not in self._cache:
+            self._cache[asset_code] = resolve_asset_area(asset_code, self._pump_gateway)
+        return self._cache[asset_code]
+
+
+def is_asset_in_scope(asset_code: str | None, scope: frozenset[str] | None, pump_gateway: Any) -> bool:
+    if scope is None:
+        return True
+    return is_area_in_scope(resolve_asset_area(asset_code, pump_gateway), scope)
+
+
+def filter_records_by_asset_scope(
+    records: list[dict[str, Any]],
+    scope: frozenset[str] | None,
+    pump_gateway: Any,
+    *,
+    asset_field: str = "asset_code",
+) -> list[dict[str, Any]]:
+    if scope is None:
+        return records
+    cache = _AssetAreaCache(pump_gateway)
+    return [r for r in records if is_area_in_scope(cache.area_for(r.get(asset_field)), scope)]
+
+
+__all__ = [
+    "AREA_CODES",
+    "MA_AREA_GROUPS",
+    "is_area_in_scope",
+    "filter_records_by_scope",
+    "resolve_asset_area",
+    "is_asset_in_scope",
+    "filter_records_by_asset_scope",
+]

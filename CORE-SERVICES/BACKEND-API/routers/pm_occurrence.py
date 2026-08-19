@@ -2,7 +2,15 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from dependencies import get_pm_occurrence_gateway, get_pm_occurrence_repository, require_permission
+from API.auth_service import AuthenticatedIdentity, resolve_area_scope
+from API.pump_area_scope import filter_records_by_asset_scope, is_asset_in_scope
+from dependencies import (
+    get_current_user,
+    get_pm_occurrence_gateway,
+    get_pm_occurrence_repository,
+    get_pump_gateway,
+    require_permission,
+)
 from models.requests import (
     AdminReturnForCorrectionRequest,
     PMOccurrenceCreateRequest,
@@ -34,15 +42,30 @@ router = APIRouter(dependencies=[Depends(require_permission("maintenance.read"))
 @router.get("/api/ltsa/pm-occurrences")
 def list_ltsa_pm_occurrences(
     pm_occurrence_gateway=Depends(get_pm_occurrence_gateway),
+    pump_gateway=Depends(get_pump_gateway),
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
 ) -> Payload:
-    return pm_occurrence_gateway.list_pm_occurrences()
+    response = pm_occurrence_gateway.list_pm_occurrences()
+    scope = resolve_area_scope(current_user)
+    if scope is not None and isinstance(response, dict) and isinstance(response.get("data"), list):
+        filtered = filter_records_by_asset_scope(response["data"], scope, pump_gateway)
+        response = {**response, "data": filtered, "count": len(filtered)}
+    return response
 
 
 @router.get("/api/ltsa/pm-occurrences/{code}")
 def get_ltsa_pm_occurrence(
-    code: str, pm_occurrence_gateway=Depends(get_pm_occurrence_gateway)
+    code: str,
+    pm_occurrence_gateway=Depends(get_pm_occurrence_gateway),
+    pump_gateway=Depends(get_pump_gateway),
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
 ) -> Payload:
-    return pm_occurrence_gateway.get_pm_occurrence(code)
+    response = pm_occurrence_gateway.get_pm_occurrence(code)
+    scope = resolve_area_scope(current_user)
+    data = response.get("data") if isinstance(response, dict) else None
+    if scope is not None and isinstance(data, dict) and not is_asset_in_scope(data.get("asset_code"), scope, pump_gateway):
+        raise HTTPException(status_code=404, detail="PM occurrence not found")
+    return response
 
 
 # MWO-LTSA-PM-CM-INTAKE-001 -- the real draft/submit/review write surface

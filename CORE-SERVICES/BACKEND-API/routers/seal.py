@@ -3,12 +3,16 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 
 from dependencies import (
+    get_current_user,
+    get_pump_gateway,
     get_seal_gateway,
     get_seal_master_data_repository,
     get_seal_pump_compatibility_gateway,
     get_seal_stock_gateway,
     require_permission,
 )
+from API.auth_service import AuthenticatedIdentity, resolve_area_scope
+from API.pump_area_scope import filter_records_by_asset_scope
 from API.seal_master_data_repository import normalize_identifier_field
 from models.requests import SealIdentifierUpdateRequest
 from models.responses import Payload
@@ -46,8 +50,22 @@ def list_ltsa_seal_stock(
 @router.get("/api/ltsa/seal-compatibility")
 def list_ltsa_seal_compatibility(
     seal_pump_compatibility_gateway=Depends(get_seal_pump_compatibility_gateway),
+    pump_gateway=Depends(get_pump_gateway),
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
 ) -> Payload:
-    return seal_pump_compatibility_gateway.list_seal_pump_compatibilities()
+    # MWO-LTSA-AUTH-DATA-SCOPE-ROUTE-CLOSURE-001 -- each row carries
+    # pump_tag_number (not asset_code); list_ltsa_seals/list_ltsa_seal_stock
+    # above are deliberately left unscoped (a seal_code has no single-area
+    # ownership of its own -- "DO NOT invent ownership"), but a
+    # compatibility ROW is genuinely single-pump-attributable.
+    response = seal_pump_compatibility_gateway.list_seal_pump_compatibilities()
+    scope = resolve_area_scope(current_user)
+    if scope is not None and isinstance(response, dict) and isinstance(response.get("data"), list):
+        filtered = filter_records_by_asset_scope(
+            response["data"], scope, pump_gateway, asset_field="pump_tag_number"
+        )
+        response = {**response, "data": filtered, "count": len(filtered)}
+    return response
 
 
 # MWO-LTSA-SEAL-INVENTORY-IDENTIFIERS-001 -- the first write route this

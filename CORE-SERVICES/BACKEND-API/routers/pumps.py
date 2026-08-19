@@ -104,6 +104,23 @@ def get_ltsa_pump(
     return get_pump(tag, pump_gateway=pump_gateway, current_user=current_user)
 
 
+# MWO-LTSA-AUTH-DATA-SCOPE-ROUTE-CLOSURE-001 -- every /pumps/{tag}/...
+# sub-resource route below aggregates data FOR tag itself (workorders,
+# last-pm/last-cm/condition-monitoring-flag, spare-parts, knowledge,
+# lifecycle) -- tag IS the pump, so the same is_area_in_scope() check
+# get_pump() already performs applies directly, no asset_code indirection
+# needed. Same safe not-found semantics: an out-of-scope tag's
+# sub-resource 404s exactly like a request for a tag that does not exist.
+def _guard_tag_in_scope(tag: str, pump_gateway, current_user: AuthenticatedIdentity) -> None:
+    scope = resolve_area_scope(current_user)
+    if scope is None:
+        return
+    response = pump_gateway.get_pump(tag)
+    data = response.get("data") if isinstance(response, dict) else None
+    if not isinstance(data, dict) or not is_area_in_scope(data.get("area"), scope):
+        raise HTTPException(status_code=404, detail="Pump not found")
+
+
 # Open Work Orders / openWO (WO-PUMP-003) -- per ADR-PUMP-001, openWO is
 # Derived, owned by Work Order, not a ltsa_pumps column. Delegates entirely
 # to the existing maintenance_intelligence_service.get_active_work_orders(),
@@ -115,7 +132,10 @@ def get_ltsa_pump(
 def get_ltsa_pump_open_work_orders(
     tag: str,
     work_order_gateway=Depends(get_work_order_gateway),
+    pump_gateway=Depends(get_pump_gateway),
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
 ) -> Payload:
+    _guard_tag_in_scope(tag, pump_gateway, current_user)
     result = get_active_work_orders(tag, work_order_gateway=work_order_gateway)
     work_orders = result.get("work_orders") or []
 
@@ -143,7 +163,10 @@ def get_ltsa_pump_last_pm(
     maintenance_history_gateway=Depends(get_maintenance_history_gateway),
     work_order_gateway=Depends(get_work_order_gateway),
     pm_occurrence_gateway=Depends(get_pm_occurrence_gateway),
+    pump_gateway=Depends(get_pump_gateway),
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
 ) -> Payload:
+    _guard_tag_in_scope(tag, pump_gateway, current_user)
     return get_pump_last_pm(
         tag,
         maintenance_history_gateway=maintenance_history_gateway,
@@ -162,7 +185,10 @@ def get_ltsa_pump_last_pm(
 def get_ltsa_pump_last_cm(
     tag: str,
     cm_report_gateway=Depends(get_cm_report_gateway),
+    pump_gateway=Depends(get_pump_gateway),
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
 ) -> Payload:
+    _guard_tag_in_scope(tag, pump_gateway, current_user)
     return get_pump_last_cm(tag, cm_report_gateway=cm_report_gateway)
 
 
@@ -170,7 +196,10 @@ def get_ltsa_pump_last_cm(
 def get_ltsa_pump_condition_monitoring_flag(
     tag: str,
     condition_monitoring_reading_gateway=Depends(get_condition_monitoring_reading_gateway),
+    pump_gateway=Depends(get_pump_gateway),
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
 ) -> Payload:
+    _guard_tag_in_scope(tag, pump_gateway, current_user)
     return get_pump_condition_monitoring_flag(
         tag, condition_monitoring_reading_gateway=condition_monitoring_reading_gateway
     )
@@ -191,7 +220,10 @@ def get_ltsa_pump_spare_parts(
     seal_pump_compatibility_gateway=Depends(get_seal_pump_compatibility_gateway),
     seal_stock_gateway=Depends(get_seal_stock_gateway),
     seal_gateway=Depends(get_seal_gateway),
+    pump_gateway=Depends(get_pump_gateway),
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
 ) -> Payload:
+    _guard_tag_in_scope(tag, pump_gateway, current_user)
     return get_pump_spare_parts(
         tag,
         seal_pump_compatibility_gateway=seal_pump_compatibility_gateway,
@@ -216,7 +248,10 @@ def get_ltsa_pump_knowledge(
     ltsa_knowledge_service=Depends(get_ltsa_knowledge_service),
     equipment_timeline_service=Depends(get_equipment_timeline_service),
     engineering_context_engine=Depends(get_engineering_context_engine),
+    pump_gateway=Depends(get_pump_gateway),
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
 ) -> Payload:
+    _guard_tag_in_scope(tag, pump_gateway, current_user)
     knowledge = ltsa_knowledge_service.build(tag)
     timeline = equipment_timeline_service.build(tag)
     summary = engineering_context_engine.build(tag)
@@ -277,7 +312,10 @@ def get_ltsa_pump_knowledge(
 def get_ltsa_pump_lifecycle(
     tag: str,
     equipment_timeline_service=Depends(get_equipment_timeline_service),
+    pump_gateway=Depends(get_pump_gateway),
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
 ) -> Payload:
+    _guard_tag_in_scope(tag, pump_gateway, current_user)
     lifecycle = equipment_timeline_service.build_lifecycle(tag)
 
     return {

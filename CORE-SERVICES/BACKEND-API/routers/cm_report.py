@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
-from dependencies import get_cm_report_gateway, require_permission
+from API.auth_service import AuthenticatedIdentity, resolve_area_scope
+from API.pump_area_scope import filter_records_by_asset_scope, is_asset_in_scope
+from dependencies import get_cm_report_gateway, get_current_user, get_pump_gateway, require_permission
 from models.responses import Payload
 
 # MWO-LTSA-AUTH-001
@@ -16,15 +18,37 @@ router = APIRouter(dependencies=[Depends(require_permission("condition.read"))])
 # Order/Pump/Maintenance History/PM Schedule. Only list/detail are exposed
 # here, matching this MWO's scope (ADR-CM-001's Future MWOs item 2) --
 # create/update/delete routes were not requested.
+#
+# MWO-LTSA-AUTH-DATA-SCOPE-ROUTE-CLOSURE-001 -- cm_report carries
+# asset_code, never area; scope is resolved via pump_gateway.get_pump()
+# (API.pump_area_scope), the same 1-hop join routers/work_orders.py's
+# get_ltsa_work_order_asset already established.
 
 
 @router.get("/api/ltsa/cm-reports")
-def list_ltsa_cm_reports(cm_report_gateway=Depends(get_cm_report_gateway)) -> Payload:
-    return cm_report_gateway.list_cm_reports()
+def list_ltsa_cm_reports(
+    cm_report_gateway=Depends(get_cm_report_gateway),
+    pump_gateway=Depends(get_pump_gateway),
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
+) -> Payload:
+    response = cm_report_gateway.list_cm_reports()
+    scope = resolve_area_scope(current_user)
+    if scope is not None and isinstance(response, dict) and isinstance(response.get("data"), list):
+        filtered = filter_records_by_asset_scope(response["data"], scope, pump_gateway)
+        response = {**response, "data": filtered, "count": len(filtered)}
+    return response
 
 
 @router.get("/api/ltsa/cm-reports/{code}")
 def get_ltsa_cm_report(
-    code: str, cm_report_gateway=Depends(get_cm_report_gateway)
+    code: str,
+    cm_report_gateway=Depends(get_cm_report_gateway),
+    pump_gateway=Depends(get_pump_gateway),
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
 ) -> Payload:
-    return cm_report_gateway.get_cm_report(code)
+    response = cm_report_gateway.get_cm_report(code)
+    scope = resolve_area_scope(current_user)
+    data = response.get("data") if isinstance(response, dict) else None
+    if scope is not None and isinstance(data, dict) and not is_asset_in_scope(data.get("asset_code"), scope, pump_gateway):
+        raise HTTPException(status_code=404, detail="CM report not found")
+    return response

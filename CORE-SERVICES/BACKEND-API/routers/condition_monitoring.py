@@ -2,10 +2,14 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from API.auth_service import AuthenticatedIdentity, resolve_area_scope
+from API.pump_area_scope import filter_records_by_asset_scope, is_asset_in_scope
 from dependencies import (
     get_condition_monitoring_reading_gateway,
     get_condition_monitoring_reading_repository,
     get_condition_monitoring_schedule_gateway,
+    get_current_user,
+    get_pump_gateway,
     require_permission,
 )
 from models.requests import (
@@ -39,31 +43,59 @@ router = APIRouter(dependencies=[Depends(require_permission("condition.read"))])
 @router.get("/api/ltsa/condition-monitoring-schedules")
 def list_ltsa_condition_monitoring_schedules(
     condition_monitoring_schedule_gateway=Depends(get_condition_monitoring_schedule_gateway),
+    pump_gateway=Depends(get_pump_gateway),
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
 ) -> Payload:
-    return condition_monitoring_schedule_gateway.list_condition_monitoring_schedules()
+    response = condition_monitoring_schedule_gateway.list_condition_monitoring_schedules()
+    scope = resolve_area_scope(current_user)
+    if scope is not None and isinstance(response, dict) and isinstance(response.get("data"), list):
+        filtered = filter_records_by_asset_scope(response["data"], scope, pump_gateway)
+        response = {**response, "data": filtered, "count": len(filtered)}
+    return response
 
 
 @router.get("/api/ltsa/condition-monitoring-schedules/{code}")
 def get_ltsa_condition_monitoring_schedule(
     code: str,
     condition_monitoring_schedule_gateway=Depends(get_condition_monitoring_schedule_gateway),
+    pump_gateway=Depends(get_pump_gateway),
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
 ) -> Payload:
-    return condition_monitoring_schedule_gateway.get_condition_monitoring_schedule(code)
+    response = condition_monitoring_schedule_gateway.get_condition_monitoring_schedule(code)
+    scope = resolve_area_scope(current_user)
+    data = response.get("data") if isinstance(response, dict) else None
+    if scope is not None and isinstance(data, dict) and not is_asset_in_scope(data.get("asset_code"), scope, pump_gateway):
+        raise HTTPException(status_code=404, detail="Condition Monitoring schedule not found")
+    return response
 
 
 @router.get("/api/ltsa/condition-monitoring-readings")
 def list_ltsa_condition_monitoring_readings(
     condition_monitoring_reading_gateway=Depends(get_condition_monitoring_reading_gateway),
+    pump_gateway=Depends(get_pump_gateway),
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
 ) -> Payload:
-    return condition_monitoring_reading_gateway.list_condition_monitoring_readings()
+    response = condition_monitoring_reading_gateway.list_condition_monitoring_readings()
+    scope = resolve_area_scope(current_user)
+    if scope is not None and isinstance(response, dict) and isinstance(response.get("data"), list):
+        filtered = filter_records_by_asset_scope(response["data"], scope, pump_gateway)
+        response = {**response, "data": filtered, "count": len(filtered)}
+    return response
 
 
 @router.get("/api/ltsa/condition-monitoring-readings/{code}")
 def get_ltsa_condition_monitoring_reading(
     code: str,
     condition_monitoring_reading_gateway=Depends(get_condition_monitoring_reading_gateway),
+    pump_gateway=Depends(get_pump_gateway),
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
 ) -> Payload:
-    return condition_monitoring_reading_gateway.get_condition_monitoring_reading(code)
+    response = condition_monitoring_reading_gateway.get_condition_monitoring_reading(code)
+    scope = resolve_area_scope(current_user)
+    data = response.get("data") if isinstance(response, dict) else None
+    if scope is not None and isinstance(data, dict) and not is_asset_in_scope(data.get("asset_code"), scope, pump_gateway):
+        raise HTTPException(status_code=404, detail="Condition Monitoring reading not found")
+    return response
 
 
 # MWO-LTSA-PM-CM-INTAKE-001 -- real draft/submit/review write surface for
