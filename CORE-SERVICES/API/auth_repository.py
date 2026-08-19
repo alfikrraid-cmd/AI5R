@@ -53,7 +53,8 @@ class AuthRepository:
 
     def find_active_membership_for_user(self, user_id: str) -> MembershipRecord | None:
         rows = _json_query(
-            "SELECT m.organization_id, o.code AS organization_code, m.role, m.status "
+            "SELECT m.organization_id, o.code AS organization_code, m.role, m.status, "
+            "m.data_scope_type, m.data_scope_value "
             "FROM organization_memberships m "
             "JOIN organizations o ON o.id = m.organization_id "
             f"WHERE m.user_id = {_sql(user_id)} AND m.status = 'ACTIVE' "
@@ -64,7 +65,8 @@ class AuthRepository:
 
     def find_membership(self, user_id: str, organization_id: str) -> MembershipRecord | None:
         rows = _json_query(
-            "SELECT m.organization_id, o.code AS organization_code, m.role, m.status "
+            "SELECT m.organization_id, o.code AS organization_code, m.role, m.status, "
+            "m.data_scope_type, m.data_scope_value "
             "FROM organization_memberships m "
             "JOIN organizations o ON o.id = m.organization_id "
             f"WHERE m.user_id = {_sql(user_id)} AND m.organization_id = {_sql(organization_id)}",
@@ -204,6 +206,8 @@ def _row_to_membership(row: dict) -> MembershipRecord:
         organization_code=row["organization_code"],
         role=row["role"],
         status=row["status"],
+        data_scope_type=row.get("data_scope_type"),
+        data_scope_value=row.get("data_scope_value"),
     )
 
 

@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import dataclasses
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
+from API.auth_service import AuthenticatedIdentity, resolve_area_scope
+from API.engineering_insight import build_engineering_insight
+from API.pump_area_scope import filter_records_by_scope, is_area_in_scope
+from API.executive_metrics import compute_executive_metrics
 from API.maintenance_intelligence_service import (
     get_active_work_orders,
     get_pump_condition_monitoring_flag,
@@ -14,6 +18,7 @@ from API.maintenance_intelligence_service import (
 from dependencies import (
     get_cm_report_gateway,
     get_condition_monitoring_reading_gateway,
+    get_current_user,
     get_engineering_context_engine,
     get_equipment_timeline_service,
     get_ltsa_knowledge_service,
@@ -34,14 +39,46 @@ from models.responses import Payload
 router = APIRouter(dependencies=[Depends(require_permission("pump.read"))])
 
 
+# MWO-LTSA-AUTH-DATA-SCOPE-CLOSURE-001 -- backend-enforced Area/MA data
+# scope (never frontend-only filtering). scope=None means unrestricted
+# (SUPERUSER/TAP_ADMIN/TAP_ENGINEER/JOHN_CRANE_ENGINEER, always); a
+# Pertamina identity with no recognized scope gets an EMPTY frozenset,
+# so both branches below correctly yield zero records/404 rather than
+# accidentally falling through to "unrestricted".
 @router.get("/pumps")
-def list_pumps(pump_gateway=Depends(get_pump_gateway)) -> Payload:
-    return pump_gateway.list_pumps()
+def list_pumps(
+    pump_gateway=Depends(get_pump_gateway),
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
+) -> Payload:
+    response = pump_gateway.list_pumps()
+    scope = resolve_area_scope(current_user)
+    if scope is not None and isinstance(response, dict) and isinstance(response.get("data"), list):
+        response = {**response, "data": filter_records_by_scope(response["data"], scope)}
+        response["count"] = len(response["data"])
+    return response
 
 
 @router.get("/pumps/{tag}")
-def get_pump(tag: str, pump_gateway=Depends(get_pump_gateway)) -> Payload:
-    return pump_gateway.get_pump(tag)
+def get_pump(
+    tag: str,
+    pump_gateway=Depends(get_pump_gateway),
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
+) -> Payload:
+    response = pump_gateway.get_pump(tag)
+    scope = resolve_area_scope(current_user)
+    if scope is not None and isinstance(response, dict):
+        # Safe not-found semantics: a genuinely missing tag and an
+        # out-of-scope tag must be INDISTINGUISHABLE to the caller (never
+        # a 403, and never a different status/shape than a real miss --
+        # otherwise the response itself would leak "this tag exists, you
+        # just can't see it"). This route has no pre-existing tested
+        # not-found convention of its own to mirror (unlike routers/
+        # seal.py's "No such X" 404), so both cases are made to share
+        # the SAME 404 here.
+        data = response.get("data")
+        if not isinstance(data, dict) or not is_area_in_scope(data.get("area"), scope):
+            raise HTTPException(status_code=404, detail="Pump not found")
+    return response
 
 
 # Pump Registry API (WO-PUMP-001) -- same PumpGateway, exposed under the
@@ -51,13 +88,20 @@ def get_pump(tag: str, pump_gateway=Depends(get_pump_gateway)) -> Payload:
 
 
 @router.get("/api/ltsa/pumps")
-def list_ltsa_pumps(pump_gateway=Depends(get_pump_gateway)) -> Payload:
-    return pump_gateway.list_pumps()
+def list_ltsa_pumps(
+    pump_gateway=Depends(get_pump_gateway),
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
+) -> Payload:
+    return list_pumps(pump_gateway=pump_gateway, current_user=current_user)
 
 
 @router.get("/api/ltsa/pumps/{tag}")
-def get_ltsa_pump(tag: str, pump_gateway=Depends(get_pump_gateway)) -> Payload:
-    return pump_gateway.get_pump(tag)
+def get_ltsa_pump(
+    tag: str,
+    pump_gateway=Depends(get_pump_gateway),
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
+) -> Payload:
+    return get_pump(tag, pump_gateway=pump_gateway, current_user=current_user)
 
 
 # Open Work Orders / openWO (WO-PUMP-003) -- per ADR-PUMP-001, openWO is
@@ -176,6 +220,8 @@ def get_ltsa_pump_knowledge(
     knowledge = ltsa_knowledge_service.build(tag)
     timeline = equipment_timeline_service.build(tag)
     summary = engineering_context_engine.build(tag)
+    ai_insight = build_engineering_insight(knowledge.recommendation or (), summary)
+    executive_metrics = compute_executive_metrics(knowledge)
 
     return {
         "success": True,
@@ -189,6 +235,54 @@ def get_ltsa_pump_knowledge(
             "cm": knowledge.cm_history,
             "breakdown": knowledge.breakdown_history,
             "drawings": knowledge.drawings,
-            "recommendation": knowledge.recommendation,
+            # knowledge.recommendation is always a tuple from the real
+            # LTSAKnowledgeService (MWO-LTSA-032C), but the field's type
+            # remains `Any` -- a directly-constructed LTSAKnowledge (as
+            # several existing tests' fakes do) can still legitimately
+            # pass None, so this stays None-safe rather than assuming
+            # non-None.
+            "recommendation": (
+                [dataclasses.asdict(rec) for rec in knowledge.recommendation]
+                if knowledge.recommendation is not None
+                else None
+            ),
+            # MWO-LTSA-035 -- deterministic AI Insight (EngineeringInsight):
+            # pure field selection over knowledge.recommendation + summary,
+            # no LLM, no network, no new derivation logic of its own -- see
+            # engineering_insight.py's own header comment.
+            "ai_insight": dataclasses.asdict(ai_insight) if ai_insight is not None else None,
+            # MWO-LTSA-036E -- Knowledge Aggregate Extension (Asset360
+            # Migration Roadmap Phase 2): additive keys on the same
+            # response, no new endpoint, no second fetch.
+            "pm_schedules": knowledge.pm_schedules,
+            "condition_monitoring_schedules": knowledge.condition_monitoring_schedules,
+            # MWO-LTSA-036O -- Executive Metrics: pure field derivation over
+            # the already-built LTSAKnowledge (compute_executive_metrics,
+            # MWO-LTSA-036N), same pass-through pattern as ai_insight above --
+            # no new endpoint, no duplicate calculation. Always a real
+            # ExecutiveMetrics (never None), so no None-guard is needed here.
+            "executive_metrics": dataclasses.asdict(executive_metrics),
         },
     }
+
+
+# Pump Lifecycle API (MWO-LTSA-064A, finalizing the pre-existing
+# EquipmentTimelineService.build_lifecycle()/PumpLifecycle DTOs) -- reuses
+# the same get_equipment_timeline_service dependency and the exact
+# dataclasses.asdict() pass-through pattern the /knowledge endpoint above
+# already establishes for executive_metrics/ai_insight. Router only: no
+# filtering, no derivation, no business logic here -- build_lifecycle()'s
+# own result is returned unchanged.
+@router.get("/api/ltsa/pumps/{tag}/lifecycle")
+def get_ltsa_pump_lifecycle(
+    tag: str,
+    equipment_timeline_service=Depends(get_equipment_timeline_service),
+) -> Payload:
+    lifecycle = equipment_timeline_service.build_lifecycle(tag)
+
+    return {
+        "success": True,
+        "tag_number": tag,
+        "data": dataclasses.asdict(lifecycle),
+    }
+

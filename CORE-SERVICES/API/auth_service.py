@@ -265,6 +265,14 @@ class MembershipRecord:
     organization_code: str
     role: str
     status: str
+    # MWO-LTSA-AUTH-DATA-SCOPE-CLOSURE-001 -- additive, default None
+    # (every pre-existing caller/test constructing a MembershipRecord
+    # without these two kwargs is unaffected; None means "no scope
+    # restriction recorded" -- resolve_area_scope() below treats that as
+    # unrestricted for TAP/JC roles and as DENIED for Pertamina roles,
+    # never as "unrestricted" by default for a customer role).
+    data_scope_type: str | None = None
+    data_scope_value: str | None = None
 
 
 class AuthRepositoryProtocol(Protocol):
@@ -282,6 +290,10 @@ class AuthenticatedIdentity:
     organization_code: str
     role: str
     permissions: frozenset[str]
+    # MWO-LTSA-AUTH-DATA-SCOPE-CLOSURE-001 -- additive, default None, see
+    # MembershipRecord's own identical note.
+    data_scope_type: str | None = None
+    data_scope_value: str | None = None
 
 
 def authenticate(repository: AuthRepositoryProtocol, email: str, password: str) -> tuple[str, AuthenticatedIdentity]:
@@ -306,6 +318,8 @@ def authenticate(repository: AuthRepositoryProtocol, email: str, password: str) 
         organization_code=membership.organization_code,
         role=membership.role,
         permissions=permissions_for_role(membership.role),
+        data_scope_type=membership.data_scope_type,
+        data_scope_value=membership.data_scope_value,
     )
     return token, identity
 
@@ -332,11 +346,45 @@ def resolve_identity(repository: AuthRepositoryProtocol, user_id: str, organizat
         organization_code=membership.organization_code,
         role=membership.role,
         permissions=permissions_for_role(membership.role),
+        data_scope_type=membership.data_scope_type,
+        data_scope_value=membership.data_scope_value,
     )
+
+
+# --- Data scope (MWO-LTSA-AUTH-DATA-SCOPE-CLOSURE-001) ---------------------
+#
+# Roles that are ALWAYS full-access regardless of any data_scope_* value
+# recorded on the membership -- per this MWO's own explicit rule
+# (SUPERUSER=ALL, TAP_ADMIN=ALL, TAP_ENGINEER=ALL, JOHN_CRANE_ENGINEER=ALL
+# LTSA). Area/MA is a Pertamina-only restriction, never a broadening of
+# any other role.
+_UNRESTRICTED_ROLES = frozenset({"SUPERUSER", "TAP_ADMIN", "TAP_ENGINEER", "JOHN_CRANE_ENGINEER"})
+
+
+def resolve_area_scope(identity: "AuthenticatedIdentity") -> frozenset[str] | None:
+    """Returns the set of physical Area codes `identity` may see, or None
+    for "unrestricted" (every non-Pertamina role, always). A Pertamina
+    role with no recognized scope recorded returns an EMPTY frozenset --
+    fail-closed, never treated as unrestricted. The actual AREA/MA
+    vocabulary and MA->areas grouping lives in API.pump_area_scope (not
+    here) to keep this module free of LTSA-domain vocabulary; imported
+    lazily to avoid a circular import (pump_area_scope has no reason to
+    import auth_service, but this keeps the dependency direction
+    explicit)."""
+    if identity.role in _UNRESTRICTED_ROLES:
+        return None
+    from .pump_area_scope import AREA_CODES, MA_AREA_GROUPS
+
+    if identity.data_scope_type == "AREA" and identity.data_scope_value in AREA_CODES:
+        return frozenset({identity.data_scope_value})
+    if identity.data_scope_type == "MA" and identity.data_scope_value in MA_AREA_GROUPS:
+        return MA_AREA_GROUPS[identity.data_scope_value]
+    return frozenset()
 
 
 __all__ = [
     "ROLE_PERMISSIONS",
+    "resolve_area_scope",
     "permissions_for_role",
     "AuthConfigurationError",
     "AuthenticationError",
