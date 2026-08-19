@@ -479,6 +479,32 @@ CREATE TABLE IF NOT EXISTS public.pm_cm_evidence (
 CREATE INDEX IF NOT EXISTS idx_pm_cm_evidence_record ON public.pm_cm_evidence(record_type, record_code);
 
 -- ============================================================
+-- MWO-LTSA-AUDIT-CHANGE-HISTORY-001 -- canonical, append-only field-level
+-- change history for the generic "Edit Value" correction mechanism.
+-- Immutability enforced by omission: no repository method for UPDATE/
+-- DELETE on this table exists anywhere. old_value/new_value are nullable
+-- TEXT -- a real SQL NULL means the canonical value was/became NULL; the
+-- literal text '0' means it was/became zero (never conflated). See
+-- migration 017's own header for the full rationale.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS public.record_change_history (
+    change_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    entity_type TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    field_name TEXT NOT NULL,
+    old_value TEXT,
+    new_value TEXT,
+    changed_by UUID NOT NULL,
+    changed_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    reason TEXT NOT NULL,
+    source_reference TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_record_change_history_entity
+    ON public.record_change_history(entity_type, entity_id, changed_at DESC);
+
+-- ============================================================
 -- MWO-LTSA-HOC-PM-CM (HOC PM/CM Historical Data Ingestion) -- idempotent
 -- upgrade path, applied against a database that already has pm_occurrence/
 -- cm_report/condition_monitoring_reading in their pre-HOC shape.

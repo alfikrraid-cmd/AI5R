@@ -32,6 +32,7 @@ from API.installation_gateway import InstallationGateway
 from API.ltsa_knowledge_service import LTSAKnowledgeService
 from API.maintenance_history_gateway import MaintenanceHistoryGateway
 from API.pm_cm_evidence_repository import PMCMEvidenceRepository
+from API.record_change_history_repository import RecordChangeHistoryRepository
 from API.pm_occurrence_gateway import PMOccurrenceGateway
 from API.pm_occurrence_repository import PMOccurrenceRepository
 from API.pm_schedule_gateway import PMScheduleGateway
@@ -150,6 +151,11 @@ _seal_master_data_repository = SealMasterDataRepository(_import_database_runner)
 _pm_occurrence_repository = PMOccurrenceRepository(_import_database_runner)
 _condition_monitoring_reading_repository = ConditionMonitoringReadingRepository(_import_database_runner)
 _pm_cm_evidence_repository = PMCMEvidenceRepository(_import_database_runner)
+
+# MWO-LTSA-AUDIT-CHANGE-HISTORY-001 -- same singleton again; the one,
+# canonical, append-only ledger every domain's record_edit_service.py
+# correction writes to and reads from.
+_record_change_history_repository = RecordChangeHistoryRepository(_import_database_runner)
 
 # MWO-LTSA-031D -- built from the same singleton Gateway instances above,
 # not fresh ones -- no second set of Gateways is constructed anywhere.
@@ -299,6 +305,10 @@ def get_condition_monitoring_reading_repository() -> ConditionMonitoringReadingR
 
 def get_pm_cm_evidence_repository() -> PMCMEvidenceRepository:
     return _pm_cm_evidence_repository
+
+
+def get_record_change_history_repository() -> RecordChangeHistoryRepository:
+    return _record_change_history_repository
 
 
 # MWO-LTSA-AUTH-001 -- the two reusable dependencies this MWO requires:

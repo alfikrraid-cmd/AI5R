@@ -32,6 +32,7 @@ from routers import (
     pm_occurrence,
     pm_schedule,
     pumps,
+    record_edit,
     seal,
     work_orders,
 )
@@ -90,3 +91,4 @@ app.include_router(pm_occurrence.router)
 app.include_router(cm_report.router)
 app.include_router(condition_monitoring.router)
 app.include_router(pm_cm_evidence.router)
+app.include_router(record_edit.router)

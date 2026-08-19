@@ -108,7 +108,21 @@ class AuthenticationError(Exception):
 #   - audit.read_full: full internal Audit History (actor/timestamp/
 #     entity/action/before/after), distinct from the Record Attribution
 #     (created_by/updated_by) every operational-record reader may see.
-#     SUPERUSER only -- see MWO-LTSA-AUTH-003A-FINAL's own Phase 12.
+#     SUPERUSER only -- see MWO-LTSA-AUTH-003A-FINAL's own Phase 12. This
+#     is the exact capability MWO-LTSA-AUDIT-CHANGE-HISTORY-001's own
+#     record_change_history read endpoint reuses -- record_edit_service.py
+#     is the concrete "before/after" mechanism this permission's own
+#     comment already anticipated; no second permission was invented for
+#     it.
+#
+# MWO-LTSA-AUDIT-CHANGE-HISTORY-001 -- one new permission:
+#   - record.edit: the generic "Edit Value" field-level correction engine
+#     (record_edit_service.py). SUPERUSER + TAP_ADMIN only, per this
+#     MWO's own explicit policy ("Others: NO general Edit Value").
+#     TAP_ENGINEER/JOHN_CRANE_ENGINEER/both Pertamina roles never receive
+#     it -- this is a distinct authority from maintenance.write (which
+#     governs the normal DRAFT-lifecycle create/edit/submit flow, not a
+#     post-hoc correction to an already-submitted/finalized value).
 ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     "SUPERUSER": frozenset(
         {
@@ -118,7 +132,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "import.read", "import.execute", "master.edit",
             "internal_inventory.read", "internal_component.read",
             "installation.write", "installation.review",
-            "admin.users", "admin.superuser", "audit.read_full",
+            "admin.users", "admin.superuser", "audit.read_full", "record.edit",
         }
     ),
     "TAP_ADMIN": frozenset(
@@ -129,7 +143,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "import.read", "import.execute", "master.edit",
             "internal_inventory.read", "internal_component.read",
             "installation.write", "installation.review",
-            "admin.users",
+            "admin.users", "record.edit",
         }
     ),
     "TAP_ENGINEER": frozenset(
