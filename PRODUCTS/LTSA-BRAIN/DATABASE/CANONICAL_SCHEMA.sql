@@ -285,7 +285,17 @@ CREATE TABLE IF NOT EXISTS public.pm_occurrence (
     technical_comment TEXT,
     technical_recommendation TEXT,
     created_by UUID,
-    updated_by UUID
+    updated_by UUID,
+    -- MWO-LTSA-HISTORICAL-JULY-INGESTION-001 -- informal pointer back to
+    -- the document_field_extraction staging row a historically-imported
+    -- record was promoted from (e.g. "document_field_extraction:<id>"),
+    -- the smallest canonical extension needed to answer "which historical
+    -- report produced this record" (Phase 16). Same non-FK, application-
+    -- resolved convention as every other cross-entity reference in this
+    -- schema. NULL for every record created through the real digital
+    -- workflow (this MWO's own new capability, not a change to existing
+    -- behavior).
+    source_reference TEXT
 );
 
 -- ============================================================
@@ -432,7 +442,10 @@ CREATE TABLE IF NOT EXISTS public.condition_monitoring_reading (
     technical_comment TEXT,
     technical_recommendation TEXT,
     created_by UUID,
-    updated_by UUID
+    updated_by UUID,
+    -- MWO-LTSA-HISTORICAL-JULY-INGESTION-001 -- see pm_occurrence.
+    -- source_reference's own comment; identical purpose/convention here.
+    source_reference TEXT
 );
 
 -- ============================================================
@@ -1133,7 +1146,8 @@ CREATE TABLE IF NOT EXISTS public.pdf_document (
         CHECK (document_type IN (
             'INSTALLATION_REPORT', 'SERVICE_REPORT', 'INSPECTION_REPORT', 'FAILURE_REPORT',
             'JOHN_CRANE_DRAWING', 'DATASHEET', 'MAINTENANCE_MANUAL', 'SERVICE_BULLETIN',
-            'ENGINEERING_SPECIFICATION', 'CALIBRATION_REPORT', 'HYDROTEST_REPORT'
+            'ENGINEERING_SPECIFICATION', 'CALIBRATION_REPORT', 'HYDROTEST_REPORT',
+            'PM_CMON_MONTHLY_REPORT'
         )),
     CONSTRAINT pdf_document_page_count_check CHECK (page_count IS NULL OR page_count >= 0),
     CONSTRAINT pdf_document_file_size_check CHECK (file_size IS NULL OR file_size >= 0)
@@ -1416,7 +1430,9 @@ CREATE TABLE IF NOT EXISTS public.document_field_extraction (
     CONSTRAINT document_field_extraction_detected_type_check
         CHECK (detected_document_type IN (
             'MECHANICAL_SEAL_INSTALLATION_REPORT', 'PUMP_DATASHEET',
-            'MECHANICAL_SEAL_DRAWING', 'PUMP_DRAWING', 'NAMEPLATE', 'UNKNOWN'
+            'MECHANICAL_SEAL_DRAWING', 'PUMP_DRAWING', 'NAMEPLATE', 'UNKNOWN',
+            'HISTORICAL_PM_OCCURRENCE_CANDIDATE', 'HISTORICAL_CMON_READING_CANDIDATE',
+            'HISTORICAL_FINDING_CANDIDATE'
         )),
     CONSTRAINT document_field_extraction_status_check
         CHECK (status IN ('PENDING_REVIEW', 'REVIEWED', 'SAVED', 'REJECTED')),

@@ -47,7 +47,7 @@ _SELECT_COLUMNS = (
     "submitted_by, submitted_at, reviewed_by, reviewed_at, return_reason, "
     "technical_reviewed_by, technical_reviewed_at, technical_outcome, "
     "technical_comment, technical_recommendation, created_by, updated_by, "
-    "created_at, updated_at"
+    "created_at, updated_at, source_reference"
 )
 
 
@@ -83,22 +83,34 @@ class PMOccurrenceRepository:
         activities: list | None,
         remarks: str | None,
         created_by: str,
+        provenance: str = "MANUAL",
+        source_reference: str | None = None,
     ) -> dict:
         # Hard Rule 14/16: created_by is set once, here, and never
         # referenced again by update_draft/submit/review below --
         # updated_by starts equal to created_by (the creator is trivially
         # also the first "last editor"), the same convention
         # auth_repository.create_user already established.
+        #
+        # MWO-LTSA-HISTORICAL-JULY-INGESTION-001 -- provenance/
+        # source_reference are additive, optional kwargs (default
+        # 'MANUAL'/None, byte-identical to every pre-existing caller's
+        # behavior). The historical-import promotion service is the only
+        # caller that passes provenance='HISTORICAL_IMPORT' plus a real
+        # source_reference; the live TAP Engineer UI path (PM.jsx via
+        # createPMOccurrence) never passes either, so its INSERTs are
+        # unchanged.
         code = _new_code()
         rows = json.loads(
             self._runner.query_scalar(
                 "WITH ins AS ("
                 "INSERT INTO pm_occurrence "
                 "(pm_occurrence_code, pm_schedule_code, asset_code, asset_type, occurrence_date, "
-                "activities, remarks, workflow_status, provenance, created_by, updated_by) VALUES "
+                "activities, remarks, workflow_status, provenance, created_by, updated_by, source_reference) VALUES "
                 f"({_sql(code)}, {_sql(pm_schedule_code)}, {_sql(asset_code)}, {_sql(asset_type)}, "
                 f"{_sql(occurrence_date)}, {_sql(json.dumps(activities) if activities is not None else None)}::jsonb, "
-                f"{_sql(remarks)}, {_sql(DRAFT)}, 'MANUAL', {_sql(created_by)}, {_sql(created_by)}) "
+                f"{_sql(remarks)}, {_sql(DRAFT)}, {_sql(provenance)}, {_sql(created_by)}, {_sql(created_by)}, "
+                f"{_sql(source_reference)}) "
                 f"RETURNING {_SELECT_COLUMNS}"
                 f") SELECT COALESCE(json_agg(row_to_json(t))::text, '[]') FROM ins t;"
             )

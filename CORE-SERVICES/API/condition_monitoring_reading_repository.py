@@ -74,7 +74,7 @@ _SELECT_COLUMNS = (
     + ", ".join(_MEASUREMENT_COLUMNS)
     + ", "
     + ", ".join(_WORKFLOW_COLUMNS)
-    + ", created_at, updated_at"
+    + ", created_at, updated_at, source_reference"
 )
 
 
@@ -111,7 +111,19 @@ class ConditionMonitoringReadingRepository:
         reading_date: str | None,
         measurements: dict,
         created_by: str,
+        provenance: str = "MANUAL",
+        source_reference: str | None = None,
+        finding: str | None = None,
     ) -> dict:
+        # MWO-LTSA-HISTORICAL-JULY-INGESTION-001 -- provenance/
+        # source_reference/finding are additive, optional kwargs (default
+        # 'MANUAL'/None/None, byte-identical to every pre-existing caller's
+        # behavior) -- see pm_occurrence_repository.py's own identical
+        # header note. `finding` was previously only settable via
+        # update_draft; a historically-imported reading whose source
+        # document carried a Finding must be able to persist it at
+        # creation time too, since promotion is a single create_draft
+        # call, never followed by an update_draft round-trip.
         code = _new_code()
         measurement_cols = ", ".join(_MEASUREMENT_COLUMNS)
         measurement_vals = ", ".join(_sql(measurements.get(col)) for col in _MEASUREMENT_COLUMNS)
@@ -121,10 +133,11 @@ class ConditionMonitoringReadingRepository:
                 "INSERT INTO condition_monitoring_reading "
                 "(condition_monitoring_reading_code, condition_monitoring_schedule_code, "
                 f"asset_code, asset_type, reading_date, {measurement_cols}, "
-                "workflow_status, provenance, created_by, updated_by) VALUES "
+                "workflow_status, provenance, created_by, updated_by, source_reference, finding) VALUES "
                 f"({_sql(code)}, {_sql(condition_monitoring_schedule_code)}, {_sql(asset_code)}, "
                 f"{_sql(asset_type)}, {_sql(reading_date)}, {measurement_vals}, "
-                f"{_sql(DRAFT)}, 'MANUAL', {_sql(created_by)}, {_sql(created_by)}) "
+                f"{_sql(DRAFT)}, {_sql(provenance)}, {_sql(created_by)}, {_sql(created_by)}, "
+                f"{_sql(source_reference)}, {_sql(finding)}) "
                 f"RETURNING {_SELECT_COLUMNS}"
                 ") SELECT COALESCE(json_agg(row_to_json(t))::text, '[]') FROM ins t;"
             )
