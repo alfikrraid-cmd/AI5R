@@ -139,11 +139,12 @@ def summarize_maintenance_situation(
     product_name: str,
     root_path: Path | str = DEFAULT_ROOT_PATH,
     today: date | None = None,
+    scope: frozenset[str] | None = None,
 ) -> dict[str, Any]:
     """Summarize Maintenance Situation: a plain-language summary of the
     current maintenance situation from Maintenance Intelligence Service."""
 
-    situation = summarize_situation(product_name, root_path=root_path, today=today)
+    situation = summarize_situation(product_name, root_path=root_path, today=today, scope=scope)
     summary = situation["summary"]
 
     message = (

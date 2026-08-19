@@ -5,8 +5,14 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends
 
+from API.auth_service import AuthenticatedIdentity, resolve_area_scope
 from API.fleet_insight import build_fleet_insight
-from dependencies import get_fleet_executive_summary_service, get_fleet_reliability_service, require_permission
+from dependencies import (
+    get_current_user,
+    get_fleet_executive_summary_service,
+    get_fleet_reliability_service,
+    require_permission,
+)
 from models.responses import Payload
 
 # MWO-LTSA-AUTH-001
@@ -32,8 +38,13 @@ DATASET_VERSION = "1.0.0"
 @router.get("/api/ltsa/fleet/reliability")
 def get_fleet_reliability(
     fleet_reliability_service=Depends(get_fleet_reliability_service),
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
 ) -> Payload:
-    fleet_reliability = fleet_reliability_service.build()
+    # MWO-LTSA-AUTH-DATA-SCOPE-FINAL-CLOSURE-001 -- scope is passed into
+    # build() itself (filtered at pump discovery, before aggregation),
+    # never applied to the finished snapshot -- a scoped identity's
+    # pump_count/totals are genuinely recomputed from only their pumps.
+    fleet_reliability = fleet_reliability_service.build(scope=resolve_area_scope(current_user))
 
     return {
         "success": True,
@@ -54,8 +65,9 @@ def get_fleet_reliability(
 @router.get("/api/ltsa/fleet/powerbi")
 def get_fleet_powerbi(
     fleet_executive_summary_service=Depends(get_fleet_executive_summary_service),
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
 ) -> Payload:
-    summary = fleet_executive_summary_service.build()
+    summary = fleet_executive_summary_service.build(scope=resolve_area_scope(current_user))
     insight = build_fleet_insight(summary)
 
     return {

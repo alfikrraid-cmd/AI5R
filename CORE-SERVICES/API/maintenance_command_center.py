@@ -6,6 +6,7 @@ from typing import Any
 
 from .maintenance_history_gateway import MaintenanceHistoryGateway
 from .organization_registry import get_organization
+from .pump_area_scope import filter_records_by_asset_scope, filter_records_by_scope
 from .pump_gateway import PumpGateway
 from .work_order_gateway import WorkOrderGateway
 
@@ -21,11 +22,22 @@ def get_maintenance_command_center(
     pump_gateway: PumpGateway | None = None,
     work_order_gateway: WorkOrderGateway | None = None,
     maintenance_history_gateway: MaintenanceHistoryGateway | None = None,
+    scope: frozenset[str] | None = None,
 ) -> dict[str, Any]:
     """The Maintenance Command Center: a read-only presentation of the
     existing Pump Gateway, Work Order Gateway, Maintenance History Gateway,
     and Organization Registry. Manufactures nothing, persists nothing,
     modifies nothing.
+
+    MWO-LTSA-AUTH-DATA-SCOPE-FINAL-CLOSURE-001 -- `scope` (default None =
+    unrestricted, the exact pre-existing behavior for every caller that
+    doesn't pass it) is applied to pumps/work_orders/maintenance_history
+    immediately after fetching, BEFORE total_pumps/active_work_orders/
+    completed_today are counted and BEFORE recent_work_orders/
+    recent_maintenance are sliced -- every field below is therefore
+    already computed from only in-scope records, not filtered after the
+    fact (recent_work_orders/recent_maintenance previously leaked
+    fleet-wide asset_code values regardless of caller scope).
     """
 
     pump_gateway = pump_gateway or PumpGateway()
@@ -36,6 +48,10 @@ def get_maintenance_command_center(
     pumps = pump_gateway.list_pumps().get("data") or []
     work_orders = work_order_gateway.list_work_orders().get("data") or []
     maintenance_history = maintenance_history_gateway.list_maintenance_history().get("data") or []
+    if scope is not None:
+        pumps = filter_records_by_scope(pumps, scope)
+        work_orders = filter_records_by_asset_scope(work_orders, scope, pump_gateway)
+        maintenance_history = filter_records_by_asset_scope(maintenance_history, scope, pump_gateway)
     organization = get_organization(product_name, root_path)
 
     active_work_orders = [wo for wo in work_orders if not wo.get("closed_at")]

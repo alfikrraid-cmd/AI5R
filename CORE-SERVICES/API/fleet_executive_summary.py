@@ -105,9 +105,16 @@ class FleetExecutiveSummaryService:
     def __init__(self, fleet_reliability_service: FleetReliabilityService | None = None) -> None:
         self.fleet_reliability_service = fleet_reliability_service or FleetReliabilityService()
 
-    def build(self) -> FleetExecutiveSummary:
-        reliability = self.fleet_reliability_service.build()
-        knowledge = self.fleet_reliability_service.list_pump_knowledge()
+    def build(self, *, scope: frozenset[str] | None = None) -> FleetExecutiveSummary:
+        # MWO-LTSA-AUTH-DATA-SCOPE-FINAL-CLOSURE-001 -- scope threads
+        # through to FleetReliabilityService's own pump-discovery choke
+        # point (see that service's own build()/list_pump_knowledge()
+        # comment) -- every field below (including top_risks, the actual
+        # per-pump leak vector this closure exists to fix) is therefore
+        # already computed from only in-scope pumps, never filtered
+        # after the fact.
+        reliability = self.fleet_reliability_service.build(scope=scope)
+        knowledge = self.fleet_reliability_service.list_pump_knowledge(scope=scope)
 
         return FleetExecutiveSummary(
             overall_health=reliability.fleet_health_score,

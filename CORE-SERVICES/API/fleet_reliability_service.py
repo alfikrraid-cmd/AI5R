@@ -42,6 +42,7 @@ from typing import Iterable
 
 from .executive_metrics import ExecutiveMetrics, compute_executive_metrics
 from .ltsa_knowledge_service import LTSAKnowledge, LTSAKnowledgeService
+from .pump_area_scope import is_area_in_scope
 from .pump_gateway import PumpGateway
 
 
@@ -73,23 +74,29 @@ class FleetReliabilityService:
         self.pump_gateway = pump_gateway or PumpGateway()
         self.ltsa_knowledge_service = ltsa_knowledge_service or LTSAKnowledgeService()
 
-    def build(self) -> FleetReliability:
-        tags = self._list_pump_tags()
+    def build(self, *, scope: frozenset[str] | None = None) -> FleetReliability:
+        # MWO-LTSA-AUTH-DATA-SCOPE-FINAL-CLOSURE-001 -- scope is applied
+        # HERE, at pump discovery, before any per-pump metric is even
+        # computed -- never "compute the global result then hide pump
+        # names". `scope=None` (the default) is the exact pre-existing
+        # behavior for every caller that does not pass it (unrestricted
+        # roles, and every existing test).
+        tags = self._list_pump_tags(scope)
         metrics = tuple(
             compute_executive_metrics(self.ltsa_knowledge_service.build(tag)) for tag in tags
         )
         return self._aggregate(metrics)
 
-    def list_pump_knowledge(self) -> tuple[LTSAKnowledge, ...]:
+    def list_pump_knowledge(self, *, scope: frozenset[str] | None = None) -> tuple[LTSAKnowledge, ...]:
         """MWO-LTSA-037E -- one LTSAKnowledge per pump in the registry,
         reusing the same pump discovery .build() already uses. Exists so
         callers that need per-pump detail (e.g. FleetExecutiveSummaryService,
         for Critical Assets / Top Risks -- both inherently per-pump) never
         have to re-implement pump discovery themselves."""
-        tags = self._list_pump_tags()
+        tags = self._list_pump_tags(scope)
         return tuple(self.ltsa_knowledge_service.build(tag) for tag in tags)
 
-    def _list_pump_tags(self) -> tuple[str, ...]:
+    def _list_pump_tags(self, scope: frozenset[str] | None = None) -> tuple[str, ...]:
         # MWO-LTSA-037C runtime fix -- PumpGateway._call() only catches
         # urllib.error.HTTPError (an HTTP response with an error status);
         # a connection-level failure (refused/unreachable/timeout) raises
@@ -106,6 +113,8 @@ class FleetReliabilityService:
         except OSError:
             return ()
         records = response.get("data") or []
+        if scope is not None:
+            records = [r for r in records if is_area_in_scope(r.get("area"), scope)]
         return tuple(record.get("tag_number") for record in records if record.get("tag_number"))
 
     def _aggregate(self, metrics: tuple[ExecutiveMetrics, ...]) -> FleetReliability:

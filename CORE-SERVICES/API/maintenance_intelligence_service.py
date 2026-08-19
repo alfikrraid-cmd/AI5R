@@ -372,6 +372,7 @@ def summarize_situation(
     pump_gateway: PumpGateway | None = None,
     work_order_gateway: WorkOrderGateway | None = None,
     maintenance_history_gateway: MaintenanceHistoryGateway | None = None,
+    scope: frozenset[str] | None = None,
 ) -> dict[str, Any]:
     """Summarize Current Situation: reused unchanged from the Maintenance
     Command Center."""
@@ -383,4 +384,5 @@ def summarize_situation(
         pump_gateway=pump_gateway,
         work_order_gateway=work_order_gateway,
         maintenance_history_gateway=maintenance_history_gateway,
+        scope=scope,
     )

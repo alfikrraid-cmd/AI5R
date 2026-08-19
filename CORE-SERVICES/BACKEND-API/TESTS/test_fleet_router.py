@@ -30,9 +30,11 @@ class FakeFleetReliabilityService:
     def __init__(self, result):
         self.result = result
         self.calls = 0
+        self.scopes_seen = []
 
-    def build(self):
+    def build(self, *, scope=None):
         self.calls += 1
+        self.scopes_seen.append(scope)
         return self.result
 
 
@@ -132,9 +134,11 @@ class FakeFleetExecutiveSummaryService:
     def __init__(self, result):
         self.result = result
         self.calls = 0
+        self.scopes_seen = []
 
-    def build(self):
+    def build(self, *, scope=None):
         self.calls += 1
+        self.scopes_seen.append(scope)
         return self.result
 
 

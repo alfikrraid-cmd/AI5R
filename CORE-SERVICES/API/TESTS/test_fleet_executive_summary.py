@@ -23,11 +23,11 @@ class FakeFleetReliabilityService:
         self.build_calls = 0
         self.list_pump_knowledge_calls = 0
 
-    def build(self):
+    def build(self, *, scope=None):
         self.build_calls += 1
         return self._reliability
 
-    def list_pump_knowledge(self):
+    def list_pump_knowledge(self, *, scope=None):
         self.list_pump_knowledge_calls += 1
         return self._knowledge
 
