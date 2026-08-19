@@ -1,0 +1,209 @@
+{
+  "name": "WF-LTSA-BRAIN-PM-OCCURRENCE-DETAIL-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "ltsa/pm-occurrence/detail",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-pm-occurrence-detail",
+      "name": "GET /ltsa/pm-occurrence/detail",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "ltsa-brain-pm-occurrence-detail-001"
+    },
+    {
+      "parameters": {
+        "jsCode": "const pm_occurrence_code = $json.query?.pm_occurrence_code;\n\nreturn [{\n  json: {\n    pm_occurrence_code,\n    valid: !!pm_occurrence_code\n  }\n}];"
+      },
+      "id": "parse-pm-occurrence-code",
+      "name": "Parse PM Occurrence Code",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "valid-pm-occurrence-code-check",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-valid-pm-occurrence-code",
+      "name": "IF Valid PM Occurrence Code",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        520,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT *\nFROM pm_occurrence\nWHERE pm_occurrence_code = $1\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ [$json.pm_occurrence_code] }}"
+        }
+      },
+      "id": "get-pm-occurrence-detail",
+      "name": "Get PM Occurrence Detail",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        780,
+        -120
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first()?.json;\n\nif (!row || !row.pm_occurrence_code) {\n  return [{\n    json: {\n      statusCode: 404,\n      success: false,\n      message: 'PM occurrence not found',\n      data: null\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    statusCode: 200,\n    success: true,\n    message: 'PM occurrence detail found',\n    data: row\n  }\n}];"
+      },
+      "id": "build-pm-occurrence-detail-response",
+      "name": "Build PM Occurrence Detail Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: $json.success, message: $json.message, data: $json.data } }}",
+        "options": {
+          "responseCode": "={{ $json.statusCode }}"
+        }
+      },
+      "id": "respond-pm-occurrence-detail",
+      "name": "Respond PM Occurrence Detail",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1300,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, message: 'pm_occurrence_code query parameter is required' } }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "respond-pm-occurrence-400",
+      "name": "Respond 400",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        780,
+        200
+      ]
+    }
+  ],
+  "connections": {
+    "GET /ltsa/pm-occurrence/detail": {
+      "main": [
+        [
+          {
+            "node": "Parse PM Occurrence Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse PM Occurrence Code": {
+      "main": [
+        [
+          {
+            "node": "IF Valid PM Occurrence Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Valid PM Occurrence Code": {
+      "main": [
+        [
+          {
+            "node": "Get PM Occurrence Detail",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 400",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get PM Occurrence Detail": {
+      "main": [
+        [
+          {
+            "node": "Build PM Occurrence Detail Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build PM Occurrence Detail Response": {
+      "main": [
+        [
+          {
+            "node": "Respond PM Occurrence Detail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

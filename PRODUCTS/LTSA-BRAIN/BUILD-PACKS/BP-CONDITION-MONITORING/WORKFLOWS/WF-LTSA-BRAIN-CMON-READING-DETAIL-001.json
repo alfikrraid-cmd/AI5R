@@ -1,0 +1,209 @@
+{
+  "name": "WF-LTSA-BRAIN-CMON-READING-DETAIL-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "ltsa/condition-monitoring-reading/detail",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-cmon-reading-detail",
+      "name": "GET /ltsa/condition-monitoring-reading/detail",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "ltsa-brain-cmon-reading-detail-001"
+    },
+    {
+      "parameters": {
+        "jsCode": "const condition_monitoring_reading_code = $json.query?.condition_monitoring_reading_code;\n\nreturn [{\n  json: {\n    condition_monitoring_reading_code,\n    valid: !!condition_monitoring_reading_code\n  }\n}];"
+      },
+      "id": "parse-cmon-reading-code",
+      "name": "Parse CMON Reading Code",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "valid-cmon-reading-code-check",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-valid-cmon-reading-code",
+      "name": "IF Valid CMON Reading Code",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        520,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT *\nFROM condition_monitoring_reading\nWHERE condition_monitoring_reading_code = $1\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ [$json.condition_monitoring_reading_code] }}"
+        }
+      },
+      "id": "get-cmon-reading-detail",
+      "name": "Get CMON Reading Detail",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        780,
+        -120
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first()?.json;\n\nif (!row || !row.condition_monitoring_reading_code) {\n  return [{\n    json: {\n      statusCode: 404,\n      success: false,\n      message: 'Condition Monitoring reading not found',\n      data: null\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    statusCode: 200,\n    success: true,\n    message: 'Condition Monitoring reading detail found',\n    data: row\n  }\n}];"
+      },
+      "id": "build-cmon-reading-detail-response",
+      "name": "Build CMON Reading Detail Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: $json.success, message: $json.message, data: $json.data } }}",
+        "options": {
+          "responseCode": "={{ $json.statusCode }}"
+        }
+      },
+      "id": "respond-cmon-reading-detail",
+      "name": "Respond CMON Reading Detail",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1300,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, message: 'condition_monitoring_reading_code query parameter is required' } }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "respond-cmon-reading-400",
+      "name": "Respond 400",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        780,
+        200
+      ]
+    }
+  ],
+  "connections": {
+    "GET /ltsa/condition-monitoring-reading/detail": {
+      "main": [
+        [
+          {
+            "node": "Parse CMON Reading Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse CMON Reading Code": {
+      "main": [
+        [
+          {
+            "node": "IF Valid CMON Reading Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Valid CMON Reading Code": {
+      "main": [
+        [
+          {
+            "node": "Get CMON Reading Detail",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 400",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get CMON Reading Detail": {
+      "main": [
+        [
+          {
+            "node": "Build CMON Reading Detail Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build CMON Reading Detail Response": {
+      "main": [
+        [
+          {
+            "node": "Respond CMON Reading Detail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}

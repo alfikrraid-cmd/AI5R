@@ -1096,3 +1096,72 @@ def test_every_real_canonical_workflow_source_still_loads_without_error():
     for spec in WORKFLOW_SPECS:
         source_path = REPO_ROOT / spec["source"]
         load_workflow_source(source_path, CREDENTIAL)  # must not raise
+
+
+# MWO-LTSA-RUNTIME-SERVICE-RECONCILIATION-001 -- the PM Occurrence / CMON
+# Reading READ workflows are deliberately NOT in WORKFLOW_SPECS (this MWO's
+# own "Import ONLY the 4 required... Do not import unrelated historical
+# workflow bundles" -- they are deployed via a scoped custom `specs` list,
+# never the full run_bootstrap()), so the existing WORKFLOW_SPECS-driven
+# regression tests above never covered them. Same production bug, same
+# fix, same direct-against-real-files proof: a live bootstrap run against
+# a real (freshly Postgres-backed) n8n instance failed with exactly this
+# RuntimeError for all 4 files before alwaysOutputData was added to each
+# Postgres executeQuery node.
+_PM_CMON_WORKFLOW_SOURCES = (
+    "PRODUCTS/LTSA-BRAIN/BUILD-PACKS/BP-PM-OCCURRENCE/WORKFLOWS/WF-LTSA-BRAIN-PM-OCCURRENCE-LIST-001.json",
+    "PRODUCTS/LTSA-BRAIN/BUILD-PACKS/BP-PM-OCCURRENCE/WORKFLOWS/WF-LTSA-BRAIN-PM-OCCURRENCE-DETAIL-001.json",
+    "PRODUCTS/LTSA-BRAIN/BUILD-PACKS/BP-CONDITION-MONITORING/WORKFLOWS/WF-LTSA-BRAIN-CMON-READING-LIST-001.json",
+    "PRODUCTS/LTSA-BRAIN/BUILD-PACKS/BP-CONDITION-MONITORING/WORKFLOWS/WF-LTSA-BRAIN-CMON-READING-DETAIL-001.json",
+)
+
+
+def test_pm_cmon_canonical_workflow_sources_have_alwaysOutputData():
+    missing = []
+    for rel_path in _PM_CMON_WORKFLOW_SOURCES:
+        source_path = REPO_ROOT / rel_path
+        workflow = json.loads(source_path.read_text(encoding="utf-8"))
+        for node in workflow.get("nodes", []):
+            if node.get("type") != POSTGRES_NODE_TYPE:
+                continue
+            if node.get("parameters", {}).get("operation") != "executeQuery":
+                continue
+            if not node.get("alwaysOutputData"):
+                missing.append(f"{workflow['name']} ({source_path})")
+
+    assert missing == []
+
+
+def test_pm_cmon_canonical_workflow_sources_load_without_error():
+    for rel_path in _PM_CMON_WORKFLOW_SOURCES:
+        source_path = REPO_ROOT / rel_path
+        load_workflow_source(source_path, CREDENTIAL)  # must not raise
+
+
+_PM_CMON_LIST_WORKFLOW_SOURCES = (
+    "PRODUCTS/LTSA-BRAIN/BUILD-PACKS/BP-PM-OCCURRENCE/WORKFLOWS/WF-LTSA-BRAIN-PM-OCCURRENCE-LIST-001.json",
+    "PRODUCTS/LTSA-BRAIN/BUILD-PACKS/BP-CONDITION-MONITORING/WORKFLOWS/WF-LTSA-BRAIN-CMON-READING-LIST-001.json",
+)
+
+
+def test_pm_cmon_list_workflows_filter_the_alwaysOutputData_placeholder_row():
+    """alwaysOutputData=true (the fix above) prevents the execution chain
+    from breaking on a zero-row query, but the Postgres node still emits
+    one placeholder empty item ({}) in that case -- proven live: a real
+    webhook call against an empty ltsa_brain returned
+    {"count":1,"data":[{}]} before this fix. The downstream Code node
+    must filter it out (same pattern WF-LTSA-PUMP-LIST-001's own Code
+    node already uses), or callers see a fake "1 record" that doesn't
+    exist."""
+    missing = []
+    for rel_path in _PM_CMON_LIST_WORKFLOW_SOURCES:
+        source_path = REPO_ROOT / rel_path
+        workflow = json.loads(source_path.read_text(encoding="utf-8"))
+        for node in workflow.get("nodes", []):
+            if node.get("type") != "n8n-nodes-base.code":
+                continue
+            js_code = node.get("parameters", {}).get("jsCode", "")
+            if "filter(row => Object.keys(row).length > 0)" not in js_code:
+                missing.append(f"{workflow['name']} ({source_path})")
+
+    assert missing == []

@@ -1,0 +1,111 @@
+{
+  "name": "WF-LTSA-BRAIN-CMON-READING-LIST-001",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "ltsa/condition-monitoring-reading/list",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-cmon-reading-list",
+      "name": "GET /ltsa/condition-monitoring-reading/list",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "ltsa-brain-cmon-reading-list-001"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT *\nFROM condition_monitoring_reading\nORDER BY reading_date DESC, created_at DESC;"
+      },
+      "id": "list-cmon-readings-postgres",
+      "name": "List CMON Readings",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        260,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "hzgFaX04t1nL01vF",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(item => item.json).filter(row => Object.keys(row).length > 0);\n\nreturn [{\n  json: {\n    success: true,\n    message: 'Condition Monitoring reading list retrieved',\n    count: rows.length,\n    data: rows\n  }\n}];"
+      },
+      "id": "build-cmon-reading-list-response",
+      "name": "Build CMON Reading List Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: $json.success, message: $json.message, count: $json.count, data: $json.data } }}",
+        "options": {}
+      },
+      "id": "respond-cmon-reading-list",
+      "name": "Respond CMON Reading List",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        780,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "GET /ltsa/condition-monitoring-reading/list": {
+      "main": [
+        [
+          {
+            "node": "List CMON Readings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List CMON Readings": {
+      "main": [
+        [
+          {
+            "node": "Build CMON Reading List Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build CMON Reading List Response": {
+      "main": [
+        [
+          {
+            "node": "Respond CMON Reading List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0"
+}
