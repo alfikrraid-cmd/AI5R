@@ -109,6 +109,20 @@ class TestBuildAreaDryRun:
         assert unmatched.pump_match == "NO_MATCH"
         assert any("999-P-99Z" in item for item in result.critical_missing)
 
+    def test_finding_candidate_carries_matched_tag_on_exact_match(self, synthetic_source):
+        # MWO-LTSA-HISTORICAL-JULY-PROMOTION-001 rehearsal regression: the
+        # Finding branch never passed matched_tag=match.outcome's own
+        # resolved canonical tag into CandidateSummary (unlike the PM and
+        # CMON branches), so stage_area_candidates() -- which requires
+        # candidate.matched_tag to set pump_tag_number for EXACT_MATCH --
+        # silently staged every EXACT_MATCH finding as pump_tag_number
+        # NULL (wrongly classified INCOMPLETE). Real July data caught this:
+        # 23/23 findings were EXACT_MATCH yet all 23 landed INCOMPLETE.
+        result = build_area_dry_run(synthetic_source, canonical_pump_tags=_CANONICAL_TAGS)
+        finding = result.finding_candidates[0]
+        assert finding.pump_match == "EXACT_MATCH"
+        assert finding.matched_tag == "140-P-16A"
+
     def test_finding_candidate_carries_real_remarks_never_the_wrong_column(self, synthetic_source):
         result = build_area_dry_run(synthetic_source, canonical_pump_tags=_CANONICAL_TAGS)
         finding = result.finding_candidates[0]

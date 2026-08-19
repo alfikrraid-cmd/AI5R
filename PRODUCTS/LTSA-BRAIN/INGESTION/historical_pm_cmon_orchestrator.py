@@ -235,6 +235,7 @@ def build_area_dry_run(
                 code=code,
                 tag_number=f.tag_number,
                 pump_match=match.outcome,
+                matched_tag=match.matched_tag,
                 area={"source_location": f.source_location},
                 fields={
                     "api_plan": f.api_plan,
