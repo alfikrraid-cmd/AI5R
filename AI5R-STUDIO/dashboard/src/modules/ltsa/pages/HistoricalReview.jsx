@@ -24,12 +24,25 @@ const TYPE_LABEL = {
 
 const PROMOTABLE_TYPES = new Set(["HISTORICAL_PM_OCCURRENCE_CANDIDATE", "HISTORICAL_CMON_READING_CANDIDATE"]);
 
-function pumpMatchOf(candidate) {
-  // No literal "match status" column is persisted on document_field_
-  // extraction (only pump_tag_number, nullable) -- a resolved tag means
-  // the orchestrator's own EXACT_MATCH (or a human's later resolution);
-  // an unresolved one needs review, never guessed as one or the other.
-  return candidate.pump_tag_number ? "MATCHED" : "NEEDS_RESOLUTION";
+// MWO-LTSA-HISTORICAL-INCOMPLETE-DATA-POLICY-001 -- Core Model:
+// MATCHED (canonical pump relation known), INCOMPLETE (a valid
+// historical observation whose pump relation is not yet resolved --
+// never conflated with INVALID, never forced to resolve before
+// preservation), INVALID (rejected -- never promotable). The backend
+// (routers/historical_review.py::classify_candidate, the single source
+// of truth) already computes and returns this on every response; this
+// falls back to the same rule locally only if a response somehow lacks
+// it (never re-implements a second, possibly-drifting classification).
+function classificationOf(candidate) {
+  if (candidate.classification) return candidate.classification;
+  if (candidate.status === "REJECTED") return "INVALID";
+  return candidate.pump_tag_number ? "MATCHED" : "INCOMPLETE";
+}
+
+function classificationBadge(classification) {
+  if (classification === "MATCHED") return <Badge variant="success">Matched</Badge>;
+  if (classification === "INVALID") return <Badge variant="danger">Invalid</Badge>;
+  return <Badge variant="warning">Incomplete</Badge>;
 }
 
 // NULL/unknown display only -- the underlying value is never coerced;
@@ -87,19 +100,22 @@ export default function HistoricalReview() {
   const filtered = useMemo(() => {
     return pending.filter((candidate) => {
       if (typeFilter !== "ALL" && candidate.detected_document_type !== typeFilter) return false;
-      if (matchFilter !== "ALL" && pumpMatchOf(candidate) !== matchFilter) return false;
+      if (matchFilter !== "ALL" && classificationOf(candidate) !== matchFilter) return false;
       return true;
     });
   }, [pending, typeFilter, matchFilter]);
 
   const summary = useMemo(() => {
+    // PENDING_REVIEW records are never REJECTED (a different status), so
+    // INVALID never appears here -- an honest reflection of what "still
+    // pending" actually means, not a fabricated third bucket.
     let matched = 0;
-    let needsResolution = 0;
+    let incomplete = 0;
     for (const candidate of pending) {
-      if (pumpMatchOf(candidate) === "MATCHED") matched += 1;
-      else needsResolution += 1;
+      if (classificationOf(candidate) === "MATCHED") matched += 1;
+      else incomplete += 1;
     }
-    return { total: pending.length, matched, needsResolution };
+    return { total: pending.length, matched, incomplete };
   }, [pending]);
 
   const selected = candidates.find((c) => c.document_field_extraction_id === selectedId) || null;
@@ -196,16 +212,16 @@ export default function HistoricalReview() {
       header: "Type",
       render: (value) => TYPE_LABEL[value] || value,
     },
-    { key: "pump_tag_number", header: "Pump Tag", render: (value) => displayValue(value) },
     {
-      key: "match",
-      header: "Pump Match",
-      render: (_value, item) =>
-        pumpMatchOf(item) === "MATCHED" ? (
-          <Badge variant="success">Matched</Badge>
-        ) : (
-          <Badge variant="warning">Needs Resolution</Badge>
-        ),
+      key: "raw_asset_tag",
+      header: "Raw Source Tag",
+      render: (_value, item) => displayValue((item.extracted_fields || {}).raw_asset_tag),
+    },
+    { key: "pump_tag_number", header: "Canonical Pump Tag", render: (value) => displayValue(value) },
+    {
+      key: "classification",
+      header: "Classification",
+      render: (_value, item) => classificationBadge(classificationOf(item)),
     },
     { key: "status", header: "Status" },
   ];
@@ -219,8 +235,8 @@ export default function HistoricalReview() {
 
       <div className="ltsa-historical-review-summary" data-testid="historical-review-summary">
         <MetricCard title="Pending Review" value={summary.total} />
-        <MetricCard title="Pump Matched" value={summary.matched} />
-        <MetricCard title="Needs Pump Resolution" value={summary.needsResolution} />
+        <MetricCard title="Matched" value={summary.matched} />
+        <MetricCard title="Incomplete" value={summary.incomplete} />
       </div>
 
       <div className="ltsa-historical-review-filters">
@@ -234,11 +250,11 @@ export default function HistoricalReview() {
           </select>
         </label>
         <label>
-          Pump Match:{" "}
+          Status:{" "}
           <select value={matchFilter} onChange={(event) => setMatchFilter(event.target.value)}>
             <option value="ALL">All</option>
             <option value="MATCHED">Matched</option>
-            <option value="NEEDS_RESOLUTION">Needs Resolution</option>
+            <option value="INCOMPLETE">Incomplete</option>
           </select>
         </label>
         <Button onClick={reload}>Refresh</Button>
@@ -272,7 +288,12 @@ export default function HistoricalReview() {
             </p>
             <p>
               <strong>Status:</strong> {selected.status} &nbsp;
-              <strong>Pump Match:</strong> {pumpMatchOf(selected) === "MATCHED" ? "Matched" : "Needs Resolution"}
+              <strong>Classification:</strong> {classificationBadge(classificationOf(selected))}
+            </p>
+            <p>
+              <strong>Raw source tag (immutable):</strong>{" "}
+              {displayValue((selected.extracted_fields || {}).raw_asset_tag)} &nbsp;
+              <strong>Canonical pump relation:</strong> {displayValue(selected.pump_tag_number)}
             </p>
 
             <h3>Source (raw extracted) value — immutable</h3>

@@ -97,11 +97,20 @@ class SourceDocumentInfo:
 class CandidateSummary:
     kind: str  # "PM" | "CMON"
     code: str  # deterministic LTSA-PMO-.../LTSA-CMONR-... identity
-    tag_number: str | None
+    tag_number: str | None  # raw, as-extracted tag -- NEVER used as a canonical relation
     pump_match: str  # EXACT_MATCH / REVIEW_REQUIRED / NO_MATCH
     area: dict[str, Any]
     fields: dict[str, Any]
     source_page_hint: int | None = None
+    # MWO-LTSA-HISTORICAL-INCOMPLETE-DATA-POLICY-001 -- the CANONICAL
+    # roster form match_pump_tag() actually resolved to (e.g. tag_number=
+    # '200 - P - 1A', matched_tag='200-P-1A' after whitespace
+    # normalization), populated ONLY when pump_match == EXACT_MATCH.
+    # tag_number and matched_tag are deliberately never conflated: staging
+    # must set pump_tag_number from matched_tag (the real ltsa_pumps FK
+    # target), never from the raw tag_number, or a whitespace-normalized
+    # match would violate document_field_extraction's own FK constraint.
+    matched_tag: str | None = None
 
 
 @dataclass(slots=True)
@@ -164,6 +173,7 @@ def build_area_dry_run(
                 code=code,
                 tag_number=row["tag_number"],
                 pump_match=match.outcome,
+                matched_tag=match.matched_tag,
                 area={
                     "source_area": area_info.source_area,
                     "source_location": area_info.source_location,
@@ -202,6 +212,7 @@ def build_area_dry_run(
                 code=code,
                 tag_number=row["tag_number"],
                 pump_match=match.outcome,
+                matched_tag=match.matched_tag,
                 area={},  # CM Measuring Report rows carry no per-row Area/MA column in the source
                 fields=measurement_fields,
             )
@@ -244,10 +255,62 @@ def build_area_dry_run(
     return result
 
 
+# ---------------------------------------------------------------------------
+# Staging bridge (MWO-LTSA-HISTORICAL-INCOMPLETE-DATA-POLICY-001) -- turns
+# a build_area_dry_run() result into real document_field_extraction rows.
+# This is the FIRST code path in the pipeline that actually calls
+# HistoricalPMCMONStagingRepository.create_candidate() -- build_area_dry_
+# run() itself stays pure/zero-write, per its own docstring.
+#
+# Pump Tag Rule (this MWO's own Core Model): pump_tag_number is set ONLY
+# when the deterministic matcher found EXACT_MATCH, and ONLY to the
+# resolved CANONICAL form (candidate.matched_tag) -- never the raw
+# tag_number. This distinction is load-bearing, not cosmetic: real real
+# July data proved this session that a whitespace-normalized EXACT_MATCH
+# (e.g. raw '211 - P - 1A' -> canonical '211-P-1A') would violate
+# document_field_extraction's own real FK constraint on pump_tag_number
+# if the raw form were used -- ltsa_pumps only ever contains the
+# canonical spelling. REVIEW_REQUIRED and NO_MATCH both stage with
+# pump_tag_number=NULL, never the raw tag substituted in as if it were
+# resolved (that would silently assert an unproven pump relation). The
+# raw, as-extracted tag is NEVER discarded either way -- it is preserved
+# verbatim in extracted_fields["raw_asset_tag"], so a NULL
+# pump_tag_number never means "the tag is unknown", only "the canonical
+# relation is unresolved". A motor tag (e.g. 701-MM-51) is never
+# converted to a pump tag by this or any upstream step -- it simply
+# stages as an INCOMPLETE observation with its own real tag preserved.
+def stage_area_candidates(
+    result: AreaDryRunResult,
+    *,
+    staging_repository,
+    source_document_id: str,
+) -> list[dict]:
+    staged: list[dict] = []
+    for candidate in result.pm_candidates + result.cmon_candidates + result.finding_candidates:
+        detected_type = {
+            "PM": "HISTORICAL_PM_OCCURRENCE_CANDIDATE",
+            "CMON": "HISTORICAL_CMON_READING_CANDIDATE",
+            "FINDING": "HISTORICAL_FINDING_CANDIDATE",
+        }[candidate.kind]
+        pump_tag_number = candidate.matched_tag if candidate.pump_match == "EXACT_MATCH" else None
+        fields = dict(candidate.fields)
+        fields["raw_asset_tag"] = candidate.tag_number
+        row = staging_repository.create_candidate(
+            source_document_id=source_document_id,
+            detected_document_type=detected_type,
+            extracted_fields=fields,
+            pump_tag_number=pump_tag_number,
+            source_page=candidate.source_page_hint,
+        )
+        staged.append(row)
+    return staged
+
+
 __all__ = [
     "SourceDocumentInfo",
     "CandidateSummary",
     "AreaDryRunResult",
     "register_source_document",
     "build_area_dry_run",
+    "stage_area_candidates",
 ]

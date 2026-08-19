@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import HistoricalReview from "./HistoricalReview";
 import {
@@ -112,6 +112,36 @@ describe("Historical Data Review workspace -- detail and N/A display", () => {
     const sourceCell = await screen.findByTestId("source-value-mechseal_temp_de");
     expect(sourceCell).toHaveTextContent("0");
     expect(sourceCell).not.toHaveTextContent("N/A");
+  });
+});
+
+describe("Historical Data Review workspace -- MWO-LTSA-HISTORICAL-INCOMPLETE-DATA-POLICY-001 Core Model", () => {
+  it("shows Incomplete (never a fabricated Matched) for a candidate with no resolved pump tag", async () => {
+    const incomplete = {
+      ...UNRESOLVED_CANDIDATE,
+      classification: "INCOMPLETE",
+      extracted_fields: { ...UNRESOLVED_CANDIDATE.extracted_fields, raw_asset_tag: "701-MM-51" },
+    };
+    getHistoricalReviewCandidates.mockResolvedValue([incomplete]);
+    renderWithSession(["record.edit"]);
+    const badges = await screen.findAllByText("Incomplete");
+    expect(badges.length).toBeGreaterThan(0);
+  });
+
+  it("displays the raw source tag distinctly from the (unresolved) canonical pump relation", async () => {
+    const incomplete = {
+      ...UNRESOLVED_CANDIDATE,
+      classification: "INCOMPLETE",
+      extracted_fields: { ...UNRESOLVED_CANDIDATE.extracted_fields, raw_asset_tag: "701-MM-51" },
+    };
+    getHistoricalReviewCandidates.mockResolvedValue([incomplete]);
+    renderWithSession(["record.edit"]);
+    fireEvent.click(await screen.findByText("DFE-2"));
+    const modal = await screen.findByTestId("modal");
+    expect(within(modal).getAllByText(/701-MM-51/).length).toBeGreaterThan(0);
+    // canonical pump relation is genuinely unresolved -- N/A, never a
+    // guessed/converted pump tag (e.g. never "701-P-51").
+    expect(within(modal).queryByText("701-P-51")).not.toBeInTheDocument();
   });
 });
 

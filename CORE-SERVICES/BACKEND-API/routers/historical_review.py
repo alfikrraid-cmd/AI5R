@@ -61,6 +61,32 @@ def _candidate_asset_code(candidate: dict) -> str | None:
     return candidate.get("pump_tag_number")
 
 
+# MWO-LTSA-HISTORICAL-INCOMPLETE-DATA-POLICY-001 -- Core Model. Computed
+# from existing columns only (status, pump_tag_number) -- no schema
+# change, no stored classification column. A candidate never needs to be
+# "complete" to be preserved: INCOMPLETE is a first-class, valid,
+# discoverable, later-correctable state, never conflated with INVALID.
+#   MATCHED:   pump_tag_number resolved -- canonical pump relation known.
+#   INCOMPLETE: a valid historical observation whose pump relation (or
+#               other canonical value) is not yet resolved. Still
+#               promotable once completed; never promotable as-is
+#               (promote_*_candidate's own existing pump_tag_number
+#               check already enforces this, unchanged).
+#   INVALID:   REJECTED -- a human explicitly decided this candidate is
+#               not a valid historical observation at all. Never
+#               promotable (same existing REVIEWED-only gate).
+def classify_candidate(candidate: dict) -> str:
+    if candidate.get("status") == "REJECTED":
+        return "INVALID"
+    if candidate.get("pump_tag_number"):
+        return "MATCHED"
+    return "INCOMPLETE"
+
+
+def _with_classification(candidate: dict) -> dict:
+    return {**candidate, "classification": classify_candidate(candidate)}
+
+
 def _assert_in_scope_or_404(candidate: dict, current_user: AuthenticatedIdentity, pump_gateway) -> None:
     scope = resolve_area_scope(current_user)
     if scope is None:
@@ -68,6 +94,9 @@ def _assert_in_scope_or_404(candidate: dict, current_user: AuthenticatedIdentity
     asset_code = _candidate_asset_code(candidate)
     if not is_asset_in_scope(asset_code, scope, pump_gateway):
         raise HTTPException(status_code=404, detail="No such candidate")
+
+
+_LISTABLE_STATUSES = {"PENDING_REVIEW", "REVIEWED", "REJECTED", "SAVED"}
 
 
 @router.get("/api/ltsa/historical-review/candidates")
@@ -78,16 +107,20 @@ def list_candidates(
     pump_gateway=Depends(get_pump_gateway),
     current_user: AuthenticatedIdentity = Depends(get_current_user),
 ) -> Payload:
-    # list_pending() is deliberately status=PENDING_REVIEW only (the
-    # repository's own real capability, per its docstring) -- callers
-    # asking for a different status get an honest empty list rather than
-    # a fabricated result, never a silent fallback to "everything".
-    if status not in (None, "PENDING_REVIEW"):
-        return {"data": []}
-    candidates = staging_repository.list_pending(detected_document_type)
+    # MWO-LTSA-HISTORICAL-INCOMPLETE-DATA-POLICY-001 -- widened from
+    # PENDING_REVIEW-only so an INCOMPLETE observation that has already
+    # been reviewed (status REVIEWED, pump_tag_number still NULL) stays
+    # discoverable after a page reload, per this MWO's own "must remain
+    # discoverable in Historical Review" rule. An unrecognized status
+    # still gets an honest empty list, never a fabricated result.
+    effective_status = status or "PENDING_REVIEW"
+    if effective_status not in _LISTABLE_STATUSES:
+        return {"data": [], "count": 0}
+    candidates = staging_repository.list_by_status(effective_status, detected_document_type)
     scope = resolve_area_scope(current_user)
     if scope is not None:
         candidates = [c for c in candidates if is_asset_in_scope(_candidate_asset_code(c), scope, pump_gateway)]
+    candidates = [_with_classification(c) for c in candidates]
     return {"data": candidates, "count": len(candidates)}
 
 
@@ -102,7 +135,7 @@ def get_candidate(
     if candidate is None:
         raise HTTPException(status_code=404, detail="No such candidate")
     _assert_in_scope_or_404(candidate, current_user, pump_gateway)
-    return {"data": candidate}
+    return {"data": _with_classification(candidate)}
 
 
 class ReviewRequest(BaseModel):
@@ -184,7 +217,7 @@ def review_candidate(
                 source_reference=f"document_field_extraction:{candidate_id}",
             )
 
-    return {"data": updated}
+    return {"data": _with_classification(updated)}
 
 
 class RejectRequest(BaseModel):
@@ -221,7 +254,7 @@ def reject_candidate(
         changed_by=actor_id, reason=payload.reason,
         source_reference=f"document_field_extraction:{candidate_id}",
     )
-    return {"data": updated}
+    return {"data": _with_classification(updated)}
 
 
 @router.post("/api/ltsa/historical-review/candidates/{candidate_id}/promote")
@@ -243,6 +276,22 @@ def promote_candidate(
         raise HTTPException(
             status_code=422,
             detail=f"{detected_type!r} is not a promotable candidate type",
+        )
+
+    # MWO-LTSA-HISTORICAL-INCOMPLETE-DATA-POLICY-001 -- explicit,
+    # readable promotion-safety gate matching the Core Model directly:
+    # INVALID never promotes (redundant with, but clearer than, the
+    # underlying REVIEWED-only check every PromotionError already
+    # enforces); INCOMPLETE never promotes as-is -- the existing
+    # pump_tag_number check in promote_*_candidate() is the real
+    # enforcement, this only gives a classification-aware error message.
+    classification = classify_candidate(candidate)
+    if classification == "INVALID":
+        raise HTTPException(status_code=422, detail="candidate is INVALID (rejected) -- cannot promote")
+    if classification == "INCOMPLETE":
+        raise HTTPException(
+            status_code=422,
+            detail="candidate is INCOMPLETE (pump relation unresolved) -- resolve the pump match before promoting",
         )
 
     actor_id = _actor_id(current_user)

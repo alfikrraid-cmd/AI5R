@@ -73,9 +73,12 @@ class FakeStagingRepository:
         return dict(self.candidate) if candidate_id == self.candidate["document_field_extraction_id"] else None
 
     def list_pending(self, detected_document_type=None):
+        return self.list_by_status("PENDING_REVIEW", detected_document_type)
+
+    def list_by_status(self, status, detected_document_type=None):
         if detected_document_type and self.candidate["detected_document_type"] != detected_document_type:
             return []
-        return [dict(self.candidate)] if self.candidate["status"] == "PENDING_REVIEW" else []
+        return [dict(self.candidate)] if self.candidate["status"] == status else []
 
     def apply_review(self, candidate_id, *, reviewed_fields, reviewed_by, next_status="REVIEWED", pump_tag_number=None):
         self.apply_review_calls.append(

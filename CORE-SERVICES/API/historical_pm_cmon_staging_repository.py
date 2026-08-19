@@ -108,7 +108,16 @@ class HistoricalPMCMONStagingRepository:
         return rows[0] if rows else None
 
     def list_pending(self, detected_document_type: str | None = None) -> list[dict]:
-        where = "status = 'PENDING_REVIEW'"
+        return self.list_by_status("PENDING_REVIEW", detected_document_type)
+
+    def list_by_status(self, status: str, detected_document_type: str | None = None) -> list[dict]:
+        # MWO-LTSA-HISTORICAL-INCOMPLETE-DATA-POLICY-001 -- generalizes
+        # list_pending() (unchanged, still PENDING_REVIEW-only) so an
+        # INCOMPLETE observation that has already been reviewed (status
+        # REVIEWED, pump_tag_number still NULL -- not yet promotable)
+        # remains discoverable in Historical Review after a page reload,
+        # not just within one browser session's own local state.
+        where = f"status = {_sql(status)}"
         if detected_document_type:
             where += f" AND detected_document_type = {_sql(detected_document_type)}"
         return _json_query(
