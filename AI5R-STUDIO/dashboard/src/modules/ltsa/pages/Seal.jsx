@@ -3,6 +3,7 @@ import { EmptyState, Panel, PageHeader } from "../../../design-system";
 import SealFilterBar from "../components/SealFilterBar";
 import SealRegistryTable from "../components/SealRegistryTable";
 import SealOpenDesignView from "../components/SealOpenDesignView";
+import PhysicalSealWorkspace from "../components/PhysicalSealWorkspace";
 import samplePumps from "../data/samplePumps";
 import {
   getSeals, getSealCompatibility, getSealStock, postEngineeringAI,
@@ -400,6 +401,8 @@ export default function Seal({ seals: sealsProp, onNavigate }) {
           )}
         </div>
       </div>
+
+      <PhysicalSealWorkspace sealTypes={seals} />
     </div>
   );
 }

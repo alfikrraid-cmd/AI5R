@@ -4,6 +4,13 @@ import Seal from "./Seal";
 import {
   getSealCompatibility, getSealStock, postEngineeringAI,
   getPMSchedules, getCMReports, getWorkOrders, updateSealIdentifiers,
+  getSealUnits,
+  getSealUnitLifecycle,
+  getSealUnitInspections,
+  getSealUnitRepairs,
+  getSealUnitWarranty,
+  getSealUnitInstallationReports,
+  getSealUnitHistory,
 } from "../../../api/ai5rClient";
 import { AuthProvider } from "../auth/AuthContext";
 import sampleSeals from "../data/sampleSeals";
@@ -21,6 +28,13 @@ vi.mock("../../../api/ai5rClient", () => ({
   getCMReports: vi.fn(),
   getWorkOrders: vi.fn(),
   updateSealIdentifiers: vi.fn(),
+  getSealUnits: vi.fn(),
+  getSealUnitLifecycle: vi.fn(),
+  getSealUnitInspections: vi.fn(),
+  getSealUnitRepairs: vi.fn(),
+  getSealUnitWarranty: vi.fn(),
+  getSealUnitInstallationReports: vi.fn(),
+  getSealUnitHistory: vi.fn(),
   onUnauthorized: vi.fn(),
 }));
 
@@ -35,6 +49,13 @@ beforeEach(() => {
   getPMSchedules.mockResolvedValue([]);
   getCMReports.mockResolvedValue([]);
   getWorkOrders.mockResolvedValue([]);
+  getSealUnits.mockResolvedValue([]);
+  getSealUnitLifecycle.mockResolvedValue([]);
+  getSealUnitInspections.mockResolvedValue([]);
+  getSealUnitRepairs.mockResolvedValue([]);
+  getSealUnitWarranty.mockResolvedValue([]);
+  getSealUnitInstallationReports.mockResolvedValue([]);
+  getSealUnitHistory.mockResolvedValue([]);
 });
 
 afterEach(() => {

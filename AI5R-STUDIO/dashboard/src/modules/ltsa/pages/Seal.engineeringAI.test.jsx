@@ -4,7 +4,19 @@ import { fileURLToPath } from "url";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Seal from "./Seal";
-import { postEngineeringAI, getPMSchedules, getCMReports, getWorkOrders } from "../../../api/ai5rClient";
+import {
+  postEngineeringAI,
+  getPMSchedules,
+  getCMReports,
+  getWorkOrders,
+  getSealUnits,
+  getSealUnitLifecycle,
+  getSealUnitInspections,
+  getSealUnitRepairs,
+  getSealUnitWarranty,
+  getSealUnitInstallationReports,
+  getSealUnitHistory,
+} from "../../../api/ai5rClient";
 import sampleSeals from "../data/sampleSeals";
 
 // MWO-LTSA-042A -- Seal.jsx now also fetches Related Engineering (PM/CM/
@@ -18,12 +30,26 @@ vi.mock("../../../api/ai5rClient", () => ({
   getPMSchedules: vi.fn(),
   getCMReports: vi.fn(),
   getWorkOrders: vi.fn(),
+  getSealUnits: vi.fn(),
+  getSealUnitLifecycle: vi.fn(),
+  getSealUnitInspections: vi.fn(),
+  getSealUnitRepairs: vi.fn(),
+  getSealUnitWarranty: vi.fn(),
+  getSealUnitInstallationReports: vi.fn(),
+  getSealUnitHistory: vi.fn(),
 }));
 
 beforeEach(() => {
   getPMSchedules.mockResolvedValue([]);
   getCMReports.mockResolvedValue([]);
   getWorkOrders.mockResolvedValue([]);
+  getSealUnits.mockResolvedValue([]);
+  getSealUnitLifecycle.mockResolvedValue([]);
+  getSealUnitInspections.mockResolvedValue([]);
+  getSealUnitRepairs.mockResolvedValue([]);
+  getSealUnitWarranty.mockResolvedValue([]);
+  getSealUnitInstallationReports.mockResolvedValue([]);
+  getSealUnitHistory.mockResolvedValue([]);
 });
 
 // MWO-LTSA-036L: Seal.jsx no longer imports sampleSeals internally -- a

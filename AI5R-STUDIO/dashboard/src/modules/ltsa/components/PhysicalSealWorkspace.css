@@ -1,0 +1,76 @@
+.physical-seal-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.physical-seal-kicker {
+  color: #8aa0b8;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.physical-seal-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(180px, 0.8fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.physical-seal-table-wrap {
+  max-height: 280px;
+  overflow: auto;
+}
+
+.physical-seal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.physical-seal-readonly {
+  color: #8aa0b8;
+  margin: 0;
+}
+
+.physical-seal-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) repeat(2, minmax(180px, 1fr));
+  gap: 10px;
+  align-items: center;
+  margin: 10px 0;
+}
+
+.physical-seal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 10px 0;
+}
+
+.physical-seal-field input,
+.physical-seal-field select {
+  background: #0f1720;
+  border: 1px solid #223143;
+  border-radius: 6px;
+  color: #f8fbff;
+  padding: 8px 10px;
+}
+
+.physical-seal-finding {
+  border: 1px solid #223143;
+  border-radius: 8px;
+  margin: 12px 0;
+  padding: 12px;
+}
+
+@media (max-width: 820px) {
+  .physical-seal-grid,
+  .physical-seal-row {
+    grid-template-columns: 1fr;
+  }
+}

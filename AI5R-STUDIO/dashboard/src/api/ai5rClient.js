@@ -857,6 +857,121 @@ export async function getSealCompatibility() {
     throw new Error("Seal Compatibility API returned an invalid list");
 }
 
+function unwrapLtsaList(payload, label) {
+    if (Array.isArray(payload)) return payload;
+    if (Array.isArray(payload?.data)) return payload.data;
+    if (Array.isArray(payload?.items)) return payload.items;
+
+    throw new Error(`${label} API returned an invalid list`);
+}
+
+function unwrapLtsaDetail(payload, label) {
+    if (payload?.data && typeof payload.data === "object" && !Array.isArray(payload.data)) return payload.data;
+    if (payload && typeof payload === "object" && !Array.isArray(payload)) return payload;
+
+    throw new Error(`${label} API returned an invalid detail`);
+}
+
+async function _ltsaJsonRequest(path, options) {
+    const response = await apiFetch(`${API_URL}${path}`, options);
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok) {
+        throw new Error(payload?.detail || payload?.message || `LTSA API ${path} unavailable`);
+    }
+
+    return payload;
+}
+
+function jsonOptions(method, body) {
+    return {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+    };
+}
+
+export async function getSealUnits() {
+    const payload = await _ltsaJsonRequest("/api/ltsa/seal-units");
+    return unwrapLtsaList(payload, "Seal Units");
+}
+
+export async function getSealUnit(sealUnitId) {
+    const payload = await _ltsaJsonRequest(`/api/ltsa/seal-units/${encodeURIComponent(sealUnitId)}`);
+    return unwrapLtsaDetail(payload, "Seal Unit");
+}
+
+export async function getSealUnitLifecycle(sealUnitId) {
+    const payload = await _ltsaJsonRequest(`/api/ltsa/seal-units/${encodeURIComponent(sealUnitId)}/lifecycle`);
+    return unwrapLtsaList(payload, "Seal Unit Lifecycle");
+}
+
+export async function createSealUnitLifecycleEvent(sealUnitId, event) {
+    return _ltsaJsonRequest(
+        `/api/ltsa/seal-units/${encodeURIComponent(sealUnitId)}/lifecycle`,
+        jsonOptions("POST", event)
+    );
+}
+
+export async function getSealUnitInspections(sealUnitId) {
+    const payload = await _ltsaJsonRequest(`/api/ltsa/seal-units/${encodeURIComponent(sealUnitId)}/inspections`);
+    return unwrapLtsaList(payload, "Seal Unit Inspections");
+}
+
+export async function createSealUnitInspection(sealUnitId, inspection) {
+    return _ltsaJsonRequest(
+        `/api/ltsa/seal-units/${encodeURIComponent(sealUnitId)}/inspections`,
+        jsonOptions("POST", inspection)
+    );
+}
+
+export async function getSealUnitRepairs(sealUnitId) {
+    const payload = await _ltsaJsonRequest(`/api/ltsa/seal-units/${encodeURIComponent(sealUnitId)}/repairs`);
+    return unwrapLtsaList(payload, "Seal Unit Repairs");
+}
+
+export async function createSealUnitRepair(sealUnitId, repair) {
+    return _ltsaJsonRequest(
+        `/api/ltsa/seal-units/${encodeURIComponent(sealUnitId)}/repairs`,
+        jsonOptions("POST", repair)
+    );
+}
+
+export async function getSealUnitWarranty(sealUnitId) {
+    const payload = await _ltsaJsonRequest(`/api/ltsa/seal-units/${encodeURIComponent(sealUnitId)}/warranty`);
+    return unwrapLtsaList(payload, "Seal Unit Warranty");
+}
+
+export async function createSealUnitWarrantyAssessment(sealUnitId, assessment) {
+    return _ltsaJsonRequest(
+        `/api/ltsa/seal-units/${encodeURIComponent(sealUnitId)}/warranty`,
+        jsonOptions("POST", assessment)
+    );
+}
+
+export async function decideSealWarrantyAssessment(assessmentId, decision) {
+    return _ltsaJsonRequest(
+        `/api/ltsa/seal-warranty-assessments/${encodeURIComponent(assessmentId)}/decision`,
+        jsonOptions("POST", decision)
+    );
+}
+
+export async function getSealUnitInstallationReports(sealUnitId) {
+    const payload = await _ltsaJsonRequest(`/api/ltsa/seal-units/${encodeURIComponent(sealUnitId)}/installation-reports`);
+    return unwrapLtsaList(payload, "Seal Unit Installation Reports");
+}
+
+export async function linkInstallationReportToInstallEvent(installationCode, link) {
+    return _ltsaJsonRequest(
+        `/api/ltsa/installation-reports/${encodeURIComponent(installationCode)}/link-installation`,
+        jsonOptions("POST", link)
+    );
+}
+
+export async function getSealUnitHistory(sealUnitId) {
+    const payload = await _ltsaJsonRequest(`/api/ltsa/seal-units/${encodeURIComponent(sealUnitId)}/history`);
+    return unwrapLtsaList(payload, "Seal Unit History");
+}
 // Import API (MWO-LTSA-076/077/079/081/085/102B/102C/103/103A,
 // CORE-SERVICES/BACKEND-API/routers/import_router.py) -- five real,
 // already-existing endpoints (checkImportConflicts kept for direct
