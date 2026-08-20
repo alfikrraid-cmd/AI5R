@@ -35,6 +35,8 @@ from API.pm_cm_evidence_repository import PMCMEvidenceRepository
 from API.record_change_history_repository import RecordChangeHistoryRepository
 from API.seal_unit_repository import SealUnitRepository
 from API.seal_lifecycle_service import SealLifecycleEventRepository
+from API.seal_inspection_service import SealInspectionRepository
+from API.seal_repair_service import SealRepairRepository
 from API.historical_pm_cmon_staging_repository import HistoricalPMCMONStagingRepository
 from API.pm_occurrence_gateway import PMOccurrenceGateway
 from API.pm_occurrence_repository import PMOccurrenceRepository
@@ -177,6 +179,14 @@ _seal_unit_repository = SealUnitRepository(_import_database_runner)
 # precedent), reusing this exact same _import_database_runner singleton
 # via get_import_database_runner() below, not a second runner.
 _seal_lifecycle_event_repository = SealLifecycleEventRepository(_import_database_runner)
+
+# MWO-LTSA-SEAL-INSPECTION-REPAIR-001 -- same singleton again; read
+# support for the two new engineering-record tables. Their WRITE paths
+# (create_inspection/create_repair) are plain functions, not classes --
+# same apply_lifecycle_event precedent, imported directly into the
+# router, reusing this exact runner via get_import_database_runner().
+_seal_inspection_repository = SealInspectionRepository(_import_database_runner)
+_seal_repair_repository = SealRepairRepository(_import_database_runner)
 
 # MWO-LTSA-031D -- built from the same singleton Gateway instances above,
 # not fresh ones -- no second set of Gateways is constructed anywhere.
@@ -342,6 +352,14 @@ def get_seal_unit_repository() -> SealUnitRepository:
 
 def get_seal_lifecycle_event_repository() -> SealLifecycleEventRepository:
     return _seal_lifecycle_event_repository
+
+
+def get_seal_inspection_repository() -> SealInspectionRepository:
+    return _seal_inspection_repository
+
+
+def get_seal_repair_repository() -> SealRepairRepository:
+    return _seal_repair_repository
 
 
 # MWO-LTSA-AUTH-001 -- the two reusable dependencies this MWO requires:

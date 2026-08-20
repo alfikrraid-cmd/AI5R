@@ -64,6 +64,48 @@ class SealLifecycleEventCreateRequest(BaseModel):
     notes: str | None = None
     source_reference: str | None = None
 
+
+# MWO-LTSA-SEAL-INSPECTION-REPAIR-001 -- created_by is deliberately NOT a
+# field on either create request here, same discipline
+# SealLifecycleEventCreateRequest's own omission already established.
+class SealInspectionFindingRequest(BaseModel):
+    component: str
+    condition: str | None = None
+    measurement_name: str | None = None
+    measured_value: float | None = None
+    unit: str | None = None
+    acceptance_min: float | None = None
+    acceptance_max: float | None = None
+    finding: str | None = None
+    action_required: str | None = None
+
+
+class SealInspectionCreateRequest(BaseModel):
+    inspection_date: str
+    inspection_type: str
+    pump_tag_number: str | None = None
+    overall_condition: str | None = None
+    failure_mode: str | None = None
+    root_cause: str | None = None
+    recommendation: str | None = None
+    disposition: str | None = None
+    inspected_by: str | None = None
+    notes: str | None = None
+    source_reference: str | None = None
+    findings: list[SealInspectionFindingRequest] = Field(default_factory=list)
+
+
+class SealRepairCreateRequest(BaseModel):
+    repair_date: str
+    repair_type: str
+    repair_action: str
+    inspection_id: str | None = None
+    parts_replaced: list[Any] | dict[str, Any] | None = None
+    repair_result: str | None = None
+    performed_by: str | None = None
+    notes: str | None = None
+    source_reference: str | None = None
+
 # Fields mirror exactly what WorkOrderGateway.create_work_order already
 # accepts (per the canonical Work Order Create workflow's Validate node) --
 # not new business fields, just typed for the request body.

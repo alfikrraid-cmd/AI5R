@@ -7,9 +7,11 @@ from dependencies import (
     get_import_database_runner,
     get_pump_gateway,
     get_seal_gateway,
+    get_seal_inspection_repository,
     get_seal_lifecycle_event_repository,
     get_seal_master_data_repository,
     get_seal_pump_compatibility_gateway,
+    get_seal_repair_repository,
     get_seal_stock_gateway,
     get_seal_unit_repository,
     require_permission,
@@ -24,8 +26,30 @@ from API.seal_lifecycle_service import (
     SealUnitNotFoundError,
     apply_lifecycle_event,
 )
+from API.seal_inspection_service import (
+    InvalidInspectionStateError,
+    InvalidVocabularyError as InvalidInspectionVocabularyError,
+    SealInspectionError,
+    SealInspectionFinding,
+    SealUnitNotFoundError as InspectionSealUnitNotFoundError,
+    UnknownPumpError,
+    create_inspection,
+)
+from API.seal_repair_service import (
+    InspectionMismatchError,
+    InvalidRepairStateError,
+    InvalidVocabularyError as InvalidRepairVocabularyError,
+    SealRepairError,
+    SealUnitNotFoundError as RepairSealUnitNotFoundError,
+    create_repair,
+)
 from API.seal_master_data_repository import normalize_identifier_field
-from models.requests import SealIdentifierUpdateRequest, SealLifecycleEventCreateRequest
+from models.requests import (
+    SealIdentifierUpdateRequest,
+    SealInspectionCreateRequest,
+    SealLifecycleEventCreateRequest,
+    SealRepairCreateRequest,
+)
 from models.responses import Payload
 
 # MWO-LTSA-AUTH-001 -- seal.read gates seal identity/compatibility data
@@ -237,3 +261,154 @@ def create_seal_unit_lifecycle_event(
     except SealLifecycleError as error:
         raise HTTPException(status_code=422, detail=str(error))
     return {"data": event}
+
+
+# --- MWO-LTSA-SEAL-INSPECTION-REPAIR-001 -- engineering inspection/repair records ---
+#
+# Same area-authorization shape as #6.2's lifecycle events (_visible_events
+# reused unchanged, not duplicated): a pump-associated record is scoped to
+# that pump's area; a pumpless record stays globally readable under
+# seal.read (seal_repair has no pump_tag_number column at all -- every
+# repair row is treated as pumpless here, consistent with #6.2's own
+# pumpless policy, never seal_unit.current_pump).
+
+
+@router.get("/api/ltsa/seal-units/{seal_unit_id}/inspections")
+def list_seal_unit_inspections(
+    seal_unit_id: str,
+    seal_unit_repository=Depends(get_seal_unit_repository),
+    seal_inspection_repository=Depends(get_seal_inspection_repository),
+    pump_gateway=Depends(get_pump_gateway),
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
+) -> Payload:
+    if seal_unit_repository.find_by_id(seal_unit_id) is None:
+        raise HTTPException(status_code=404, detail="No such seal unit")
+    inspections = seal_inspection_repository.list_by_seal_unit(seal_unit_id)
+    scope = resolve_area_scope(current_user)
+    inspections = _visible_events(inspections, scope, pump_gateway)
+    return {"data": inspections, "count": len(inspections)}
+
+
+@router.get("/api/ltsa/seal-inspections/{inspection_id}")
+def get_seal_inspection(
+    inspection_id: str,
+    seal_inspection_repository=Depends(get_seal_inspection_repository),
+    pump_gateway=Depends(get_pump_gateway),
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
+) -> Payload:
+    inspection = seal_inspection_repository.find_by_id(inspection_id)
+    if inspection is None:
+        raise HTTPException(status_code=404, detail="No such seal inspection")
+    scope = resolve_area_scope(current_user)
+    if not _visible_events([inspection], scope, pump_gateway):
+        raise HTTPException(status_code=404, detail="No such seal inspection")
+    return {"data": inspection}
+
+
+@router.post("/api/ltsa/seal-units/{seal_unit_id}/inspections")
+def create_seal_unit_inspection(
+    seal_unit_id: str,
+    payload: SealInspectionCreateRequest,
+    current_user=Depends(require_permission("seal.lifecycle_write")),
+    runner=Depends(get_import_database_runner),
+) -> Payload:
+    try:
+        inspection = create_inspection(
+            runner,
+            seal_unit_id=seal_unit_id,
+            inspection_date=payload.inspection_date,
+            inspection_type=payload.inspection_type,
+            # Server-derived, never request-supplied -- SealInspectionCreateRequest
+            # has no created_by field at all (same actor-spoof discipline).
+            created_by=current_user.user_id,
+            pump_tag_number=payload.pump_tag_number,
+            overall_condition=payload.overall_condition,
+            failure_mode=payload.failure_mode,
+            root_cause=payload.root_cause,
+            recommendation=payload.recommendation,
+            disposition=payload.disposition,
+            inspected_by=payload.inspected_by,
+            notes=payload.notes,
+            source_reference=payload.source_reference,
+            findings=[
+                SealInspectionFinding(
+                    component=f.component, condition=f.condition, measurement_name=f.measurement_name,
+                    measured_value=f.measured_value, unit=f.unit, acceptance_min=f.acceptance_min,
+                    acceptance_max=f.acceptance_max, finding=f.finding, action_required=f.action_required,
+                )
+                for f in payload.findings
+            ],
+        )
+    except InspectionSealUnitNotFoundError:
+        raise HTTPException(status_code=404, detail="No such seal unit")
+    except InvalidInspectionStateError as error:
+        raise HTTPException(status_code=409, detail=str(error))
+    except (UnknownPumpError, InvalidInspectionVocabularyError) as error:
+        raise HTTPException(status_code=422, detail=str(error))
+    except SealInspectionError as error:
+        raise HTTPException(status_code=422, detail=str(error))
+    return {"data": inspection}
+
+
+@router.get("/api/ltsa/seal-units/{seal_unit_id}/repairs")
+def list_seal_unit_repairs(
+    seal_unit_id: str,
+    seal_unit_repository=Depends(get_seal_unit_repository),
+    seal_repair_repository=Depends(get_seal_repair_repository),
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
+) -> Payload:
+    if seal_unit_repository.find_by_id(seal_unit_id) is None:
+        raise HTTPException(status_code=404, detail="No such seal unit")
+    # seal_repair carries no pump_tag_number column (this MWO's own field
+    # list) -- every repair row is pumpless, so seal.read alone already
+    # governs visibility; no per-row scope filter is meaningful here.
+    repairs = seal_repair_repository.list_by_seal_unit(seal_unit_id)
+    return {"data": repairs, "count": len(repairs)}
+
+
+@router.get("/api/ltsa/seal-repairs/{repair_id}")
+def get_seal_repair(
+    repair_id: str,
+    seal_repair_repository=Depends(get_seal_repair_repository),
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
+) -> Payload:
+    repair = seal_repair_repository.find_by_id(repair_id)
+    if repair is None:
+        raise HTTPException(status_code=404, detail="No such seal repair")
+    return {"data": repair}
+
+
+@router.post("/api/ltsa/seal-units/{seal_unit_id}/repairs")
+def create_seal_unit_repair(
+    seal_unit_id: str,
+    payload: SealRepairCreateRequest,
+    current_user=Depends(require_permission("seal.lifecycle_write")),
+    runner=Depends(get_import_database_runner),
+) -> Payload:
+    try:
+        repair = create_repair(
+            runner,
+            seal_unit_id=seal_unit_id,
+            repair_date=payload.repair_date,
+            repair_type=payload.repair_type,
+            repair_action=payload.repair_action,
+            # Server-derived, never request-supplied.
+            created_by=current_user.user_id,
+            inspection_id=payload.inspection_id,
+            parts_replaced=payload.parts_replaced,
+            repair_result=payload.repair_result,
+            performed_by=payload.performed_by,
+            notes=payload.notes,
+            source_reference=payload.source_reference,
+        )
+    except RepairSealUnitNotFoundError:
+        raise HTTPException(status_code=404, detail="No such seal unit")
+    except InvalidRepairStateError as error:
+        raise HTTPException(status_code=409, detail=str(error))
+    except InspectionMismatchError as error:
+        raise HTTPException(status_code=422, detail=str(error))
+    except InvalidRepairVocabularyError as error:
+        raise HTTPException(status_code=422, detail=str(error))
+    except SealRepairError as error:
+        raise HTTPException(status_code=422, detail=str(error))
+    return {"data": repair}
