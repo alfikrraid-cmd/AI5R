@@ -33,6 +33,7 @@ from API.ltsa_knowledge_service import LTSAKnowledgeService
 from API.maintenance_history_gateway import MaintenanceHistoryGateway
 from API.pm_cm_evidence_repository import PMCMEvidenceRepository
 from API.record_change_history_repository import RecordChangeHistoryRepository
+from API.seal_unit_repository import SealUnitRepository
 from API.historical_pm_cmon_staging_repository import HistoricalPMCMONStagingRepository
 from API.pm_occurrence_gateway import PMOccurrenceGateway
 from API.pm_occurrence_repository import PMOccurrenceRepository
@@ -163,6 +164,10 @@ _record_change_history_repository = RecordChangeHistoryRepository(_import_databa
 # this MWO. No new staging table, no new promotion logic -- this is the
 # only new wiring needed to expose it.
 _historical_pm_cmon_staging_repository = HistoricalPMCMONStagingRepository(_import_database_runner)
+
+# MWO-LTSA-SEAL-UNIT-IDENTITY-FOUNDATION-001 -- same singleton again; read
+# support only (list/get) for the new physical-seal-identity primitive.
+_seal_unit_repository = SealUnitRepository(_import_database_runner)
 
 # MWO-LTSA-031D -- built from the same singleton Gateway instances above,
 # not fresh ones -- no second set of Gateways is constructed anywhere.
@@ -320,6 +325,10 @@ def get_record_change_history_repository() -> RecordChangeHistoryRepository:
 
 def get_historical_pm_cmon_staging_repository() -> HistoricalPMCMONStagingRepository:
     return _historical_pm_cmon_staging_repository
+
+
+def get_seal_unit_repository() -> SealUnitRepository:
+    return _seal_unit_repository
 
 
 # MWO-LTSA-AUTH-001 -- the two reusable dependencies this MWO requires:

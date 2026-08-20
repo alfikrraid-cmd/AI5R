@@ -15,6 +15,7 @@ from dependencies import (
     get_seal_master_data_repository,
     get_seal_pump_compatibility_gateway,
     get_seal_stock_gateway,
+    get_seal_unit_repository,
 )
 from API.auth_service import ROLE_PERMISSIONS, AuthenticatedIdentity
 
@@ -297,6 +298,86 @@ def test_patch_never_accepts_a_quantity_field():
 
     assert response.status_code == 200
     assert "quantity_on_hand" not in fake.update_calls[0]
+
+
+# --- MWO-LTSA-SEAL-UNIT-IDENTITY-FOUNDATION-001 -- GET /api/ltsa/seal-units[/{id}] ---
+
+
+class FakeSealUnitRepository:
+    def __init__(self, *, units=None):
+        self.units = units if units is not None else []
+        self.list_calls = 0
+        self.find_calls = []
+
+    def list_all(self):
+        self.list_calls += 1
+        return self.units
+
+    def find_by_id(self, seal_unit_id):
+        self.find_calls.append(seal_unit_id)
+        for unit in self.units:
+            if unit["seal_unit_id"] == seal_unit_id:
+                return unit
+        return None
+
+
+def test_seal_units_routes_are_registered_get_only():
+    openapi = client.get("/openapi.json").json()["paths"]
+    assert "/api/ltsa/seal-units" in openapi
+    assert set(openapi["/api/ltsa/seal-units"]) == {"get"}
+    assert "/api/ltsa/seal-units/{seal_unit_id}" in openapi
+    assert set(openapi["/api/ltsa/seal-units/{seal_unit_id}"]) == {"get"}
+
+
+def test_list_seal_units_returns_data_and_count():
+    fake = FakeSealUnitRepository(units=[{"seal_unit_id": "u1", "seal_code": "JC-TYPE-X"}])
+    app.dependency_overrides[get_seal_unit_repository] = lambda: fake
+
+    response = client.get("/api/ltsa/seal-units")
+
+    assert response.status_code == 200
+    assert response.json() == {"data": fake.units, "count": 1}
+    assert fake.list_calls == 1
+
+
+def test_list_seal_units_requires_only_seal_read_not_master_edit():
+    # Every authenticated LTSA role has seal.read (ROLE_PERMISSIONS
+    # confirmed universal); this route must not require master.edit.
+    fake = FakeSealUnitRepository(units=[])
+    for role in ("PERTAMINA_VIEWER", "JOHN_CRANE_ENGINEER", "TAP_ENGINEER"):
+        app.dependency_overrides[get_current_user] = lambda role=role: _identity(role)
+        app.dependency_overrides[get_seal_unit_repository] = lambda: fake
+        response = client.get("/api/ltsa/seal-units")
+        assert response.status_code == 200, f"{role} should be able to read seal units"
+
+
+def test_get_seal_unit_detail_returns_the_matching_unit():
+    fake = FakeSealUnitRepository(units=[{"seal_unit_id": "u1", "seal_code": "JC-TYPE-X"}])
+    app.dependency_overrides[get_seal_unit_repository] = lambda: fake
+
+    response = client.get("/api/ltsa/seal-units/u1")
+
+    assert response.status_code == 200
+    assert response.json() == {"data": {"seal_unit_id": "u1", "seal_code": "JC-TYPE-X"}}
+    assert fake.find_calls == ["u1"]
+
+
+def test_get_seal_unit_detail_404s_for_an_unknown_id():
+    fake = FakeSealUnitRepository(units=[])
+    app.dependency_overrides[get_seal_unit_repository] = lambda: fake
+
+    response = client.get("/api/ltsa/seal-units/no-such-unit")
+
+    assert response.status_code == 404
+
+
+def test_no_install_remove_or_repair_action_route_exists():
+    # Identity-foundation scope only: this MWO adds read routes, never a
+    # write/action route for seal_unit.
+    openapi = client.get("/openapi.json").json()["paths"]
+    seal_unit_paths = [p for p in openapi if "seal-unit" in p]
+    for path in seal_unit_paths:
+        assert set(openapi[path]) == {"get"}, f"{path} must be GET-only"
 
 
 def test_empty_string_identifier_is_normalized_to_none_before_reaching_the_repository():

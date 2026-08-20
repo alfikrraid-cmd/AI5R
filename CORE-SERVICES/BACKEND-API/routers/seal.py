@@ -9,6 +9,7 @@ from dependencies import (
     get_seal_master_data_repository,
     get_seal_pump_compatibility_gateway,
     get_seal_stock_gateway,
+    get_seal_unit_repository,
     require_permission,
 )
 from API.auth_service import AuthenticatedIdentity, resolve_area_scope
@@ -37,6 +38,31 @@ router = APIRouter(dependencies=[Depends(require_permission("seal.read"))])
 @router.get("/api/ltsa/seals")
 def list_ltsa_seals(seal_gateway=Depends(get_seal_gateway)) -> Payload:
     return seal_gateway.list_seals()
+
+
+# MWO-LTSA-SEAL-UNIT-IDENTITY-FOUNDATION-001 -- read support only (no
+# create/install/remove/repair route) for the new physical-seal-identity
+# primitive. Deliberately UNSCOPED, mirroring list_ltsa_seals/
+# list_ltsa_seal_stock above, not list_ltsa_seal_compatibility's
+# per-pump-row scoping: seal_unit's primary identity is seal-catalog-
+# shaped (like seal_registry), and a unit's current_pump_tag_number is
+# explicitly current-state-only, not the row's ownership. This mirrors
+# the existing, already-intentional "seal.read exposes the seal catalog
+# globally" policy rather than silently introducing a new one -- flagged
+# in this MWO's own completion report for explicit Chief Architect
+# confirmation, not decided unilaterally here.
+@router.get("/api/ltsa/seal-units")
+def list_ltsa_seal_units(seal_unit_repository=Depends(get_seal_unit_repository)) -> Payload:
+    data = seal_unit_repository.list_all()
+    return {"data": data, "count": len(data)}
+
+
+@router.get("/api/ltsa/seal-units/{seal_unit_id}")
+def get_ltsa_seal_unit(seal_unit_id: str, seal_unit_repository=Depends(get_seal_unit_repository)) -> Payload:
+    unit = seal_unit_repository.find_by_id(seal_unit_id)
+    if unit is None:
+        raise HTTPException(status_code=404, detail="No such seal unit")
+    return {"data": unit}
 
 
 @router.get("/api/ltsa/seal-stock")
