@@ -1,0 +1,296 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { createKnowledgeWorkspaceController } from "../controllers/KnowledgeWorkspaceController";
+import { mapPMScheduleRecord } from "../utils/pmMapping";
+
+// MWO-LTSA-032A -- useKnowledgeWorkspace: maps the Knowledge API's raw
+// response into the EquipmentKnowledge shape the approved Open Design
+// defines (knowledge-panel-spec.md §2). No filtering logic, no second API
+// call -- every field below is either a direct rename of a real backend
+// field or explicitly left undefined/mapped to an empty collection when
+// the backend has no data for it (never fabricated).
+//
+// MWO-LTSA-032A-R1: fetch, cache, refresh, and retry now live in
+// KnowledgeWorkspaceController (../controllers/KnowledgeWorkspaceController.js),
+// per that mission's architecture. This hook owns React state
+// (data/loading/error) plus all field-mapping below, unchanged in
+// behavior from the original MWO-LTSA-032A implementation -- mapping was
+// deliberately NOT moved into the controller; see the controller
+// module's own header comment for why (an out-of-scope, in-progress
+// concurrent edit to Recommendation-mapping, MWO-LTSA-032B).
+//
+// Disclosed gaps, not silently invented:
+//  - equipment.location / healthScore / criticality / confidence: no
+//    backend field exists for any of these today.
+//  - equipment.risk/status: derived from summary.cm_summary.overall_condition
+//    (NORMAL -> normal, ABNORMAL -> attention, CRITICAL -> critical), the
+//    one real signal available, not a fabricated score.
+//  - mechanicalSeal: always undefined -- confirmed by repository
+//    archaeology (EngineeringContextEngine._build_seal_summary's own
+//    "installed_seal always null" disclosure) that no backend source
+//    distinguishes an installed seal from compatible ones.
+//  - inventory[].level: the Open Design's InvItem type has no "unknown"
+//    case; a null quantity_on_hand is mapped to level="low" here (the
+//    least misleading of the three available choices) with qty text
+//    itself set to "Unknown" -- flagged in the deliverable report as an
+//    Open Design gap, not resolved unilaterally.
+
+const CM_CONDITION_TO_RISK = {
+  NORMAL: "normal",
+  ABNORMAL: "attention",
+  CRITICAL: "critical",
+};
+
+function mapEquipment(knowledgeData) {
+  const asset = knowledgeData?.summary?.asset ?? null;
+  const cmCondition = knowledgeData?.summary?.cm_summary?.overall_condition;
+  const risk = CM_CONDITION_TO_RISK[cmCondition];
+
+  return {
+    tag: asset?.tag_number,
+    name: asset?.pump_name,
+    location: undefined,
+    healthScore: undefined,
+    risk,
+    criticality: undefined,
+    status: risk,
+    confidence: undefined,
+    aiSummary: undefined,
+    lastUpdated: knowledgeData?.summary?.metadata?.generated_at,
+  };
+}
+
+function mapTimeline(timeline) {
+  return (timeline ?? []).map((event) => ({
+    id: event.id,
+    kind: (event.event_type ?? "").toLowerCase(),
+    title: event.title,
+    time: event.occurred_at,
+    desc: event.description,
+  }));
+}
+
+function mapRefItem(record, { idField, nameLabel, metaField, descriptionField }) {
+  const meta = record[metaField];
+  const description = descriptionField ? record[descriptionField] : undefined;
+
+  return {
+    id: record[idField],
+    name: `${nameLabel} ${record[idField]}`,
+    meta: description ? `${meta ?? ""} — ${description}`.trim() : meta,
+  };
+}
+
+// MWO-LTSA-034 -- maps LTSAKnowledgeService._build_drawings()'s real
+// output shape (CORE-SERVICES/API/ltsa_knowledge_service.py, MWO-LTSA-033):
+// {drawing_id, title, document_number, revision, status, file_name,
+// uploaded_at}. Previously mapped through the generic mapRefItem with a
+// stale idField ("id") that never existed on the real record -- this MWO
+// replaces that placeholder mapping with the real field names. file_name
+// (the pointer to the binary) is deliberately not mapped through: this
+// MWO's scope is metadata only, and the backend's own docstring already
+// excludes file_reference for the same reason.
+function mapDrawings(drawings) {
+  return (drawings ?? []).map((record) => ({
+    id: record.drawing_id,
+    title: record.title,
+    documentNumber: record.document_number,
+    revision: record.revision,
+    status: record.status,
+    uploadedAt: record.uploaded_at,
+  }));
+}
+
+function mapCompatibleSeals(seal) {
+  return (seal ?? []).map((item) => ({
+    id: item.seal_code,
+    name: item.part_name ?? item.seal_code,
+    meta: item.seal_code,
+  }));
+}
+
+function mapInventory(inventory, seal) {
+  const nameByCode = new Map((seal ?? []).map((item) => [item.seal_code, item.part_name]));
+
+  return (inventory ?? []).map((item) => {
+    const quantity = item.quantity_on_hand;
+    const known = quantity !== null && quantity !== undefined;
+    let level = "low";
+    if (known) {
+      if (quantity <= 0) level = "out";
+      else if (item.reorder_point != null && quantity <= item.reorder_point) level = "low";
+      else level = "ok";
+    }
+
+    return {
+      id: item.seal_code,
+      name: nameByCode.get(item.seal_code) ?? item.seal_code,
+      meta: item.location ?? "",
+      qty: known ? String(quantity) : "Unknown",
+      level,
+    };
+  });
+}
+
+// MWO-LTSA-032B -- maps RecommendationEngine.recommend()'s real output
+// shape (CORE-SERVICES/API/recommendation_engine.py, MWO-LTSA-031F/R1):
+// a list of {id, rule_code, priority, category, title, description,
+// evidence: [{source, reference, field, value}], confidence, action}.
+// Repository archaeology (MWO-LTSA-032B) confirmed RecommendationEngine
+// is NOT wired into GET /api/ltsa/pumps/{tag}/knowledge today -- the live
+// endpoint always returns `recommendation: null` (LTSAKnowledgeService's
+// own disclosed gap, MWO-LTSA-031A). Wiring it in is a backend/router
+// change, explicitly out of scope for this frontend-only mission. This
+// mapping is a ready, tested extension point for the day a future,
+// separately-authorized MWO serializes the engine's tuple output into
+// that same key (the same `dataclasses.asdict()` pattern the router
+// already uses for `timeline`) -- it is not verified against real wired
+// data, and against today's live backend always yields an empty list.
+function mapRecommendations(recommendation) {
+  if (!Array.isArray(recommendation)) return [];
+
+  return recommendation.map((rec) => ({
+    id: rec.id,
+    priority: rec.priority,
+    category: rec.category,
+    title: rec.title,
+    description: rec.description,
+    confidence: rec.confidence,
+    action: rec.action,
+    evidence: (rec.evidence ?? []).map((item) => ({
+      source: item.source,
+      reference: item.reference,
+      field: item.field,
+      value: item.value,
+    })),
+  }));
+}
+
+// MWO-LTSA-035 -- maps EngineeringInsight's real output shape
+// (CORE-SERVICES/API/engineering_insight.py): {root_cause, risk,
+// recommended_action, confidence}, deterministically derived backend-side
+// from RecommendationEngine + EngineeringContextEngine, no LLM. `null`
+// (no recommendations exist yet) maps to `undefined`, matching every
+// other disclosed-gap field in this file -- not fabricated as a locked
+// placeholder here; KnowledgeAIInsight.jsx owns the locked-vs-real
+// rendering decision.
+function mapAiInsight(aiInsight) {
+  if (!aiInsight) return undefined;
+
+  return {
+    rootCause: aiInsight.root_cause,
+    // Reuses the same CM_CONDITION_TO_RISK mapping as equipment.risk --
+    // one normalization rule for this raw backend vocabulary, not two.
+    risk: CM_CONDITION_TO_RISK[aiInsight.risk],
+    recommendedAction: aiInsight.recommended_action,
+    confidence: aiInsight.confidence,
+  };
+}
+
+// MWO-LTSA-036F -- maps LTSAKnowledgeService's pm_schedules (MWO-LTSA-036E)
+// into ActivePlansPanel's existing prop shape, reusing pmMapping's
+// mapPMScheduleRecord verbatim -- the same mapper PM.jsx itself already
+// uses, per ActivePlansPanel's own header comment ("pmSchedules are
+// already mapped via pmMapping.mapPMScheduleRecord"). No new mapper is
+// created for condition_monitoring_schedules -- ActivePlansPanel consumes
+// those raw, exactly as it already did before this MWO (its own header
+// comment: "conditionMonitoringSchedules are raw API records"). Both
+// arrays are additive keys read off the one Knowledge API response
+// already fetched by this hook -- no second fetch, per the Chief
+// Architect's "One Aggregate -> One API -> One Fetch" directive.
+function mapActivePlans(pmSchedules, conditionMonitoringSchedules) {
+  return {
+    pmSchedules: (pmSchedules ?? []).map(mapPMScheduleRecord),
+    conditionMonitoringSchedules: conditionMonitoringSchedules ?? [],
+  };
+}
+
+function mapEquipmentKnowledge(knowledgeData) {
+  return {
+    equipment: mapEquipment(knowledgeData),
+    activePlans: mapActivePlans(knowledgeData?.pm_schedules, knowledgeData?.condition_monitoring_schedules),
+    timeline: mapTimeline(knowledgeData?.timeline),
+    mechanicalSeal: undefined,
+    compatibleSeals: mapCompatibleSeals(knowledgeData?.seal),
+    inventory: mapInventory(knowledgeData?.inventory, knowledgeData?.seal),
+    pmHistory: (knowledgeData?.pm ?? []).map((record) =>
+      mapRefItem(record, { idField: "pm_occurrence_code", nameLabel: "PM Occurrence", metaField: "occurrence_date" })
+    ),
+    cmHistory: (knowledgeData?.cm ?? []).map((record) =>
+      mapRefItem(record, {
+        idField: "cm_report_code",
+        nameLabel: "CM Report",
+        metaField: "created_at",
+        descriptionField: "failure_description",
+      })
+    ),
+    breakdownHistory: (knowledgeData?.breakdown ?? []).map((record) =>
+      mapRefItem(record, {
+        idField: "maintenance_record_code",
+        nameLabel: "Breakdown",
+        metaField: "performed_at",
+        descriptionField: "action_taken",
+      })
+    ),
+    drawings: mapDrawings(knowledgeData?.drawings),
+    recommendations: mapRecommendations(knowledgeData?.recommendation),
+    aiInsights: mapAiInsight(knowledgeData?.ai_insight),
+  };
+}
+
+export function useKnowledgeWorkspace(tag) {
+  const controllerRef = useRef(null);
+  if (!controllerRef.current) {
+    controllerRef.current = createKnowledgeWorkspaceController();
+  }
+
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [attempt, setAttempt] = useState(0);
+
+  // Retry: re-run the fetch effect. A failed load() is never cached by
+  // the controller, so this naturally re-fetches -- no force flag needed.
+  const retry = useCallback(() => setAttempt((current) => current + 1), []);
+
+  // Refresh: drop this tag's cached entry, then re-run the fetch effect --
+  // manual reload, per the mission's Refresh requirement (no polling, no
+  // websocket).
+  const refresh = useCallback(() => {
+    controllerRef.current.invalidate(tag);
+    setAttempt((current) => current + 1);
+  }, [tag]);
+
+  useEffect(() => {
+    if (!tag) {
+      setData(null);
+      setLoading(false);
+      setError(null);
+      return undefined;
+    }
+
+    let active = true;
+    setLoading(true);
+    setError(null);
+
+    controllerRef.current
+      .load(tag)
+      .then((knowledgeData) => {
+        if (!active) return;
+        setData(mapEquipmentKnowledge(knowledgeData));
+      })
+      .catch((err) => {
+        if (!active) return;
+        setData(null);
+        setError(err?.message ?? "Pump knowledge API unavailable");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [tag, attempt]);
+
+  return { data, loading, error, refetch: retry, retry, refresh };
+}

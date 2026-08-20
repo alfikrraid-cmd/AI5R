@@ -1,0 +1,38 @@
+.drawing-workspace-layout {
+  display: grid;
+  grid-template-columns: 280px 1fr 320px;
+  gap: 16px;
+  align-items: start;
+}
+
+.drawing-workspace-library,
+.drawing-workspace-viewer,
+.drawing-workspace-data {
+  min-width: 0;
+}
+
+.drawing-workspace-data {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+@media (max-width: 1024px) {
+  .drawing-workspace-layout {
+    grid-template-columns: 240px 1fr;
+  }
+
+  .drawing-workspace-data {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 768px) {
+  .drawing-workspace-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .drawing-workspace-data {
+    grid-column: auto;
+  }
+}

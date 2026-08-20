@@ -1,0 +1,22 @@
+/* MWO-LTSA-052A -- Document Workspace, migrated to the same stacked
+   registry-then-detail layout Seal.css/Pump.css already establish
+   (compact scrollable registry on top, full-width Open Design detail
+   view below -- the Open Design view already manages its own internal
+   object-column/inspector-rail split via LTSAOpenDesign.css's
+   .workspace-grid, so a side-by-side outer grid is not needed here).
+   Replaces the old 3-column Library/Viewer/Data grid. */
+.document-workspace-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.document-workspace-library {
+  width: 100%;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.document-workspace-detail {
+  width: 100%;
+}
