@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import json
 import sys
+import uuid as _uuid_module
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -49,6 +50,23 @@ SEAL_UNIT_STATUSES = frozenset(
 _SELECT_COLUMNS = (
     "seal_unit_id, seal_code, serial_number, status, current_pump_tag_number, created_at, updated_at"
 )
+
+
+def is_valid_uuid(value: str) -> bool:
+    """MWO-LTSA-SEAL-LIFECYCLE-EVENT-LEDGER-001 -- closes the disclosed
+    malformed-UUID gap: a non-UUID path parameter must never reach the
+    database (Postgres raises a raw InvalidTextRepresentation error for
+    `uuid_column = 'not-a-uuid'`, which the router previously let
+    propagate as an uncaught 500). Every UUID-keyed lookup in this module
+    checks this FIRST and treats "malformed" identically to "not found"
+    (same downstream behavior, same discipline auth_service.py's own
+    generic login-failure message already uses: never disclose which
+    specific way an identifier failed to resolve)."""
+    try:
+        _uuid_module.UUID(str(value))
+        return True
+    except (ValueError, AttributeError, TypeError):
+        return False
 
 
 class SealUnitError(ValueError):
@@ -101,6 +119,8 @@ class SealUnitRepository:
         return rows[0]
 
     def find_by_id(self, seal_unit_id: str) -> dict | None:
+        if not is_valid_uuid(seal_unit_id):
+            return None
         rows = _json_query(
             f"SELECT {_SELECT_COLUMNS} FROM seal_unit WHERE seal_unit_id = {_sql(seal_unit_id)}",
             self._runner,
@@ -123,4 +143,5 @@ __all__ = [
     "SealCodeContradictionError",
     "SEAL_UNIT_STATUSES",
     "validate_no_seal_code_contradiction",
+    "is_valid_uuid",
 ]

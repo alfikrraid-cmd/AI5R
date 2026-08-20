@@ -11,7 +11,10 @@ if str(BACKEND_API_DIR) not in sys.path:
 from main import app
 from dependencies import (
     get_current_user,
+    get_import_database_runner,
+    get_pump_gateway,
     get_seal_gateway,
+    get_seal_lifecycle_event_repository,
     get_seal_master_data_repository,
     get_seal_pump_compatibility_gateway,
     get_seal_stock_gateway,
@@ -150,11 +153,14 @@ def test_get_seals_propagates_a_failure_response_unchanged():
 # --- MWO-LTSA-SEAL-INVENTORY-IDENTIFIERS-001 -- PATCH /api/ltsa/seals/{seal_code} ---
 
 
-def _identity(role: str, user_id: str = "actor-1") -> AuthenticatedIdentity:
+def _identity(
+    role: str, user_id: str = "actor-1", *, data_scope_type: str | None = None, data_scope_value: str | None = None
+) -> AuthenticatedIdentity:
     return AuthenticatedIdentity(
         user_id=user_id, email=f"{user_id}@tap.internal",
         organization_id="org-tap", organization_code="TAP",
         role=role, permissions=ROLE_PERMISSIONS[role],
+        data_scope_type=data_scope_type, data_scope_value=data_scope_value,
     )
 
 
@@ -371,13 +377,27 @@ def test_get_seal_unit_detail_404s_for_an_unknown_id():
     assert response.status_code == 404
 
 
-def test_no_install_remove_or_repair_action_route_exists():
-    # Identity-foundation scope only: this MWO adds read routes, never a
-    # write/action route for seal_unit.
+def test_no_patch_or_delete_route_exists_for_seal_units_or_lifecycle_events():
+    # MWO-LTSA-SEAL-LIFECYCLE-EVENT-LEDGER-001 supersedes the prior
+    # identity-foundation MWO's "GET-only" rule with an explicit, narrow
+    # exception: exactly one POST (create-event) is now legitimate. What
+    # must remain permanently true -- append-only, this MWO's own Hard
+    # Rule -- is that PATCH/DELETE never appear anywhere on these paths.
     openapi = client.get("/openapi.json").json()["paths"]
     seal_unit_paths = [p for p in openapi if "seal-unit" in p]
     for path in seal_unit_paths:
-        assert set(openapi[path]) == {"get"}, f"{path} must be GET-only"
+        methods = set(openapi[path])
+        assert "patch" not in methods and "delete" not in methods, f"{path} must never allow PATCH/DELETE"
+        assert methods <= {"get", "post"}, f"{path} must only allow GET/POST"
+
+
+def test_lifecycle_create_route_is_post_only_no_update_or_delete():
+    openapi = client.get("/openapi.json").json()["paths"]
+    assert "/api/ltsa/seal-units/{seal_unit_id}/lifecycle" in openapi
+    methods = set(openapi["/api/ltsa/seal-units/{seal_unit_id}/lifecycle"])
+    assert methods == {"get", "post"}
+    assert "/api/ltsa/seal-lifecycle-events/{event_id}" in openapi
+    assert set(openapi["/api/ltsa/seal-lifecycle-events/{event_id}"]) == {"get"}
 
 
 def test_empty_string_identifier_is_normalized_to_none_before_reaching_the_repository():
@@ -393,3 +413,296 @@ def test_empty_string_identifier_is_normalized_to_none_before_reaching_the_repos
     assert response.status_code == 200
     assert fake.update_calls[0]["kimap_pertamina"] is None
     assert fake.update_calls[0]["gpn_john_crane"] is None
+
+
+# --- MWO-LTSA-SEAL-LIFECYCLE-EVENT-LEDGER-001 -- lifecycle event ledger routes ---
+#
+# GET routes are exercised against a fake SealLifecycleEventRepository
+# (matching FakeSealUnitRepository's own precedent above). POST is
+# exercised against a fake `runner` -- apply_lifecycle_event() is
+# imported directly into the router (not itself a FastAPI dependency),
+# so only its `runner` parameter is injectable; this reuses
+# test_record_edit_router.py's own FakeRunner pattern exactly: the fake
+# returns a canned JSON row from query_scalar(), and the REAL service
+# function's SQL-construction/response-parsing logic runs for real
+# against it -- no live database needed for router-level proofs.
+
+
+class FakeSealLifecycleEventRepository:
+    def __init__(self, *, events=None):
+        self.events = events if events is not None else []
+
+    def find_by_id(self, event_id):
+        for event in self.events:
+            if event["event_id"] == event_id:
+                return event
+        return None
+
+    def list_by_seal_unit(self, seal_unit_id):
+        return [e for e in self.events if e["seal_unit_id"] == seal_unit_id]
+
+    def list_by_pump(self, pump_tag_number):
+        return [e for e in self.events if e.get("pump_tag_number") == pump_tag_number]
+
+
+class FakePumpGateway:
+    def __init__(self, area_by_tag):
+        self.area_by_tag = area_by_tag
+
+    def get_pump(self, tag_number):
+        if tag_number not in self.area_by_tag:
+            return {"success": False}
+        return {"success": True, "data": {"tag_number": tag_number, "area": self.area_by_tag[tag_number]}}
+
+
+class FakeRunner:
+    """Mirrors test_record_edit_router.py's own FakeRunner: `outcome` is
+    the already-JSON-encoded row apply_lifecycle_event()'s single
+    compound SQL statement would have returned from query_scalar()."""
+
+    def __init__(self, outcome: str):
+        self.outcome = outcome
+        self.query_scalar_calls: list[str] = []
+
+    def query_scalar(self, sql):
+        self.query_scalar_calls.append(sql)
+        return self.outcome
+
+
+# apply_lifecycle_event() rejects a non-UUID seal_unit_id before ever
+# touching the runner (the malformed-UUID closure this MWO also
+# requires) -- POST-route tests must use a syntactically valid UUID in
+# the path so the fake runner's canned outcome is actually reached.
+_VALID_SEAL_UNIT_ID = "11111111-1111-4111-8111-111111111111"
+
+
+def _lifecycle_outcome(
+    *, unit_found=1, status_matched=1, compat_matched=1, event_id="evt-1", seal_unit_id="unit-1",
+    event_type="INSTALL", pump_tag_number="110-P-9A", created_by="server-actor",
+):
+    import json as _json
+
+    event_row = {
+        "event_id": event_id, "seal_unit_id": seal_unit_id, "event_type": event_type,
+        "pump_tag_number": pump_tag_number, "event_at": "2026-08-20T00:00:00+00:00",
+        "reason": None, "notes": None, "source_reference": None,
+        "created_by": created_by, "created_at": "2026-08-20T00:00:00+00:00",
+    }
+    event_json = _json.dumps([event_row]) if status_matched and compat_matched and unit_found else "[]"
+    return _json.dumps(
+        {
+            "unit_found": unit_found, "status_matched": status_matched,
+            "compat_matched": compat_matched, "event_json": event_json,
+        }
+    )
+
+
+def test_list_seal_unit_lifecycle_returns_404_when_the_unit_does_not_exist():
+    app.dependency_overrides[get_seal_unit_repository] = lambda: FakeSealUnitRepository(units=[])
+    app.dependency_overrides[get_seal_lifecycle_event_repository] = lambda: FakeSealLifecycleEventRepository()
+    app.dependency_overrides[get_pump_gateway] = lambda: FakePumpGateway({})
+
+    response = client.get("/api/ltsa/seal-units/no-such-unit/lifecycle")
+
+    assert response.status_code == 404
+
+
+def test_list_seal_unit_lifecycle_returns_data_and_count_for_an_unrestricted_role():
+    unit = {"seal_unit_id": _VALID_SEAL_UNIT_ID, "seal_code": "JC-TYPE-X"}
+    events = [
+        {"event_id": "evt-1", "seal_unit_id": _VALID_SEAL_UNIT_ID, "event_type": "REGISTERED", "pump_tag_number": None},
+        {"event_id": "evt-2", "seal_unit_id": _VALID_SEAL_UNIT_ID, "event_type": "INSTALL", "pump_tag_number": "110-P-9A"},
+    ]
+    app.dependency_overrides[get_seal_unit_repository] = lambda: FakeSealUnitRepository(units=[unit])
+    app.dependency_overrides[get_seal_lifecycle_event_repository] = (
+        lambda: FakeSealLifecycleEventRepository(events=events)
+    )
+    app.dependency_overrides[get_pump_gateway] = lambda: FakePumpGateway({"110-P-9A": "HOC"})
+    # SUPERUSER/TAP_ADMIN/TAP_ENGINEER/JOHN_CRANE_ENGINEER are the real,
+    # current _UNRESTRICTED_ROLES set (auth_service.py) -- unlike the two
+    # Pertamina roles (covered separately below), these see every event
+    # regardless of pump area, with no scope configured at all.
+    for role in ("SUPERUSER", "TAP_ADMIN", "TAP_ENGINEER", "JOHN_CRANE_ENGINEER"):
+        app.dependency_overrides[get_current_user] = lambda role=role: _identity(role)
+        response = client.get(f"/api/ltsa/seal-units/{_VALID_SEAL_UNIT_ID}/lifecycle")
+        assert response.status_code == 200, f"{role} should be able to read lifecycle events"
+        assert response.json()["count"] == 2, f"{role} should see every event"
+
+
+def test_get_seal_lifecycle_event_returns_404_for_an_unknown_event():
+    app.dependency_overrides[get_seal_lifecycle_event_repository] = lambda: FakeSealLifecycleEventRepository()
+    app.dependency_overrides[get_pump_gateway] = lambda: FakePumpGateway({})
+
+    response = client.get("/api/ltsa/seal-lifecycle-events/no-such-event")
+
+    assert response.status_code == 404
+
+
+def test_area_scoped_identity_sees_only_in_scope_pump_events_and_all_pumpless_events():
+    # Pump-associated events must obey pump area scope; a pumpless event
+    # (e.g. REGISTERED) must never be hidden -- it carries no pump-area
+    # information to leak (this MWO's own AREA AUTHORIZATION rule).
+    events = [
+        {"event_id": "evt-registered", "seal_unit_id": _VALID_SEAL_UNIT_ID, "event_type": "REGISTERED", "pump_tag_number": None},
+        {"event_id": "evt-in-scope", "seal_unit_id": _VALID_SEAL_UNIT_ID, "event_type": "INSTALL", "pump_tag_number": "110-P-9A"},
+        {"event_id": "evt-out-of-scope", "seal_unit_id": _VALID_SEAL_UNIT_ID, "event_type": "INSTALL", "pump_tag_number": "211-P-1A"},
+    ]
+    app.dependency_overrides[get_seal_unit_repository] = (
+        lambda: FakeSealUnitRepository(units=[{"seal_unit_id": _VALID_SEAL_UNIT_ID, "seal_code": "JC-TYPE-X"}])
+    )
+    app.dependency_overrides[get_seal_lifecycle_event_repository] = (
+        lambda: FakeSealLifecycleEventRepository(events=events)
+    )
+    app.dependency_overrides[get_pump_gateway] = (
+        lambda: FakePumpGateway({"110-P-9A": "HOC", "211-P-1A": "HCC"})
+    )
+    app.dependency_overrides[get_current_user] = (
+        lambda: _identity("PERTAMINA_ENGINEER", data_scope_type="AREA", data_scope_value="HOC")
+    )
+
+    response = client.get(f"/api/ltsa/seal-units/{_VALID_SEAL_UNIT_ID}/lifecycle")
+
+    assert response.status_code == 200
+    ids = {e["event_id"] for e in response.json()["data"]}
+    assert ids == {"evt-registered", "evt-in-scope"}
+
+    # The single-event GET route must apply the identical rule -- an
+    # out-of-scope event is reported as 404, never disclosed to exist.
+    in_scope_response = client.get("/api/ltsa/seal-lifecycle-events/evt-in-scope")
+    assert in_scope_response.status_code == 200
+    out_of_scope_response = client.get("/api/ltsa/seal-lifecycle-events/evt-out-of-scope")
+    assert out_of_scope_response.status_code == 404
+
+
+def test_unrestricted_role_sees_every_event_regardless_of_pump_area():
+    events = [
+        {"event_id": "evt-a", "seal_unit_id": _VALID_SEAL_UNIT_ID, "event_type": "INSTALL", "pump_tag_number": "110-P-9A"},
+        {"event_id": "evt-b", "seal_unit_id": _VALID_SEAL_UNIT_ID, "event_type": "INSTALL", "pump_tag_number": "211-P-1A"},
+    ]
+    app.dependency_overrides[get_seal_unit_repository] = (
+        lambda: FakeSealUnitRepository(units=[{"seal_unit_id": _VALID_SEAL_UNIT_ID, "seal_code": "JC-TYPE-X"}])
+    )
+    app.dependency_overrides[get_seal_lifecycle_event_repository] = (
+        lambda: FakeSealLifecycleEventRepository(events=events)
+    )
+    app.dependency_overrides[get_pump_gateway] = (
+        lambda: FakePumpGateway({"110-P-9A": "HOC", "211-P-1A": "HCC"})
+    )
+    app.dependency_overrides[get_current_user] = lambda: _SUPERUSER_IDENTITY
+
+    response = client.get(f"/api/ltsa/seal-units/{_VALID_SEAL_UNIT_ID}/lifecycle")
+
+    assert response.status_code == 200
+    assert {e["event_id"] for e in response.json()["data"]} == {"evt-a", "evt-b"}
+
+
+def test_create_lifecycle_event_succeeds_for_superuser_and_tap_admin():
+    for role in ("SUPERUSER", "TAP_ADMIN"):
+        fake_runner = FakeRunner(_lifecycle_outcome())
+        app.dependency_overrides[get_current_user] = lambda role=role: _identity(role)
+        app.dependency_overrides[get_import_database_runner] = lambda fake_runner=fake_runner: fake_runner
+
+        response = client.post(
+            f"/api/ltsa/seal-units/{_VALID_SEAL_UNIT_ID}/lifecycle",
+            json={"event_type": "INSTALL", "event_at": "2026-08-20T00:00:00Z", "pump_tag_number": "110-P-9A"},
+        )
+
+        assert response.status_code == 200, f"{role} should be authorized to write lifecycle events"
+        assert response.json()["data"]["event_type"] == "INSTALL"
+
+
+def test_create_lifecycle_event_denied_for_read_only_roles():
+    for role in ("TAP_ENGINEER", "JOHN_CRANE_ENGINEER", "PERTAMINA_ENGINEER", "PERTAMINA_VIEWER"):
+        fake_runner = FakeRunner(_lifecycle_outcome())
+        app.dependency_overrides[get_current_user] = lambda role=role: _identity(role)
+        app.dependency_overrides[get_import_database_runner] = lambda fake_runner=fake_runner: fake_runner
+
+        response = client.post(
+            f"/api/ltsa/seal-units/{_VALID_SEAL_UNIT_ID}/lifecycle",
+            json={"event_type": "INSTALL", "event_at": "2026-08-20T00:00:00Z", "pump_tag_number": "110-P-9A"},
+        )
+
+        assert response.status_code == 403, f"{role} must be denied seal.lifecycle_write"
+        assert fake_runner.query_scalar_calls == []
+
+
+def test_create_lifecycle_event_actor_is_always_the_authenticated_user_never_the_request_body():
+    # SealLifecycleEventCreateRequest has no created_by field at all, so a
+    # client attempting to smuggle one is silently dropped by pydantic --
+    # the value actually reaching apply_lifecycle_event's SQL must be the
+    # real authenticated actor, provable here by inspecting the literal
+    # SQL text the fake runner captured (created_by is inlined via _sql()).
+    fake_runner = FakeRunner(_lifecycle_outcome(created_by="real-actor"))
+    app.dependency_overrides[get_current_user] = lambda: _identity("TAP_ADMIN", user_id="real-actor")
+    app.dependency_overrides[get_import_database_runner] = lambda: fake_runner
+
+    response = client.post(
+        f"/api/ltsa/seal-units/{_VALID_SEAL_UNIT_ID}/lifecycle",
+        json={
+            "event_type": "INSTALL", "event_at": "2026-08-20T00:00:00Z", "pump_tag_number": "110-P-9A",
+            "created_by": "spoofed-actor",
+        },
+    )
+
+    assert response.status_code == 200
+    sql = fake_runner.query_scalar_calls[0]
+    assert "real-actor" in sql
+    assert "spoofed-actor" not in sql
+
+
+def test_create_lifecycle_event_returns_404_when_the_seal_unit_is_not_found():
+    # A syntactically valid but non-existent UUID -- proves the 404 comes
+    # from apply_lifecycle_event's own unit_found=0 outcome, distinct from
+    # the malformed-UUID short-circuit proven separately in the
+    # disposable-Postgres suite.
+    fake_runner = FakeRunner(_lifecycle_outcome(unit_found=0, status_matched=0, compat_matched=0))
+    app.dependency_overrides[get_current_user] = lambda: _SUPERUSER_IDENTITY
+    app.dependency_overrides[get_import_database_runner] = lambda: fake_runner
+
+    response = client.post(
+        "/api/ltsa/seal-units/22222222-2222-4222-8222-222222222222/lifecycle",
+        json={"event_type": "INSTALL", "event_at": "2026-08-20T00:00:00Z", "pump_tag_number": "110-P-9A"},
+    )
+
+    assert response.status_code == 404
+    assert fake_runner.query_scalar_calls, "the runner must actually be reached for this case"
+
+
+def test_create_lifecycle_event_returns_409_for_an_invalid_transition():
+    fake_runner = FakeRunner(_lifecycle_outcome(status_matched=0, compat_matched=0))
+    app.dependency_overrides[get_current_user] = lambda: _SUPERUSER_IDENTITY
+    app.dependency_overrides[get_import_database_runner] = lambda: fake_runner
+
+    response = client.post(
+        f"/api/ltsa/seal-units/{_VALID_SEAL_UNIT_ID}/lifecycle",
+        json={"event_type": "REMOVE", "event_at": "2026-08-20T00:00:00Z", "pump_tag_number": "110-P-9A", "reason": "test"},
+    )
+
+    assert response.status_code == 409
+
+
+def test_create_lifecycle_event_returns_422_for_an_incompatible_pump():
+    fake_runner = FakeRunner(_lifecycle_outcome(compat_matched=0))
+    app.dependency_overrides[get_current_user] = lambda: _SUPERUSER_IDENTITY
+    app.dependency_overrides[get_import_database_runner] = lambda: fake_runner
+
+    response = client.post(
+        f"/api/ltsa/seal-units/{_VALID_SEAL_UNIT_ID}/lifecycle",
+        json={"event_type": "INSTALL", "event_at": "2026-08-20T00:00:00Z", "pump_tag_number": "110-P-9A"},
+    )
+
+    assert response.status_code == 422
+
+
+def test_create_lifecycle_event_returns_422_when_a_required_reason_is_missing():
+    fake_runner = FakeRunner(_lifecycle_outcome())
+    app.dependency_overrides[get_current_user] = lambda: _SUPERUSER_IDENTITY
+    app.dependency_overrides[get_import_database_runner] = lambda: fake_runner
+
+    response = client.post(
+        f"/api/ltsa/seal-units/{_VALID_SEAL_UNIT_ID}/lifecycle",
+        json={"event_type": "REMOVE", "event_at": "2026-08-20T00:00:00Z", "pump_tag_number": "110-P-9A"},
+    )
+
+    assert response.status_code == 422
+    assert fake_runner.query_scalar_calls == []

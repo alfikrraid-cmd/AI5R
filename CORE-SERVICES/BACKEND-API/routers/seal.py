@@ -4,8 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from dependencies import (
     get_current_user,
+    get_import_database_runner,
     get_pump_gateway,
     get_seal_gateway,
+    get_seal_lifecycle_event_repository,
     get_seal_master_data_repository,
     get_seal_pump_compatibility_gateway,
     get_seal_stock_gateway,
@@ -13,9 +15,17 @@ from dependencies import (
     require_permission,
 )
 from API.auth_service import AuthenticatedIdentity, resolve_area_scope
-from API.pump_area_scope import filter_records_by_asset_scope
+from API.pump_area_scope import filter_records_by_asset_scope, is_area_in_scope, resolve_asset_area
+from API.seal_lifecycle_service import (
+    IncompatiblePumpError,
+    InvalidLifecycleTransitionError,
+    MissingReasonError,
+    SealLifecycleError,
+    SealUnitNotFoundError,
+    apply_lifecycle_event,
+)
 from API.seal_master_data_repository import normalize_identifier_field
-from models.requests import SealIdentifierUpdateRequest
+from models.requests import SealIdentifierUpdateRequest, SealLifecycleEventCreateRequest
 from models.responses import Payload
 
 # MWO-LTSA-AUTH-001 -- seal.read gates seal identity/compatibility data
@@ -129,3 +139,101 @@ def update_seal_identifiers(
     if updated is None:
         raise HTTPException(status_code=404, detail="No such seal")
     return {"data": updated}
+
+
+# --- MWO-LTSA-SEAL-LIFECYCLE-EVENT-LEDGER-001 -- append-only lifecycle event ledger ---
+#
+# AREA AUTHORIZATION (documented, not silently decided): seal_unit
+# identity itself stays GLOBAL under seal.read (Chief-Architect-frozen,
+# #6.1's closure). A lifecycle EVENT is different -- when it carries a
+# real pump_tag_number (INSTALL/REMOVE), that pump association is real,
+# current, pump-area-attributable information, so it is scoped exactly
+# like every other pump-attributable row in this codebase (list_ltsa_
+# seal_compatibility's own precedent, reused). An event with NO pump
+# (REGISTERED, SEND_FOR_INSPECTION, etc.) carries no pump-area
+# information to leak in the first place, so it is never filtered --
+# hiding it would not protect anything and would just make an
+# unrestricted-shaped row behave inconsistently. Never derived from
+# seal_unit.current_pump_tag_number (a current-state snapshot, not
+# authorization truth, per this MWO's own explicit rule).
+def _visible_events(events: list[dict], scope, pump_gateway) -> list[dict]:
+    if scope is None:
+        return events
+    visible = []
+    for event in events:
+        pump_tag = event.get("pump_tag_number")
+        if pump_tag is None:
+            visible.append(event)
+            continue
+        if is_area_in_scope(resolve_asset_area(pump_tag, pump_gateway), scope):
+            visible.append(event)
+    return visible
+
+
+@router.get("/api/ltsa/seal-units/{seal_unit_id}/lifecycle")
+def list_seal_unit_lifecycle(
+    seal_unit_id: str,
+    seal_unit_repository=Depends(get_seal_unit_repository),
+    seal_lifecycle_event_repository=Depends(get_seal_lifecycle_event_repository),
+    pump_gateway=Depends(get_pump_gateway),
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
+) -> Payload:
+    if seal_unit_repository.find_by_id(seal_unit_id) is None:
+        raise HTTPException(status_code=404, detail="No such seal unit")
+    events = seal_lifecycle_event_repository.list_by_seal_unit(seal_unit_id)
+    scope = resolve_area_scope(current_user)
+    events = _visible_events(events, scope, pump_gateway)
+    return {"data": events, "count": len(events)}
+
+
+@router.get("/api/ltsa/seal-lifecycle-events/{event_id}")
+def get_seal_lifecycle_event(
+    event_id: str,
+    seal_lifecycle_event_repository=Depends(get_seal_lifecycle_event_repository),
+    pump_gateway=Depends(get_pump_gateway),
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
+) -> Payload:
+    event = seal_lifecycle_event_repository.find_by_id(event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="No such seal lifecycle event")
+    scope = resolve_area_scope(current_user)
+    if not _visible_events([event], scope, pump_gateway):
+        # Same 404 a genuinely-missing event gets -- never disclose that
+        # an out-of-scope event exists at all (existing scope discipline,
+        # e.g. get_ltsa_pump_detail's own identical choice elsewhere).
+        raise HTTPException(status_code=404, detail="No such seal lifecycle event")
+    return {"data": event}
+
+
+@router.post("/api/ltsa/seal-units/{seal_unit_id}/lifecycle")
+def create_seal_unit_lifecycle_event(
+    seal_unit_id: str,
+    payload: SealLifecycleEventCreateRequest,
+    current_user=Depends(require_permission("seal.lifecycle_write")),
+    runner=Depends(get_import_database_runner),
+) -> Payload:
+    try:
+        event = apply_lifecycle_event(
+            runner,
+            seal_unit_id=seal_unit_id,
+            event_type=payload.event_type,
+            event_at=payload.event_at,
+            # Server-derived, never request-supplied -- SealLifecycleEventCreateRequest
+            # has no created_by field at all (Phase 18: no actor-spoofing surface).
+            created_by=current_user.user_id,
+            pump_tag_number=payload.pump_tag_number,
+            reason=payload.reason,
+            notes=payload.notes,
+            source_reference=payload.source_reference,
+        )
+    except SealUnitNotFoundError:
+        raise HTTPException(status_code=404, detail="No such seal unit")
+    except MissingReasonError as error:
+        raise HTTPException(status_code=422, detail=str(error))
+    except InvalidLifecycleTransitionError as error:
+        raise HTTPException(status_code=409, detail=str(error))
+    except IncompatiblePumpError as error:
+        raise HTTPException(status_code=422, detail=str(error))
+    except SealLifecycleError as error:
+        raise HTTPException(status_code=422, detail=str(error))
+    return {"data": event}

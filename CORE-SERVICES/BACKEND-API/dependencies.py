@@ -34,6 +34,7 @@ from API.maintenance_history_gateway import MaintenanceHistoryGateway
 from API.pm_cm_evidence_repository import PMCMEvidenceRepository
 from API.record_change_history_repository import RecordChangeHistoryRepository
 from API.seal_unit_repository import SealUnitRepository
+from API.seal_lifecycle_service import SealLifecycleEventRepository
 from API.historical_pm_cmon_staging_repository import HistoricalPMCMONStagingRepository
 from API.pm_occurrence_gateway import PMOccurrenceGateway
 from API.pm_occurrence_repository import PMOccurrenceRepository
@@ -168,6 +169,14 @@ _historical_pm_cmon_staging_repository = HistoricalPMCMONStagingRepository(_impo
 # MWO-LTSA-SEAL-UNIT-IDENTITY-FOUNDATION-001 -- same singleton again; read
 # support only (list/get) for the new physical-seal-identity primitive.
 _seal_unit_repository = SealUnitRepository(_import_database_runner)
+
+# MWO-LTSA-SEAL-LIFECYCLE-EVENT-LEDGER-001 -- same singleton again; read
+# support (find/list) for the append-only lifecycle event ledger. The
+# WRITE path (apply_lifecycle_event) is a plain function, not a class --
+# imported directly into the router (record_edit.py's own edit_value()
+# precedent), reusing this exact same _import_database_runner singleton
+# via get_import_database_runner() below, not a second runner.
+_seal_lifecycle_event_repository = SealLifecycleEventRepository(_import_database_runner)
 
 # MWO-LTSA-031D -- built from the same singleton Gateway instances above,
 # not fresh ones -- no second set of Gateways is constructed anywhere.
@@ -329,6 +338,10 @@ def get_historical_pm_cmon_staging_repository() -> HistoricalPMCMONStagingReposi
 
 def get_seal_unit_repository() -> SealUnitRepository:
     return _seal_unit_repository
+
+
+def get_seal_lifecycle_event_repository() -> SealLifecycleEventRepository:
+    return _seal_lifecycle_event_repository
 
 
 # MWO-LTSA-AUTH-001 -- the two reusable dependencies this MWO requires:

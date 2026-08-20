@@ -74,13 +74,28 @@ def test_seal_unit_statuses_is_exactly_the_seven_mwo_defined_states():
 
 
 def test_find_by_id_filters_by_seal_unit_id():
+    # MWO-LTSA-SEAL-LIFECYCLE-EVENT-LEDGER-001's malformed-UUID closure
+    # made find_by_id() short-circuit (never touch the runner) for any
+    # non-UUID id -- a real UUID-shaped id is required here to exercise
+    # the SQL-shape this test actually cares about. The short-circuit
+    # itself is proven separately in test_is_valid_uuid_* below.
     runner = FakeRunner(scalar_response="[]")
     repo = SealUnitRepository(runner)
 
-    repo.find_by_id("unit-123")
+    repo.find_by_id("11111111-1111-4111-8111-111111111111")
 
     sql = runner.scalar_calls[0]
-    assert "seal_unit_id = 'unit-123'" in sql
+    assert "seal_unit_id = '11111111-1111-4111-8111-111111111111'" in sql
+
+
+def test_find_by_id_never_touches_the_runner_for_a_malformed_id():
+    runner = FakeRunner(scalar_response="[]")
+    repo = SealUnitRepository(runner)
+
+    result = repo.find_by_id("unit-123")
+
+    assert result is None
+    assert runner.scalar_calls == []
 
 
 def test_list_by_seal_code_filters_by_type():

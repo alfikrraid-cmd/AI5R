@@ -133,6 +133,9 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "internal_inventory.read", "internal_component.read",
             "installation.write", "installation.review",
             "admin.users", "admin.superuser", "audit.read_full", "record.edit",
+            # MWO-LTSA-SEAL-LIFECYCLE-EVENT-LEDGER-001 -- SUPERUSER + TAP_ADMIN
+            # only, per this MWO's own explicit WRITE AUTH grant.
+            "seal.lifecycle_write",
         }
     ),
     "TAP_ADMIN": frozenset(
@@ -144,6 +147,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "internal_inventory.read", "internal_component.read",
             "installation.write", "installation.review",
             "admin.users", "record.edit",
+            "seal.lifecycle_write",
         }
     ),
     "TAP_ENGINEER": frozenset(

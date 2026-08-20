@@ -51,6 +51,19 @@ class SealIdentifierUpdateRequest(BaseModel):
     kimap_pertamina: str | None = None
     gpn_john_crane: str | None = None
 
+
+# MWO-LTSA-SEAL-LIFECYCLE-EVENT-LEDGER-001 -- created_by is deliberately
+# NOT a field here (server-derived from the authenticated actor only,
+# never client-supplied -- same discipline SealIdentifierUpdateRequest's
+# own updated_by omission already established).
+class SealLifecycleEventCreateRequest(BaseModel):
+    event_type: str
+    event_at: str
+    pump_tag_number: str | None = None
+    reason: str | None = None
+    notes: str | None = None
+    source_reference: str | None = None
+
 # Fields mirror exactly what WorkOrderGateway.create_work_order already
 # accepts (per the canonical Work Order Create workflow's Validate node) --
 # not new business fields, just typed for the request body.
