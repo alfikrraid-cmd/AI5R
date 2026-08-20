@@ -167,6 +167,26 @@ class SealRepairRepository:
             self._runner,
         )
 
+    def list_by_inspection_ids(self, inspection_ids: list[str]) -> list[dict]:
+        """MWO-LTSA-SEAL-EQUIPMENT-HISTORY-INTEGRATION-001 -- seal_repair
+        has no pump column (#6.3's own field list); a repair's only
+        defensible historical pump is its linked inspection's pump
+        (repair -> inspection -> inspection.pump_tag_number). One batched
+        query for every inspection_id already fetched by the caller
+        (e.g. "inspections for this pump"), never one query per
+        inspection -- avoids the N+1 this MWO's own PERFORMANCE section
+        forbids."""
+        valid_ids = [i for i in inspection_ids if is_valid_uuid(i)]
+        if not valid_ids:
+            return []
+        in_list = ", ".join(_sql(i) for i in valid_ids)
+        return _json_query(
+            f"SELECT {_REPAIR_COLUMNS} FROM seal_repair "
+            f"WHERE inspection_id IN ({in_list}) "
+            "ORDER BY repair_date ASC, repair_id ASC",
+            self._runner,
+        )
+
 
 __all__ = [
     "REPAIR_RESULTS",

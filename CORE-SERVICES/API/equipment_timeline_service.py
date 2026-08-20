@@ -37,7 +37,6 @@ sort logic.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any
 
@@ -55,32 +54,21 @@ from .pump_lifecycle_models import (
     PumpLifecycleRelatedEngineering,
 )
 from .seal_gateway import SealGateway
-from .timeline_value_objects import TimelineCategory, TimelineSeverity, TimelineSource
+from .timeline_value_objects import (
+    EquipmentTimeline,
+    TimelineCategory,
+    TimelineEvent,
+    TimelineSeverity,
+    TimelineSource,
+)
 from .work_order_gateway import WorkOrderGateway
 
-
-@dataclass(frozen=True, slots=True)
-class TimelineEvent:
-    """Immutable canonical Timeline event -- the single event model every
-    Timeline category (populated or not-yet-available) uses."""
-
-    id: str
-    event_type: TimelineCategory
-    occurred_at: str | None
-    title: str
-    description: str | None
-    severity: TimelineSeverity
-    source: TimelineSource
-    derived: bool
-    payload: dict[str, Any]
-
-
-@dataclass(frozen=True, slots=True)
-class EquipmentTimeline:
-    """Immutable: one pump's full event history, oldest first."""
-
-    tag_number: str
-    events: tuple[TimelineEvent, ...]
+# MWO-LTSA-SEAL-EQUIPMENT-HISTORY-INTEGRATION-001 -- optional, additive:
+# every seal-domain repository is a constructor default of None so every
+# existing caller/test that never passes one keeps building() exactly as
+# before (Hard Rule: "Equipment History with existing PM/CMON but no
+# seal data must continue working unchanged").
+from .seal_equipment_history_service import build_seal_events_for_pump, linked_installation_codes_for_pump
 
 
 class EquipmentTimelineService:
@@ -97,6 +85,11 @@ class EquipmentTimelineService:
         maintenance_history_gateway: MaintenanceHistoryGateway | None = None,
         pm_occurrence_gateway: PMOccurrenceGateway | None = None,
         seal_gateway: SealGateway | None = None,
+        seal_lifecycle_event_repository: Any | None = None,
+        seal_inspection_repository: Any | None = None,
+        seal_repair_repository: Any | None = None,
+        seal_warranty_assessment_repository: Any | None = None,
+        installation_report_fitment_repository: Any | None = None,
     ) -> None:
         self._knowledge_service = knowledge_service or LTSAKnowledgeService()
         self._installation_gateway = installation_gateway or InstallationGateway()
@@ -104,6 +97,23 @@ class EquipmentTimelineService:
         self._maintenance_history_gateway = maintenance_history_gateway or MaintenanceHistoryGateway()
         self._pm_occurrence_gateway = pm_occurrence_gateway or PMOccurrenceGateway()
         self._seal_gateway = seal_gateway or SealGateway()
+        self._seal_lifecycle_event_repository = seal_lifecycle_event_repository
+        self._seal_inspection_repository = seal_inspection_repository
+        self._seal_repair_repository = seal_repair_repository
+        self._seal_warranty_assessment_repository = seal_warranty_assessment_repository
+        self._installation_report_fitment_repository = installation_report_fitment_repository
+
+    @property
+    def _seal_repos_available(self) -> bool:
+        return all(
+            (
+                self._seal_lifecycle_event_repository,
+                self._seal_inspection_repository,
+                self._seal_repair_repository,
+                self._seal_warranty_assessment_repository,
+                self._installation_report_fitment_repository,
+            )
+        )
 
     def build(self, tag_number: str) -> EquipmentTimeline:
         knowledge = self._knowledge_service.build(tag_number)
@@ -129,9 +139,36 @@ class EquipmentTimelineService:
         current_installation = self._map_current_installation(current_installation_record)
         current_seal = self._build_current_seal(current_installation_record)
         replacement_events = self._build_replacement_events(installations)
-        installation_events = self._build_installation_events(installations)
+
+        # MWO-LTSA-SEAL-EQUIPMENT-HISTORY-INTEGRATION-001 -- dedup: an
+        # installation_report already linked to a #6.2 INSTALL lifecycle
+        # event is represented as evidence ON that new SEAL_INSTALL
+        # timeline item below, never a second legacy INSTALLATION event
+        # for the same real installation (this MWO's own explicit rule).
+        linked_codes: frozenset[str] = (
+            linked_installation_codes_for_pump(
+                tag_number, installation_report_fitment_repository=self._installation_report_fitment_repository
+            )
+            if self._seal_repos_available
+            else frozenset()
+        )
+        unlinked_installations = [
+            record for record in installations if record.get("installation_code") not in linked_codes
+        ]
+        installation_events = self._build_installation_events(unlinked_installations)
         work_order_events = self._build_work_order_events(work_orders)
         failure_events = self._build_failure_events(knowledge.breakdown_history)
+
+        seal_events: tuple[TimelineEvent, ...] = ()
+        if self._seal_repos_available:
+            seal_events = build_seal_events_for_pump(
+                tag_number,
+                seal_lifecycle_event_repository=self._seal_lifecycle_event_repository,
+                seal_inspection_repository=self._seal_inspection_repository,
+                seal_repair_repository=self._seal_repair_repository,
+                seal_warranty_assessment_repository=self._seal_warranty_assessment_repository,
+                installation_report_fitment_repository=self._installation_report_fitment_repository,
+            )
 
         lifecycle_events: list[TimelineEvent] = []
         lifecycle_events.extend(installation_events)
@@ -141,6 +178,7 @@ class EquipmentTimelineService:
         lifecycle_events.extend(failure_events)
         lifecycle_events.extend(work_order_events)
         lifecycle_events.extend(replacement_events)
+        lifecycle_events.extend(seal_events)
         # MWO-LTSA-067 -- lifecycle.timeline is newest-first (reverse
         # chronological), per this MWO's explicit "Order: Sort by
         # occurred_at. Newest first. No client sorting." -- the frontend

@@ -209,7 +209,19 @@ _ltsa_knowledge_service = LTSAKnowledgeService(
     condition_monitoring_reading_gateway=_condition_monitoring_reading_gateway,
 )
 
-_equipment_timeline_service = EquipmentTimelineService(knowledge_service=_ltsa_knowledge_service)
+# MWO-LTSA-SEAL-EQUIPMENT-HISTORY-INTEGRATION-001 -- same singleton
+# repositories every other seal-domain route already reuses, not fresh
+# instances -- EquipmentTimelineService.build_lifecycle() now merges in
+# SEAL_INSTALL/SEAL_REMOVE/SEAL_INSPECTION/SEAL_REPAIR/SEAL_RETURN_TO_
+# STOCK/SEAL_SCRAP/SEAL_WARRANTY timeline events alongside PM/CM/etc.
+_equipment_timeline_service = EquipmentTimelineService(
+    knowledge_service=_ltsa_knowledge_service,
+    seal_lifecycle_event_repository=_seal_lifecycle_event_repository,
+    seal_inspection_repository=_seal_inspection_repository,
+    seal_repair_repository=_seal_repair_repository,
+    seal_warranty_assessment_repository=_seal_warranty_assessment_repository,
+    installation_report_fitment_repository=_installation_report_fitment_repository,
+)
 
 # MWO-LTSA-037C -- built from the same singleton PumpGateway and
 # LTSAKnowledgeService above, not fresh ones -- no second aggregate.

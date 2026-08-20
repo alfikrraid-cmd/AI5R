@@ -678,3 +678,89 @@ def test_analytics_elapsed_service_days_computed_from_installation_report_date_w
     assert lifecycle.analytics.pm_count == 0
     assert lifecycle.analytics.cm_count == 0
     assert lifecycle.analytics.failure_count == 0
+
+
+# --- MWO-LTSA-SEAL-EQUIPMENT-HISTORY-INTEGRATION-001 -----------------------
+
+
+class FakeSealLifecycleEventRepository:
+    def __init__(self, events_by_pump=None):
+        self._events_by_pump = events_by_pump or {}
+
+    def list_by_pump(self, pump_tag_number):
+        return self._events_by_pump.get(pump_tag_number, [])
+
+
+class FakeSealInspectionRepository:
+    def list_by_pump(self, pump_tag_number):
+        return []
+
+
+class FakeSealRepairRepository:
+    def list_by_inspection_ids(self, inspection_ids):
+        return []
+
+
+class FakeSealWarrantyAssessmentRepository:
+    def list_by_pump(self, pump_tag_number):
+        return []
+
+
+class FakeInstallationReportFitmentRepository:
+    def __init__(self, reports_by_pump=None):
+        self._reports_by_pump = reports_by_pump or {}
+
+    def list_by_pump(self, pump_tag_number):
+        return self._reports_by_pump.get(pump_tag_number, [])
+
+
+def test_build_lifecycle_with_seal_repos_absent_preserves_pm_and_cm_unchanged():
+    # 1/2/25/26: Equipment History with existing PM/CMON but no seal data
+    # must continue working unchanged -- every prior test in this file
+    # already proves this (none pass seal_* repos at all), reconfirmed
+    # here explicitly as this MWO's own required regression.
+    service = _service(installations=[])
+    lifecycle = service.build_lifecycle(TAG)
+    types = [e.event_type for e in lifecycle.timeline]
+    assert TimelineCategory.PM in types
+    assert TimelineCategory.CM in types
+
+
+def test_build_lifecycle_merges_seal_install_event_and_dedups_linked_report():
+    knowledge = _knowledge(pm_history=[], cm_history=[], breakdown_history=[])
+    install_event = {
+        "event_id": "evt-1", "seal_unit_id": "unit-1", "event_type": "INSTALL",
+        "event_at": "2026-01-01T00:00:00Z", "pump_tag_number": TAG, "reason": None, "notes": None,
+    }
+    linked_report = {
+        "installation_code": "INSTL-LINKED", "report_no": "RPT-1", "report_date": "2026-01-01",
+        "plant_equip_no": TAG, "pump_tag_number": TAG, "installation_event_id": "evt-1",
+    }
+    unlinked_report = {
+        "installation_code": "INSTL-LEGACY", "report_no": "RPT-2", "report_date": "2026-02-01",
+        "plant_equip_no": TAG, "pump_tag_number": None, "installation_event_id": None,
+    }
+    service = EquipmentTimelineService(
+        knowledge_service=FakeKnowledgeService(knowledge),
+        installation_gateway=FakeGateway("list_installations", [linked_report, unlinked_report]),
+        work_order_gateway=FakeGateway("list_work_orders", []),
+        maintenance_history_gateway=FakeGateway("list_maintenance_history", []),
+        pm_occurrence_gateway=FakeGateway("list_pm_occurrences", []),
+        seal_gateway=FakeGateway("list_seals", []),
+        seal_lifecycle_event_repository=FakeSealLifecycleEventRepository({TAG: [install_event]}),
+        seal_inspection_repository=FakeSealInspectionRepository(),
+        seal_repair_repository=FakeSealRepairRepository(),
+        seal_warranty_assessment_repository=FakeSealWarrantyAssessmentRepository(),
+        installation_report_fitment_repository=FakeInstallationReportFitmentRepository({TAG: [linked_report]}),
+    )
+
+    lifecycle = service.build_lifecycle(TAG)
+
+    seal_installs = [e for e in lifecycle.timeline if e.event_type == TimelineCategory.SEAL_INSTALL]
+    assert len(seal_installs) == 1
+    assert seal_installs[0].payload["installation_report"]["installation_code"] == "INSTL-LINKED"
+
+    # 4: the linked report must not ALSO appear as its own legacy
+    # INSTALLATION event -- only the unlinked legacy one does.
+    legacy_installations = [e for e in lifecycle.timeline if e.event_type == TimelineCategory.INSTALLATION]
+    assert [e.payload.get("installation_code") for e in legacy_installations] == ["INSTL-LEGACY"]

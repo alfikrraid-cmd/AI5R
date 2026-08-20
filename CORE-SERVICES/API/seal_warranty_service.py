@@ -355,6 +355,21 @@ class SealWarrantyAssessmentRepository:
             self._runner,
         )
 
+    def list_by_pump(self, pump_tag_number: str) -> list[dict]:
+        """MWO-LTSA-SEAL-EQUIPMENT-HISTORY-INTEGRATION-001 -- warranty's
+        historical pump derives ONLY from its linked INSTALL event's own
+        pump_tag_number (this module's own already-established JOIN,
+        reused here with a different WHERE clause), never
+        seal_unit.current_pump_tag_number."""
+        return _json_query(
+            f"SELECT {_ASSESSMENT_COLUMNS_QUALIFIED}, le.pump_tag_number AS installation_pump_tag_number "
+            "FROM seal_warranty_assessment a "
+            "JOIN seal_lifecycle_event le ON le.event_id = a.installation_event_id "
+            f"WHERE le.pump_tag_number = {_sql(pump_tag_number)} "
+            "ORDER BY a.installation_date ASC, a.assessment_id ASC",
+            self._runner,
+        )
+
 
 __all__ = [
     "WARRANTY_MONTHS",

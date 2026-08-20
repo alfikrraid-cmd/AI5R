@@ -285,16 +285,51 @@ export default function PumpOpenDesignView({
   // MWO's own navigable-type list). FAILURE and REPLACEMENT have no
   // target workspace and stay non-clickable, not guessed.
   const NAVIGABLE_TIMELINE_TYPES = new Set(["INSTALLATION", "PM", "CM", "WORK_ORDER"]);
-  const timelineItems = timeline.map((event) => ({
-    key: event.id,
-    name: event.title ?? event.id,
-    meta: event.occurredAt,
-    flagLabel: event.eventType,
-    onClick:
-      onOpenEngineeringObject && NAVIGABLE_TIMELINE_TYPES.has(event.eventType)
-        ? () => onOpenEngineeringObject(event.eventType, event.payload)
-        : undefined,
-  }));
+  // MWO-LTSA-SEAL-EQUIPMENT-HISTORY-INTEGRATION-001 -- clear visual
+  // distinction per seal event type (this MWO's own explicit UI rule),
+  // reusing the 3 stock-flag variants LTSAOpenDesign.css already defines
+  // (ok/pending/low) rather than inventing new CSS. No drill-down wired
+  // for these 7 types: no existing Open Design view/dispatcher entry for
+  // SEAL_* event types was found in this audit, and this MWO's own "do
+  // not invent broad new UI scope" rule means they stay display-only,
+  // like FAILURE/REPLACEMENT above, until a future MWO adds one.
+  const SEAL_EVENT_FLAG = {
+    SEAL_INSTALL: "ok",
+    SEAL_REMOVE: "pending",
+    SEAL_INSPECTION: "pending",
+    SEAL_REPAIR: "pending",
+    SEAL_RETURN_TO_STOCK: "ok",
+    SEAL_SCRAP: "low",
+  };
+  const WARRANTY_DECISION_FLAG = { ACCEPTED: "ok", REJECTED: "low", PENDING_EXAMINATION: "pending" };
+  const timelineItems = timeline.map((event) => {
+    // Never collapsed into one badge (this MWO's own explicit WARRANTY
+    // UI rule): the badge shows only decision_status; window_status is
+    // plain meta text alongside the date, never a stock-flag value.
+    if (event.eventType === "SEAL_WARRANTY") {
+      const decision = event.payload?.decisionStatus ?? event.payload?.decision_status;
+      const window = event.payload?.windowStatus ?? event.payload?.window_status;
+      return {
+        key: event.id,
+        name: event.title ?? event.id,
+        meta: [window, event.occurredAt].filter(Boolean).join(" · "),
+        flagLabel: decision,
+        flag: WARRANTY_DECISION_FLAG[decision],
+        onClick: undefined,
+      };
+    }
+    return {
+      key: event.id,
+      name: event.title ?? event.id,
+      meta: event.occurredAt,
+      flagLabel: event.eventType,
+      flag: SEAL_EVENT_FLAG[event.eventType],
+      onClick:
+        onOpenEngineeringObject && NAVIGABLE_TIMELINE_TYPES.has(event.eventType)
+          ? () => onOpenEngineeringObject(event.eventType, event.payload)
+          : undefined,
+    };
+  });
 
   // MWO-LTSA-UI-V2-001 -- Recent Activities (Inspector Rail): the 3 most
   // recent real timeline events, most-recent-first. Reuses timelineItems

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import dataclasses
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from dependencies import (
     get_current_user,
     get_import_database_runner,
+    get_installation_report_fitment_repository,
     get_pump_gateway,
     get_seal_gateway,
     get_seal_inspection_repository,
@@ -19,6 +22,7 @@ from dependencies import (
 )
 from API.auth_service import AuthenticatedIdentity, resolve_area_scope
 from API.pump_area_scope import filter_records_by_asset_scope, is_area_in_scope, resolve_asset_area
+from API.seal_equipment_history_service import build_seal_unit_history
 from API.seal_lifecycle_service import (
     IncompatiblePumpError,
     InvalidLifecycleTransitionError,
@@ -554,3 +558,61 @@ def decide_seal_warranty_assessment(
     except SealWarrantyError as error:
         raise HTTPException(status_code=422, detail=str(error))
     return {"data": assessment}
+
+
+# --- MWO-LTSA-SEAL-EQUIPMENT-HISTORY-INTEGRATION-001 -- cross-pump physical seal history ---
+#
+# Read-model only, no write path. Every event's own `payload.pump_
+# tag_number` (a normalized key seal_equipment_history_service.py
+# guarantees on every event type, including seal_repair which has no
+# such column of its own -- see that module's own comments) is what
+# scope is checked against here, never seal_unit.current_pump_tag_number.
+# A pumpless event (payload.pump_tag_number is None -- e.g. REGISTERED
+# is excluded entirely, but a repair with no linked inspection, or a
+# pumpless inspection, legitimately has none) stays globally visible
+# under seal.read, the same #6.2/#6.3 policy already established.
+
+
+@router.get("/api/ltsa/seal-units/{seal_unit_id}/history")
+def get_seal_unit_history(
+    seal_unit_id: str,
+    seal_unit_repository=Depends(get_seal_unit_repository),
+    seal_lifecycle_event_repository=Depends(get_seal_lifecycle_event_repository),
+    seal_inspection_repository=Depends(get_seal_inspection_repository),
+    seal_repair_repository=Depends(get_seal_repair_repository),
+    seal_warranty_assessment_repository=Depends(get_seal_warranty_assessment_repository),
+    installation_report_fitment_repository=Depends(get_installation_report_fitment_repository),
+    pump_gateway=Depends(get_pump_gateway),
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
+) -> Payload:
+    if seal_unit_repository.find_by_id(seal_unit_id) is None:
+        raise HTTPException(status_code=404, detail="No such seal unit")
+
+    events = build_seal_unit_history(
+        seal_unit_id,
+        seal_lifecycle_event_repository=seal_lifecycle_event_repository,
+        seal_inspection_repository=seal_inspection_repository,
+        seal_repair_repository=seal_repair_repository,
+        seal_warranty_assessment_repository=seal_warranty_assessment_repository,
+        installation_report_fitment_repository=installation_report_fitment_repository,
+    )
+
+    scope = resolve_area_scope(current_user)
+    if scope is not None:
+        visible = []
+        for event in events:
+            pump_tag = event.payload.get("pump_tag_number")
+            # Pumpless stays globally visible under seal.read (#6.2's own
+            # established policy, reused verbatim) -- this is a deliberate
+            # bypass of the scope check entirely, NOT a call to
+            # is_area_in_scope(None, scope), which fails closed for a
+            # restricted identity and would incorrectly hide it.
+            if pump_tag is None:
+                visible.append(event)
+                continue
+            if is_area_in_scope(resolve_asset_area(pump_tag, pump_gateway), scope):
+                visible.append(event)
+        events = tuple(visible)
+
+    data = [dataclasses.asdict(event) for event in events]
+    return {"data": data, "count": len(data)}
