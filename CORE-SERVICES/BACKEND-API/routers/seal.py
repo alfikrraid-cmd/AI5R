@@ -14,6 +14,7 @@ from dependencies import (
     get_seal_repair_repository,
     get_seal_stock_gateway,
     get_seal_unit_repository,
+    get_seal_warranty_assessment_repository,
     require_permission,
 )
 from API.auth_service import AuthenticatedIdentity, resolve_area_scope
@@ -43,12 +44,30 @@ from API.seal_repair_service import (
     SealUnitNotFoundError as RepairSealUnitNotFoundError,
     create_repair,
 )
+from API.seal_warranty_service import (
+    AlreadyDecidedError,
+    AssessmentNotFoundError,
+    InspectionMismatchError as WarrantyInspectionMismatchError,
+    InstallationEventMismatchError,
+    InstallationEventNotFoundError,
+    InvalidChronologyError,
+    InvalidDecisionError,
+    MissingDecisionReasonError,
+    MissingInspectionForDecisionError,
+    NotAnInstallEventError,
+    SealUnitNotFoundError as WarrantySealUnitNotFoundError,
+    SealWarrantyError,
+    create_warranty_assessment,
+    decide_assessment,
+)
 from API.seal_master_data_repository import normalize_identifier_field
 from models.requests import (
     SealIdentifierUpdateRequest,
     SealInspectionCreateRequest,
     SealLifecycleEventCreateRequest,
     SealRepairCreateRequest,
+    SealWarrantyAssessmentCreateRequest,
+    SealWarrantyDecisionRequest,
 )
 from models.responses import Payload
 
@@ -412,3 +431,126 @@ def create_seal_unit_repair(
     except SealRepairError as error:
         raise HTTPException(status_code=422, detail=str(error))
     return {"data": repair}
+
+
+# --- MWO-LTSA-SEAL-WARRANTY-ASSESSMENT-001 -- warranty window + technical assessment ---
+#
+# AREA AUTHORIZATION: derived from the linked INSTALL event's own
+# pump_tag_number (SealWarrantyAssessmentRepository's own JOIN, exposed
+# as installation_pump_tag_number) -- never seal_unit.current_pump_
+# tag_number (this MWO's own explicit rule). INSTALL always requires a
+# pump (#6.2's own pump_required=True rule), so a genuinely pumpless
+# warranty row cannot occur in practice; _visible_by_installation_pump
+# still handles a hypothetical None safely (never visible-by-default to
+# a restricted identity), matching #6.2/#6.3's own fail-closed discipline
+# rather than assuming "pumpless" here the way a REGISTERED lifecycle
+# event legitimately is.
+def _visible_by_installation_pump(records: list[dict], scope, pump_gateway) -> list[dict]:
+    if scope is None:
+        return records
+    visible = []
+    for record in records:
+        pump_tag = record.get("installation_pump_tag_number")
+        if is_area_in_scope(resolve_asset_area(pump_tag, pump_gateway) if pump_tag else None, scope):
+            visible.append(record)
+    return visible
+
+
+@router.get("/api/ltsa/seal-units/{seal_unit_id}/warranty")
+def list_seal_unit_warranty_assessments(
+    seal_unit_id: str,
+    seal_unit_repository=Depends(get_seal_unit_repository),
+    seal_warranty_assessment_repository=Depends(get_seal_warranty_assessment_repository),
+    pump_gateway=Depends(get_pump_gateway),
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
+) -> Payload:
+    if seal_unit_repository.find_by_id(seal_unit_id) is None:
+        raise HTTPException(status_code=404, detail="No such seal unit")
+    assessments = seal_warranty_assessment_repository.list_by_seal_unit(seal_unit_id)
+    scope = resolve_area_scope(current_user)
+    assessments = _visible_by_installation_pump(assessments, scope, pump_gateway)
+    return {"data": assessments, "count": len(assessments)}
+
+
+@router.get("/api/ltsa/seal-warranty-assessments/{assessment_id}")
+def get_seal_warranty_assessment(
+    assessment_id: str,
+    seal_warranty_assessment_repository=Depends(get_seal_warranty_assessment_repository),
+    pump_gateway=Depends(get_pump_gateway),
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
+) -> Payload:
+    assessment = seal_warranty_assessment_repository.find_by_id(assessment_id)
+    if assessment is None:
+        raise HTTPException(status_code=404, detail="No such seal warranty assessment")
+    scope = resolve_area_scope(current_user)
+    if not _visible_by_installation_pump([assessment], scope, pump_gateway):
+        raise HTTPException(status_code=404, detail="No such seal warranty assessment")
+    return {"data": assessment}
+
+
+@router.post("/api/ltsa/seal-units/{seal_unit_id}/warranty")
+def create_seal_unit_warranty_assessment(
+    seal_unit_id: str,
+    payload: SealWarrantyAssessmentCreateRequest,
+    current_user=Depends(require_permission("seal.lifecycle_write")),
+    runner=Depends(get_import_database_runner),
+) -> Payload:
+    try:
+        assessment = create_warranty_assessment(
+            runner,
+            seal_unit_id=seal_unit_id,
+            installation_event_id=payload.installation_event_id,
+            # Server-derived, never request-supplied.
+            created_by=current_user.user_id,
+            claim_date=payload.claim_date,
+            failure_date=payload.failure_date,
+            inspection_id=payload.inspection_id,
+            source_reference=payload.source_reference,
+        )
+    except WarrantySealUnitNotFoundError:
+        raise HTTPException(status_code=404, detail="No such seal unit")
+    except InstallationEventNotFoundError:
+        raise HTTPException(status_code=404, detail="No such installation event")
+    except (NotAnInstallEventError, InstallationEventMismatchError) as error:
+        raise HTTPException(status_code=422, detail=str(error))
+    except WarrantyInspectionMismatchError as error:
+        raise HTTPException(status_code=422, detail=str(error))
+    except InvalidChronologyError as error:
+        raise HTTPException(status_code=422, detail=str(error))
+    except SealWarrantyError as error:
+        raise HTTPException(status_code=422, detail=str(error))
+    return {"data": assessment}
+
+
+@router.post("/api/ltsa/seal-warranty-assessments/{assessment_id}/decision")
+def decide_seal_warranty_assessment(
+    assessment_id: str,
+    payload: SealWarrantyDecisionRequest,
+    current_user=Depends(require_permission("seal.lifecycle_write")),
+    runner=Depends(get_import_database_runner),
+) -> Payload:
+    try:
+        assessment = decide_assessment(
+            runner,
+            assessment_id=assessment_id,
+            decision=payload.decision,
+            decision_reason=payload.decision_reason,
+            # Server-derived, never request-supplied.
+            decided_by=current_user.user_id,
+            inspection_id=payload.inspection_id,
+        )
+    except AssessmentNotFoundError:
+        raise HTTPException(status_code=404, detail="No such seal warranty assessment")
+    except AlreadyDecidedError as error:
+        raise HTTPException(status_code=409, detail=str(error))
+    except MissingInspectionForDecisionError as error:
+        raise HTTPException(status_code=422, detail=str(error))
+    except MissingDecisionReasonError as error:
+        raise HTTPException(status_code=422, detail=str(error))
+    except InvalidDecisionError as error:
+        raise HTTPException(status_code=422, detail=str(error))
+    except WarrantyInspectionMismatchError as error:
+        raise HTTPException(status_code=422, detail=str(error))
+    except SealWarrantyError as error:
+        raise HTTPException(status_code=422, detail=str(error))
+    return {"data": assessment}

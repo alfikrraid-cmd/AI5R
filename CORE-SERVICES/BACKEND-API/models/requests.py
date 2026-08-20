@@ -106,6 +106,23 @@ class SealRepairCreateRequest(BaseModel):
     notes: str | None = None
     source_reference: str | None = None
 
+
+# MWO-LTSA-SEAL-WARRANTY-ASSESSMENT-001 -- created_by/decided_by are
+# deliberately NOT fields here, same server-derived-actor discipline
+# every prior seal-domain create request already established.
+class SealWarrantyAssessmentCreateRequest(BaseModel):
+    installation_event_id: str
+    claim_date: str | None = None
+    failure_date: str | None = None
+    inspection_id: str | None = None
+    source_reference: str | None = None
+
+
+class SealWarrantyDecisionRequest(BaseModel):
+    decision: str
+    decision_reason: str
+    inspection_id: str | None = None
+
 # Fields mirror exactly what WorkOrderGateway.create_work_order already
 # accepts (per the canonical Work Order Create workflow's Validate node) --
 # not new business fields, just typed for the request body.

@@ -37,6 +37,7 @@ from API.seal_unit_repository import SealUnitRepository
 from API.seal_lifecycle_service import SealLifecycleEventRepository
 from API.seal_inspection_service import SealInspectionRepository
 from API.seal_repair_service import SealRepairRepository
+from API.seal_warranty_service import SealWarrantyAssessmentRepository
 from API.historical_pm_cmon_staging_repository import HistoricalPMCMONStagingRepository
 from API.pm_occurrence_gateway import PMOccurrenceGateway
 from API.pm_occurrence_repository import PMOccurrenceRepository
@@ -187,6 +188,7 @@ _seal_lifecycle_event_repository = SealLifecycleEventRepository(_import_database
 # router, reusing this exact runner via get_import_database_runner().
 _seal_inspection_repository = SealInspectionRepository(_import_database_runner)
 _seal_repair_repository = SealRepairRepository(_import_database_runner)
+_seal_warranty_assessment_repository = SealWarrantyAssessmentRepository(_import_database_runner)
 
 # MWO-LTSA-031D -- built from the same singleton Gateway instances above,
 # not fresh ones -- no second set of Gateways is constructed anywhere.
@@ -360,6 +362,10 @@ def get_seal_inspection_repository() -> SealInspectionRepository:
 
 def get_seal_repair_repository() -> SealRepairRepository:
     return _seal_repair_repository
+
+
+def get_seal_warranty_assessment_repository() -> SealWarrantyAssessmentRepository:
+    return _seal_warranty_assessment_repository
 
 
 # MWO-LTSA-AUTH-001 -- the two reusable dependencies this MWO requires:
