@@ -123,6 +123,16 @@ class SealWarrantyDecisionRequest(BaseModel):
     decision_reason: str
     inspection_id: str | None = None
 
+
+# MWO-LTSA-SEAL-INSTALLATION-FITMENT-001 -- linked_by is deliberately NOT
+# a field here (server-derived actor, same discipline every prior
+# seal-domain write request already established).
+class InstallationReportLinkRequest(BaseModel):
+    seal_unit_id: str
+    installation_event_id: str
+    pump_tag_number: str
+    reason: str
+
 # Fields mirror exactly what WorkOrderGateway.create_work_order already
 # accepts (per the canonical Work Order Create workflow's Validate node) --
 # not new business fields, just typed for the request body.
