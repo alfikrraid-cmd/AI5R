@@ -896,6 +896,13 @@ export async function getSealUnits() {
     return unwrapLtsaList(payload, "Seal Units");
 }
 
+// MWO-LTSA-PHYSICAL-SEAL-001B -- registration only (seal_code + optional
+// serial_number); current_pump_tag_number/status are never accepted here
+// -- registration and installation are separate domain actions.
+export async function createSealUnit(registration) {
+    return _ltsaJsonRequest("/api/ltsa/seal-units", jsonOptions("POST", registration));
+}
+
 export async function getSealUnit(sealUnitId) {
     const payload = await _ltsaJsonRequest(`/api/ltsa/seal-units/${encodeURIComponent(sealUnitId)}`);
     return unwrapLtsaDetail(payload, "Seal Unit");

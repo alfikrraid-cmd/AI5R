@@ -6,6 +6,7 @@ import { useOptionalAuth } from "../auth/AuthContext";
 
 vi.mock("../auth/AuthContext", () => ({ useOptionalAuth: vi.fn() }));
 vi.mock("../../../api/ai5rClient", () => ({
+  createSealUnit: vi.fn(),
   createSealUnitInspection: vi.fn(),
   createSealUnitLifecycleEvent: vi.fn(),
   createSealUnitRepair: vi.fn(),
@@ -59,6 +60,7 @@ beforeEach(() => {
   useOptionalAuth.mockReturnValue({ session: { permissions: ["seal.read", "seal.lifecycle_write"] } });
   api.getSealUnits.mockResolvedValue(units);
   mockDetail();
+  api.createSealUnit.mockResolvedValue({ data: { seal_unit_id: "new-unit", seal_code: "TYPE-A", status: "IN_STOCK", current_pump_tag_number: null } });
   api.createSealUnitLifecycleEvent.mockResolvedValue({ data: { event_id: "evt-new" } });
   api.createSealUnitInspection.mockResolvedValue({ data: { inspection_id: "insp-new" } });
   api.createSealUnitRepair.mockResolvedValue({ data: { repair_id: "rep-new" } });
@@ -83,6 +85,41 @@ describe("PhysicalSealWorkspace", () => {
     render(<PhysicalSealWorkspace units={[]} />);
 
     expect(screen.getByText("No physical seal units")).toBeTruthy();
+  });
+
+  it("registers a physical seal from the zero-units empty state, with no pump/installation/warranty field", async () => {
+    const onRefresh = vi.fn();
+    render(<PhysicalSealWorkspace units={[]} sealTypes={[{ seal_code: "TYPE-A", name: "John Crane Type A" }]} onRefresh={onRefresh} />);
+    fireEvent.click(screen.getByRole("button", { name: "Register Physical Seal" }));
+
+    expect(screen.queryByLabelText(/pump/i)).toBeNull();
+    expect(screen.queryByLabelText(/install/i)).toBeNull();
+    expect(screen.queryByLabelText(/warranty/i)).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("Seal Type"), { target: { value: "TYPE-A" } });
+    fireEvent.change(screen.getByLabelText("Serial Number (optional)"), { target: { value: "SN-9001" } });
+    fireEvent.click(screen.getByRole("button", { name: "Register" }));
+
+    await waitFor(() => expect(api.createSealUnit).toHaveBeenCalledWith({ seal_code: "TYPE-A", serial_number: "SN-9001" }));
+    // units is a controlled prop here (units={[]}, not undefined), so the
+    // component defers refresh to the parent via onRefresh -- the same
+    // unitsProp-controlled pattern refreshDetail() already establishes.
+    expect(onRefresh).toHaveBeenCalled();
+  });
+
+  it("registers a physical seal from an already-populated unit list and surfaces backend rejection", async () => {
+    render(<PhysicalSealWorkspace units={units} sealTypes={[{ seal_code: "TYPE-A" }]} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Register Physical Seal" }));
+    fireEvent.change(screen.getByLabelText("Seal Type"), { target: { value: "TYPE-A" } });
+    fireEvent.click(screen.getByRole("button", { name: "Register" }));
+    await waitFor(() => expect(api.createSealUnit).toHaveBeenCalledWith({ seal_code: "TYPE-A" }));
+    expect(api.createSealUnitLifecycleEvent).not.toHaveBeenCalled();
+
+    api.createSealUnit.mockRejectedValueOnce(new Error("Duplicate serial_number"));
+    fireEvent.click(screen.getByRole("button", { name: "Register Physical Seal" }));
+    fireEvent.change(screen.getByLabelText("Seal Type"), { target: { value: "TYPE-A" } });
+    fireEvent.click(screen.getByRole("button", { name: "Register" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("Duplicate serial_number");
   });
 
   it("hydrates lifecycle, inspection, repair, installation, warranty, and history read models", async () => {

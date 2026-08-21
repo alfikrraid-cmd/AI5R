@@ -33,7 +33,10 @@ from ltsa_pump_inventory_db_upsert import DatabaseConfig, DatabaseRunner, bootst
 from API.seal_unit_repository import (  # noqa: E402
     SealUnitRepository,
     SealCodeContradictionError,
+    SealCodeNotFoundError,
+    DuplicateSerialNumberError,
     validate_no_seal_code_contradiction,
+    register_seal_unit,
 )
 
 _CONTAINER_NAME = "ai5r-test-seal-unit-migration-pg"
@@ -282,3 +285,65 @@ def test_no_lifecycle_event_table_was_created(runner):
         "AND table_name ILIKE '%lifecycle%' OR table_name ILIKE '%seal_event%'", runner
     )
     assert rows == []
+
+
+# --- MWO-LTSA-PHYSICAL-SEAL-001B -- register_seal_unit() -----------------
+
+def test_register_seal_unit_creates_exactly_one_in_stock_unit_with_no_pump(runner):
+    unit = register_seal_unit(runner, seal_code=_SEAL_CODE)
+    assert unit["seal_code"] == _SEAL_CODE
+    assert unit["status"] == "IN_STOCK"
+    assert unit["current_pump_tag_number"] is None
+    assert unit["serial_number"] is None
+    rows = _json_query("SELECT count(*) AS c FROM seal_unit", runner)
+    assert rows[0]["c"] == 1
+    # 18: the same isolated DB's own list_all() -- the real function the
+    # GET /api/ltsa/seal-units route calls -- must expose it immediately.
+    listed = SealUnitRepository(runner).list_all()
+    assert [u["seal_unit_id"] for u in listed] == [unit["seal_unit_id"]]
+
+
+def test_register_seal_unit_rejects_unknown_seal_code(runner):
+    with pytest.raises(SealCodeNotFoundError):
+        register_seal_unit(runner, seal_code="NOT-A-REAL-SEAL-CODE")
+    rows = _json_query("SELECT count(*) AS c FROM seal_unit", runner)
+    assert rows[0]["c"] == 0
+
+
+def test_register_seal_unit_persists_a_supplied_serial_number_exactly(runner):
+    unit = register_seal_unit(runner, seal_code=_SEAL_CODE, serial_number="SN-0001")
+    assert unit["serial_number"] == "SN-0001"
+
+
+def test_register_seal_unit_rejects_a_duplicate_serial_number(runner):
+    register_seal_unit(runner, seal_code=_SEAL_CODE, serial_number="SN-DUP")
+    with pytest.raises(DuplicateSerialNumberError):
+        register_seal_unit(runner, seal_code=_SEAL_CODE, serial_number="SN-DUP")
+    rows = _json_query("SELECT count(*) AS c FROM seal_unit WHERE serial_number = 'SN-DUP'", runner)
+    assert rows[0]["c"] == 1
+
+
+def test_register_seal_unit_allows_multiple_null_serial_numbers(runner):
+    register_seal_unit(runner, seal_code=_SEAL_CODE)
+    register_seal_unit(runner, seal_code=_SEAL_CODE)
+    rows = _json_query("SELECT count(*) AS c FROM seal_unit WHERE serial_number IS NULL", runner)
+    assert rows[0]["c"] == 2
+
+
+def test_register_seal_unit_creates_zero_side_effects(runner):
+    runner.execute_script(f"INSERT INTO seal_stock (seal_code, quantity_on_hand) VALUES ('{_SEAL_CODE}', 5);")
+    register_seal_unit(runner, seal_code=_SEAL_CODE)
+
+    stock = _json_query(f"SELECT quantity_on_hand FROM seal_stock WHERE seal_code='{_SEAL_CODE}'", runner)
+    assert float(stock[0]["quantity_on_hand"]) == 5.0
+
+    compat = _json_query("SELECT count(*) AS c FROM seal_pump_compatibility", runner)
+    assert compat[0]["c"] == 0
+
+    pumps = _json_query(f"SELECT tag_number, area FROM ltsa_pumps WHERE tag_number = '{_PUMP_TAG}'", runner)
+    assert pumps[0]["area"] == "HOC"
+    # Lifecycle-event/inspection/repair/warranty zero-row proof lives in
+    # test_seal_warranty_assessment_migration.py instead: this file only
+    # bootstraps through migration 018, so those tables do not exist here
+    # at all yet -- checking for their absence would prove nothing about
+    # rows, only about a migration ordering this file already fixes.

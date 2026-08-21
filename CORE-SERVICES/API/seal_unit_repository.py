@@ -82,6 +82,26 @@ class SealCodeContradictionError(SealUnitError):
     Invariants section requires."""
 
 
+class SealCodeNotFoundError(SealUnitError):
+    """Raised when a registration request's seal_code does not exist in
+    seal_registry -- checked explicitly so an unknown seal_code fails
+    cleanly (404/422) instead of surfacing seal_unit's own FK constraint
+    as a raw, uncaught DB error (the same "never let a raw DB error reach
+    the caller" discipline every other seal-domain write in this
+    codebase already follows)."""
+
+
+class DuplicateSerialNumberError(SealUnitError):
+    """Raised when a registration request's serial_number already exists
+    on another seal_unit -- checked explicitly for the same clean-error
+    reason SealCodeNotFoundError is, rather than surfacing seal_unit's
+    own partial unique index as a raw UniqueViolation. The index itself
+    (idx_seal_unit_serial_number_unique) remains the true, race-proof
+    backstop; a genuinely concurrent duplicate registration is rejected
+    by the database either way -- this guard only makes the common,
+    non-concurrent case return a clean, typed error."""
+
+
 def validate_no_seal_code_contradiction(
     *, seal_unit_seal_code: str, installation_report_seal_code: str | None
 ) -> None:
@@ -137,11 +157,74 @@ class SealUnitRepository:
         return _json_query(f"SELECT {_SELECT_COLUMNS} FROM seal_unit ORDER BY created_at", self._runner)
 
 
+# MWO-LTSA-PHYSICAL-SEAL-001B -- the canonical registration write path.
+# Registration and installation are separate domain actions (this MWO's
+# own explicit rule): a registered unit always starts IN_STOCK with
+# current_pump_tag_number NULL -- neither is ever caller-supplied here,
+# closing off current_pump_tag_number as an implicit installation
+# mechanism structurally, not just by convention. No lifecycle event, no
+# installation report, no warranty row is written -- this function's own
+# INSERT into seal_unit is the entire side effect.
+#
+# Same guarded-CTE atomic-write pattern apply_lifecycle_event()/
+# create_inspection()/create_repair()/create_warranty_assessment()/
+# link_installation_report() already established (single compound
+# statement -- inherently atomic in Postgres, no BEGIN/COMMIT needed):
+# reuses seal_unit's own real column set unchanged (the same table
+# SealUnitRepository.create() already targets, not a second persistence
+# path), just guarded so an unknown seal_code or a duplicate serial_number
+# fails cleanly instead of surfacing a raw FK/unique-constraint DB error.
+def register_seal_unit(
+    runner: "DatabaseRunner", *, seal_code: str, serial_number: str | None = None
+) -> dict:
+    serial_guard_sql = "TRUE"
+    if serial_number is not None:
+        serial_guard_sql = (
+            f"NOT EXISTS (SELECT 1 FROM seal_unit WHERE serial_number = {_sql(serial_number)})"
+        )
+
+    script = f"""
+WITH seal_ok AS (
+    SELECT seal_code FROM seal_registry WHERE seal_code = {_sql(seal_code)}
+),
+serial_ok AS (
+    SELECT * FROM seal_ok WHERE {serial_guard_sql}
+),
+ins AS (
+    INSERT INTO seal_unit (seal_code, serial_number, status, current_pump_tag_number)
+    SELECT {_sql(seal_code)}, {_sql(serial_number)}, 'IN_STOCK', NULL
+    FROM serial_ok
+    RETURNING {_SELECT_COLUMNS}
+)
+SELECT row_to_json(t)::text FROM (
+    SELECT
+        (SELECT COUNT(*) FROM seal_ok) AS seal_matched,
+        (SELECT COUNT(*) FROM serial_ok) AS serial_matched,
+        COALESCE((SELECT json_agg(row_to_json(i))::text FROM ins i), '[]') AS unit_json
+) t;
+"""
+    raw = runner.query_scalar(script.strip())
+    if not raw:
+        raise SealUnitError("Unexpected empty result registering seal unit")
+    outcome = json.loads(raw)
+    if int(outcome["seal_matched"]) == 0:
+        raise SealCodeNotFoundError(seal_code)
+    if int(outcome["serial_matched"]) == 0:
+        raise DuplicateSerialNumberError(serial_number)
+    units = json.loads(outcome["unit_json"])
+    if not units:
+        raise SealUnitError("Unexpected: guard matched but no seal_unit was inserted")
+    return units[0]
+
+
 __all__ = [
     "SealUnitRepository",
     "SealUnitError",
     "SealCodeContradictionError",
+    "SealCodeNotFoundError",
+    "DuplicateSerialNumberError",
     "SEAL_UNIT_STATUSES",
     "validate_no_seal_code_contradiction",
+    "register_seal_unit",
     "is_valid_uuid",
 ]

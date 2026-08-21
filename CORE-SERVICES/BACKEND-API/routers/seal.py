@@ -65,11 +65,17 @@ from API.seal_warranty_service import (
     decide_assessment,
 )
 from API.seal_master_data_repository import normalize_identifier_field
+from API.seal_unit_repository import (
+    DuplicateSerialNumberError,
+    SealCodeNotFoundError,
+    register_seal_unit,
+)
 from models.requests import (
     SealIdentifierUpdateRequest,
     SealInspectionCreateRequest,
     SealLifecycleEventCreateRequest,
     SealRepairCreateRequest,
+    SealUnitRegisterRequest,
     SealWarrantyAssessmentCreateRequest,
     SealWarrantyDecisionRequest,
 )
@@ -119,6 +125,27 @@ def get_ltsa_seal_unit(seal_unit_id: str, seal_unit_repository=Depends(get_seal_
     unit = seal_unit_repository.find_by_id(seal_unit_id)
     if unit is None:
         raise HTTPException(status_code=404, detail="No such seal unit")
+    return {"data": unit}
+
+
+# MWO-LTSA-PHYSICAL-SEAL-001B -- registration: the one missing CREATE
+# capability for seal_unit. seal.lifecycle_write (SUPERUSER/TAP_ADMIN
+# only) is reused unchanged -- the same permission every other seal-
+# domain write action in this router already requires; no new permission
+# invented. Always IN_STOCK / current_pump_tag_number=NULL (see
+# register_seal_unit's own docstring) -- registration never installs.
+@router.post("/api/ltsa/seal-units")
+def register_ltsa_seal_unit(
+    payload: SealUnitRegisterRequest,
+    current_user=Depends(require_permission("seal.lifecycle_write")),
+    runner=Depends(get_import_database_runner),
+) -> Payload:
+    try:
+        unit = register_seal_unit(runner, seal_code=payload.seal_code, serial_number=payload.serial_number)
+    except SealCodeNotFoundError:
+        raise HTTPException(status_code=404, detail="No such seal_code in seal_registry")
+    except DuplicateSerialNumberError as error:
+        raise HTTPException(status_code=409, detail=str(error))
     return {"data": unit}
 
 

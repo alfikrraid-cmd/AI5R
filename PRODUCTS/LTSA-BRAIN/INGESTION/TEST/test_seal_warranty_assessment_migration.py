@@ -25,7 +25,7 @@ if str(_CORE_SERVICES_PATH) not in sys.path:
     sys.path.insert(0, str(_CORE_SERVICES_PATH))
 
 from ltsa_pump_inventory_db_upsert import DatabaseConfig, DatabaseRunner, bootstrap_schema  # noqa: E402
-from API.seal_unit_repository import SealUnitRepository  # noqa: E402
+from API.seal_unit_repository import SealUnitRepository, register_seal_unit  # noqa: E402
 from API.seal_lifecycle_service import apply_lifecycle_event, SealLifecycleEventRepository  # noqa: E402
 from API.seal_inspection_service import create_inspection, SealInspectionRepository  # noqa: E402
 from API.seal_repair_service import SealRepairRepository  # noqa: E402
@@ -542,3 +542,19 @@ def test_assessments_are_queryable_chronologically_by_seal_unit(runner, seal_uni
     all_assessments = SealWarrantyAssessmentRepository(runner).list_by_seal_unit(uid)
     dates = [a["installation_date"] for a in all_assessments]
     assert dates == sorted(dates)
+
+
+# --- MWO-LTSA-PHYSICAL-SEAL-001B -- register_seal_unit() side-effect isolation -
+
+def test_register_seal_unit_creates_zero_lifecycle_inspection_repair_or_warranty_rows(runner):
+    # This file's own full 007-021 migration chain (unlike test_seal_unit_
+    # migration.py's 018-only bootstrap) is the one place seal_lifecycle_
+    # event/seal_inspection/seal_repair/seal_warranty_assessment all
+    # genuinely exist, so a zero-row check here is a real proof, not a
+    # vacuous one.
+    register_seal_unit(runner, seal_code=_SEAL_CODE)
+
+    from ltsa_pump_inventory_db_upsert import _json_query
+    for table in ("seal_lifecycle_event", "seal_inspection", "seal_repair", "seal_warranty_assessment"):
+        rows = _json_query(f"SELECT count(*) AS c FROM {table}", runner)
+        assert rows[0]["c"] == 0, f"register_seal_unit() must never write to {table}"

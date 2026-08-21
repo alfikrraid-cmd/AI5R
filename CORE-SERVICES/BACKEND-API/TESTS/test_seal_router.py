@@ -327,10 +327,13 @@ class FakeSealUnitRepository:
         return None
 
 
-def test_seal_units_routes_are_registered_get_only():
+def test_seal_units_routes_are_registered():
+    # MWO-LTSA-PHYSICAL-SEAL-001B -- /api/ltsa/seal-units gained POST
+    # (registration); the detail route stays GET-only (no update/delete
+    # exists for an already-registered unit's identity fields).
     openapi = client.get("/openapi.json").json()["paths"]
     assert "/api/ltsa/seal-units" in openapi
-    assert set(openapi["/api/ltsa/seal-units"]) == {"get"}
+    assert set(openapi["/api/ltsa/seal-units"]) == {"get", "post"}
     assert "/api/ltsa/seal-units/{seal_unit_id}" in openapi
     assert set(openapi["/api/ltsa/seal-units/{seal_unit_id}"]) == {"get"}
 
@@ -706,3 +709,108 @@ def test_create_lifecycle_event_returns_422_when_a_required_reason_is_missing():
 
     assert response.status_code == 422
     assert fake_runner.query_scalar_calls == []
+
+
+# --- MWO-LTSA-PHYSICAL-SEAL-001B -- POST /api/ltsa/seal-units (registration) ---
+
+
+def _register_outcome(*, seal_matched=1, serial_matched=1, seal_code="JC-TYPE-X", serial_number=None):
+    import json as _json
+
+    unit_row = {
+        "seal_unit_id": "11111111-1111-4111-8111-111111111111", "seal_code": seal_code,
+        "serial_number": serial_number, "status": "IN_STOCK", "current_pump_tag_number": None,
+        "created_at": "2026-08-20T00:00:00", "updated_at": "2026-08-20T00:00:00",
+    }
+    ok = seal_matched and serial_matched
+    return _json.dumps(
+        {
+            "seal_matched": seal_matched, "serial_matched": serial_matched,
+            "unit_json": _json.dumps([unit_row]) if ok else "[]",
+        }
+    )
+
+
+def test_register_seal_unit_route_exists_post_only_alongside_existing_get():
+    openapi = client.get("/openapi.json").json()["paths"]
+    assert set(openapi["/api/ltsa/seal-units"]) == {"get", "post"}
+
+
+def test_register_seal_unit_succeeds_for_superuser_and_tap_admin_only():
+    for role in ("SUPERUSER", "TAP_ADMIN"):
+        fake_runner = FakeRunner(_register_outcome())
+        app.dependency_overrides[get_current_user] = lambda role=role: _identity(role)
+        app.dependency_overrides[get_import_database_runner] = lambda fake_runner=fake_runner: fake_runner
+        response = client.post("/api/ltsa/seal-units", json={"seal_code": "JC-TYPE-X"})
+        assert response.status_code == 200, f"{role} should be authorized"
+        assert response.json()["data"]["status"] == "IN_STOCK"
+        assert response.json()["data"]["current_pump_tag_number"] is None
+
+
+def test_register_seal_unit_denied_for_read_only_roles():
+    for role in ("TAP_ENGINEER", "JOHN_CRANE_ENGINEER", "PERTAMINA_ENGINEER", "PERTAMINA_VIEWER"):
+        fake_runner = FakeRunner(_register_outcome())
+        app.dependency_overrides[get_current_user] = lambda role=role: _identity(role)
+        app.dependency_overrides[get_import_database_runner] = lambda fake_runner=fake_runner: fake_runner
+        response = client.post("/api/ltsa/seal-units", json={"seal_code": "JC-TYPE-X"})
+        assert response.status_code == 403, f"{role} must be denied"
+        assert fake_runner.query_scalar_calls == []
+
+
+def test_register_seal_unit_rejects_unauthenticated_requests():
+    app.dependency_overrides.clear()  # no get_current_user override -- no bearer token at all
+    response = client.post("/api/ltsa/seal-units", json={"seal_code": "JC-TYPE-X"})
+    assert response.status_code == 401
+
+
+def test_register_seal_unit_maps_unknown_seal_code_to_404():
+    fake_runner = FakeRunner(_register_outcome(seal_matched=0, serial_matched=0))
+    app.dependency_overrides[get_current_user] = lambda: _SUPERUSER_IDENTITY
+    app.dependency_overrides[get_import_database_runner] = lambda: fake_runner
+    response = client.post("/api/ltsa/seal-units", json={"seal_code": "NOT-A-REAL-CODE"})
+    assert response.status_code == 404
+
+
+def test_register_seal_unit_maps_duplicate_serial_number_to_409():
+    fake_runner = FakeRunner(_register_outcome(serial_matched=0))
+    app.dependency_overrides[get_current_user] = lambda: _SUPERUSER_IDENTITY
+    app.dependency_overrides[get_import_database_runner] = lambda: fake_runner
+    response = client.post("/api/ltsa/seal-units", json={"seal_code": "JC-TYPE-X", "serial_number": "SN-DUP"})
+    assert response.status_code == 409
+
+
+def test_register_seal_unit_persists_a_supplied_serial_number():
+    fake_runner = FakeRunner(_register_outcome(serial_number="SN-0001"))
+    app.dependency_overrides[get_current_user] = lambda: _SUPERUSER_IDENTITY
+    app.dependency_overrides[get_import_database_runner] = lambda: fake_runner
+    response = client.post("/api/ltsa/seal-units", json={"seal_code": "JC-TYPE-X", "serial_number": "SN-0001"})
+    assert response.status_code == 200
+    assert response.json()["data"]["serial_number"] == "SN-0001"
+
+
+def test_register_seal_unit_allows_a_null_serial_number():
+    fake_runner = FakeRunner(_register_outcome())
+    app.dependency_overrides[get_current_user] = lambda: _SUPERUSER_IDENTITY
+    app.dependency_overrides[get_import_database_runner] = lambda: fake_runner
+    response = client.post("/api/ltsa/seal-units", json={"seal_code": "JC-TYPE-X"})
+    assert response.status_code == 200
+    assert response.json()["data"]["serial_number"] is None
+
+
+def test_register_seal_unit_request_body_has_no_pump_or_lifecycle_fields():
+    # Registration and installation are separate domain actions (this
+    # MWO's own explicit rule) -- a client attempting to smuggle
+    # current_pump_tag_number/status into the request body has no field
+    # to land in: SealUnitRegisterRequest only has seal_code/serial_number,
+    # so pydantic silently drops anything else, never reaching the service.
+    fake_runner = FakeRunner(_register_outcome())
+    app.dependency_overrides[get_current_user] = lambda: _SUPERUSER_IDENTITY
+    app.dependency_overrides[get_import_database_runner] = lambda: fake_runner
+    response = client.post(
+        "/api/ltsa/seal-units",
+        json={"seal_code": "JC-TYPE-X", "current_pump_tag_number": "110-P-9A", "status": "INSTALLED"},
+    )
+    assert response.status_code == 200
+    sql = fake_runner.query_scalar_calls[0]
+    assert "INSTALLED" not in sql
+    assert "110-P-9A" not in sql

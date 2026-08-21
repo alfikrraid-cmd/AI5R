@@ -52,6 +52,16 @@ class SealIdentifierUpdateRequest(BaseModel):
     gpn_john_crane: str | None = None
 
 
+# MWO-LTSA-PHYSICAL-SEAL-001B -- registration only: no status, no
+# current_pump_tag_number, no lifecycle/installation/warranty field.
+# Registration and installation are separate domain actions (this MWO's
+# own explicit rule) -- there is nothing on this model a client could
+# even attempt to use as an implicit installation mechanism.
+class SealUnitRegisterRequest(BaseModel):
+    seal_code: str
+    serial_number: str | None = None
+
+
 # MWO-LTSA-SEAL-LIFECYCLE-EVENT-LEDGER-001 -- created_by is deliberately
 # NOT a field here (server-derived from the authenticated actor only,
 # never client-supplied -- same discipline SealIdentifierUpdateRequest's

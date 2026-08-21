@@ -3,6 +3,7 @@ import { Button, EmptyState, Modal, Panel, StatusBadge, Table, Tabs } from "../.
 import { useOptionalAuth } from "../auth/AuthContext";
 import { can } from "../auth/permissions";
 import {
+  createSealUnit,
   createSealUnitInspection,
   createSealUnitLifecycleEvent,
   createSealUnitRepair,
@@ -45,6 +46,12 @@ const EMPTY_REPAIR = {
 const EMPTY_LINK = { installation_code: "", installation_event_id: "", pump_tag_number: "", reason: "" };
 const EMPTY_WARRANTY = { installation_event_id: "", claim_date: "", failure_date: "", inspection_id: "", source_reference: "" };
 const EMPTY_DECISION = { assessment_id: "", decision: "PENDING_EXAMINATION", decision_reason: "", inspection_id: "" };
+// MWO-LTSA-PHYSICAL-SEAL-001B -- registration only: no status, no
+// current_pump_tag_number, no lifecycle/installation/warranty field --
+// matches SealUnitRegisterRequest's own shape exactly, so there is
+// nothing here a form could even attempt to smuggle as an implicit
+// installation.
+const EMPTY_REGISTER = { seal_code: "", serial_number: "" };
 
 function valueOrNA(value) {
   if (value === null || value === undefined || value === "") return "N/A";
@@ -133,6 +140,13 @@ export default function PhysicalSealWorkspace({ sealTypes = [], units: unitsProp
   const [linkForm, setLinkForm] = useState(EMPTY_LINK);
   const [warrantyForm, setWarrantyForm] = useState(EMPTY_WARRANTY);
   const [decisionForm, setDecisionForm] = useState(EMPTY_DECISION);
+  // MWO-LTSA-PHYSICAL-SEAL-001B -- separate from `modal`/`formError`
+  // above: those are scoped to an already-selected unit's detail actions,
+  // but registration must also be reachable from the zero-units empty
+  // state below, where no unit is selected yet.
+  const [registerOpen, setRegisterOpen] = useState(false);
+  const [registerForm, setRegisterForm] = useState(EMPTY_REGISTER);
+  const [registerError, setRegisterError] = useState(null);
 
   useEffect(() => {
     if (unitsProp !== undefined) {
@@ -191,6 +205,35 @@ export default function PhysicalSealWorkspace({ sealTypes = [], units: unitsProp
     setModal(name);
   }
 
+  async function submitRegister(event) {
+    event.preventDefault();
+    setRegisterError(null);
+    try {
+      await createSealUnit(omitEmpty(registerForm));
+      setRegisterOpen(false);
+      setRegisterForm(EMPTY_REGISTER);
+      if (unitsProp === undefined) setUnits(await getSealUnits());
+      onRefresh?.();
+    } catch (err) {
+      setRegisterError(err?.message || "Backend rejected the registration.");
+    }
+  }
+
+  const registerModal = (
+    <ActionModal title="Register Physical Seal" isOpen={registerOpen} onClose={() => setRegisterOpen(false)}>
+      <form onSubmit={submitRegister}>
+        <Field label="Seal Type" value={registerForm.seal_code} as="select" required onChange={(value) => setRegisterForm({ ...registerForm, seal_code: value })}>
+          <option value="">Select seal type</option>
+          {sealTypes.map((seal) => { const code = seal.seal_code ?? seal.code; return <option key={code} value={code}>{code}{seal.name ? ` - ${seal.name}` : ""}</option>; })}
+        </Field>
+        <Field label="Serial Number (optional)" value={registerForm.serial_number} onChange={(value) => setRegisterForm({ ...registerForm, serial_number: value })} />
+        <p>Registration only. This does not install the seal on a pump, start a warranty period, or create a lifecycle event.</p>
+        {registerError ? <p role="alert">{registerError}</p> : null}
+        <Button type="submit">Register</Button>
+      </form>
+    </ActionModal>
+  );
+
   async function submit(action) {
     if (!selectedUnit) return;
     setFormError(null);
@@ -219,7 +262,16 @@ export default function PhysicalSealWorkspace({ sealTypes = [], units: unitsProp
   if (loading) return <Panel><p>Loading physical seal units...</p></Panel>;
   if (error) return <Panel><p role="alert">{error}</p></Panel>;
   if (units.length === 0) {
-    return <EmptyState title="No physical seal units" description="Seal type catalog data is available, but no seal_unit records were returned." />;
+    return (
+      <section aria-label="Physical Seal Workspace">
+        <EmptyState title="No physical seal units" description="Seal type catalog data is available, but no seal_unit records were returned." />
+        <div className="physical-seal-actions" aria-label="Seal unit actions">
+          <Button disabled={!canWrite} onClick={() => setRegisterOpen(true)}>Register Physical Seal</Button>
+          {!canWrite ? <p className="physical-seal-readonly">Read-only: seal.lifecycle_write is required to register a physical seal.</p> : null}
+        </div>
+        {registerModal}
+      </section>
+    );
   }
 
   return (
@@ -245,6 +297,7 @@ export default function PhysicalSealWorkspace({ sealTypes = [], units: unitsProp
       </div>
 
       <div className="physical-seal-actions" aria-label="Seal unit actions">
+        <Button disabled={!canWrite} onClick={() => setRegisterOpen(true)}>Register Physical Seal</Button>
         <Button disabled={!canWrite || allowedLifecycleEvents(selectedUnit?.status).length === 0} onClick={() => openModal("lifecycle")}>Lifecycle Action</Button>
         <Button disabled={!canWrite} onClick={() => openModal("inspection")}>Add Inspection</Button>
         <Button disabled={!canWrite} onClick={() => openModal("repair")}>Add Repair</Button>
@@ -352,6 +405,8 @@ export default function PhysicalSealWorkspace({ sealTypes = [], units: unitsProp
           {formError ? <p role="alert">{formError}</p> : null}<Button type="submit">Record Decision</Button>
         </form>
       </ActionModal>
+
+      {registerModal}
     </section>
   );
 }
