@@ -2,11 +2,6 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import LTSAWorkspace from "./LTSAWorkspace";
 import {
-  getEquipmentList,
-  getEquipment,
-  getEquipmentInspections,
-  getInspectionFindings,
-  getFindingWorkOrders,
   getWorkOrders,
   getWorkOrderAsset,
   getWorkOrderTimeline,
@@ -40,11 +35,6 @@ import { WORKSPACE_KEYS, workspaceLocation } from "../workspace/WorkspaceRegistr
 // "undefined is not a function", not just the tab this file directly
 // exercises.
 vi.mock("../../../api/ai5rClient", () => ({
-  getEquipmentList: vi.fn(),
-  getEquipment: vi.fn(),
-  getEquipmentInspections: vi.fn(),
-  getInspectionFindings: vi.fn(),
-  getFindingWorkOrders: vi.fn(),
   getWorkOrders: vi.fn(),
   getWorkOrderAsset: vi.fn(),
   getWorkOrderTimeline: vi.fn(),
@@ -83,11 +73,6 @@ const PUMPS = [
 ];
 
 beforeEach(() => {
-  getEquipmentList.mockResolvedValue([]);
-  getEquipment.mockResolvedValue({});
-  getEquipmentInspections.mockResolvedValue([]);
-  getInspectionFindings.mockResolvedValue([]);
-  getFindingWorkOrders.mockResolvedValue([]);
   getWorkOrders.mockResolvedValue([]);
   getWorkOrderAsset.mockResolvedValue({ success: true, area: null });
   getWorkOrderTimeline.mockResolvedValue([]);
@@ -228,7 +213,6 @@ describe("LTSAWorkspace navigation shell", () => {
     render(<LTSAWorkspace />);
 
     expect(screen.getByRole("tab", { name: "Executive Dashboard" })).toBeTruthy();
-    expect(screen.getByRole("tab", { name: "Equipment" })).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Pump" })).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Work Order" })).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Preventive Maintenance" })).toBeTruthy();
@@ -589,7 +573,42 @@ describe("Knowledge Workspace navigation (MWO-LTSA-032E)", () => {
   });
 });
 
+describe("Equipment nav retirement (MWO-LTSA-EQUIPMENT-TAB-RESOLUTION-001)", () => {
+  it("Equipment is no longer a clickable LTSA nav destination", () => {
+    render(<LTSAWorkspace />);
 
+    expect(screen.queryByRole("tab", { name: "Equipment" })).toBeNull();
+  });
 
+  it("the canonical Pump/Asset workspace remains available, renders, and asset selection still works", async () => {
+    render(<LTSAWorkspace />);
 
+    fireEvent.click(screen.getByRole("tab", { name: "Pump" }));
+
+    expect(screen.getByRole("heading", { name: "Pump Workspace" })).toBeTruthy();
+    fireEvent.click(await screen.findByText("305-P-2"));
+    expect(screen.getByRole("heading", { name: "Cooling Water Circulation Pump" })).toBeTruthy();
+  });
+
+  it("Asset 360 (Equipment History) remains reachable through the canonical asset flow, scoped to the selected pump", async () => {
+    render(<LTSAWorkspace />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Pump" }));
+    fireEvent.click(await screen.findByText("305-P-2"));
+    fireEvent.click(screen.getByRole("button", { name: /View History/i }));
+
+    await screen.findByTestId("knowledge-workspace-success");
+    expect(getPumpKnowledge).toHaveBeenCalledWith("305-P-2");
+  });
+
+  it("ai5rClient no longer exports the dead Equipment API functions", async () => {
+    const actualModule = await vi.importActual("../../../api/ai5rClient");
+
+    expect(actualModule.getEquipmentList).toBeUndefined();
+    expect(actualModule.getEquipment).toBeUndefined();
+    expect(actualModule.getEquipmentInspections).toBeUndefined();
+    expect(actualModule.getInspectionFindings).toBeUndefined();
+    expect(actualModule.getFindingWorkOrders).toBeUndefined();
+  });
+});
 

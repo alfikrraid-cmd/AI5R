@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { Tabs } from "../../../design-system";
 import ExecutiveDashboard from "./ExecutiveDashboard";
-import Equipment from "./Equipment";
 import Pump from "./Pump";
 import WorkOrder from "./WorkOrder";
 import PM from "./PM";
@@ -56,7 +55,6 @@ import "./LTSAWorkspace.css";
 // acronym collision.
 const TABS = [
   { key: "dashboard", label: "Executive Dashboard" },
-  { key: "equipment", label: "Equipment" },
   { key: "pump", label: "Pump" },
   { key: "seal", label: "Mechanical Seal" },
   { key: "drawing", label: "Drawing" },
@@ -109,7 +107,6 @@ function KnowledgeWorkspaceRoute({ navContext, onNavigate }) {
 
 const PAGES = {
   dashboard: ExecutiveDashboard,
-  equipment: Equipment,
   pump: Pump,
   seal: Seal,
   drawing: DrawingWorkspace,
