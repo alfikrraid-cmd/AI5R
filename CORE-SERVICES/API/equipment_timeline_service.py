@@ -223,7 +223,19 @@ class EquipmentTimelineService:
         analytics = PumpLifecycleAnalytics(
             elapsed_service_days=elapsed_service_days,
             pm_count=len(knowledge.pm_history),
-            cm_count=len(knowledge.cm_history),
+            # MWO-LTSA-DEMO-ANALYTICS-001 -- was len(knowledge.cm_history)
+            # (cm_report rows), which silently diverged from the timeline's
+            # own INSPECTION category (TimelineCategory.INSPECTION, source=
+            # CONDITION_MONITORING_READING), built from this exact
+            # knowledge.condition_monitoring_readings list two lines above
+            # (_build_inspection_events call). cm_report and condition_
+            # monitoring_reading are deliberately distinct domains (ADR-
+            # CONDITION-MONITORING-001, "CMON, never a bare CM") -- pm_count
+            # already matched its own PM timeline category 1:1
+            # (knowledge.pm_history both places); cm_count never did.
+            # Reusing the same list the timeline already built from, not a
+            # second query/gateway/analytics engine.
+            cm_count=len(knowledge.condition_monitoring_readings),
             failure_count=len(knowledge.breakdown_history),
             mtbf=None,
             mtbr=None,

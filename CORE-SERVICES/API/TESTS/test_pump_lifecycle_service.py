@@ -132,7 +132,13 @@ def test_build_lifecycle_returns_pump_lifecycle_with_current_state_and_analytics
     ]
     assert lifecycle.analytics.elapsed_service_days == 216
     assert lifecycle.analytics.pm_count == 1
-    assert lifecycle.analytics.cm_count == 1
+    # MWO-LTSA-DEMO-ANALYTICS-001 -- cm_count now derives from
+    # condition_monitoring_readings (this fixture's default: none), not
+    # cm_history (this fixture's default: one CM-1 report) -- the CM-1
+    # report is still visible via current_state.last_cm above; it just no
+    # longer feeds this specific count (see equipment_timeline_service.py's
+    # own comment on cm_count for why).
+    assert lifecycle.analytics.cm_count == 0
     assert lifecycle.analytics.failure_count == 1
     assert lifecycle.analytics.mtbf is None
     assert lifecycle.analytics.average_seal_life is None
@@ -586,7 +592,12 @@ def test_build_lifecycle_exposes_production_pm_and_cmon_readings_without_duplica
         assert len(cmon_events) == cmon_count
         assert len(event_ids) == len(set(event_ids))
         assert lifecycle.analytics.pm_count == pm_count
-        assert lifecycle.analytics.cm_count == 0
+        # MWO-LTSA-DEMO-ANALYTICS-001 -- cm_count must equal the number of
+        # CONDITION_MONITORING_READING timeline events (cmon_count), the
+        # same list cmon_events above already counts -- previously asserted
+        # 0 regardless of cmon_count, the exact production-proven defect
+        # for 212-P-7B/110-P-10/140-P-11 (this test's own three fixtures).
+        assert lifecycle.analytics.cm_count == cmon_count
         assert lifecycle.related_engineering.condition_monitoring_readings == cmon_readings
         first_source_reading = next(
             event for event in cmon_events
@@ -610,6 +621,12 @@ def test_build_lifecycle_exposes_production_pm_and_cmon_readings_without_duplica
 # (test_build_lifecycle_with_no_installation_leaves_current_installation_and_seal_null),
 # and the empty-timeline case immediately above. No production code is
 # touched -- see the MWO-LTSA-069 Completion Report's Reuse Audit for why.
+#
+# MWO-LTSA-DEMO-ANALYTICS-001 (later) -- cm_count's own source WAS
+# subsequently corrected (equipment_timeline_service.py, len(knowledge.
+# cm_history) -> len(knowledge.condition_monitoring_readings)); the
+# "cm-only" isolation test below was renamed/re-asserted accordingly and a
+# new "cmon-only" isolation test added to prove the real source in kind.
 
 
 def test_analytics_counts_are_all_zero_when_the_pump_has_no_history_at_all():
@@ -654,7 +671,11 @@ def test_analytics_counts_pm_only_never_cross_contaminating_cm_or_failure_count(
     assert lifecycle.analytics.failure_count == 0
 
 
-def test_analytics_counts_cm_only_never_cross_contaminating_pm_or_failure_count():
+def test_analytics_counts_a_cm_report_alone_no_longer_contributes_to_cm_count():
+    # MWO-LTSA-DEMO-ANALYTICS-001 -- renamed/re-asserted from the prior
+    # "cm_only" scenario: cm_count now derives from condition_monitoring_
+    # readings only (see equipment_timeline_service.py's own comment), so
+    # a cm_report row alone (no CMON reading) contributes 0, not 1.
     service = _service(
         installations=[],
         work_orders=[],
@@ -670,13 +691,49 @@ def test_analytics_counts_cm_only_never_cross_contaminating_pm_or_failure_count(
                 }
             ],
             breakdown_history=[],
+            condition_monitoring_readings=[],
         ),
     )
 
     lifecycle = service.build_lifecycle(TAG, today=__import__("datetime").date(2026, 8, 10))
 
     assert lifecycle.analytics.pm_count == 0
-    assert lifecycle.analytics.cm_count == 1
+    assert lifecycle.analytics.cm_count == 0
+    assert lifecycle.analytics.failure_count == 0
+
+
+def test_analytics_counts_cmon_only_never_cross_contaminating_pm_or_failure_count():
+    # The real cm_count source: condition_monitoring_readings, isolated
+    # from pm_history/breakdown_history, mirroring the pm-only/failure-only
+    # isolation tests above.
+    service = _service(
+        installations=[],
+        work_orders=[],
+        knowledge=_knowledge(
+            pm_history=[],
+            cm_history=[],
+            breakdown_history=[],
+            condition_monitoring_readings=[
+                {
+                    "condition_monitoring_reading_code": "CMON-1",
+                    "asset_code": TAG,
+                    "reading_date": "2026-08-09",
+                    "finding": None,
+                },
+                {
+                    "condition_monitoring_reading_code": "CMON-2",
+                    "asset_code": TAG,
+                    "reading_date": "2026-08-10",
+                    "finding": None,
+                },
+            ],
+        ),
+    )
+
+    lifecycle = service.build_lifecycle(TAG, today=__import__("datetime").date(2026, 8, 10))
+
+    assert lifecycle.analytics.pm_count == 0
+    assert lifecycle.analytics.cm_count == 2
     assert lifecycle.analytics.failure_count == 0
 
 
