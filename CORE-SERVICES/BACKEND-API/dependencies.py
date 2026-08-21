@@ -207,6 +207,8 @@ _ltsa_knowledge_service = LTSAKnowledgeService(
     pm_schedule_gateway=_pm_schedule_gateway,
     condition_monitoring_schedule_gateway=_condition_monitoring_schedule_gateway,
     condition_monitoring_reading_gateway=_condition_monitoring_reading_gateway,
+    pm_occurrence_repository=_pm_occurrence_repository,
+    condition_monitoring_reading_repository=_condition_monitoring_reading_repository,
 )
 
 # MWO-LTSA-SEAL-EQUIPMENT-HISTORY-INTEGRATION-001 -- same singleton

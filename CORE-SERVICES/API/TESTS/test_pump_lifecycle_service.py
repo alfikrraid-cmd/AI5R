@@ -534,6 +534,70 @@ def test_empty_timeline_when_the_pump_has_no_history_at_all():
     assert lifecycle.timeline == ()
 
 
+def test_build_lifecycle_exposes_production_pm_and_cmon_readings_without_duplicates_or_value_coercion():
+    # MWO-LTSA-EQUIPMENT-HISTORY-PM-CMON-CLOSURE-001 -- production
+    # semantics: promoted historical PM/CMON rows are associated to the
+    # pump by asset_code and must enter Equipment History without any
+    # source-row mutation or current-pump rewriting.
+    fixtures = {
+        "110-P-10": (1, 3),
+        "140-P-11": (1, 2),
+        "212-P-7B": (1, 4),
+    }
+
+    for tag, (pm_count, cmon_count) in fixtures.items():
+        pm_history = [
+            {
+                "pm_occurrence_code": f"PM-{tag}-{index}",
+                "asset_code": tag,
+                "occurrence_date": f"2026-07-{index + 1:02d}",
+                "remarks": None,
+            }
+            for index in range(pm_count)
+        ]
+        cmon_readings = [
+            {
+                "condition_monitoring_reading_code": f"CMON-{tag}-{index}",
+                "asset_code": tag,
+                "reading_date": f"2026-08-{index + 1:02d}",
+                "finding": "Finding text" if index == 0 else None,
+                "pump_operating_state": None,
+                "suction_pressure": 0 if index == 0 else None,
+                "mechanical_seal_leak_de": False,
+            }
+            for index in range(cmon_count)
+        ]
+        knowledge = _knowledge(
+            tag_number=tag,
+            pump={"tag_number": tag, "area": "HOC"},
+            pm_history=pm_history,
+            cm_history=[],
+            breakdown_history=[],
+            condition_monitoring_readings=cmon_readings,
+        )
+        service = _service(knowledge=knowledge, installations=[], work_orders=[])
+
+        lifecycle = service.build_lifecycle(tag)
+
+        pm_events = [event for event in lifecycle.timeline if event.event_type == TimelineCategory.PM]
+        cmon_events = [event for event in lifecycle.timeline if event.source.value == "CONDITION_MONITORING_READING"]
+        event_ids = [event.id for event in lifecycle.timeline]
+        assert len(pm_events) == pm_count
+        assert len(cmon_events) == cmon_count
+        assert len(event_ids) == len(set(event_ids))
+        assert lifecycle.analytics.pm_count == pm_count
+        assert lifecycle.analytics.cm_count == 0
+        assert lifecycle.related_engineering.condition_monitoring_readings == cmon_readings
+        first_source_reading = next(
+            event for event in cmon_events
+            if event.payload["condition_monitoring_reading_code"] == f"CMON-{tag}-0"
+        )
+        assert first_source_reading.payload["asset_code"] == tag
+        assert first_source_reading.payload["pump_operating_state"] is None
+        assert first_source_reading.payload["suction_pressure"] == 0
+        assert first_source_reading.payload["mechanical_seal_leak_de"] is False
+        assert first_source_reading.payload["finding"] == "Finding text"
+
 # MWO-LTSA-069 -- Pump Reliability Analytics. build_lifecycle()'s
 # elapsed_service_days/pm_count/cm_count/failure_count computation and its
 # mtbf/mtbr/average_seal_life/health_index/availability/reliability

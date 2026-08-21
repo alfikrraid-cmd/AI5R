@@ -30,6 +30,16 @@ class FakePumpGateway:
         return self._detail_response
 
 
+class FakeAssetRepository:
+    def __init__(self, records_by_asset=None):
+        self._records_by_asset = records_by_asset or {}
+        self.requested_assets = []
+
+    def list_by_asset(self, asset_code):
+        self.requested_assets.append(asset_code)
+        return list(self._records_by_asset.get(asset_code, []))
+
+
 def _service(
     pump=None,
     maintenance_history=None,
@@ -44,6 +54,8 @@ def _service(
     pm_schedules=None,
     condition_monitoring_schedules=None,
     condition_monitoring_readings=None,
+    pm_occurrence_repository=None,
+    condition_monitoring_reading_repository=None,
 ):
     return LTSAKnowledgeService(
         pump_gateway=pump or FakePumpGateway(),
@@ -65,6 +77,8 @@ def _service(
         condition_monitoring_reading_gateway=FakeGateway(
             "list_condition_monitoring_readings", condition_monitoring_readings
         ),
+        pm_occurrence_repository=pm_occurrence_repository,
+        condition_monitoring_reading_repository=condition_monitoring_reading_repository,
     )
 
 
@@ -167,6 +181,26 @@ def test_pm_history_is_empty_when_no_occurrences_exist():
     knowledge = service.build(TAG)
 
     assert knowledge.pm_history == []
+
+
+def test_pm_history_prefers_repository_list_by_asset_over_gateway_list():
+    repository = FakeAssetRepository(
+        {
+            TAG: [
+                {"pm_occurrence_code": "PM-OCC-101", "asset_code": TAG, "occurrence_date": "2026-06-01"},
+                {"pm_occurrence_code": "PM-OCC-102", "asset_code": TAG, "occurrence_date": "2026-06-08"},
+            ],
+        }
+    )
+    service = _service(pm_occurrences=[], pm_occurrence_repository=repository)
+
+    knowledge = service.build(TAG)
+
+    assert repository.requested_assets == [TAG]
+    assert [record["pm_occurrence_code"] for record in knowledge.pm_history] == [
+        "PM-OCC-101",
+        "PM-OCC-102",
+    ]
 
 
 def test_cm_history_filters_cm_reports_by_asset_code():
@@ -543,6 +577,48 @@ def test_condition_monitoring_schedules_is_empty_when_none_exist():
     knowledge = service.build(TAG)
 
     assert knowledge.condition_monitoring_schedules == []
+
+
+def test_condition_monitoring_readings_prefers_repository_list_by_asset_over_gateway_list():
+    repository = FakeAssetRepository(
+        {
+            TAG: [
+                {
+                    "condition_monitoring_reading_code": "CMONR-1",
+                    "asset_code": TAG,
+                    "reading_date": "2026-07-01",
+                    "finding": "NORMAL",
+                    "mechanical_seal_leak_de": False,
+                    "suction_pressure": 0,
+                    "pump_operating_state": None,
+                },
+                {
+                    "condition_monitoring_reading_code": "CMONR-2",
+                    "asset_code": TAG,
+                    "reading_date": "2026-07-08",
+                    "finding": "WATCH",
+                    "mechanical_seal_leak_de": True,
+                    "suction_pressure": None,
+                    "pump_operating_state": "RUNNING",
+                },
+            ],
+        }
+    )
+    service = _service(
+        condition_monitoring_readings=[],
+        condition_monitoring_reading_repository=repository,
+    )
+
+    knowledge = service.build(TAG)
+
+    assert repository.requested_assets == [TAG]
+    assert [record["condition_monitoring_reading_code"] for record in knowledge.condition_monitoring_readings] == [
+        "CMONR-1",
+        "CMONR-2",
+    ]
+    assert knowledge.condition_monitoring_readings[0]["pump_operating_state"] is None
+    assert knowledge.condition_monitoring_readings[0]["suction_pressure"] == 0
+    assert knowledge.condition_monitoring_readings[0]["mechanical_seal_leak_de"] is False
 
 
 def test_existing_fields_unchanged_when_schedules_are_added():

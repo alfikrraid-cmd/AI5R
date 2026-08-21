@@ -117,6 +117,8 @@ class LTSAKnowledgeService:
         pm_schedule_gateway: PMScheduleGateway | None = None,
         condition_monitoring_schedule_gateway: ConditionMonitoringScheduleGateway | None = None,
         condition_monitoring_reading_gateway: ConditionMonitoringReadingGateway | None = None,
+        pm_occurrence_repository: Any | None = None,
+        condition_monitoring_reading_repository: Any | None = None,
     ) -> None:
         self.pump_gateway = pump_gateway or PumpGateway()
         self.maintenance_history_gateway = maintenance_history_gateway or MaintenanceHistoryGateway()
@@ -139,6 +141,8 @@ class LTSAKnowledgeService:
         self.condition_monitoring_reading_gateway = (
             condition_monitoring_reading_gateway or ConditionMonitoringReadingGateway()
         )
+        self.pm_occurrence_repository = pm_occurrence_repository
+        self.condition_monitoring_reading_repository = condition_monitoring_reading_repository
 
     def build(self, tag_number: str) -> LTSAKnowledge:
         spare_parts = self._build_spare_parts(tag_number)
@@ -220,6 +224,9 @@ class LTSAKnowledgeService:
         ]
 
     def _build_condition_monitoring_readings(self, tag_number: str) -> list[dict[str, Any]]:
+        if self.condition_monitoring_reading_repository is not None:
+            return self.condition_monitoring_reading_repository.list_by_asset(tag_number)
+
         response = self.condition_monitoring_reading_gateway.list_condition_monitoring_readings()
         return [
             record
@@ -228,6 +235,9 @@ class LTSAKnowledgeService:
         ]
 
     def _build_pm_history(self, tag_number: str) -> list[dict[str, Any]]:
+        if self.pm_occurrence_repository is not None:
+            return self.pm_occurrence_repository.list_by_asset(tag_number)
+
         response = self.pm_occurrence_gateway.list_pm_occurrences()
         return [
             record
