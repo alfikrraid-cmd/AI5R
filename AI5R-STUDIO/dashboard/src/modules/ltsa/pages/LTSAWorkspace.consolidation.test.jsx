@@ -74,11 +74,30 @@ describe("LTSA workspace consolidation (MWO-LTSA-036M)", () => {
     });
   });
 
-  it("MaintenanceHistory.jsx remains wired (legacy fallback + untagged-entry picker) -- not orphaned, per MWO-LTSA-036H/036J/036G's own findings", () => {
+  it("MaintenanceHistory.jsx remains wired at its explicit legacy fallback route -- not orphaned, per MWO-LTSA-036H/036J's own findings", () => {
     const source = readSource("LTSAWorkspace.jsx");
 
     expect(source).toMatch(/from ["']\.\/MaintenanceHistory["']/);
     expect(source).toMatch(/"history-legacy":\s*MaintenanceHistory/);
-    expect(source).toMatch(/<MaintenanceHistory /);
+  });
+
+  // MWO-LTSA-DEMO-READINESS-CLOSURE-001 -- superseded MWO-LTSA-036G's
+  // "untagged 'history' falls back to MaintenanceHistory's own picker+
+  // full page" design: that fallback rendered MaintenanceHistory's entire
+  // separate legacy experience (own breadcrumb "Pumps > {tag}", own
+  // PumpWorkspaceTimeline with its own "No history matches this filter."
+  // empty state, own "Coming Soon"/"Not available" placeholders) once a
+  // pump was picked, not just to resolve the asset -- confirmed as the
+  // root cause of a demo-facing symptom where the untagged entry point
+  // could show an entirely different, non-canonical screen for a
+  // different pump. AssetLauncher now owns the untagged picker (reusing
+  // AssetSelector.jsx + getPumps, no new engine); MaintenanceHistory.jsx
+  // itself is untouched and stays reachable only at its own explicit
+  // "history-legacy" route (locked in by the test above).
+  it("the untagged 'history' entry point no longer hands off to MaintenanceHistory's own rendering -- AssetLauncher does, converging on canonical KnowledgeWorkspace", () => {
+    const source = readSource("LTSAWorkspace.jsx");
+
+    expect(source).not.toMatch(/<MaintenanceHistory /);
+    expect(source).toMatch(/<AssetLauncher /);
   });
 });

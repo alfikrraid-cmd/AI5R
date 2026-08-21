@@ -56,4 +56,18 @@ describe("Landing", () => {
 
     expect(onNavigateApplication).toHaveBeenCalledWith("ltsa");
   });
+
+  it("MWO-LTSA-DEMO-READINESS-CLOSURE-001: application cards use the styled 'card' class, not the undefined 'metric-card' class", () => {
+    renderLanding();
+
+    const card = screen.getByRole("heading", { level: 3, name: "LTSA" }).closest("article");
+    expect(card.className).toBe("card");
+  });
+
+  it("MWO-LTSA-DEMO-READINESS-CLOSURE-001: 'Open' uses the styled design-system Button, not a bare unstyled button", () => {
+    renderLanding();
+
+    const openButton = screen.getAllByRole("button", { name: "Open" })[0];
+    expect(openButton.className).toContain("ds-button");
+  });
 });

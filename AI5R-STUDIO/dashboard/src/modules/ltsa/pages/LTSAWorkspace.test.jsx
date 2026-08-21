@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import LTSAWorkspace from "./LTSAWorkspace";
 import {
@@ -609,6 +609,143 @@ describe("Equipment nav retirement (MWO-LTSA-EQUIPMENT-TAB-RESOLUTION-001)", () 
     expect(actualModule.getEquipmentInspections).toBeUndefined();
     expect(actualModule.getInspectionFindings).toBeUndefined();
     expect(actualModule.getFindingWorkOrders).toBeUndefined();
+  });
+});
+
+describe("Asset identity & history closure (MWO-LTSA-DEMO-READINESS-CLOSURE-001)", () => {
+  const DEMO_PUMPS = [
+    { tag_number: "212-P-7B", name: "Reaktor Feed Pump", area: "Reaktor", manufacturer: "Flowserve", status: "RUNNING" },
+    { tag_number: "211-P-7B", name: "CONDENSATE PUMP", area: "HCC", manufacturer: "Flowserve", status: "RUNNING" },
+  ];
+
+  const TIMELINE_212 = [
+    { id: "evt-pm-1", event_type: "PM", title: "PM 2026-001 completed", occurred_at: "2026-01-01" },
+    { id: "evt-insp-1", event_type: "INSPECTION", title: "CMON reading logged (1)", occurred_at: "2026-01-02" },
+    { id: "evt-insp-2", event_type: "INSPECTION", title: "CMON reading logged (2)", occurred_at: "2026-01-03" },
+    { id: "evt-insp-3", event_type: "INSPECTION", title: "CMON reading logged (3)", occurred_at: "2026-01-04" },
+    { id: "evt-insp-4", event_type: "INSPECTION", title: "CMON reading logged (4)", occurred_at: "2026-01-05" },
+  ];
+
+  function knowledgeFor(tag) {
+    if (tag === "212-P-7B") {
+      return {
+        success: true,
+        tag_number: tag,
+        data: {
+          summary: { asset: { tag_number: tag, pump_name: "Reaktor Feed Pump" } },
+          timeline: TIMELINE_212,
+          seal: [],
+          inventory: [],
+          pm: [{ pm_occurrence_code: "PM-2026-001", occurrence_date: "2026-01-01" }],
+          cm: [],
+          breakdown: [],
+          drawings: [],
+          recommendation: null,
+          ai_insight: null,
+          pm_schedules: [],
+          condition_monitoring_schedules: [],
+        },
+      };
+    }
+    return {
+      success: true,
+      tag_number: tag,
+      data: {
+        summary: { asset: { tag_number: tag, pump_name: "CONDENSATE PUMP" } },
+        timeline: [],
+        seal: [],
+        inventory: [],
+        pm: [],
+        cm: [],
+        breakdown: [],
+        drawings: [],
+        recommendation: null,
+        ai_insight: null,
+        pm_schedules: [],
+        condition_monitoring_schedules: [],
+      },
+    };
+  }
+
+  it("212-P-7B selected via Pump -> View History renders and requests exactly 212-P-7B, never 211-P-7B", async () => {
+    getPumpKnowledge.mockClear();
+    getPumps.mockResolvedValue(DEMO_PUMPS);
+    getPumpKnowledge.mockImplementation(async (tag) => knowledgeFor(tag));
+
+    render(<LTSAWorkspace />);
+    fireEvent.click(screen.getByRole("tab", { name: "Pump" }));
+    fireEvent.click(await screen.findByText("212-P-7B"));
+    fireEvent.click(screen.getByRole("button", { name: /View History/i }));
+
+    await screen.findByTestId("knowledge-workspace-success");
+    expect(getPumpKnowledge).toHaveBeenCalledWith("212-P-7B");
+    expect(getPumpKnowledge).not.toHaveBeenCalledWith("211-P-7B");
+    expect(screen.queryByText("211-P-7B")).toBeNull();
+  });
+
+  it("a different asset (211-P-7B) remains itself through the same flow -- proves this is not a hard-coded fix", async () => {
+    getPumpKnowledge.mockClear();
+    getPumps.mockResolvedValue(DEMO_PUMPS);
+    getPumpKnowledge.mockImplementation(async (tag) => knowledgeFor(tag));
+
+    render(<LTSAWorkspace />);
+    fireEvent.click(screen.getByRole("tab", { name: "Pump" }));
+    fireEvent.click(await screen.findByText("211-P-7B"));
+    fireEvent.click(screen.getByRole("button", { name: /View History/i }));
+
+    await screen.findByTestId("knowledge-workspace-success");
+    expect(getPumpKnowledge).toHaveBeenCalledWith("211-P-7B");
+    expect(getPumpKnowledge).not.toHaveBeenCalledWith("212-P-7B");
+  });
+
+  it("the untagged Asset 360 entry point is a picker only -- it never renders the legacy history engine's markers", async () => {
+    getPumps.mockResolvedValue(DEMO_PUMPS);
+
+    render(<LTSAWorkspace />);
+    fireEvent.click(screen.getByRole("tab", { name: "Asset 360" }));
+
+    await screen.findByLabelText("Select Asset");
+    expect(screen.queryByText("No history matches this filter.")).toBeNull();
+    expect(screen.queryByText(/Reliability assessment: Coming Soon/i)).toBeNull();
+    expect(screen.queryByText("Stok Habis")).toBeNull();
+  });
+
+  it("picking an asset from the untagged Asset 360 picker routes to the canonical KnowledgeWorkspace for that exact tag", async () => {
+    getPumpKnowledge.mockClear();
+    getPumps.mockResolvedValue(DEMO_PUMPS);
+    getPumpKnowledge.mockImplementation(async (tag) => knowledgeFor(tag));
+
+    render(<LTSAWorkspace />);
+    fireEvent.click(screen.getByRole("tab", { name: "Asset 360" }));
+    await screen.findByLabelText("Select Asset");
+
+    fireEvent.change(screen.getByLabelText("Select Asset"), { target: { value: "212-P-7B" } });
+
+    await screen.findByTestId("knowledge-workspace-success");
+    expect(getPumpKnowledge).toHaveBeenCalledWith("212-P-7B");
+  });
+
+  it("212-P-7B's canonical Equipment Timeline reaches the UI with 1 PM + 4 CMON/INSPECTION events, no duplicate IDs, all reachable", async () => {
+    getPumps.mockResolvedValue(DEMO_PUMPS);
+    getPumpKnowledge.mockImplementation(async (tag) => knowledgeFor(tag));
+
+    render(<LTSAWorkspace />);
+    window.history.pushState({}, "", workspaceLocation(WORKSPACE_KEYS.PUMP, { assetTag: "212-P-7B" }));
+    window.dispatchEvent(new PopStateEvent("popstate"));
+
+    await screen.findByTestId("knowledge-workspace-success");
+
+    expect(screen.getByText("5 peristiwa")).toBeTruthy();
+    const timelineList = screen.getByTestId("knowledge-timeline");
+    const items = within(timelineList).getAllByRole("listitem");
+    expect(items).toHaveLength(5);
+
+    const ids = TIMELINE_212.map((event) => event.id);
+    expect(new Set(ids).size).toBe(ids.length);
+
+    for (const event of TIMELINE_212) {
+      expect(screen.getByText(event.title)).toBeTruthy();
+    }
   });
 });
 

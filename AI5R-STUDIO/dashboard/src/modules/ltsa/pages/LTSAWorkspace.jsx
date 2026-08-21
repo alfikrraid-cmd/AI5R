@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
-import { Tabs } from "../../../design-system";
+import { EmptyState, PageHeader, Panel, Tabs } from "../../../design-system";
+import AssetSelector from "../components/AssetSelector";
+import { getPumps } from "../../../api/ai5rClient";
+import { mapPumpRecord } from "../utils/pumpMapping";
 import ExecutiveDashboard from "./ExecutiveDashboard";
 import Pump from "./Pump";
 import WorkOrder from "./WorkOrder";
@@ -97,9 +100,86 @@ const TABS = [
 // inventing a new picker. Once a caller already knows the tag (Pump.jsx's
 // "View History", or a /ltsa/pump/{tag} deep link), it goes straight to
 // KnowledgeWorkspace, unchanged from MWO-LTSA-032E/036D.
+// MWO-LTSA-DEMO-READINESS-CLOSURE-001 -- AssetLauncher: the untagged
+// entry point used to hand off to the FULL legacy MaintenanceHistory page
+// (its own AssetSelector, its own PumpWorkspaceTimeline, its own
+// "Coming Soon"/"Not available" placeholders) once a pump was picked --
+// not just to resolve the asset, per MWO-LTSA-036G's own comment. That is
+// a second, non-canonical Equipment History rendering (forbidden -- see
+// this MWO's Hard Rule 8) and was confirmed as the root cause of a
+// demo-facing symptom: navigating here untagged could land on a
+// differently-selected pump inside a visually similar but architecturally
+// separate screen (legacy breadcrumb "Pumps > {tag}", legacy timeline's
+// "No history matches this filter" text -- both distinct from
+// KnowledgeWorkspace's own "Asset 360 > {tag}"/"Belum ada riwayat"),
+// which read as an identity-integrity bug rather than a wrong-destination
+// one. AssetLauncher only resolves a tag (reusing AssetSelector.jsx and
+// getPumps/mapPumpRecord, all pre-existing) and then re-enters this same
+// "history" key WITH that tag via the existing onNavigate mechanism, so
+// KnowledgeWorkspaceRoute's own tag-present branch takes over -- every
+// untagged path now converges on the one canonical KnowledgeWorkspace,
+// same as every tagged path already did. No new history/timeline engine.
+// MaintenanceHistory.jsx itself is untouched and remains reachable,
+// unchanged, at its own explicit "history-legacy" fallback route.
+function AssetLauncher({ onNavigate }) {
+  const [pumps, setPumps] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+
+    getPumps()
+      .then((records) => records.map(mapPumpRecord))
+      .then((mapped) => {
+        if (active) {
+          setPumps(mapped);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setPumps([]);
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  return (
+    <div className="pump-workspace-picker">
+      <PageHeader title="Pump Workspace" subtitle="LTSA Engineering — Asset 360" />
+      {loading ? (
+        <Panel>
+          <p>Loading assets...</p>
+        </Panel>
+      ) : (
+        <AssetSelector
+          assets={pumps.map((pump) => ({ tag: pump.tag, name: pump.name }))}
+          selectedTag={null}
+          onSelect={(tag) => {
+            if (tag) {
+              onNavigate("history", { assetTag: tag });
+            }
+          }}
+        />
+      )}
+      <EmptyState
+        title="No pump selected"
+        description="Select a pump above to open its workspace."
+      />
+    </div>
+  );
+}
+
 function KnowledgeWorkspaceRoute({ navContext, onNavigate }) {
   if (!navContext?.assetTag) {
-    return <MaintenanceHistory onNavigate={onNavigate} navContext={navContext} />;
+    return <AssetLauncher onNavigate={onNavigate} />;
   }
   return <KnowledgeWorkspace tag={navContext.assetTag} />;
 }
