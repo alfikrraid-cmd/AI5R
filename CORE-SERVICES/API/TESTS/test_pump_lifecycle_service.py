@@ -213,6 +213,89 @@ def test_build_lifecycle_uses_seal_registry_when_current_installation_has_seal_c
     assert lifecycle.current_state.current_seal.source == "seal_registry"
 
 
+# MWO-LTSA-ASSET360-MECHANICAL-SEAL-WIRING-001 -- build_current_seal() is a
+# small, additive entry point reusing the exact same _list_installations/
+# _build_current_seal helpers build_lifecycle() itself already exercises
+# above (test_build_lifecycle_uses_seal_registry_when_current_installation_
+# has_seal_code) -- same fixtures, same result, no new derivation.
+
+
+def test_build_current_seal_matches_build_lifecycle_current_state_current_seal():
+    service = _service(
+        installations=[
+            {
+                "installation_code": "INSTL-001-2026",
+                "report_no": "001/INSTL/2026",
+                "report_date": "2026-01-06",
+                "plant_equip_no": TAG,
+                "seal_code": "SEAL-1",
+                "seal_type": "T48MP",
+                "seal_manufacture": "John Crane",
+                "drawing_no": "GA-230279",
+                "source_document_name": "report.pdf",
+            }
+        ],
+        seals=[
+            {
+                "seal_code": "SEAL-1",
+                "seal_name": "Type 48MP",
+                "manufacturer": "John Crane",
+                "model": "48MP",
+                "shaft_size": "3.25",
+                "material": "1K1K",
+                "temperature_limit": "200C",
+                "pressure_limit": "20 bar",
+                "status": "ACTIVE",
+            }
+        ],
+    )
+
+    current_seal = service.build_current_seal(TAG)
+    lifecycle = service.build_lifecycle(TAG, today=__import__("datetime").date(2026, 8, 10))
+
+    assert current_seal == lifecycle.current_state.current_seal
+    assert current_seal.seal_code == "SEAL-1"
+    assert current_seal.manufacturer == "John Crane"
+    assert current_seal.material == "1K1K"
+    assert current_seal.source == "seal_registry"
+
+
+def test_build_current_seal_returns_none_when_pump_has_no_installation():
+    # No fabricated fallback: a pump with no installation record has no
+    # authoritative current seal -- None, not a synthesized placeholder.
+    service = _service(installations=[])
+
+    assert service.build_current_seal(TAG) is None
+
+
+def test_build_current_seal_leaves_unauthoritative_fields_none():
+    # Only seal_code/seal_manufacture are present on this installation --
+    # model/temperature_limit/pressure_limit/status have no authoritative
+    # source anywhere (no seal_code to look up in the Seal Registry, no
+    # installation-side equivalent column), so they must stay None, never
+    # guessed.
+    service = _service(
+        installations=[
+            {
+                "installation_code": "INSTL-002-2026",
+                "report_no": "002/INSTL/2026",
+                "report_date": "2026-02-01",
+                "plant_equip_no": TAG,
+                "seal_code": None,
+                "seal_manufacture": "Flowserve",
+            }
+        ]
+    )
+
+    current_seal = service.build_current_seal(TAG)
+
+    assert current_seal.manufacturer == "Flowserve"
+    assert current_seal.model is None
+    assert current_seal.temperature_limit is None
+    assert current_seal.pressure_limit is None
+    assert current_seal.status is None
+
+
 def test_current_seal_never_overwrites_a_present_but_falsy_seal_registry_value():
     # MWO-LTSA-064A Section 3 -- a Seal Registry value that is present but
     # falsy (empty string) must NOT be replaced by Installation's fallback

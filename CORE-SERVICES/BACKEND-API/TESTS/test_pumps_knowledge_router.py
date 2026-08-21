@@ -18,6 +18,7 @@ from dependencies import (
 from API.auth_service import ROLE_PERMISSIONS, AuthenticatedIdentity
 from API.equipment_timeline_service import EquipmentTimeline, TimelineEvent
 from API.ltsa_knowledge_service import LTSAKnowledge
+from API.pump_lifecycle_models import PumpLifecycleCurrentSeal
 from API.recommendation_engine import Evidence, Recommendation
 from API.timeline_value_objects import TimelineCategory, TimelineSeverity, TimelineSource
 
@@ -48,13 +49,19 @@ class FakeKnowledgeService:
 
 
 class FakeTimelineService:
-    def __init__(self, timeline):
+    def __init__(self, timeline, current_seal=None):
         self.timeline = timeline
+        self.current_seal = current_seal
         self.calls = []
+        self.current_seal_calls = []
 
     def build(self, tag_number):
         self.calls.append(tag_number)
         return self.timeline
+
+    def build_current_seal(self, tag_number):
+        self.current_seal_calls.append(tag_number)
+        return self.current_seal
 
 
 class FakeContextEngine:
@@ -121,9 +128,34 @@ def _summary():
     return {"asset": {"tag_number": TAG}, "pm_summary": {"status": "ACTIVE"}}
 
 
-def _override(knowledge=None, timeline=None, summary=None):
+def _current_seal(**overrides):
+    defaults = dict(
+        seal_code="T48MP",
+        seal_name=None,
+        manufacturer="John Crane",
+        model=None,
+        shaft_size=None,
+        material="1K1K",
+        temperature_limit=None,
+        pressure_limit=None,
+        status="INSTALLED",
+        installation_code="INSTL-001-2026",
+        installed_at="2026-01-06",
+        source="seal_registry",
+    )
+    defaults.update(overrides)
+    return PumpLifecycleCurrentSeal(**defaults)
+
+
+_UNSET = object()
+
+
+def _override(knowledge=None, timeline=None, summary=None, current_seal=_UNSET):
     knowledge_fake = FakeKnowledgeService(knowledge if knowledge is not None else _knowledge())
-    timeline_fake = FakeTimelineService(timeline if timeline is not None else _timeline())
+    timeline_fake = FakeTimelineService(
+        timeline if timeline is not None else _timeline(),
+        current_seal=_current_seal() if current_seal is _UNSET else current_seal,
+    )
     summary_fake = FakeContextEngine(summary if summary is not None else _summary())
 
     app.dependency_overrides[get_ltsa_knowledge_service] = lambda: knowledge_fake
@@ -454,6 +486,79 @@ def test_get_knowledge_executive_metrics_critical_spare_count_from_inventory():
 def test_get_knowledge_existing_fields_unchanged_by_executive_metrics_extension():
     # Regression guard: adding executive_metrics must not disturb any
     # existing response field or the single-fetch shape.
+    _override()
+
+    response = client.get(f"/api/ltsa/pumps/{TAG}/knowledge").json()
+    data = response["data"]
+
+    assert response["success"] is True
+    assert response["tag_number"] == TAG
+    assert data["seal"] == [{"seal_code": "SC-001", "part_name": "John Crane Type 21"}]
+
+
+# MWO-LTSA-ASSET360-MECHANICAL-SEAL-WIRING-001 -- current_seal, wired into
+# the same GET /api/ltsa/pumps/{tag}/knowledge response by reusing
+# EquipmentTimelineService.build_current_seal() (the exact same
+# authoritative derivation GET .../lifecycle already relies on) -- no new
+# endpoint, no second frontend fetch, no duplicated derivation logic.
+
+
+def test_get_knowledge_invokes_build_current_seal_with_the_tag():
+    _, timeline_fake, _ = _override()
+
+    client.get(f"/api/ltsa/pumps/{TAG}/knowledge")
+
+    assert timeline_fake.current_seal_calls == [TAG]
+
+
+def test_get_knowledge_current_seal_field_exists_in_response():
+    _override()
+
+    data = client.get(f"/api/ltsa/pumps/{TAG}/knowledge").json()["data"]
+
+    assert "current_seal" in data
+
+
+def test_get_knowledge_current_seal_reflects_the_authoritative_derivation():
+    _override(current_seal=_current_seal(seal_code="T48MP", manufacturer="John Crane", material="1K1K"))
+
+    data = client.get(f"/api/ltsa/pumps/{TAG}/knowledge").json()["data"]
+
+    assert data["current_seal"]["seal_code"] == "T48MP"
+    assert data["current_seal"]["manufacturer"] == "John Crane"
+    assert data["current_seal"]["material"] == "1K1K"
+
+
+def test_get_knowledge_current_seal_only_populates_fields_with_authoritative_evidence():
+    _override(
+        current_seal=_current_seal(
+            seal_code="T48MP",
+            manufacturer="John Crane",
+            model=None,
+            material="1K1K",
+            status=None,
+            installed_at="2026-01-06",
+        )
+    )
+
+    data = client.get(f"/api/ltsa/pumps/{TAG}/knowledge").json()["data"]
+
+    assert data["current_seal"]["model"] is None
+    assert data["current_seal"]["status"] is None
+    assert data["current_seal"]["installed_at"] == "2026-01-06"
+
+
+def test_get_knowledge_current_seal_is_none_when_pump_has_no_authoritative_seal():
+    # No fabricated fallback: an asset with no installation/no seal_code
+    # resolves current_seal to None, not a synthesized placeholder.
+    _override(current_seal=None)
+
+    data = client.get(f"/api/ltsa/pumps/{TAG}/knowledge").json()["data"]
+
+    assert data["current_seal"] is None
+
+
+def test_get_knowledge_existing_fields_unchanged_by_current_seal_extension():
     _override()
 
     response = client.get(f"/api/ltsa/pumps/{TAG}/knowledge").json()

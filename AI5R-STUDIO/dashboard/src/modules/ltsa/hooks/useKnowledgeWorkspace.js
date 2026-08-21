@@ -24,10 +24,20 @@ import { mapPMScheduleRecord } from "../utils/pmMapping";
 //  - equipment.risk/status: derived from summary.cm_summary.overall_condition
 //    (NORMAL -> normal, ABNORMAL -> attention, CRITICAL -> critical), the
 //    one real signal available, not a fabricated score.
-//  - mechanicalSeal: always undefined -- confirmed by repository
-//    archaeology (EngineeringContextEngine._build_seal_summary's own
-//    "installed_seal always null" disclosure) that no backend source
-//    distinguishes an installed seal from compatible ones.
+//  - mechanicalSeal: MWO-LTSA-ASSET360-MECHANICAL-SEAL-WIRING-001 --
+//    EngineeringContextEngine._build_seal_summary's "installed_seal always
+//    null" disclosure was about THAT summary field specifically, not the
+//    only seal-adjacent data this response carries. The Knowledge API's
+//    `current_seal` key (router-side, reusing
+//    EquipmentTimelineService.build_current_seal() -- the exact same
+//    authoritative Seal-Registry-then-Installation-fallback-then-null
+//    derivation GET .../lifecycle already relies on) is mapped here
+//    instead. No second fetch: current_seal arrives on this same single
+//    response. Every field-level fallback stays `?? undefined`, never a
+//    guessed value -- a field the backend has no authoritative source for
+//    (e.g. model/temperature/pressure limit when no seal_code resolves in
+//    the Seal Registry) is already `null` on the backend dataclass and
+//    stays undefined here, rendered as "Unavailable" by KnowledgeSeal.jsx.
 //  - inventory[].level: the Open Design's InvItem type has no "unknown"
 //    case; a null quantity_on_hand is mapped to level="low" here (the
 //    least misleading of the three available choices) with qty text
@@ -56,6 +66,27 @@ function mapEquipment(knowledgeData) {
     confidence: undefined,
     aiSummary: undefined,
     lastUpdated: knowledgeData?.summary?.metadata?.generated_at,
+  };
+}
+
+// MWO-LTSA-ASSET360-MECHANICAL-SEAL-WIRING-001 -- maps the Knowledge API's
+// `current_seal` (dataclasses.asdict(PumpLifecycleCurrentSeal), router-side,
+// see useKnowledgeWorkspace.js's own header comment) into KnowledgeSeal.jsx's
+// existing prop vocabulary. `type`/`apiPlan`/`hours`/`mtbf` have no
+// authoritative source anywhere in PumpLifecycleCurrentSeal and are left
+// unset rather than guessed -- KnowledgeSeal.jsx already renders an unset
+// field as "Unavailable", an honest state, not a fabricated one.
+function mapMechanicalSeal(currentSeal) {
+  if (!currentSeal) return undefined;
+
+  return {
+    code: currentSeal.seal_code ?? undefined,
+    name: currentSeal.seal_name ?? undefined,
+    manufacturer: currentSeal.manufacturer ?? undefined,
+    model: currentSeal.model ?? undefined,
+    material: currentSeal.material ?? undefined,
+    status: currentSeal.status ?? undefined,
+    installedDate: currentSeal.installed_at ?? undefined,
   };
 }
 
@@ -209,7 +240,7 @@ function mapEquipmentKnowledge(knowledgeData) {
     equipment: mapEquipment(knowledgeData),
     activePlans: mapActivePlans(knowledgeData?.pm_schedules, knowledgeData?.condition_monitoring_schedules),
     timeline: mapTimeline(knowledgeData?.timeline),
-    mechanicalSeal: undefined,
+    mechanicalSeal: mapMechanicalSeal(knowledgeData?.current_seal),
     compatibleSeals: mapCompatibleSeals(knowledgeData?.seal),
     inventory: mapInventory(knowledgeData?.inventory, knowledgeData?.seal),
     pmHistory: (knowledgeData?.pm ?? []).map((record) =>

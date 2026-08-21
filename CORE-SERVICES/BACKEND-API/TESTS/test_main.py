@@ -211,11 +211,19 @@ class FakeEquipmentTimeline:
 
 
 class FakeEquipmentTimelineService:
-    def __init__(self, timeline=None):
+    def __init__(self, timeline=None, current_seal=None):
         self._timeline = timeline or FakeEquipmentTimeline()
+        self._current_seal = current_seal
 
     def build(self, tag_number):
         return self._timeline
+
+    # MWO-LTSA-ASSET360-MECHANICAL-SEAL-WIRING-001 -- GET .../knowledge now
+    # also calls build_current_seal(); defaults to None (no authoritative
+    # seal), matching every pre-existing test in this file that never
+    # configures one.
+    def build_current_seal(self, tag_number):
+        return self._current_seal
 
 
 class FakeEngineeringContextEngine:

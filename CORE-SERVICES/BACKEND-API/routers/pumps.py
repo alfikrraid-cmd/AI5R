@@ -257,6 +257,14 @@ def get_ltsa_pump_knowledge(
     summary = engineering_context_engine.build(tag)
     ai_insight = build_engineering_insight(knowledge.recommendation or (), summary)
     executive_metrics = compute_executive_metrics(knowledge)
+    # MWO-LTSA-ASSET360-MECHANICAL-SEAL-WIRING-001 -- reuses
+    # EquipmentTimelineService.build_lifecycle()'s own current-seal
+    # resolution (already relied on by GET .../lifecycle and already
+    # proven correct there) via its small build_current_seal() entry
+    # point, instead of a second frontend fetch or a duplicated
+    # derivation. Only fields with an authoritative source are ever
+    # populated -- see _build_current_seal's own header comment.
+    current_seal = equipment_timeline_service.build_current_seal(tag)
 
     return {
         "success": True,
@@ -265,6 +273,7 @@ def get_ltsa_pump_knowledge(
             "summary": summary,
             "timeline": [dataclasses.asdict(event) for event in timeline.events],
             "seal": knowledge.seal,
+            "current_seal": dataclasses.asdict(current_seal) if current_seal is not None else None,
             "inventory": knowledge.inventory,
             "pm": knowledge.pm_history,
             "cm": knowledge.cm_history,

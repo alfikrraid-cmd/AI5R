@@ -131,6 +131,21 @@ class EquipmentTimelineService:
 
         return EquipmentTimeline(tag_number=tag_number, events=events_sorted)
 
+    # MWO-LTSA-ASSET360-MECHANICAL-SEAL-WIRING-001 -- exposes
+    # build_lifecycle()'s existing current-seal resolution (Section 3
+    # priority: Seal Registry, then Installation descriptive fields, then
+    # null -- see _build_current_seal's own header comment) as its own
+    # small, reusable entry point, so a caller that only needs the current
+    # seal (the /knowledge router) is not required to compute the entire
+    # PumpLifecycle (installations, work orders, seal events, analytics)
+    # just to reach it. No new derivation, no copy/paste -- both
+    # _list_installations and _build_current_seal are the exact same
+    # private helpers build_lifecycle() itself already calls.
+    def build_current_seal(self, tag_number: str) -> PumpLifecycleCurrentSeal | None:
+        installations = self._list_installations(tag_number)
+        current_installation_record = installations[-1] if installations else None
+        return self._build_current_seal(current_installation_record)
+
     def build_lifecycle(self, tag_number: str, *, today: date | None = None) -> PumpLifecycle:
         knowledge = self._knowledge_service.build(tag_number)
         installations = self._list_installations(tag_number)

@@ -1,12 +1,16 @@
 import { EmptySection } from "./KnowledgeCard";
 
 // MWO-LTSA-032A -- KnowledgeSeal: Mechanical Seal body (KnowledgeCard
-// variant="kv"). Repository Archaeology (via EngineeringContextEngine's
-// own disclosed gap) confirmed no backend data source distinguishes "the
-// seal currently installed on this pump" from "seals compatible with this
-// pump type" -- so `seal` here is always undefined against real data, and
-// this section always renders its empty state. Compatible Seals (a
-// different section, real data) is rendered separately, not from here.
+// variant="kv"). Compatible Seals (a different section) is rendered
+// separately, not from here.
+//
+// MWO-LTSA-ASSET360-MECHANICAL-SEAL-WIRING-001 -- `seal` is now populated
+// from the Knowledge API's `current_seal` (see useKnowledgeWorkspace.js's
+// mapMechanicalSeal) when the pump has an authoritative current
+// installation; still undefined (empty state below) when it does not --
+// never fabricated either way. `type`/`apiPlan`/`hours`/`mtbf` remain
+// unset regardless (no authoritative source anywhere in the backend
+// derivation), rendered honestly as "Unavailable" by Row below.
 function Row({ label, value }) {
   return (
     <div className="info-row">
@@ -36,6 +40,7 @@ export default function KnowledgeSeal({ seal }) {
       <Row label="Name" value={seal.name} />
       <Row label="Manufacturer" value={seal.manufacturer} />
       <Row label="Model" value={seal.model} />
+      <Row label="Material" value={seal.material} />
       <Row label="Type" value={seal.type} />
       <Row label="API Plan" value={seal.apiPlan} />
       <Row label="Installed" value={seal.installedDate} />
