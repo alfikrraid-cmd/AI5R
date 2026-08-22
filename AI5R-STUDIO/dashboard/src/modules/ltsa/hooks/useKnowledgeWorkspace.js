@@ -69,13 +69,31 @@ function mapEquipment(knowledgeData) {
   };
 }
 
+// MWO-LTSA-ASSET360-SEAL-SEMANTICS-001 -- maps the Knowledge API's
+// `configured_seal` (router-side: {seal_type, api_plan} read straight off
+// knowledge.pump, the same canonical pump record already fetched for this
+// response -- no second gateway call, no second fetch). Deliberately kept
+// as its own object, never merged into mapMechanicalSeal's currentSeal
+// shape: ltsa_pumps.seal_type is broad master data (production evidence:
+// 16 different seal_registry T48MP variants exist with different
+// shaft_size values), never proof of what is actually installed today.
+function mapConfiguredSeal(configuredSeal) {
+  return {
+    sealType: configuredSeal?.seal_type ?? undefined,
+    apiPlan: configuredSeal?.api_plan ?? undefined,
+  };
+}
+
 // MWO-LTSA-ASSET360-MECHANICAL-SEAL-WIRING-001 -- maps the Knowledge API's
 // `current_seal` (dataclasses.asdict(PumpLifecycleCurrentSeal), router-side,
 // see useKnowledgeWorkspace.js's own header comment) into KnowledgeSeal.jsx's
-// existing prop vocabulary. `type`/`apiPlan`/`hours`/`mtbf` have no
-// authoritative source anywhere in PumpLifecycleCurrentSeal and are left
-// unset rather than guessed -- KnowledgeSeal.jsx already renders an unset
-// field as "Unavailable", an honest state, not a fabricated one.
+// existing prop vocabulary. `type`/`hours`/`mtbf` have no authoritative
+// source anywhere in PumpLifecycleCurrentSeal and are left unset rather
+// than guessed -- KnowledgeSeal.jsx already renders an unset field as
+// "Not recorded", an honest state, not a fabricated one. `apiPlan` moved
+// to mapConfiguredSeal above (MWO-LTSA-ASSET360-SEAL-SEMANTICS-001) --
+// api_plan is master/design data (ltsa_pumps.api_plan), not something
+// PumpLifecycleCurrentSeal ever carried or should carry.
 function mapMechanicalSeal(currentSeal) {
   if (!currentSeal) return undefined;
 
@@ -241,6 +259,7 @@ function mapEquipmentKnowledge(knowledgeData) {
     activePlans: mapActivePlans(knowledgeData?.pm_schedules, knowledgeData?.condition_monitoring_schedules),
     timeline: mapTimeline(knowledgeData?.timeline),
     mechanicalSeal: mapMechanicalSeal(knowledgeData?.current_seal),
+    configuredSeal: mapConfiguredSeal(knowledgeData?.configured_seal),
     compatibleSeals: mapCompatibleSeals(knowledgeData?.seal),
     inventory: mapInventory(knowledgeData?.inventory, knowledgeData?.seal),
     pmHistory: (knowledgeData?.pm ?? []).map((record) =>

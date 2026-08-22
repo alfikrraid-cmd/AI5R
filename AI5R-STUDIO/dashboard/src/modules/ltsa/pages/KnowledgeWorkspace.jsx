@@ -154,7 +154,7 @@ export default function KnowledgeWorkspace({ tag }) {
 
             <KnowledgeSection id="seal" title="Mechanical Seal" badge={data.mechanicalSeal?.status}>
               <KnowledgeCard variant="kv">
-                <KnowledgeSeal seal={data.mechanicalSeal} />
+                <KnowledgeSeal configuredSeal={data.configuredSeal} currentSeal={data.mechanicalSeal} />
               </KnowledgeCard>
             </KnowledgeSection>
 

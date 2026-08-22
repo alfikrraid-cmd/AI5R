@@ -265,6 +265,20 @@ def get_ltsa_pump_knowledge(
     # derivation. Only fields with an authoritative source are ever
     # populated -- see _build_current_seal's own header comment.
     current_seal = equipment_timeline_service.build_current_seal(tag)
+    # MWO-LTSA-ASSET360-SEAL-SEMANTICS-001 -- configured_seal reuses
+    # knowledge.pump, the canonical pump record ltsa_knowledge_service.build()
+    # already fetched above for this same response (no second gateway
+    # call, no second fetch). This is deliberately a DIFFERENT concept from
+    # current_seal: ltsa_pumps.seal_type/api_plan are broad master data
+    # (production evidence: 16 different seal_registry T48MP variants
+    # exist with different shaft_size values), never proof of which exact
+    # seal is currently installed -- that remains current_seal's job
+    # alone, never inferred from this.
+    pump_record = knowledge.pump or {}
+    configured_seal = {
+        "seal_type": pump_record.get("seal_type"),
+        "api_plan": pump_record.get("api_plan"),
+    }
 
     return {
         "success": True,
@@ -274,6 +288,7 @@ def get_ltsa_pump_knowledge(
             "timeline": [dataclasses.asdict(event) for event in timeline.events],
             "seal": knowledge.seal,
             "current_seal": dataclasses.asdict(current_seal) if current_seal is not None else None,
+            "configured_seal": configured_seal,
             "inventory": knowledge.inventory,
             "pm": knowledge.pm_history,
             "cm": knowledge.cm_history,

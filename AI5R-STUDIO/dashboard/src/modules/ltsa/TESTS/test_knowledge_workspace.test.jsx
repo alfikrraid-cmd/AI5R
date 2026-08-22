@@ -703,17 +703,17 @@ describe("Mechanical Seal (MWO-LTSA-ASSET360-MECHANICAL-SEAL-WIRING-001) -- curr
 
     await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());
     const sealSection = screen.getByTestId("knowledge-section-seal");
-    expect(within(sealSection).getByTestId("knowledge-seal")).toBeInTheDocument();
-    expect(within(sealSection).getByText("T48MP")).toBeInTheDocument();
-    expect(within(sealSection).getByText("John Crane")).toBeInTheDocument();
-    expect(within(sealSection).getByText("1K1K")).toBeInTheDocument();
+    const currentGroup = within(sealSection).getByTestId("knowledge-seal-current");
+    expect(within(currentGroup).getByText("T48MP")).toBeInTheDocument();
+    expect(within(currentGroup).getByText("John Crane")).toBeInTheDocument();
+    expect(within(currentGroup).getByText("1K1K")).toBeInTheDocument();
     // "INSTALLED" legitimately renders twice: the section header's own
     // badge (badge={data.mechanicalSeal?.status}) AND the seal body's
     // status-signal line.
     expect(within(sealSection).getAllByText("INSTALLED").length).toBeGreaterThan(0);
   });
 
-  it("leaves fields with no authoritative source as an honest 'Unavailable', never fabricated", async () => {
+  it("leaves current-installation fields with no authoritative source as an honest 'Unavailable', never fabricated", async () => {
     getPumpKnowledge.mockResolvedValue(
       backendResponse({
         data: {
@@ -740,13 +740,13 @@ describe("Mechanical Seal (MWO-LTSA-ASSET360-MECHANICAL-SEAL-WIRING-001) -- curr
 
     await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());
     const sealSection = screen.getByTestId("knowledge-section-seal");
-    // Model, Type, API Plan, Hours, MTBF, and Status (null here) have no
-    // authoritative source in this fixture -- each renders "Unavailable",
-    // never a guessed value.
-    expect(within(sealSection).getAllByText("Unavailable").length).toBeGreaterThanOrEqual(5);
+    const currentGroup = within(sealSection).getByTestId("knowledge-seal-current");
+    // Name/Model have no authoritative source in this fixture (seal_name/
+    // model: null) -- each renders "Not recorded", never a guessed value.
+    expect(within(currentGroup).getAllByText("Not recorded").length).toBeGreaterThanOrEqual(2);
   });
 
-  it("still shows the empty state when the backend returns current_seal: null (no authoritative installation)", async () => {
+  it("current-installation fields fall back to 'Not recorded' (never inferred from configured seal type) when current_seal is null", async () => {
     getPumpKnowledge.mockResolvedValue(
       backendResponse({ data: { ...backendResponse().data, current_seal: null } })
     );
@@ -755,8 +755,8 @@ describe("Mechanical Seal (MWO-LTSA-ASSET360-MECHANICAL-SEAL-WIRING-001) -- curr
 
     await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());
     const sealSection = screen.getByTestId("knowledge-section-seal");
-    expect(within(sealSection).getByText("Belum ada seal terpasang")).toBeInTheDocument();
-    expect(within(sealSection).queryByTestId("knowledge-seal")).not.toBeInTheDocument();
+    const currentGroup = within(sealSection).getByTestId("knowledge-seal-current");
+    expect(within(currentGroup).getAllByText("Not recorded").length).toBeGreaterThanOrEqual(6);
   });
 
   it("does not introduce a second fetch -- still exactly one getPumpKnowledge call", async () => {
@@ -788,6 +788,100 @@ describe("Mechanical Seal (MWO-LTSA-ASSET360-MECHANICAL-SEAL-WIRING-001) -- curr
     render(<KnowledgeWorkspace tag={TAG} />);
 
     await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());
+    expect(screen.getAllByTestId("knowledge-card")).toHaveLength(10);
+  });
+});
+
+describe("Configured vs Current Seal (MWO-LTSA-ASSET360-SEAL-SEMANTICS-001) -- configured_seal (design data) stays distinct from current_seal (installation evidence)", () => {
+  it("renders Configured Seal Type and API Plan from configured_seal, independent of current_seal", async () => {
+    getPumpKnowledge.mockResolvedValue(
+      backendResponse({
+        data: {
+          ...backendResponse().data,
+          configured_seal: { seal_type: "T48MP", api_plan: "11/62" },
+          current_seal: null,
+        },
+      })
+    );
+
+    render(<KnowledgeWorkspace tag={TAG} />);
+
+    await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());
+    const sealSection = screen.getByTestId("knowledge-section-seal");
+    const configuredGroup = within(sealSection).getByTestId("knowledge-seal-configured");
+    expect(within(configuredGroup).getByText("T48MP")).toBeInTheDocument();
+    expect(within(configuredGroup).getByText("11/62")).toBeInTheDocument();
+  });
+
+  it("shows the current-installation section as 'Not recorded' even when a configured seal type is known -- never inferred from seal_type", async () => {
+    getPumpKnowledge.mockResolvedValue(
+      backendResponse({
+        data: {
+          ...backendResponse().data,
+          configured_seal: { seal_type: "T48MP", api_plan: "11/62" },
+          current_seal: null,
+        },
+      })
+    );
+
+    render(<KnowledgeWorkspace tag={TAG} />);
+
+    await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());
+    const sealSection = screen.getByTestId("knowledge-section-seal");
+    const currentGroup = within(sealSection).getByTestId("knowledge-seal-current");
+    expect(within(currentGroup).getAllByText("Not recorded").length).toBeGreaterThanOrEqual(1);
+    // Never "T48MP" leaking into the current-installation group as if it
+    // were installation evidence.
+    expect(within(currentGroup).queryByText("T48MP")).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["212-P-7B", "T48MP", null],
+    ["110-P-10", "T48MP", "11/62"],
+    ["140-P-11", "T48MP", "11/61"],
+  ])(
+    "%s: configured seal type/API plan render from configured_seal while current_seal stays 'Not recorded' (production evidence: installation_report has zero rows)",
+    async (tag, sealType, apiPlan) => {
+      getPumpKnowledge.mockResolvedValue(
+        backendResponse({
+          tag_number: tag,
+          data: {
+            ...backendResponse().data,
+            summary: { ...backendResponse().data.summary, asset: { tag_number: tag, pump_name: "Pump" } },
+            configured_seal: { seal_type: sealType, api_plan: apiPlan },
+            current_seal: null,
+          },
+        })
+      );
+
+      render(<KnowledgeWorkspace tag={tag} />);
+
+      await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());
+      const sealSection = screen.getByTestId("knowledge-section-seal");
+      const configuredGroup = within(sealSection).getByTestId("knowledge-seal-configured");
+      expect(within(configuredGroup).getByText(sealType)).toBeInTheDocument();
+      if (apiPlan) {
+        expect(within(configuredGroup).getByText(apiPlan)).toBeInTheDocument();
+      }
+      const currentGroup = within(sealSection).getByTestId("knowledge-seal-current");
+      expect(within(currentGroup).getAllByText("Not recorded").length).toBeGreaterThanOrEqual(1);
+    }
+  );
+
+  it("does not introduce a second fetch and does not change section/card counts", async () => {
+    getPumpKnowledge.mockResolvedValue(
+      backendResponse({
+        data: {
+          ...backendResponse().data,
+          configured_seal: { seal_type: "T48MP", api_plan: "11/62" },
+        },
+      })
+    );
+
+    render(<KnowledgeWorkspace tag={TAG} />);
+
+    await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());
+    expect(getPumpKnowledge).toHaveBeenCalledTimes(1);
     expect(screen.getAllByTestId("knowledge-card")).toHaveLength(10);
   });
 });

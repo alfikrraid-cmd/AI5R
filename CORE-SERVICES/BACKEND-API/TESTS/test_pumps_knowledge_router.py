@@ -570,3 +570,96 @@ def test_get_knowledge_existing_fields_unchanged_by_current_seal_extension():
     assert data["breakdown"] == [
         {"maintenance_record_code": "MH-1", "asset_code": TAG, "performed_at": "2026-06-03"}
     ]
+
+
+# MWO-LTSA-ASSET360-SEAL-SEMANTICS-001 -- configured_seal, wired into the
+# same GET /api/ltsa/pumps/{tag}/knowledge response by reading
+# knowledge.pump (the canonical pump record ltsa_knowledge_service.build()
+# already fetched for this response -- no new gateway call, no second
+# fetch). Deliberately a distinct field from current_seal: ltsa_pumps.
+# seal_type/api_plan are broad master data, never proof of what is
+# actually installed -- production evidence: seal_type=T48MP is shared by
+# 212-P-7B/110-P-10/140-P-11 while seal_registry has 16 different T48MP
+# variants with different shaft_size values, and installation_report has
+# zero production rows today.
+
+
+def test_get_knowledge_configured_seal_field_exists_in_response():
+    _override()
+
+    data = client.get(f"/api/ltsa/pumps/{TAG}/knowledge").json()["data"]
+
+    assert "configured_seal" in data
+
+
+def test_get_knowledge_configured_seal_reads_seal_type_and_api_plan_from_the_pump_record():
+    _override(
+        knowledge=_knowledge(
+            pump={"tag_number": TAG, "pump_name": "Main Feed Pump", "seal_type": "T48MP", "api_plan": "11/62"}
+        )
+    )
+
+    data = client.get(f"/api/ltsa/pumps/{TAG}/knowledge").json()["data"]
+
+    assert data["configured_seal"] == {"seal_type": "T48MP", "api_plan": "11/62"}
+
+
+def test_get_knowledge_configured_seal_is_independent_of_current_seal():
+    # The defining requirement of this MWO: configured_seal (design data)
+    # and current_seal (installation evidence) never collapse into one
+    # field, and neither is derived from the other -- proven here by
+    # configured_seal being fully populated while current_seal is None.
+    _override(
+        knowledge=_knowledge(
+            pump={"tag_number": TAG, "pump_name": "Main Feed Pump", "seal_type": "T48MP", "api_plan": "11/62"}
+        ),
+        current_seal=None,
+    )
+
+    data = client.get(f"/api/ltsa/pumps/{TAG}/knowledge").json()["data"]
+
+    assert data["configured_seal"] == {"seal_type": "T48MP", "api_plan": "11/62"}
+    assert data["current_seal"] is None
+
+
+def test_get_knowledge_configured_seal_fields_are_none_when_pump_has_no_master_data():
+    _override(knowledge=_knowledge(pump={"tag_number": TAG}))
+
+    data = client.get(f"/api/ltsa/pumps/{TAG}/knowledge").json()["data"]
+
+    assert data["configured_seal"] == {"seal_type": None, "api_plan": None}
+
+
+def test_get_knowledge_configured_seal_handles_a_missing_pump_record_without_crashing():
+    _override(knowledge=_knowledge(pump=None))
+
+    response = client.get(f"/api/ltsa/pumps/{TAG}/knowledge")
+
+    assert response.status_code == 200
+    assert response.json()["data"]["configured_seal"] == {"seal_type": None, "api_plan": None}
+
+
+@pytest.mark.parametrize(
+    ("tag", "seal_type", "api_plan"),
+    [
+        ("212-P-7B", "T48MP", None),
+        ("110-P-10", "T48MP", "11/62"),
+        ("140-P-11", "T48MP", "11/61"),
+    ],
+)
+def test_get_knowledge_configured_seal_matches_production_evidence_for_the_three_demo_pumps(tag, seal_type, api_plan):
+    _override(
+        knowledge=_knowledge(
+            tag_number=tag,
+            pump={"tag_number": tag, "seal_type": seal_type, "api_plan": api_plan},
+        ),
+        current_seal=None,
+    )
+
+    data = client.get(f"/api/ltsa/pumps/{tag}/knowledge").json()["data"]
+
+    assert data["configured_seal"] == {"seal_type": seal_type, "api_plan": api_plan}
+    # Production evidence: installation_report has zero rows today, so
+    # current_seal is correctly None for all three -- never inferred from
+    # seal_type, and no arbitrary seal_registry variant is chosen.
+    assert data["current_seal"] is None
