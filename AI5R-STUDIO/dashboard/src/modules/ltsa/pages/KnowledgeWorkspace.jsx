@@ -109,116 +109,141 @@ export default function KnowledgeWorkspace({ tag }) {
             <h4>Belum ada peralatan dipilih</h4>
           </div>
         ) : (
-          <aside className="inspector-rail" data-testid="knowledge-workspace-success">
-            <div className="rail-section kn-header-row">
-              <div>
-                <span className="eyebrow">{data.equipment.tag}</span>
-                <h2 className="rail-title">{data.equipment.name ?? data.equipment.tag}</h2>
+          // MWO-LTSA-ASSET360-UI-PRODUCTION-HARDENING-001 -- .workspace-grid/
+          // .object-column/.inspector-rail are reused verbatim from
+          // MaintenanceHistory.css (already scoped under this same
+          // .pump-workspace-root WorkspaceShell applies, already responsive
+          // -- see its own @media max-width:980px rule). Root cause of the
+          // narrow-desktop-column defect: this page previously put every
+          // section inside a bare .inspector-rail (a component CSS-designed
+          // to be the narrow 336px SIDE column of that grid, sticky-
+          // positioned) with no accompanying wide .object-column, and
+          // .knowledge-workspace-standalone additionally capped the whole
+          // page at max-width:336px (KnowledgeWorkspace.css) -- copied from
+          // .inspector-rail's own sidebar width as if it were meant for the
+          // whole page. No new CSS/design language: reference/context
+          // sections (Mechanical Seal, Compatible Seals, Inventory,
+          // Drawings) now live in the sidebar rail; every other section
+          // (Equipment Summary, Active Plans, Timeline, PM/CM/Breakdown
+          // History, Recommendation, AI Insights) lives in the wide main
+          // column -- the exact main/sidebar split this MWO's own guidance
+          // describes, and the same shape MaintenanceHistory.jsx (the
+          // richer, pre-existing implementation this was ported from)
+          // already uses.
+          <div className="workspace-grid" data-testid="knowledge-workspace-success">
+            <main className="object-column">
+              <div className="rail-section kn-header-row">
+                <div>
+                  <span className="eyebrow">{data.equipment.tag}</span>
+                  <h2 className="rail-title">{data.equipment.name ?? data.equipment.tag}</h2>
+                </div>
+                <button
+                  type="button"
+                  className="btn-link"
+                  data-testid="knowledge-workspace-refresh"
+                  aria-label="Muat ulang data peralatan"
+                  onClick={refresh}
+                >
+                  Muat Ulang
+                </button>
               </div>
-              <button
-                type="button"
-                className="btn-link"
-                data-testid="knowledge-workspace-refresh"
-                aria-label="Muat ulang data peralatan"
-                onClick={refresh}
+
+              <KnowledgeSection
+                id="summary"
+                title="Equipment Summary"
+                badge={data.equipment.condition}
+                footer={`Data dihasilkan ${data.equipment.lastUpdated ?? "-"}`}
               >
-                Muat Ulang
-              </button>
-            </div>
+                <KnowledgeCard variant="grid">
+                  <KnowledgeSummary equipment={data.equipment} />
+                </KnowledgeCard>
+              </KnowledgeSection>
 
-            <KnowledgeSection
-              id="summary"
-              title="Equipment Summary"
-              badge={data.equipment.status}
-              footer={`Diperbarui ${data.equipment.lastUpdated ?? "-"}`}
-            >
-              <KnowledgeCard variant="grid">
-                <KnowledgeSummary equipment={data.equipment} />
-              </KnowledgeCard>
-            </KnowledgeSection>
+              <KnowledgeSection
+                id="active-plans"
+                title="Active Plans"
+                badge={String(data.activePlans.pmSchedules.length + data.activePlans.conditionMonitoringSchedules.length)}
+              >
+                <ActivePlansPanel
+                  pmSchedules={data.activePlans.pmSchedules}
+                  conditionMonitoringSchedules={data.activePlans.conditionMonitoringSchedules}
+                />
+              </KnowledgeSection>
 
-            <KnowledgeSection
-              id="active-plans"
-              title="Active Plans"
-              badge={String(data.activePlans.pmSchedules.length + data.activePlans.conditionMonitoringSchedules.length)}
-            >
-              <ActivePlansPanel
-                pmSchedules={data.activePlans.pmSchedules}
-                conditionMonitoringSchedules={data.activePlans.conditionMonitoringSchedules}
-              />
-            </KnowledgeSection>
+              <KnowledgeSection id="timeline" title="Equipment Timeline" badge={`${data.timeline.length} peristiwa`}>
+                <KnowledgeTimeline items={data.timeline} />
+              </KnowledgeSection>
 
-            <KnowledgeSection id="timeline" title="Equipment Timeline" badge={`${data.timeline.length} peristiwa`}>
-              <KnowledgeTimeline items={data.timeline} />
-            </KnowledgeSection>
+              <KnowledgeSection id="pm-history" title="PM History" badge={String(data.pmHistory.length)}>
+                <KnowledgeCard variant="row-list">
+                  <RefRows items={data.pmHistory} emptyTitle="Belum ada riwayat PM" />
+                </KnowledgeCard>
+              </KnowledgeSection>
 
-            <KnowledgeSection id="seal" title="Mechanical Seal" badge={data.mechanicalSeal?.status}>
-              <KnowledgeCard variant="kv">
-                <KnowledgeSeal configuredSeal={data.configuredSeal} currentSeal={data.mechanicalSeal} />
-              </KnowledgeCard>
-            </KnowledgeSection>
+              <KnowledgeSection id="cm-history" title="CM History" badge={String(data.cmHistory.length)}>
+                <KnowledgeCard variant="row-list">
+                  <RefRows items={data.cmHistory} emptyTitle="Belum ada riwayat CM" />
+                </KnowledgeCard>
+              </KnowledgeSection>
 
-            <KnowledgeSection id="compat-seals" title="Compatible Seals" badge={String(data.compatibleSeals.length)}>
-              <KnowledgeCard variant="row-list">
-                <RefRows items={data.compatibleSeals} emptyTitle="Belum ada seal kompatibel" />
-              </KnowledgeCard>
-            </KnowledgeSection>
+              <KnowledgeSection id="breakdown-history" title="Breakdown History" badge={String(data.breakdownHistory.length)}>
+                <KnowledgeCard variant="row-list">
+                  <RefRows items={data.breakdownHistory} emptyTitle="Belum ada riwayat breakdown" />
+                </KnowledgeCard>
+              </KnowledgeSection>
 
-            <KnowledgeSection
-              id="inventory"
-              title="Inventory"
-              badge={`${data.inventory.filter((item) => item.level === "low" || item.level === "out").length} Rendah`}
-            >
-              <KnowledgeCard variant="row-list">
-                <KnowledgeInventory items={data.inventory} />
-              </KnowledgeCard>
-            </KnowledgeSection>
+              <KnowledgeSection
+                id="recommendation"
+                title="Recommendation"
+                badge={String(data.recommendations.length)}
+              >
+                <KnowledgeCard variant="prose">
+                  <KnowledgeRecommendation recommendations={data.recommendations} loading={false} error={null} />
+                </KnowledgeCard>
+              </KnowledgeSection>
 
-            <KnowledgeSection id="pm-history" title="PM History" badge={String(data.pmHistory.length)}>
-              <KnowledgeCard variant="row-list">
-                <RefRows items={data.pmHistory} emptyTitle="Belum ada riwayat PM" />
-              </KnowledgeCard>
-            </KnowledgeSection>
+              <KnowledgeSection
+                id="ai-insights"
+                title="AI Insights"
+                badge={data.aiInsights ? "Deterministic" : "Segera Hadir"}
+                defaultOpen={false}
+              >
+                <KnowledgeCard variant="prose" locked={!data.aiInsights}>
+                  <KnowledgeAIInsight insight={data.aiInsights} />
+                </KnowledgeCard>
+              </KnowledgeSection>
+            </main>
 
-            <KnowledgeSection id="cm-history" title="CM History" badge={String(data.cmHistory.length)}>
-              <KnowledgeCard variant="row-list">
-                <RefRows items={data.cmHistory} emptyTitle="Belum ada riwayat CM" />
-              </KnowledgeCard>
-            </KnowledgeSection>
+            <aside className="inspector-rail">
+              <KnowledgeSection id="seal" title="Mechanical Seal" badge={data.mechanicalSeal?.status}>
+                <KnowledgeCard variant="kv">
+                  <KnowledgeSeal configuredSeal={data.configuredSeal} currentSeal={data.mechanicalSeal} />
+                </KnowledgeCard>
+              </KnowledgeSection>
 
-            <KnowledgeSection id="breakdown-history" title="Breakdown History" badge={String(data.breakdownHistory.length)}>
-              <KnowledgeCard variant="row-list">
-                <RefRows items={data.breakdownHistory} emptyTitle="Belum ada riwayat breakdown" />
-              </KnowledgeCard>
-            </KnowledgeSection>
+              <KnowledgeSection id="compat-seals" title="Compatible Seals" badge={String(data.compatibleSeals.length)}>
+                <KnowledgeCard variant="row-list">
+                  <RefRows items={data.compatibleSeals} emptyTitle="Belum ada seal kompatibel" />
+                </KnowledgeCard>
+              </KnowledgeSection>
 
-            <KnowledgeSection id="drawings" title="Drawings" badge={String(data.drawings.length)}>
-              <KnowledgeCard variant="row-list">
-                <KnowledgeDrawingSection items={data.drawings} />
-              </KnowledgeCard>
-            </KnowledgeSection>
+              <KnowledgeSection
+                id="inventory"
+                title="Inventory"
+                badge={`${data.inventory.filter((item) => item.level === "low" || item.level === "out").length} Rendah`}
+              >
+                <KnowledgeCard variant="row-list">
+                  <KnowledgeInventory items={data.inventory} />
+                </KnowledgeCard>
+              </KnowledgeSection>
 
-            <KnowledgeSection
-              id="recommendation"
-              title="Recommendation"
-              badge={String(data.recommendations.length)}
-            >
-              <KnowledgeCard variant="prose">
-                <KnowledgeRecommendation recommendations={data.recommendations} loading={false} error={null} />
-              </KnowledgeCard>
-            </KnowledgeSection>
-
-            <KnowledgeSection
-              id="ai-insights"
-              title="AI Insights"
-              badge={data.aiInsights ? "Deterministic" : "Segera Hadir"}
-              defaultOpen={false}
-            >
-              <KnowledgeCard variant="prose" locked={!data.aiInsights}>
-                <KnowledgeAIInsight insight={data.aiInsights} />
-              </KnowledgeCard>
-            </KnowledgeSection>
-          </aside>
+              <KnowledgeSection id="drawings" title="Drawings" badge={String(data.drawings.length)}>
+                <KnowledgeCard variant="row-list">
+                  <KnowledgeDrawingSection items={data.drawings} />
+                </KnowledgeCard>
+              </KnowledgeSection>
+            </aside>
+          </div>
         )}
       </div>
     </WorkspaceShell>

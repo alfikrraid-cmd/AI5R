@@ -663,3 +663,64 @@ def test_get_knowledge_configured_seal_matches_production_evidence_for_the_three
     # current_seal is correctly None for all three -- never inferred from
     # seal_type, and no arbitrary seal_registry variant is chosen.
     assert data["current_seal"] is None
+
+
+# MWO-LTSA-ASSET360-UI-PRODUCTION-HARDENING-001 -- "pump", the canonical
+# pump record passed through unchanged (knowledge.pump -- the same record
+# configured_seal above already reuses, no second gateway call, no second
+# fetch), so Equipment Summary can show real area/location/pump_type/
+# status instead of summary.asset's narrower shape.
+
+
+def test_get_knowledge_pump_field_exists_in_response():
+    _override()
+
+    data = client.get(f"/api/ltsa/pumps/{TAG}/knowledge").json()["data"]
+
+    assert "pump" in data
+
+
+def test_get_knowledge_pump_field_matches_production_evidence_for_212_p_7b():
+    tag = "212-P-7B"
+    pump_record = {
+        "tag_number": tag,
+        "area": "Reaktor",
+        "location": None,
+        "pump_type": "OH2",
+        "api_plan": None,
+        "seal_type": "T48MP",
+        "status": "UNKNOWN",
+        "manufacturer": None,
+        "model": None,
+        "drawing_ref": "E13419",
+    }
+    _override(knowledge=_knowledge(tag_number=tag, pump=pump_record), current_seal=None)
+
+    data = client.get(f"/api/ltsa/pumps/{tag}/knowledge").json()["data"]
+
+    assert data["pump"] == pump_record
+    assert data["pump"]["area"] == "Reaktor"
+    assert data["pump"]["location"] is None
+    assert data["pump"]["status"] == "UNKNOWN"
+
+
+def test_get_knowledge_pump_field_is_none_when_pump_master_data_is_unavailable():
+    _override(knowledge=_knowledge(pump=None))
+
+    response = client.get(f"/api/ltsa/pumps/{TAG}/knowledge")
+
+    assert response.status_code == 200
+    assert response.json()["data"]["pump"] is None
+
+
+def test_get_knowledge_pump_field_does_not_trigger_a_second_gateway_call():
+    # "pump" and configured_seal both read the same already-built
+    # knowledge.pump -- proven by there being no separate pump gateway
+    # dependency added to this route at all (FakeKnowledgeService.build()
+    # is called exactly once, same as every other existing assertion in
+    # this file).
+    knowledge_fake, _, _ = _override()
+
+    client.get(f"/api/ltsa/pumps/{TAG}/knowledge")
+
+    assert knowledge_fake.calls == [TAG]

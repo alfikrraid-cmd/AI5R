@@ -301,6 +301,52 @@ describe("Responsive layout", () => {
     expect(container.querySelector(".pump-workspace-root")).toBeInTheDocument();
     expect(container.querySelector(".inspector-rail")).toBeInTheDocument();
   });
+
+  // MWO-LTSA-ASSET360-UI-PRODUCTION-HARDENING-001 -- desktop layout
+  // regression. jsdom does not compute real box widths, so this proves
+  // the responsible class/grid architecture is actually applied (the
+  // same .workspace-grid/.object-column/.inspector-rail classes
+  // MaintenanceHistory.css already defines a real desktop grid-template-
+  // columns and a 980px collapse breakpoint for) rather than measuring
+  // pixels -- see the MWO report's "Responsive verification" item for
+  // the code-level CSS evidence (grid-template-columns: minmax(0,1fr)
+  // 336px; @media max-width:980px collapses to 1fr) this class
+  // architecture activates.
+  it("renders the main content column and the sidebar rail as siblings inside .workspace-grid (the fix for the narrow-desktop-column defect)", async () => {
+    getPumpKnowledge.mockResolvedValue(backendResponse());
+
+    const { container } = render(<KnowledgeWorkspace tag={TAG} />);
+
+    await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());
+    const grid = container.querySelector(".workspace-grid");
+    expect(grid).toBeInTheDocument();
+    const objectColumn = grid.querySelector(":scope > .object-column");
+    const inspectorRail = grid.querySelector(":scope > .inspector-rail");
+    expect(objectColumn).toBeInTheDocument();
+    expect(inspectorRail).toBeInTheDocument();
+    // The success container itself is the grid, not a bare .inspector-rail
+    // wrapping the whole page (the prior defect).
+    expect(screen.getByTestId("knowledge-workspace-success")).toHaveClass("workspace-grid");
+  });
+
+  it("keeps Mechanical Seal, Compatible Seals, Inventory, and Drawings in the sidebar rail; everything else in the main column", async () => {
+    getPumpKnowledge.mockResolvedValue(backendResponse());
+
+    const { container } = render(<KnowledgeWorkspace tag={TAG} />);
+
+    await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());
+    const inspectorRail = container.querySelector(".inspector-rail");
+    const objectColumn = container.querySelector(".object-column");
+
+    ["seal", "compat-seals", "inventory", "drawings"].forEach((id) => {
+      expect(inspectorRail.querySelector(`[data-testid="knowledge-section-${id}"]`)).toBeInTheDocument();
+    });
+    ["summary", "active-plans", "timeline", "pm-history", "cm-history", "breakdown-history", "recommendation", "ai-insights"].forEach(
+      (id) => {
+        expect(objectColumn.querySelector(`[data-testid="knowledge-section-${id}"]`)).toBeInTheDocument();
+      }
+    );
+  });
 });
 
 describe("AI placeholder", () => {
@@ -883,6 +929,196 @@ describe("Configured vs Current Seal (MWO-LTSA-ASSET360-SEAL-SEMANTICS-001) -- c
     await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());
     expect(getPumpKnowledge).toHaveBeenCalledTimes(1);
     expect(screen.getAllByTestId("knowledge-card")).toHaveLength(10);
+  });
+});
+
+describe("Response envelope (MWO-LTSA-ASSET360-UI-PRODUCTION-HARDENING-001) -- proves the UI reads response.data, not the top-level object", () => {
+  it("reads configured_seal/current_seal/pump from inside the real {success, tag_number, data} envelope, not from a flattened top level", async () => {
+    // Deliberately mirrors the exact live production envelope shape,
+    // including fields OUTSIDE `data` (success/tag_number) that must be
+    // ignored by field-mapping -- a prior false-negative smoke test
+    // looked at the top-level object instead of response.data and never
+    // caught a wiring gap. getPumpKnowledge's own real implementation
+    // returns this full envelope; KnowledgeWorkspaceController.load()
+    // unwraps `.data` before this hook ever sees it.
+    getPumpKnowledge.mockResolvedValue({
+      success: true,
+      tag_number: "212-P-7B",
+      // Top-level decoys: if the mapping code ever regressed to reading
+      // these instead of the nested equivalents inside `data`, the
+      // assertions below would fail.
+      configured_seal: { seal_type: "WRONG-TOP-LEVEL", api_plan: "WRONG" },
+      current_seal: { seal_code: "WRONG-TOP-LEVEL" },
+      data: {
+        ...backendResponse().data,
+        summary: { ...backendResponse().data.summary, asset: { tag_number: "212-P-7B", pump_name: "Pump" } },
+        pump: { tag_number: "212-P-7B", area: "Reaktor", seal_type: "T48MP" },
+        configured_seal: { seal_type: "T48MP", api_plan: null },
+        current_seal: null,
+      },
+    });
+
+    render(<KnowledgeWorkspace tag="212-P-7B" />);
+
+    await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());
+    const sealSection = screen.getByTestId("knowledge-section-seal");
+    const configuredGroup = within(sealSection).getByTestId("knowledge-seal-configured");
+    expect(within(configuredGroup).getByText("T48MP")).toBeInTheDocument();
+    expect(within(configuredGroup).queryByText("WRONG-TOP-LEVEL")).not.toBeInTheDocument();
+    const summarySection = screen.getByTestId("knowledge-summary");
+    expect(within(summarySection).getByText("Reaktor")).toBeInTheDocument();
+  });
+});
+
+describe("Equipment Summary (MWO-LTSA-ASSET360-UI-PRODUCTION-HARDENING-001) -- honest area/location/status/condition/timestamp semantics", () => {
+  function knowledgeFor(tag, pump) {
+    return backendResponse({
+      tag_number: tag,
+      data: {
+        ...backendResponse().data,
+        summary: { ...backendResponse().data.summary, asset: { tag_number: tag, pump_name: "Pump" } },
+        pump,
+      },
+    });
+  }
+
+  it("212-P-7B: renders the canonical tag and real Area (Reaktor) while Location stays honestly Unavailable (null)", async () => {
+    getPumpKnowledge.mockResolvedValue(
+      knowledgeFor("212-P-7B", {
+        tag_number: "212-P-7B",
+        area: "Reaktor",
+        location: null,
+        pump_type: "OH2",
+        api_plan: null,
+        seal_type: "T48MP",
+        status: "UNKNOWN",
+      })
+    );
+
+    render(<KnowledgeWorkspace tag="212-P-7B" />);
+
+    await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());
+    const summary = screen.getByTestId("knowledge-summary");
+    expect(within(summary).getByText("212-P-7B")).toBeInTheDocument();
+    expect(within(summary).getByText("Reaktor")).toBeInTheDocument();
+    expect(within(summary).getByText("OH2")).toBeInTheDocument();
+  });
+
+  it("does not conflate Asset Status (master data) with Condition (health assessment) -- both render distinctly when both are known", async () => {
+    getPumpKnowledge.mockResolvedValue(
+      knowledgeFor("212-P-7B", { tag_number: "212-P-7B", status: "UNKNOWN" })
+    );
+
+    render(<KnowledgeWorkspace tag="212-P-7B" />);
+
+    await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());
+    const summary = screen.getByTestId("knowledge-summary");
+    // Asset Status: UNKNOWN (ltsa_pumps.status, master data) --
+    // Condition: normal (cm_summary.overall_condition, health assessment,
+    // fixture default NORMAL) -- both real, both visible, never collapsed
+    // into one ambiguous "Status" field that would have to pick a winner.
+    expect(within(summary).getByText("UNKNOWN")).toBeInTheDocument();
+    expect(within(summary).getByText("normal")).toBeInTheDocument();
+  });
+
+  it("Location is never fabricated from Area when Location is genuinely null", async () => {
+    getPumpKnowledge.mockResolvedValue(
+      knowledgeFor("212-P-7B", { tag_number: "212-P-7B", area: "Reaktor", location: null })
+    );
+
+    render(<KnowledgeWorkspace tag="212-P-7B" />);
+
+    await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());
+    const summary = screen.getByTestId("knowledge-summary");
+    const locationField = within(summary).getByText("Location").closest(".eng-summary-field");
+    expect(within(locationField).getByText("Unavailable")).toBeInTheDocument();
+    // Area, a real and different field, is not hidden just because
+    // Location is absent.
+    expect(within(summary).getByText("Reaktor")).toBeInTheDocument();
+  });
+
+  it("formats a valid ISO timestamp human-readably, under an honest 'Generated At' label (not 'Last Updated')", async () => {
+    getPumpKnowledge.mockResolvedValue(
+      backendResponse({
+        data: {
+          ...backendResponse().data,
+          summary: {
+            ...backendResponse().data.summary,
+            metadata: { ...backendResponse().data.summary.metadata, generated_at: "2026-08-22T03:45:31.972633+00:00" },
+          },
+        },
+      })
+    );
+
+    render(<KnowledgeWorkspace tag={TAG} />);
+
+    await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());
+    const summary = screen.getByTestId("knowledge-summary");
+    expect(within(summary).getByText("Generated At")).toBeInTheDocument();
+    expect(within(summary).queryByText("2026-08-22T03:45:31.972633+00:00")).not.toBeInTheDocument();
+    expect(within(summary).queryByText(/Last Updated/i)).not.toBeInTheDocument();
+    // Human-readable: day, short month, year, hour:minute -- never the raw
+    // ISO string dumped into the card.
+    expect(within(summary).getByText(/22 Aug 2026/)).toBeInTheDocument();
+  });
+
+  it("renders honestly when the timestamp is null", async () => {
+    getPumpKnowledge.mockResolvedValue(
+      backendResponse({
+        data: {
+          ...backendResponse().data,
+          summary: {
+            ...backendResponse().data.summary,
+            metadata: { ...backendResponse().data.summary.metadata, generated_at: null },
+          },
+        },
+      })
+    );
+
+    render(<KnowledgeWorkspace tag={TAG} />);
+
+    await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());
+    expect(screen.getByTestId("knowledge-summary")).toBeInTheDocument();
+  });
+
+  it("does not crash on a malformed timestamp -- falls back honestly instead of rendering garbage", async () => {
+    getPumpKnowledge.mockResolvedValue(
+      backendResponse({
+        data: {
+          ...backendResponse().data,
+          summary: {
+            ...backendResponse().data.summary,
+            metadata: { ...backendResponse().data.summary.metadata, generated_at: "not-a-real-timestamp" },
+          },
+        },
+      })
+    );
+
+    render(<KnowledgeWorkspace tag={TAG} />);
+
+    await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());
+    expect(screen.getByTestId("knowledge-summary")).toBeInTheDocument();
+    expect(screen.queryByText("not-a-real-timestamp")).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["212-P-7B", "T48MP", null, "Reaktor"],
+    ["110-P-10", "T48MP", "11/62", undefined],
+    ["140-P-11", "T48MP", "11/61", undefined],
+  ])("%s: Equipment Summary reflects production-evidenced pump master data", async (tag, sealType, apiPlan, area) => {
+    getPumpKnowledge.mockResolvedValue(
+      knowledgeFor(tag, { tag_number: tag, area, seal_type: sealType, api_plan: apiPlan, status: "UNKNOWN" })
+    );
+
+    render(<KnowledgeWorkspace tag={tag} />);
+
+    await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());
+    const summary = screen.getByTestId("knowledge-summary");
+    expect(within(summary).getByText(tag)).toBeInTheDocument();
+    expect(within(summary).getByText("UNKNOWN")).toBeInTheDocument();
+    if (area) {
+      expect(within(summary).getByText(area)).toBeInTheDocument();
+    }
   });
 });
 

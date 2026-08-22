@@ -25,9 +25,19 @@
    MaintenanceHistory.css itself once was -- not a new design system.
    ========================================================================== */
 
+/* MWO-LTSA-ASSET360-UI-PRODUCTION-HARDENING-001 -- was `max-width: 336px;
+   margin: 0 auto;`, copied from .inspector-rail's own 336px sidebar
+   column width (.workspace-grid's `grid-template-columns: minmax(0, 1fr)
+   336px`, MaintenanceHistory.css) as if it were meant for the whole page.
+   KnowledgeWorkspace.jsx now renders its real content inside
+   .workspace-grid itself (this header comment's own "already ported,
+   reused from there" list already named .workspace-grid as the intended
+   target), which owns its own max-width/centering/grid-columns -- a
+   second, conflicting 336px cap here would clip that grid back down to
+   sidebar width. Vertical padding only; the loading/error/empty states
+   that also render inside this wrapper are short and self-centering
+   (.eng-empty already sets text-align:center/align-items:center). */
 .pump-workspace-root .knowledge-workspace-standalone {
-  max-width: 336px;
-  margin: 0 auto;
   padding: var(--space-8) var(--space-6) 100px;
 }
 
@@ -149,7 +159,18 @@
 }
 .pump-workspace-root .btn-secondary:disabled { opacity: .38; cursor: not-allowed; }
 
-/* ---------- Responsive (spec §5, container queries) ---------- */
-@container kpdemo (max-width: 640px) {
+/* ---------- Responsive ----------
+   MWO-LTSA-ASSET360-UI-PRODUCTION-HARDENING-001 -- was
+   `@container kpdemo (max-width: 640px)`, a named container query with
+   no matching `container-name: kpdemo` declared anywhere in this
+   codebase (confirmed by search) -- dead CSS that could never match in
+   any browser, so Equipment Summary's 2-column grid never actually
+   collapsed on narrow viewports. Equipment Summary just grew from 5 to 8
+   fields (Area/Pump Type/Asset Status/Condition added), making a working
+   mobile collapse more load-bearing than before. Standard viewport media
+   query, matching the same @media max-width:640px breakpoint
+   MaintenanceHistory.css's own Responsive block already uses one file
+   over -- not a new breakpoint value. */
+@media (max-width: 640px) {
   .pump-workspace-root .eng-summary-grid { grid-template-columns: 1fr; }
 }

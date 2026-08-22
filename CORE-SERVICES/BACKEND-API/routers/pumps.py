@@ -279,12 +279,20 @@ def get_ltsa_pump_knowledge(
         "seal_type": pump_record.get("seal_type"),
         "api_plan": pump_record.get("api_plan"),
     }
+    # MWO-LTSA-ASSET360-UI-PRODUCTION-HARDENING-001 -- exposes
+    # knowledge.pump (the same canonical pump record configured_seal above
+    # already reuses -- no second gateway call, no second fetch) as its
+    # own "pump" key, so Equipment Summary can show real area/location/
+    # pump_type/status instead of the placeholder values
+    # summary.asset (EngineeringContextEngine's own, narrower shape) never
+    # carried. Passed through unchanged -- no new derivation.
 
     return {
         "success": True,
         "tag_number": tag,
         "data": {
             "summary": summary,
+            "pump": knowledge.pump,
             "timeline": [dataclasses.asdict(event) for event in timeline.events],
             "seal": knowledge.seal,
             "current_seal": dataclasses.asdict(current_seal) if current_seal is not None else None,

@@ -19,11 +19,27 @@ import { mapPMScheduleRecord } from "../utils/pmMapping";
 // concurrent edit to Recommendation-mapping, MWO-LTSA-032B).
 //
 // Disclosed gaps, not silently invented:
-//  - equipment.location / healthScore / criticality / confidence: no
-//    backend field exists for any of these today.
-//  - equipment.risk/status: derived from summary.cm_summary.overall_condition
+//  - equipment.healthScore / criticality / confidence: no backend field
+//    exists for any of these today.
+//  - equipment.condition: derived from summary.cm_summary.overall_condition
 //    (NORMAL -> normal, ABNORMAL -> attention, CRITICAL -> critical), the
-//    one real signal available, not a fabricated score.
+//    one real signal available, not a fabricated score. Deliberately kept
+//    distinct from equipment.assetStatus (MWO-LTSA-ASSET360-UI-PRODUCTION-
+//    HARDENING-001): condition is a health/risk ASSESSMENT (derived from
+//    condition-monitoring evidence), assetStatus is the pump's own master-
+//    data status column (ltsa_pumps.status, e.g. "UNKNOWN") -- collapsing
+//    the two into one ambiguous "Status" field silently discarded whichever
+//    one didn't win, per production evidence: 212-P-7B has assetStatus
+//    "UNKNOWN" and condition "normal" simultaneously; both are real and
+//    neither implies the other.
+//  - equipment.area/location/pumpType/assetStatus: MWO-LTSA-ASSET360-UI-
+//    PRODUCTION-HARDENING-001 -- read from `pump` (the Knowledge API's own
+//    "pump" key, router-side passthrough of knowledge.pump, the same
+//    canonical pump record already fetched for this response -- no second
+//    gateway call, no second fetch), not from summary.asset
+//    (EngineeringContextEngine's own narrower shape, which never carried
+//    these fields). A field pump doesn't have (e.g. location, frequently
+//    null in production) stays undefined, never fabricated.
 //  - mechanicalSeal: MWO-LTSA-ASSET360-MECHANICAL-SEAL-WIRING-001 --
 //    EngineeringContextEngine._build_seal_summary's "installed_seal always
 //    null" disclosure was about THAT summary field specifically, not the
@@ -50,22 +66,53 @@ const CM_CONDITION_TO_RISK = {
   CRITICAL: "critical",
 };
 
+// MWO-LTSA-ASSET360-UI-PRODUCTION-HARDENING-001 -- human-readable,
+// null-safe, timezone-explicit (UTC, matching the ISO offset the backend
+// already sends -- this app has no other established timezone
+// convention to defer to) timestamp formatting. A fixed locale ("en-GB")
+// is used deliberately, not the runtime's default locale, so rendered
+// output is stable across machines/CI and never test-fragile. No shared
+// date-formatting utility exists elsewhere in this module to reuse
+// (searched: pumpMapping.js's formatDateOnly is a date-only slice, not a
+// datetime formatter).
+function formatTimestamp(isoString) {
+  if (!isoString) return undefined;
+
+  const date = new Date(isoString);
+  if (Number.isNaN(date.getTime())) return undefined;
+
+  const formatted = new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "UTC",
+  }).format(date);
+
+  return `${formatted} UTC`;
+}
+
 function mapEquipment(knowledgeData) {
   const asset = knowledgeData?.summary?.asset ?? null;
+  const pump = knowledgeData?.pump ?? null;
   const cmCondition = knowledgeData?.summary?.cm_summary?.overall_condition;
-  const risk = CM_CONDITION_TO_RISK[cmCondition];
+  const condition = CM_CONDITION_TO_RISK[cmCondition];
 
   return {
-    tag: asset?.tag_number,
-    name: asset?.pump_name,
-    location: undefined,
+    tag: asset?.tag_number ?? pump?.tag_number ?? undefined,
+    name: asset?.pump_name ?? pump?.name ?? undefined,
+    area: pump?.area ?? undefined,
+    location: pump?.location ?? undefined,
+    pumpType: pump?.pump_type ?? undefined,
+    assetStatus: pump?.status ?? undefined,
     healthScore: undefined,
-    risk,
+    condition,
     criticality: undefined,
-    status: risk,
     confidence: undefined,
     aiSummary: undefined,
-    lastUpdated: knowledgeData?.summary?.metadata?.generated_at,
+    lastUpdated: formatTimestamp(knowledgeData?.summary?.metadata?.generated_at),
   };
 }
 
