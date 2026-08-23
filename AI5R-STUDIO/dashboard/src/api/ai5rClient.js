@@ -1208,3 +1208,29 @@ export async function getRecordChangeHistory(entityType, entityId) {
     );
     return Array.isArray(payload?.data) ? payload.data : [];
 }
+
+// MWO-AI5R-LTSA-COPILOT-001 -- LTSA Dashboard Copilot. Backend returns
+// {answer, kind, evidence} unconditionally on 200 (kind DATA_GAP is a
+// real, informative answer, never an exception) -- same "success:false is
+// not a crash" discipline as _postImportApi/_adminUsersRequest, applied
+// here via the HTTP status itself: only a genuine transport/auth/scope
+// failure throws (401 is already handled globally by apiFetch's
+// onUnauthorized hook; 403/404/5xx surface their own `detail` string so
+// useCopilot.js can distinguish "unauthorized" from a generic "error").
+export async function askCopilot(question, assetContext) {
+    const response = await apiFetch(`${API_URL}/api/ltsa/copilot/ask`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question, asset_context: assetContext ?? null }),
+    });
+
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok) {
+        const error = new Error(payload?.detail || payload?.message || "Copilot API unavailable");
+        error.status = response.status;
+        throw error;
+    }
+
+    return payload;
+}

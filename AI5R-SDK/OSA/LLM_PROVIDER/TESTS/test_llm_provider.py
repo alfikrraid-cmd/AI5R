@@ -55,3 +55,51 @@ def test_prompt_required():
         assert str(e) == "prompt is required"
     else:
         raise AssertionError()
+
+
+def test_default_health_is_healthy():
+    provider = MockLLMProvider()
+
+    status = provider.health()
+
+    assert status.provider == "MOCK"
+    assert status.healthy is True
+
+
+def test_default_estimate_cost_is_zero():
+    provider = MockLLMProvider()
+
+    estimate = provider.estimate_cost(LLMRequest(prompt="hello"))
+
+    assert estimate.provider == "MOCK"
+    assert estimate.estimated_usd == 0.0
+
+
+def test_default_supported_capabilities_is_chat():
+    provider = MockLLMProvider()
+
+    assert provider.supported_capabilities() == frozenset({"chat"})
+
+
+def test_default_stream_not_implemented():
+    provider = MockLLMProvider()
+
+    try:
+        provider.stream(LLMRequest(prompt="hello"))
+    except NotImplementedError:
+        pass
+    else:
+        raise AssertionError()
+
+
+def test_default_embeddings_not_implemented():
+    from OSA.LLM_PROVIDER import EmbeddingsRequest
+
+    provider = MockLLMProvider()
+
+    try:
+        provider.embeddings(EmbeddingsRequest(input=["hello"]))
+    except NotImplementedError:
+        pass
+    else:
+        raise AssertionError()

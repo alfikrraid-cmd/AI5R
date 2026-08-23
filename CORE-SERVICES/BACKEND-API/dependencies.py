@@ -400,6 +400,65 @@ def get_installation_report_fitment_repository() -> InstallationReportFitmentRep
 # require_permission(...) closure across every router pick up the
 # override automatically (each closure's own Depends(get_current_user)
 # resolves through the same override map entry).
+# MWO-AI5R-LTSA-AI-ORCHESTRATION-001 -- optional Copilot AI client. Reuses
+# AI_RUNTIME.ROUTER.Router unmodified (MWO-AI-002's own already-tested
+# provider-agnostic router with fallback/retry/health) via
+# CORE-SERVICES/API/engineering_ai_client.py's EngineeringAIClient
+# (also reused unmodified) -- no new AI platform, no new provider code.
+# A provider is registered ONLY when its own existing env var is already
+# set (never a hardcoded credential here); OllamaProvider is always
+# registered since it needs none and defaults to a local-only endpoint.
+# When NO provider is registered, `get_copilot_ai_client()` returns None
+# and copilot_orchestrator.orchestrate_copilot() falls back to the
+# existing deterministic dispatcher (Hard Rule: AI unavailable must never
+# break Copilot) -- so this is safe to import even where no credentials
+# are configured, which is this repo's current state (confirmed by this
+# MWO's own runtime audit: no AI provider env var is set anywhere in
+# CORE-SERVICES/RUNTIME/.env.example or compose.yaml).
+def _build_copilot_ai_client():
+    from AI_RUNTIME.ROUTER.router import Router
+    from AI_RUNTIME.ROUTER.providers import (
+        ClaudeProvider,
+        DeepSeekProvider,
+        GeminiProvider,
+        GrokProvider,
+        LiteLLMProvider,
+        OllamaProvider,
+        OpenAIProvider,
+        OpenRouterProvider,
+    )
+    from API.engineering_ai_client import EngineeringAIClient
+
+    router = Router()
+    for env_var, provider_cls in (
+        ("AI5R_CLAUDE_API_KEY", ClaudeProvider),
+        ("AI5R_OPENAI_API_KEY", OpenAIProvider),
+        ("AI5R_OPENROUTER_API_KEY", OpenRouterProvider),
+        ("AI5R_GEMINI_API_KEY", GeminiProvider),
+        ("AI5R_DEEPSEEK_API_KEY", DeepSeekProvider),
+        ("AI5R_GROK_API_KEY", GrokProvider),
+        ("AI5R_LITELLM_API_KEY", LiteLLMProvider),
+    ):
+        if os.getenv(env_var):
+            router.register_provider(provider_cls())
+    router.register_provider(OllamaProvider())  # no key required, local-only
+
+    # A registered provider is not a REACHABLE one -- Ollama has no key to
+    # gate on, and a remote provider's key may be invalid/expired. Actual
+    # availability is proven per-request, not here: copilot_orchestrator's
+    # own try/except around every AI call falls back to the deterministic
+    # dispatcher on any failure (unreachable host, 401, timeout, etc.),
+    # exactly the "AI unavailable -> deterministic behavior" Hard Rule.
+    return EngineeringAIClient(router)
+
+
+_copilot_ai_client = _build_copilot_ai_client()
+
+
+def get_copilot_ai_client():
+    return _copilot_ai_client
+
+
 def get_current_user(authorization: str | None = Header(default=None)) -> AuthenticatedIdentity:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing bearer token")

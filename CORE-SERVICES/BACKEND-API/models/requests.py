@@ -12,6 +12,16 @@ class LoginRequest(BaseModel):
     password: str
 
 
+# MWO-AI5R-LTSA-COPILOT-001 -- asset_context is optional: global dashboard
+# questions omit it, an asset workspace sends the currently-selected pump
+# tag automatically (see CopilotPanel.jsx/useCopilot.js). Never trusted as
+# an authorization scope by itself -- the router re-resolves and enforces
+# the caller's own server-side area scope against it before any data read.
+class CopilotAskRequest(BaseModel):
+    question: str
+    asset_context: str | None = None
+
+
 # MWO-LTSA-AUTH-003A-FINAL -- Admin Users API request bodies. `password`/
 # `new_password` are plain strings ONLY in the request (never persisted or
 # logged as-is -- the router hashes via auth_password.hash_password()

@@ -79,6 +79,15 @@ services:
       AI5R_SEAL_PUMP_COMPATIBILITY_GATEWAY_BASE_URL: ${AI5R_SEAL_PUMP_COMPATIBILITY_GATEWAY_BASE_URL}
       AI5R_SEAL_ENGINEERING_DOCUMENT_GATEWAY_BASE_URL: ${AI5R_SEAL_ENGINEERING_DOCUMENT_GATEWAY_BASE_URL}
       AI5R_INSTALLATION_GATEWAY_BASE_URL: ${AI5R_INSTALLATION_GATEWAY_BASE_URL}
+      # MWO-AI5R-OPENROUTER-PRODUCTION-WIRING-001 -- dependencies.py::
+      # _build_copilot_ai_client() registers OpenRouterProvider only when
+      # AI5R_OPENROUTER_API_KEY is set in this process's own environment;
+      # unset today, so this is a no-op until the operator provisions the
+      # real secret. AI5R_OPENROUTER_BASE_URL deliberately not forwarded --
+      # openrouter_provider.py already defaults it to OpenRouter's own API
+      # URL when unset.
+      AI5R_OPENROUTER_API_KEY: ${AI5R_OPENROUTER_API_KEY}
+      AI5R_OPENROUTER_MODEL: ${AI5R_OPENROUTER_MODEL:-openai/gpt-4o-mini}
     networks:
       - edge
       - backend
