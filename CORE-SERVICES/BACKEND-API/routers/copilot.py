@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from API.auth_service import AuthenticatedIdentity, resolve_area_scope
@@ -23,6 +25,26 @@ from API.maintenance_copilot import summarize_maintenance_situation as _summariz
 
 # MWO-LTSA-AUTH-001
 router = APIRouter(dependencies=[Depends(require_permission("maintenance.read"))])
+_PUMP_TAG_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9/-])\d+-P-\d+[A-Z](?![A-Za-z0-9/-])"
+)
+_MULTIPLE_TAGS_MESSAGE = (
+    "I found multiple pump tags in that question. Select one pump and ask again."
+)
+
+
+def _extract_pump_tag_candidates(question: str) -> tuple[str, ...]:
+    """Extract only canonical, exact-form pump tags; never normalize or guess."""
+    return tuple(dict.fromkeys(_PUMP_TAG_PATTERN.findall(question or "")))
+
+
+def _require_tag_in_scope(tag: str, pump_gateway, scope: frozenset[str] | None) -> None:
+    response = pump_gateway.get_pump(tag)
+    data = response.get("data") if isinstance(response, dict) else None
+    if not isinstance(data, dict) or not is_area_in_scope(data.get("area"), scope):
+        # Preserve the existing safe-not-found response for unknown and
+        # out-of-scope assets, regardless of how the tag was supplied.
+        raise HTTPException(status_code=404, detail="Pump not found")
 
 
 @router.get("/copilot/summary")
@@ -66,10 +88,19 @@ def ask_copilot_endpoint(
     tag = (payload.asset_context or "").strip() or None
 
     if tag is not None:
-        response = pump_gateway.get_pump(tag)
-        data = response.get("data") if isinstance(response, dict) else None
-        if not isinstance(data, dict) or not is_area_in_scope(data.get("area"), scope):
-            raise HTTPException(status_code=404, detail="Pump not found")
+        _require_tag_in_scope(tag, pump_gateway, scope)
+    else:
+        candidates = _extract_pump_tag_candidates(payload.question)
+        if len(candidates) > 1:
+            return {
+                "answer": _MULTIPLE_TAGS_MESSAGE,
+                "kind": "DATA_GAP",
+                "evidence": [],
+                "tools_used": [],
+            }
+        if candidates:
+            tag = candidates[0]
+            _require_tag_in_scope(tag, pump_gateway, scope)
 
     answer, tools_used = orchestrate_copilot(
         payload.question,

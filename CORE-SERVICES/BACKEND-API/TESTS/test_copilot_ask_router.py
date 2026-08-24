@@ -268,10 +268,92 @@ class FakeAIClient:
 
     def __init__(self, responses):
         self._responses = list(responses)
+        self.calls = []
 
     def generate_json(self, prompt, *, system_prompt="", temperature=0.2):
+        self.calls.append({"prompt": prompt, "system_prompt": system_prompt, "temperature": temperature})
         return self._responses.pop(0)
 
+
+class TestInferredExactContext:
+    def setup_method(self):
+        _as(_identity("TAP_ADMIN"))
+
+    def teardown_method(self):
+        _clear()
+
+    def _ai(self):
+        ai = FakeAIClient([
+            {"tools": ["pump_status"]},
+            {"answer": "940-P-2A is RUNNING.", "kind": "FACT"},
+        ])
+        app.dependency_overrides[get_copilot_ai_client] = lambda: ai
+        return ai
+
+    def test_question_tag_resolves_exact_context_before_ai(self):
+        ai = self._ai()
+        response = _ask("Analisa 940-P-2A")
+        assert response.status_code == 200
+        assert response.json()["tools_used"] == ["pump_status"]
+        assert len(ai.calls) == 2
+        assert "asset 940-P-2A" in ai.calls[0]["prompt"]
+        assert "940-P-2B" not in ai.calls[0]["prompt"]
+
+    def test_existing_asset_context_is_preserved(self):
+        ai = self._ai()
+        response = _ask("Analisa this pump", "940-P-2A")
+        assert response.status_code == 200
+        assert "asset 940-P-2A" in ai.calls[0]["prompt"]
+
+    def test_unknown_inferred_tag_is_safe_404_and_never_reaches_ai(self):
+        class ExplodingAI:
+            def generate_json(self, *_args, **_kwargs):
+                raise AssertionError("AI must not run for an unknown inferred tag")
+
+        app.dependency_overrides[get_copilot_ai_client] = lambda: ExplodingAI()
+        response = _ask("Analisa 999-P-9A")
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Pump not found"
+
+    def test_out_of_scope_inferred_tag_is_safe_404(self):
+        class ExplodingAI:
+            def generate_json(self, *_args, **_kwargs):
+                raise AssertionError("AI must not run for an out-of-scope inferred tag")
+
+        _clear()
+        _as(_identity("PERTAMINA_ENGINEER", data_scope_type="AREA", data_scope_value="HOC"))
+        app.dependency_overrides[get_copilot_ai_client] = lambda: ExplodingAI()
+        response = _ask("Analisa 600-P-1A")
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Pump not found"
+
+    def test_multiple_tags_are_not_guessed_or_sent_to_ai(self):
+        class ExplodingAI:
+            def generate_json(self, *_args, **_kwargs):
+                raise AssertionError("AI must not run for ambiguous tags")
+
+        app.dependency_overrides[get_copilot_ai_client] = lambda: ExplodingAI()
+        response = _ask("Compare 940-P-2A with 940-P-2B")
+        assert response.status_code == 200
+        assert response.json()["kind"] == "DATA_GAP"
+        assert "multiple pump tags" in response.json()["answer"]
+
+    def test_de_nde_text_does_not_change_exact_pump_identity(self):
+        ai = self._ai()
+        response = _ask("Analisa 940-P-2A DE/NDE")
+        assert response.status_code == 200
+        assert "asset 940-P-2A" in ai.calls[0]["prompt"]
+        assert "940-P-2B" not in ai.calls[0]["prompt"]
+
+    def test_tagless_question_keeps_existing_deterministic_behavior(self):
+        class ExplodingAI:
+            def generate_json(self, *_args, **_kwargs):
+                raise AssertionError("AI must not run without a tag")
+
+        app.dependency_overrides[get_copilot_ai_client] = lambda: ExplodingAI()
+        response = _ask("what is the weather today?")
+        assert response.status_code == 200
+        assert response.json()["kind"] == "DATA_GAP"
 
 class TestAIOrchestrationThroughRouter:
     """Proves the AI path is reachable through the real endpoint (not just
