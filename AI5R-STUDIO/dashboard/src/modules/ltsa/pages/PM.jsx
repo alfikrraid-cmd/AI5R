@@ -143,8 +143,19 @@ export default function PM({ onNavigate, navContext }) {
   // context. Gated on the PM list being loaded (mirrors Pump.jsx's own
   // navContext.selectId-while-!loading precedent) since resolving an
   // assetTag requires pmSchedules to already be populated.
+  //
+  // MWO-LTSA-ASSET360-PM-CMON-TRACEABILITY-001 -- { occurrenceSelectId }
+  // is a distinct contract from { selectId } above (which always means
+  // "a pm_schedule_code"): Asset 360's PM Timeline events select a real
+  // pm_occurrence directly (see selectedOccurrence below, resolved against
+  // the full pmOccurrences list, not gated behind a matching schedule --
+  // a historically-imported occurrence's own pm_schedule_code is the
+  // shared, non-unique "UNSCHEDULED::<workbook>" placeholder, never a real
+  // schedule row).
   useEffect(() => {
-    if (navContext?.selectId) {
+    if (navContext?.occurrenceSelectId) {
+      setSelectedOccurrenceId(navContext.occurrenceSelectId);
+    } else if (navContext?.selectId) {
       setSelectedId(navContext.selectId);
     } else if (navContext?.assetTag && !loading) {
       const match = pmSchedules.find((pm) => pm.equipmentTag === navContext.assetTag);
@@ -188,7 +199,15 @@ export default function PM({ onNavigate, navContext }) {
   const occurrencesForSelectedPM = selectedPM
     ? pmOccurrences.filter((occ) => occ.pmScheduleCode === selectedPM.id)
     : [];
-  const selectedOccurrence = occurrencesForSelectedPM.find((occ) => occ.id === selectedOccurrenceId) ?? null;
+  // MWO-LTSA-ASSET360-PM-CMON-TRACEABILITY-001 -- resolved against the
+  // full pmOccurrences list, not occurrencesForSelectedPM: a historical
+  // occurrence deep-linked from Asset 360 (navContext.occurrenceSelectId
+  // above) has no matching pm_schedule row to select first, so
+  // selectedPM may legitimately be null while an occurrence is still
+  // selected. The existing schedule-nested "click an occurrence button"
+  // flow is unaffected -- every occurrence in occurrencesForSelectedPM is
+  // also in pmOccurrences, so this lookup still resolves it identically.
+  const selectedOccurrence = pmOccurrences.find((occ) => occ.id === selectedOccurrenceId) ?? null;
 
   // MWO-LTSA-053 -- Open Pump / Open Drawing reuse the exact same
   // onNavigate(key, context) mechanism Seal.jsx/Pump.jsx already use for
@@ -333,16 +352,29 @@ export default function PM({ onNavigate, navContext }) {
           </div>
 
           <div className="pm-workspace-detail">
-            {selectedPM ? (
+            {selectedPM || selectedOccurrence ? (
               <>
-                <PMOpenDesignView
-                  pm={selectedPM}
-                  relatedPMRecords={relatedPMRecords}
-                  cmRecords={relatedCMRecords}
-                  onOpenPump={handleOpenPump}
-                  onOpenDrawing={handleOpenDrawing}
-                  onCreatePM={() => setIsCreateModalOpen(true)}
-                />
+                {selectedPM ? (
+                  <PMOpenDesignView
+                    pm={selectedPM}
+                    relatedPMRecords={relatedPMRecords}
+                    cmRecords={relatedCMRecords}
+                    onOpenPump={handleOpenPump}
+                    onOpenDrawing={handleOpenDrawing}
+                    onCreatePM={() => setIsCreateModalOpen(true)}
+                  />
+                ) : (
+                  // MWO-LTSA-ASSET360-PM-CMON-TRACEABILITY-001 -- a
+                  // historically-imported occurrence deep-linked from
+                  // Asset 360 has no matching pm_schedule row (its own
+                  // pm_schedule_code is the shared UNSCHEDULED::<workbook>
+                  // placeholder, not a real schedule) -- disclosed
+                  // honestly rather than silently omitted.
+                  <EmptyState
+                    title="No PM Schedule for this occurrence"
+                    description="This is a historically-imported record with no matching PM Schedule -- shown by its own record only."
+                  />
+                )}
 
                 {/* MWO-LTSA-PM-CM-REVIEW-UI-001 -- real PM Occurrence
                     records for this schedule, the disclosed gap from
@@ -350,11 +382,11 @@ export default function PM({ onNavigate, navContext }) {
                     ("occurrences could be created but never displayed"). */}
                 <div style={{ marginTop: "var(--space-4, 24px)" }}>
                   <h3>PM Occurrences</h3>
-                  {occurrencesForSelectedPM.length === 0 ? (
+                  {selectedPM && occurrencesForSelectedPM.length === 0 ? (
                     <Panel>
                       <p>No PM occurrences recorded for this schedule yet.</p>
                     </Panel>
-                  ) : (
+                  ) : selectedPM ? (
                     <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap", marginBottom: "var(--space-3)" }}>
                       {occurrencesForSelectedPM.map((occ) => (
                         <Button key={occ.id} onClick={() => setSelectedOccurrenceId(occ.id)}>
@@ -362,7 +394,7 @@ export default function PM({ onNavigate, navContext }) {
                         </Button>
                       ))}
                     </div>
-                  )}
+                  ) : null}
 
                   {selectedOccurrence && (
                     <PMOccurrenceDetailPanel

@@ -1,18 +1,29 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import PM from "./PM";
-import { getPMSchedules, getPump, getCMReports, getPMOccurrences, createPMOccurrence } from "../../../api/ai5rClient";
+import {
+  getPMSchedules, getPump, getCMReports, getPMOccurrences, createPMOccurrence, getPMCMEvidence,
+} from "../../../api/ai5rClient";
 import { AuthProvider } from "../auth/AuthContext";
 
 // MWO-LTSA-PM-CM-INTAKE-001 -- real PM Occurrence creation. A separate
 // file from PM.test.jsx (same convention as Seal.identifiers.test.jsx),
 // covering only the new "Record PM Occurrence" flow.
+//
+// MWO-LTSA-ASSET360-PM-CMON-TRACEABILITY-001 -- getPMCMEvidence added:
+// selectedOccurrence is now resolved against the full pmOccurrences list
+// (PM.jsx) rather than being implicitly gated behind selectedPM's own
+// occurrencesForSelectedPM filter, so the newly-recorded occurrence in
+// "creates a PM Occurrence..." below now reliably renders
+// PMOccurrenceDetailPanel (and its embedded EvidenceAttachments widget)
+// -- same mock every other file that renders that panel already carries.
 vi.mock("../../../api/ai5rClient", () => ({
   getPMSchedules: vi.fn(),
   getPump: vi.fn(),
   getCMReports: vi.fn(),
   getPMOccurrences: vi.fn(),
   createPMOccurrence: vi.fn(),
+  getPMCMEvidence: vi.fn(),
   onUnauthorized: vi.fn(),
 }));
 
@@ -59,6 +70,7 @@ function loadPMSchedules() {
   getPump.mockResolvedValue({ tag_number: null, area: "Boiler House" });
   getCMReports.mockResolvedValue([]);
   getPMOccurrences.mockResolvedValue([]);
+  getPMCMEvidence.mockResolvedValue([]);
 }
 
 afterEach(() => {

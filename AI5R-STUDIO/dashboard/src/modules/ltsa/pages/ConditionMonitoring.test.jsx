@@ -299,6 +299,33 @@ describe("Condition Monitoring workspace page", () => {
     expect(await screen.findByRole("heading", { name: "CMON-SCHED-002" })).toBeTruthy();
   });
 
+  // MWO-LTSA-ASSET360-PM-CMON-TRACEABILITY-001
+  it("navContext.readingSelectId switches straight to the Readings view and opens the exact reading (Asset 360 Timeline deep-link)", async () => {
+    getConditionMonitoringSchedules.mockResolvedValue(SCHEDULES);
+    getConditionMonitoringReadings.mockResolvedValue([
+      ...READINGS,
+      {
+        condition_monitoring_reading_code: "LTSA-CMONR-47FBA1F0416C8CB6",
+        condition_monitoring_schedule_code: "UNSCHEDULED::CM & PM Summary HOC JUNI.xlsx",
+        asset_code: "220-P-4A",
+        reading_date: "2026-06-24",
+        mechseal_temp_de: 50,
+        mechanical_seal_leak_de: true,
+        finding: "Mechseal Bocor dari drain gland durasi 1/2 detik",
+        source_workbook_name: "CM & PM Summary HOC JUNI.xlsx",
+        source_sheet_name: "CM Measuring Report",
+        source_row_number: 74,
+      },
+    ]);
+    getPump.mockResolvedValue({ tag_number: null, area: null });
+    getPMCMEvidence.mockResolvedValue([]);
+
+    render(<ConditionMonitoring navContext={{ readingSelectId: "LTSA-CMONR-47FBA1F0416C8CB6" }} />);
+
+    expect(await screen.findByRole("heading", { name: "LTSA-CMONR-47FBA1F0416C8CB6" })).toBeTruthy();
+    expect(screen.getByText("Mechseal Bocor dari drain gland durasi 1/2 detik")).toBeTruthy();
+  });
+
   it("resolves area per schedule and reading by reusing the existing Pump API", async () => {
     loadDefaults();
     getPump.mockImplementation((tag) =>

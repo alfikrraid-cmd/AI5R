@@ -398,7 +398,53 @@ describe("Engineering Navigation (MWO-LTSA-070)", () => {
         severity: "UNKNOWN",
         source: "PM_OCCURRENCE",
         derived: true,
-        payload: { pm_occurrence_code: "PM-1", pm_schedule_code: "PMS-1", asset_code: "305-P-2" },
+        payload: {
+          pm_occurrence_code: "PM-1",
+          pm_schedule_code: "PMS-1",
+          asset_code: "305-P-2",
+          status: "DONE",
+          checklist_completion: { "Flushing Line": true, "Quench Line": true },
+        },
+      },
+      {
+        id: "INSPECTION:CMONR-1",
+        event_type: "INSPECTION",
+        occurred_at: "2026-06-29",
+        title: "Condition Monitoring CMONR-1",
+        description: "Mechseal Bocor dari drain gland durasi 1/2 detik",
+        severity: "UNKNOWN",
+        source: "CONDITION_MONITORING_READING",
+        derived: true,
+        // Same date as PM:PM-1 above -- exercises the Same Visit grouping.
+        payload: {
+          condition_monitoring_reading_code: "CMONR-1",
+          condition_monitoring_schedule_code: "UNSCHEDULED::CM & PM Summary HOC JUNI.xlsx",
+          asset_code: "305-P-2",
+          pump_operating_state: "Running",
+          mechanical_seal_leak_de: true,
+          mechanical_seal_leak_nde: null,
+          finding: "Mechseal Bocor dari drain gland durasi 1/2 detik",
+        },
+      },
+      {
+        id: "INSPECTION:CMONR-2",
+        event_type: "INSPECTION",
+        occurred_at: "2026-05-15",
+        title: "Condition Monitoring CMONR-2",
+        description: null,
+        severity: "UNKNOWN",
+        source: "CONDITION_MONITORING_READING",
+        derived: true,
+        // A different date than any PM event -- must NOT be flagged Same Visit.
+        payload: {
+          condition_monitoring_reading_code: "CMONR-2",
+          condition_monitoring_schedule_code: "UNSCHEDULED::CM & PM Summary HOC JUNI.xlsx",
+          asset_code: "305-P-2",
+          pump_operating_state: "Standby",
+          mechanical_seal_leak_de: false,
+          mechanical_seal_leak_nde: false,
+          finding: null,
+        },
       },
       {
         id: "CM:CM-1",
@@ -442,10 +488,25 @@ describe("Engineering Navigation (MWO-LTSA-070)", () => {
         severity: "UNKNOWN",
         source: "PM_OCCURRENCE",
         derived: true,
-        // Deliberately no pm_schedule_code and no asset_code -- an
-        // invalid/incomplete reference this MWO's "never guess" rule must
-        // leave non-navigating rather than crashing or fabricating a link.
+        // Deliberately no pm_schedule_code and no asset_code -- a real
+        // shape for historically-imported data (pm_occurrence_code alone
+        // must still be enough to navigate; see the dedicated test below).
         payload: { pm_occurrence_code: "PM-NO-SCHEDULE" },
+      },
+      {
+        id: "PM:PM-EMPTY",
+        event_type: "PM",
+        occurred_at: "2026-04-01",
+        title: "PM Occurrence PM-EMPTY",
+        description: null,
+        severity: "UNKNOWN",
+        source: "PM_OCCURRENCE",
+        derived: true,
+        // Genuinely no identity at all -- no pm_occurrence_code, no
+        // pm_schedule_code, no asset_code. This MWO's own "never guess"
+        // rule must leave this non-navigating rather than fabricating a
+        // link.
+        payload: {},
       },
     ],
     related_engineering: {
@@ -487,13 +548,18 @@ describe("Engineering Navigation (MWO-LTSA-070)", () => {
     expect(onNavigate).toHaveBeenCalledWith("installation", { selectId: "INSTL-001-2026" });
   });
 
-  it("pm navigation: clicking a PM timeline event opens PM Workspace via the occurrence's own pm_schedule_code", async () => {
+  it("pm navigation: clicking a PM timeline event opens PM Workspace via the occurrence's own pm_occurrence_code, never the shared pm_schedule_code", async () => {
+    // MWO-LTSA-ASSET360-PM-CMON-TRACEABILITY-001 -- a Timeline PM event is
+    // always a pm_occurrence record; pm_schedule_code (here "PMS-1") is
+    // never a unique identity for historically-imported data (it is the
+    // shared "UNSCHEDULED::<workbook>" placeholder in production), so it
+    // must never be used as the navigation target.
     const onNavigate = vi.fn();
     await renderAndSelect(onNavigate);
 
     fireEvent.click(await screen.findByText("PM Occurrence PM-1"));
 
-    expect(onNavigate).toHaveBeenCalledWith("pm", { selectId: "PMS-1" });
+    expect(onNavigate).toHaveBeenCalledWith("pm", { occurrenceSelectId: "PM-1", assetTag: "305-P-2" });
   });
 
   it("pm navigation: clicking a Related Engineering PM schedule opens PM Workspace via its own code", async () => {
@@ -537,6 +603,18 @@ describe("Engineering Navigation (MWO-LTSA-070)", () => {
     expect(onNavigate).toHaveBeenCalledWith("workorder", { selectId: "WO-1" });
   });
 
+  it("cmon navigation: clicking an INSPECTION timeline event opens Condition Monitoring's Readings view via the reading's own code", async () => {
+    // MWO-LTSA-ASSET360-PM-CMON-TRACEABILITY-001 -- condition_monitoring_reading_code,
+    // never condition_monitoring_schedule_code (the shared UNSCHEDULED::*
+    // placeholder for historical data, same reasoning as PM above).
+    const onNavigate = vi.fn();
+    await renderAndSelect(onNavigate);
+
+    fireEvent.click(await screen.findByText("Condition Monitoring CMONR-1"));
+
+    expect(onNavigate).toHaveBeenCalledWith("cmon", { readingSelectId: "CMONR-1", assetTag: "305-P-2" });
+  });
+
   it("drawing navigation: clicking a Related Engineering drawing opens Drawing Workspace scoped to this pump's own tag (no per-drawing lookup exists)", async () => {
     const onNavigate = vi.fn();
     await renderAndSelect(onNavigate);
@@ -567,15 +645,71 @@ describe("Engineering Navigation (MWO-LTSA-070)", () => {
     }
   });
 
-  it("invalid reference: a PM timeline event missing both pm_schedule_code and asset_code does not navigate", async () => {
-    // MWO-LTSA-UI-V2-001 -- also appears (non-clickable) in Recent
-    // Activities -- getAllByText, click index [0] (the main Timeline
-    // section's own item).
+  it("pm navigation: a historically-imported PM occurrence with no pm_schedule_code/asset_code still navigates via its own pm_occurrence_code alone", async () => {
+    // MWO-LTSA-ASSET360-PM-CMON-TRACEABILITY-001 -- the exact shape a real
+    // UNSCHEDULED::* historical record can have once other fields resolve
+    // to nothing; pm_occurrence_code alone is sufficient real identity and
+    // must never be treated as "no navigation" the way a missing
+    // pm_schedule_code used to mean before this fix.
     const onNavigate = vi.fn();
     await renderAndSelect(onNavigate);
 
     fireEvent.click((await screen.findAllByText("PM Occurrence PM-NO-SCHEDULE"))[0]);
 
+    expect(onNavigate).toHaveBeenCalledWith("pm", { occurrenceSelectId: "PM-NO-SCHEDULE", assetTag: undefined });
+  });
+
+  it("invalid reference: a PM timeline event with no pm_occurrence_code, pm_schedule_code, or asset_code at all does not navigate", async () => {
+    const onNavigate = vi.fn();
+    await renderAndSelect(onNavigate);
+
+    fireEvent.click((await screen.findAllByText("PM Occurrence PM-EMPTY"))[0]);
+
     expect(onNavigate).not.toHaveBeenCalled();
+  });
+
+  it("timeline summary: a PM row shows status + completed checklist activities, never every temperature", async () => {
+    await renderAndSelect(vi.fn());
+
+    const pmRow = (await screen.findByText("PM Occurrence PM-1")).closest(".part-item");
+    expect(pmRow.textContent).toContain("DONE");
+    expect(pmRow.textContent).toContain("Flushing Line");
+    expect(pmRow.textContent).toContain("Quench Line");
+    expect(pmRow.textContent).not.toMatch(/°C|_temp_/);
+  });
+
+  it("timeline summary: an INSPECTION row shows operating state + finding, never a temperature value", async () => {
+    await renderAndSelect(vi.fn());
+
+    const cmonRow = (await screen.findByText("Condition Monitoring CMONR-1")).closest(".part-item");
+    expect(cmonRow.textContent).toContain("Running");
+    expect(cmonRow.textContent).toContain("Mechseal Bocor dari drain gland durasi 1/2 detik");
+    expect(cmonRow.textContent).not.toMatch(/°C|_temp_/);
+  });
+
+  it("timeline summary: an INSPECTION row with no finding falls back to a disclosed leak status, never fabricated", async () => {
+    await renderAndSelect(vi.fn());
+
+    const cmonRow = (await screen.findByText("Condition Monitoring CMONR-2")).closest(".part-item");
+    expect(cmonRow.textContent).toContain("Standby");
+    expect(cmonRow.textContent).toContain("No leak");
+  });
+
+  it("same visit: a PM occurrence and an INSPECTION reading sharing the same date are both flagged Same Visit", async () => {
+    await renderAndSelect(vi.fn());
+
+    const pmRow = (await screen.findByText("PM Occurrence PM-1")).closest(".part-item");
+    const cmonRow = (await screen.findByText("Condition Monitoring CMONR-1")).closest(".part-item");
+
+    expect(pmRow.textContent).toContain("Same Visit • PM + Condition Monitoring");
+    expect(cmonRow.textContent).toContain("Same Visit • PM + Condition Monitoring");
+  });
+
+  it("same visit: an INSPECTION reading on a date with no matching PM occurrence is NOT flagged Same Visit", async () => {
+    await renderAndSelect(vi.fn());
+
+    const cmonRow = (await screen.findByText("Condition Monitoring CMONR-2")).closest(".part-item");
+
+    expect(cmonRow.textContent).not.toContain("Same Visit");
   });
 });

@@ -210,8 +210,66 @@ export default function Pump({ onNavigate, navContext }) {
   // deliberate no-op here, same as before -- filtered out before ever
   // reaching the resolver, so an unsupported Timeline event type still
   // never throws.
+  // MWO-LTSA-ASSET360-PM-CMON-TRACEABILITY-001 -- a Timeline "PM" event is
+  // always a real pm_occurrence record (EquipmentTimelineService._build_pm_events
+  // builds strictly from knowledge.pm_history, i.e. pm_occurrence rows,
+  // never pm_schedule) -- its own identity is pm_occurrence_code, not
+  // pm_schedule_code (which, for every historically-imported record, is
+  // the shared, non-unique "UNSCHEDULED::<workbook>" placeholder -- using
+  // it as an entityId would route every such PM Timeline click to the
+  // same non-record). PM.jsx's "pm" workspace resolves this via a new
+  // navContext.occurrenceSelectId (distinct from the existing
+  // selectId-means-schedule-code contract every other PM navigation still
+  // uses unchanged), looked up against the full pmOccurrences list rather
+  // than gated behind a matching pm_schedule (which does not exist for
+  // historical data). Bypasses EngineeringObjectResolver for this one
+  // case since its generic { selectId } shape cannot express "select an
+  // occurrence, not a schedule" -- every other entityType below is
+  // unchanged and still funnels through the resolver.
+  function handleOpenPmOccurrence(payload) {
+    const occurrenceCode = payload.pm_occurrence_code;
+    const assetTag = payload.asset_code ?? payload.plant_equip_no;
+    if (!occurrenceCode) {
+      return;
+    }
+    onNavigate?.("pm", { occurrenceSelectId: occurrenceCode, assetTag });
+  }
+
+  // Mirror of handleOpenPmOccurrence for the "INSPECTION" (Condition
+  // Monitoring) Timeline category -- condition_monitoring_reading_code is
+  // this record's own real identity; condition_monitoring_schedule_code is
+  // the same kind of shared UNSCHEDULED:: placeholder for historical data.
+  // "cmon" (ConditionMonitoring.jsx) has an independent Readings view/tab
+  // already keyed by reading id, not nested under a schedule selection --
+  // readingSelectId switches straight to it.
+  function handleOpenCmonReading(payload) {
+    const readingCode = payload.condition_monitoring_reading_code;
+    const assetTag = payload.asset_code ?? payload.plant_equip_no;
+    if (!readingCode) {
+      return;
+    }
+    onNavigate?.("cmon", { readingSelectId: readingCode, assetTag });
+  }
+
   function handleOpenEngineeringObject(eventType, payload) {
     if (!payload) {
+      return;
+    }
+
+    // "PM" is overloaded between two real entities depending on which UI
+    // section produced the click: a Timeline event's payload is always a
+    // pm_occurrence (has pm_occurrence_code), while a Related Engineering
+    // "PM" item's payload is a pm_schedule (pm_schedule_code, no
+    // pm_occurrence_code). Only the former routes through
+    // handleOpenPmOccurrence; the latter falls through to the unchanged
+    // switch below, preserving its existing pm_schedule_code-based
+    // navigation exactly.
+    if (eventType === "PM" && payload.pm_occurrence_code) {
+      handleOpenPmOccurrence(payload);
+      return;
+    }
+    if (eventType === "INSPECTION") {
+      handleOpenCmonReading(payload);
       return;
     }
 

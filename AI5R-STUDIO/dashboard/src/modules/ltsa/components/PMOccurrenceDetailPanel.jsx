@@ -300,6 +300,17 @@ export default function PMOccurrenceDetailPanel({
         )}
       </Card>
 
+      {/* MWO-LTSA-ASSET360-PM-CMON-TRACEABILITY-001 -- source-document
+          provenance (which workbook/sheet/row this record was imported
+          from), distinct from the uploaded-file Evidence card below --
+          N/A, never fabricated, for a live-entered record with no
+          workbook origin. */}
+      <Card title="Source">
+        <Field label="Source Workbook" value={occurrence.sourceWorkbookName ?? "N/A"} />
+        <Field label="Source Sheet" value={occurrence.sourceSheetName ?? "N/A"} />
+        <Field label="Source Row" value={occurrence.sourceRowNumber ?? "N/A"} />
+      </Card>
+
       <Card title="Evidence">
         <EvidenceAttachments
           recordType={EVIDENCE_RECORD_TYPES.PM_OCCURRENCE}

@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import PM from "./PM";
-import { getPMSchedules, getPump, getCMReports, getPMOccurrences } from "../../../api/ai5rClient";
+import { getPMSchedules, getPump, getCMReports, getPMOccurrences, getPMCMEvidence } from "../../../api/ai5rClient";
 
 // MWO-LTSA-053 -- getCMReports added: PM.jsx now fetches Related CM
 // Reports (mirroring Pump.jsx/Seal.jsx's own Related Engineering pattern)
@@ -13,11 +13,18 @@ import { getPMSchedules, getPump, getCMReports, getPMOccurrences } from "../../.
 // MWO-LTSA-PM-CM-INTAKE-001's own completion report). Occurrence-specific
 // review/evidence flows are covered by PM.occurrence.test.jsx and
 // PM.review.test.jsx, same convention as PM.test.jsx's own header note.
+// MWO-LTSA-ASSET360-PM-CMON-TRACEABILITY-001 -- getPMCMEvidence added: the
+// new navContext.occurrenceSelectId test renders PMOccurrenceDetailPanel
+// directly (no prior test in this file did), which always mounts the
+// shared EvidenceAttachments widget -- same mock every other file that
+// renders that panel already carries (PM.review.test.jsx,
+// ConditionMonitoring.test.jsx).
 vi.mock("../../../api/ai5rClient", () => ({
   getPMSchedules: vi.fn(),
   getPump: vi.fn(),
   getCMReports: vi.fn(),
   getPMOccurrences: vi.fn(),
+  getPMCMEvidence: vi.fn(),
 }));
 
 function daysFromToday(offset) {
@@ -378,5 +385,36 @@ describe("PM Open Design (MWO-LTSA-053)", () => {
     await screen.findByText("PM-2001");
 
     expect(screen.getByText(/no pm schedule selected/i)).toBeTruthy();
+  });
+
+  // MWO-LTSA-ASSET360-PM-CMON-TRACEABILITY-001
+  it("navContext.occurrenceSelectId opens the exact PM occurrence detail directly, even with no matching PM Schedule (historical UNSCHEDULED::* data)", async () => {
+    loadPMSchedules();
+    getPMCMEvidence.mockResolvedValue([]);
+    getPMOccurrences.mockResolvedValue([
+      {
+        pm_occurrence_code: "LTSA-PMO-7443977B09BE8764",
+        pm_schedule_code: "UNSCHEDULED::CM & PM Summary HOC JUNI.xlsx",
+        asset_code: "220-P-4A",
+        occurrence_date: "2026-06-24",
+        status: "DONE",
+        activities: [{ code: "1", description: "Flushing Line", side: null, done: true }],
+        workflow_status: "DRAFT",
+        source_workbook_name: "CM & PM Summary HOC JUNI.xlsx",
+        source_sheet_name: " PM Mech Seal",
+        source_row_number: 23,
+      },
+    ]);
+
+    render(<PM navContext={{ occurrenceSelectId: "LTSA-PMO-7443977B09BE8764" }} />);
+
+    expect(await screen.findByRole("heading", { name: "LTSA-PMO-7443977B09BE8764" })).toBeTruthy();
+    // No pm_schedule row exists for this UNSCHEDULED::* code -- disclosed
+    // honestly, never a fabricated schedule view.
+    expect(screen.getByText(/no pm schedule for this occurrence/i)).toBeTruthy();
+    // The shared, non-unique placeholder is visible (self-disclosing, per
+    // ltsa_hoc_pm_cm_upsert.py's own build_unscheduled_reference), never
+    // used as if it were this record's own identity.
+    expect(screen.getByText("UNSCHEDULED::CM & PM Summary HOC JUNI.xlsx")).toBeTruthy();
   });
 });

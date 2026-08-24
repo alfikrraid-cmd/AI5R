@@ -153,8 +153,18 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
   // Deep-link entry point (per this MWO's "Navigation from Asset 360
   // Active Plans" requirement): ActivePlansPanel navigates here with
   // { selectId: scheduleCode }.
+  //
+  // MWO-LTSA-ASSET360-PM-CMON-TRACEABILITY-001 -- { readingSelectId } is a
+  // separate, distinct contract: Asset 360's INSPECTION Timeline events
+  // select a real condition_monitoring_reading directly, landing on the
+  // Readings view/tab (already keyed by reading id, never nested behind a
+  // schedule selection -- unlike PM.jsx, no restructuring was needed here
+  // for the Readings view itself).
   useEffect(() => {
-    if (navContext?.selectId) {
+    if (navContext?.readingSelectId) {
+      setView("readings");
+      setSelectedReadingId(navContext.readingSelectId);
+    } else if (navContext?.selectId) {
       setView("schedules");
       setSelectedScheduleId(navContext.selectId);
     }

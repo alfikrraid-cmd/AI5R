@@ -131,6 +131,13 @@ export function mapPMOccurrenceRecord(record) {
     updatedBy: record.updated_by,
     createdAt: record.created_at,
     updatedAt: record.updated_at,
+    // MWO-LTSA-ASSET360-PM-CMON-TRACEABILITY-001 -- historical-import
+    // provenance (populated for workbook-sourced records e.g. "CM & PM
+    // Summary HOC JUNI.xlsx"; undefined/null for live-entered ones, never
+    // fabricated -- PMOccurrenceDetailPanel.jsx renders N/A for either).
+    sourceWorkbookName: record.source_workbook_name,
+    sourceSheetName: record.source_sheet_name,
+    sourceRowNumber: record.source_row_number,
   };
 }
 

@@ -458,6 +458,15 @@ export default function ConditionMonitoringReadingDetailPanel({
         )}
       </Card>
 
+      {/* MWO-LTSA-ASSET360-PM-CMON-TRACEABILITY-001 -- source-document
+          provenance, same convention as PMOccurrenceDetailPanel.jsx's own
+          Source card -- N/A, never fabricated, for a live-entered record. */}
+      <Card title="Source">
+        <Field label="Source Workbook" value={reading.sourceWorkbookName ?? "N/A"} />
+        <Field label="Source Sheet" value={reading.sourceSheetName ?? "N/A"} />
+        <Field label="Source Row" value={reading.sourceRowNumber ?? "N/A"} />
+      </Card>
+
       <Card title="Evidence">
         <EvidenceAttachments
           recordType={EVIDENCE_RECORD_TYPES.CONDITION_MONITORING_READING}

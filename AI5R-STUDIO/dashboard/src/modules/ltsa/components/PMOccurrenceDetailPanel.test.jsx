@@ -255,4 +255,31 @@ describe("PMOccurrenceDetailPanel", () => {
 
     expect(screen.getByText("tap-eng-uuid · 2026-08-02T10:00:00Z")).toBeTruthy();
   });
+
+  // MWO-LTSA-ASSET360-PM-CMON-TRACEABILITY-001
+  it("shows Source Workbook/Sheet/Row for a historically-imported occurrence", () => {
+    render(
+      <PMOccurrenceDetailPanel
+        occurrence={baseOccurrence({
+          sourceWorkbookName: "CM & PM Summary HOC JUNI.xlsx",
+          sourceSheetName: " PM Mech Seal",
+          sourceRowNumber: 23,
+        })}
+      />
+    );
+
+    expect(screen.getByText("Source Workbook")).toBeTruthy();
+    expect(screen.getByText("CM & PM Summary HOC JUNI.xlsx")).toBeTruthy();
+    expect(screen.getByText("Source Sheet")).toBeTruthy();
+    expect(screen.getByText("PM Mech Seal")).toBeTruthy();
+    expect(screen.getByText("Source Row")).toBeTruthy();
+    expect(screen.getByText("23")).toBeTruthy();
+  });
+
+  it("shows N/A for Source Workbook/Sheet/Row, never fabricated, for a live-entered occurrence", () => {
+    render(<PMOccurrenceDetailPanel occurrence={baseOccurrence()} />);
+
+    const naValues = screen.getAllByText("N/A");
+    expect(naValues.length).toBe(3);
+  });
 });

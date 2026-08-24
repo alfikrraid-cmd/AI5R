@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import PumpWorkspaceDrawer from "./PumpWorkspaceDrawer";
 import { Section, InfoRow, StatusSignal, RailSection, ActionBar, RefGroup } from "./open-design";
 import {
@@ -156,6 +156,76 @@ function statusMeta(status) {
   return STATUS_META[status] || { tier: "neutral", label: status || "Unknown" };
 }
 
+// MWO-LTSA-ASSET360-PM-CMON-TRACEABILITY-001 -- compact Timeline row
+// summaries, derived entirely from each event's own already-returned
+// payload (event.payload is the raw pm_occurrence/condition_monitoring_
+// reading record EquipmentTimelineService already attaches -- no new
+// fetch). Deliberately NOT every temperature/measurement -- this is a
+// glanceable one-line summary; ConditionMonitoringReadingDetailPanel.jsx
+// (reached via the row's own onClick) is the full-detail destination.
+function summarizePmActivities(payload) {
+  const checklist = payload?.checklist_completion;
+  if (!checklist || typeof checklist !== "object") {
+    return null;
+  }
+  const done = Object.entries(checklist)
+    .filter(([, value]) => value === true)
+    .map(([name]) => name);
+  return done.length > 0 ? done.join(", ") : null;
+}
+
+function summarizePmEvent(payload) {
+  const status = payload?.status ?? NOT_AVAILABLE;
+  const activities = summarizePmActivities(payload);
+  return activities ? `${status} — ${activities}` : status;
+}
+
+function summarizeCmonLeak(payload) {
+  // Finding text (when present) is the richest evidence -- prefer it over
+  // the bare Y/N flags, never both (would just restate the same fact
+  // twice). Tri-state, never guessed: an unset DE/NDE flag is "not
+  // recorded", never treated as "no leak".
+  if (payload?.finding) {
+    return payload.finding;
+  }
+  const leakDe = payload?.mechanical_seal_leak_de;
+  const leakNde = payload?.mechanical_seal_leak_nde;
+  if (leakDe === true || leakNde === true) {
+    return "Leak detected";
+  }
+  if (leakDe === false || leakNde === false) {
+    return "No leak";
+  }
+  return "Leak status not recorded";
+}
+
+function summarizeCmonEvent(payload) {
+  const state = payload?.pump_operating_state ?? NOT_AVAILABLE;
+  return `${state} — ${summarizeCmonLeak(payload)}`;
+}
+
+// "Same Visit" is derived purely from already-returned Timeline data (no
+// new fetch, no persisted relationship): a calendar date where at least
+// one PM event and at least one INSPECTION (CMON) event both occurred for
+// THIS pump (the whole Timeline is already scoped to one asset). PM and
+// CMON remain fully separate records either way -- this is a display-only
+// grouping cue.
+function sharedPmCmonDates(timeline) {
+  const pmDates = new Set();
+  const inspectionDates = new Set();
+  for (const event of timeline) {
+    const day = event.occurredAt ? String(event.occurredAt).slice(0, 10) : null;
+    if (!day) continue;
+    if (event.eventType === "PM") pmDates.add(day);
+    if (event.eventType === "INSPECTION") inspectionDates.add(day);
+  }
+  const shared = new Set();
+  for (const day of pmDates) {
+    if (inspectionDates.has(day)) shared.add(day);
+  }
+  return shared;
+}
+
 const CRITICALITY_META = {
   HIGH: { tier: "high", label: "High" },
   MEDIUM: { tier: "attention", label: "Medium" },
@@ -280,11 +350,17 @@ export default function PumpOpenDesignView({
     },
   ];
 
-  // MWO-LTSA-070 -- Timeline events become clickable for the 4 types that
+  // MWO-LTSA-070 -- Timeline events become clickable for the types that
   // have a real target workspace (INSTALLATION/PM/CM/WORK_ORDER, per this
   // MWO's own navigable-type list). FAILURE and REPLACEMENT have no
   // target workspace and stay non-clickable, not guessed.
-  const NAVIGABLE_TIMELINE_TYPES = new Set(["INSTALLATION", "PM", "CM", "WORK_ORDER"]);
+  // MWO-LTSA-ASSET360-PM-CMON-TRACEABILITY-001 -- INSPECTION (Condition
+  // Monitoring readings) added: ConditionMonitoringReadingDetailPanel.jsx
+  // already exists and Pump.jsx's handleOpenCmonReading already routes to
+  // it correctly (condition_monitoring_reading_code, never the shared
+  // UNSCHEDULED:: schedule placeholder) -- this was simply never wired.
+  const NAVIGABLE_TIMELINE_TYPES = new Set(["INSTALLATION", "PM", "CM", "WORK_ORDER", "INSPECTION"]);
+  const sameVisitDates = useMemo(() => sharedPmCmonDates(timeline), [timeline]);
   // MWO-LTSA-SEAL-EQUIPMENT-HISTORY-INTEGRATION-001 -- clear visual
   // distinction per seal event type (this MWO's own explicit UI rule),
   // reusing the 3 stock-flag variants LTSAOpenDesign.css already defines
@@ -318,10 +394,26 @@ export default function PumpOpenDesignView({
         onClick: undefined,
       };
     }
+    // MWO-LTSA-ASSET360-PM-CMON-TRACEABILITY-001 -- compact summary
+    // (status+activities for PM, operating state+leak/finding for
+    // INSPECTION) appended to the existing date meta line, same " · "
+    // join convention the SEAL_WARRANTY branch above already uses. "Same
+    // Visit" is appended for either type only on a date that genuinely
+    // has both a PM and an INSPECTION event for this pump.
+    let summary = null;
+    if (event.eventType === "PM") summary = summarizePmEvent(event.payload);
+    if (event.eventType === "INSPECTION") summary = summarizeCmonEvent(event.payload);
+
+    const day = event.occurredAt ? String(event.occurredAt).slice(0, 10) : null;
+    const isSameVisit =
+      (event.eventType === "PM" || event.eventType === "INSPECTION") && day && sameVisitDates.has(day);
+
     return {
       key: event.id,
       name: event.title ?? event.id,
-      meta: event.occurredAt,
+      meta: [event.occurredAt, summary, isSameVisit ? "Same Visit • PM + Condition Monitoring" : null]
+        .filter(Boolean)
+        .join(" · "),
       flagLabel: event.eventType,
       flag: SEAL_EVENT_FLAG[event.eventType],
       onClick:

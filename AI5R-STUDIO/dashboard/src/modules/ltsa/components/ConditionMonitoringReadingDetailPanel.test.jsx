@@ -398,4 +398,33 @@ describe("ConditionMonitoringReadingDetailPanel (MWO-LTSA-PM-CM-REVIEW-UI-001 ex
       expect(screen.getByText("61 °C / —")).toBeTruthy();
     });
   });
+
+  // MWO-LTSA-ASSET360-PM-CMON-TRACEABILITY-001
+  describe("source traceability", () => {
+    it("shows Source Workbook/Sheet/Row for a historically-imported reading", () => {
+      render(
+        <ConditionMonitoringReadingDetailPanel
+          reading={baseReading({
+            sourceWorkbookName: "CM & PM Summary HOC JUNI.xlsx",
+            sourceSheetName: "CM Measuring Report",
+            sourceRowNumber: 74,
+          })}
+        />
+      );
+
+      expect(screen.getByText("Source Workbook")).toBeTruthy();
+      expect(screen.getByText("CM & PM Summary HOC JUNI.xlsx")).toBeTruthy();
+      expect(screen.getByText("Source Sheet")).toBeTruthy();
+      expect(screen.getByText("CM Measuring Report")).toBeTruthy();
+      expect(screen.getByText("Source Row")).toBeTruthy();
+      expect(screen.getByText("74")).toBeTruthy();
+    });
+
+    it("shows N/A for Source Workbook/Sheet/Row, never fabricated, for a live-entered reading", () => {
+      render(<ConditionMonitoringReadingDetailPanel reading={baseReading()} />);
+
+      const naValues = screen.getAllByText("N/A");
+      expect(naValues.length).toBe(3);
+    });
+  });
 });
