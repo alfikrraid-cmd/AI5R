@@ -1,7 +1,7 @@
 import { readFileSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ExecutiveDashboard from "./ExecutiveDashboard";
 import { getFleetOverview, getFleetPowerBI, getFleetReliability } from "../../../api/ai5rClient";
@@ -168,7 +168,7 @@ describe("ExecutiveDashboard -- optional Reliability/Power BI data (MWO-LTSA-DAS
 
     render(<ExecutiveDashboard />);
 
-    expect(await screen.findByRole("heading", { name: "Fleet Overview" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Fleet by Contract Area" })).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
@@ -177,7 +177,7 @@ describe("ExecutiveDashboard -- optional Reliability/Power BI data (MWO-LTSA-DAS
 
     render(<ExecutiveDashboard />);
 
-    expect(await screen.findByRole("heading", { name: "Fleet Overview" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Fleet by Contract Area" })).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
@@ -187,7 +187,7 @@ describe("ExecutiveDashboard -- optional Reliability/Power BI data (MWO-LTSA-DAS
 
     render(<ExecutiveDashboard />);
 
-    expect(await screen.findByRole("heading", { name: "Fleet Overview" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Fleet by Contract Area" })).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
@@ -197,7 +197,7 @@ describe("ExecutiveDashboard -- optional Reliability/Power BI data (MWO-LTSA-DAS
 
     render(<ExecutiveDashboard />);
 
-    await screen.findByRole("heading", { name: "Fleet Overview" });
+    await screen.findByRole("heading", { name: "Fleet by Contract Area" });
     expect(screen.queryByText("Fleet Health Score")).toBeNull();
   });
 
@@ -207,14 +207,14 @@ describe("ExecutiveDashboard -- optional Reliability/Power BI data (MWO-LTSA-DAS
 
     render(<ExecutiveDashboard />);
 
-    await screen.findByRole("heading", { name: "Fleet Overview" });
+    await screen.findByRole("heading", { name: "Fleet by Contract Area" });
     expect(await screen.findByText("Data unavailable")).toBeTruthy();
   });
 
   it("renders the richer Fleet Health Score panel when Reliability/Power BI succeed, alongside the core overview", async () => {
     render(<ExecutiveDashboard />);
 
-    await screen.findByRole("heading", { name: "Fleet Overview" });
+    await screen.findByRole("heading", { name: "Fleet by Contract Area" });
     expect(await screen.findByText("Fleet Health Score")).toBeTruthy();
   });
 });
@@ -230,21 +230,28 @@ describe("ExecutiveDashboard -- One Fetch per API", () => {
 });
 
 describe("ExecutiveDashboard -- Command Center layout (MWO-LTSA-DASHBOARD-COMMAND-CENTER-001)", () => {
-  it("renders the always-visible FleetKpiStrip with Pumps/Running/Standby/Attention/Open WO", async () => {
+  it("renders the always-visible FleetKpiStrip with Total Pumps/Running/Standby/Attention/Open WO", async () => {
     render(<ExecutiveDashboard />);
 
-    expect(await screen.findByText("Pumps")).toBeTruthy();
+    expect(await screen.findByText("Total Pumps")).toBeTruthy();
     expect(screen.getByText("Running")).toBeTruthy();
     expect(screen.getByText("Standby")).toBeTruthy();
     expect(screen.getByText("Attention")).toBeTruthy();
     expect(screen.getByText("Open WO")).toBeTruthy();
   });
 
-  it("renders the trimmed Fleet Overview: area/status distributions only, no more raw count cards", async () => {
+  it("renders Fleet by Contract Area with the raw distributions collapsed behind View Details, not shown by default", async () => {
     render(<ExecutiveDashboard />);
 
-    expect(await screen.findByRole("heading", { name: "Fleet Overview" })).toBeTruthy();
-    expect(screen.getByText("Fleet by Contract Area")).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Fleet by Contract Area" })).toBeTruthy();
+    expect(screen.getByText("HOC")).toBeTruthy();
+    expect(screen.getByText("HSC & S. Pakning")).toBeTruthy();
+    expect(screen.getByText("HCC")).toBeTruthy();
+    expect(screen.getByText("OM & UTL")).toBeTruthy();
+    expect(screen.queryByText("Pumps by Raw Area/Location")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "View Details" }));
+
     expect(screen.getByText("Pumps by Raw Area/Location")).toBeTruthy();
     expect(screen.getByText("Pumps by Status")).toBeTruthy();
   });
@@ -252,7 +259,7 @@ describe("ExecutiveDashboard -- Command Center layout (MWO-LTSA-DASHBOARD-COMMAN
   it("renders Assets Needing Attention and Maintenance Activity side by side", async () => {
     render(<ExecutiveDashboard />);
 
-    await screen.findByRole("heading", { name: "Fleet Overview" });
+    await screen.findByRole("heading", { name: "Fleet by Contract Area" });
     expect(screen.getByRole("heading", { name: "Assets Needing Attention" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Maintenance Activity" })).toBeTruthy();
   });
@@ -260,7 +267,7 @@ describe("ExecutiveDashboard -- Command Center layout (MWO-LTSA-DASHBOARD-COMMAN
   it("renders Seal Inventory and Quick Actions side by side", async () => {
     render(<ExecutiveDashboard onNavigate={() => {}} />);
 
-    await screen.findByRole("heading", { name: "Fleet Overview" });
+    await screen.findByRole("heading", { name: "Fleet by Contract Area" });
     expect(screen.getByRole("heading", { name: "Seal Inventory" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Quick Actions" })).toBeTruthy();
   });
@@ -394,7 +401,7 @@ describe("ExecutiveDashboard -- workspace navigation retained", () => {
   it("still renders Quick Actions", async () => {
     render(<ExecutiveDashboard onNavigate={() => {}} />);
 
-    await screen.findByRole("heading", { name: "Fleet Overview" });
+    await screen.findByRole("heading", { name: "Fleet by Contract Area" });
     expect(screen.getByRole("heading", { name: "Quick Actions" })).toBeTruthy();
   });
 

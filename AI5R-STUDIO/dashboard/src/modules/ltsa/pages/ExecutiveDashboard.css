@@ -2,46 +2,51 @@
    center visual pass. Every selector below is scoped under
    .executive-dashboard-layout so this page's denser/darker Card styling
    never leaks onto Card/MetricCard/Panel usage elsewhere in the app
-   (Panel.jsx's "card" class is global, unscoped by default). */
+   (Panel.jsx's "card" class is global, unscoped by default).
+   MWO-LTSA-RELIABILITY-COMMAND-CENTER-001 -- centered max-width reading
+   column + stronger typography/spacing pass; no structural section was
+   reordered, only sized/weighted. */
 
 .executive-dashboard-layout {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 20px;
+  max-width: 1440px;
+  margin: 0 auto;
 }
 
 .executive-dashboard-layout .card {
   border: 1px solid #1f2937;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
-  padding: 16px;
+  padding: 20px;
 }
 
 .executive-dashboard-layout .card h2 {
-  margin: 0 0 12px;
-  font-size: 0.95rem;
+  margin: 0 0 16px;
+  font-size: 1rem;
   font-weight: 600;
   letter-spacing: 0.02em;
   text-transform: uppercase;
   color: #94a3b8;
   border-bottom: 1px solid #1f2937;
-  padding-bottom: 10px;
+  padding-bottom: 12px;
 }
 
-/* Always-visible glanceable strip (Pumps/Running/Standby/Attention/Open WO) */
+/* Always-visible glanceable strip (Total Pumps/Running/Standby/Attention/Open WO) */
 .fleet-kpi-strip {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: 12px;
+  gap: 16px;
 }
 
 .fleet-kpi-strip .card {
-  padding: 14px 16px;
+  padding: 18px 20px;
   border-left: 3px solid #3b82f6;
 }
 
 .fleet-kpi-strip .card h3 {
-  margin: 0 0 6px;
-  font-size: 0.78rem;
+  margin: 0 0 8px;
+  font-size: 0.8rem;
   font-weight: 500;
   letter-spacing: 0.02em;
   text-transform: uppercase;
@@ -49,37 +54,67 @@
 }
 
 .fleet-kpi-strip .card strong {
-  font-size: 1.6rem;
+  font-size: 2rem;
   font-weight: 700;
   line-height: 1;
 }
 
-/* Main content / Copilot sticky rail split */
+/* Row 2: Fleet by Contract Area (main, ~70%) / AI Engineering Copilot
+   (sticky rail, ~30%) -- the rail spans the full main-column height
+   (sticky), not just Row 2's own height, matching the pre-existing
+   established behavior; only its width/visual weight increased here. */
 .executive-dashboard-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 380px;
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) 420px;
+  gap: 20px;
   align-items: start;
 }
 
 .executive-dashboard-main {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 20px;
   min-width: 0;
 }
 
 .executive-dashboard-copilot-rail {
   position: sticky;
-  top: 14px;
+  top: 20px;
+}
+
+.executive-dashboard-copilot-rail .card {
+  padding: 24px;
+}
+
+.executive-dashboard-copilot-rail .card h2 {
+  font-size: 1.1rem;
+}
+
+.executive-dashboard-copilot-rail input[aria-label="Ask the Engineering Copilot"] {
+  font-size: 1rem;
+  padding: 12px 14px !important;
 }
 
 .executive-dashboard-attention-row,
 .executive-dashboard-bottom-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 14px;
+  gap: 20px;
   align-items: start;
+}
+
+/* Row 4 (Seal Inventory / Quick Actions) -- deliberately lower visual
+   prominence than Rows 2-3, per this MWO's own "reduce visual
+   prominence" instruction: smaller heading, tighter padding, no
+   accent border. */
+.executive-dashboard-bottom-row .card {
+  padding: 14px 16px;
+}
+
+.executive-dashboard-bottom-row .card h2 {
+  font-size: 0.8rem;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
 }
 
 @media (max-width: 1024px) {
@@ -164,19 +199,117 @@
   gap: 8px;
 }
 
-/* MWO-LTSA-DASHBOARD-RECOVERY-001 -- BasicFleetOverviewPanel distributions.
-   MWO-LTSA-FLEET-CONTRACT-AREA-001 -- 3 columns (Contract Area/Raw Area/
-   Status) on wide viewports; the 1024px step keeps 2 before collapsing to
-   1 at the existing 768px breakpoint below. */
-.basic-fleet-distribution-row {
+/* MWO-LTSA-RELIABILITY-COMMAND-CENTER-001 -- Fleet by Contract Area: the
+   4 canonical groups as prominent cards with a count + bar + % of fleet. */
+.contract-area-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 16px;
 }
 
+.contract-area-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px;
+  border: 1px solid #1f2937;
+  border-left: 3px solid #3b82f6;
+  border-radius: 8px;
+  background: #0f1629;
+}
+
+.contract-area-card-label {
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+.contract-area-card-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.contract-area-card-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: #1f2937;
+  overflow: hidden;
+}
+
+.contract-area-card-bar-fill {
+  height: 100%;
+  background: #3b82f6;
+  border-radius: 3px;
+}
+
+.contract-area-card-percent {
+  font-size: 0.78rem;
+  color: #94a3b8;
+}
+
+/* Unclassified: deliberately lower visual priority than the 4 canonical
+   cards above -- a single compact warning line, not a 5th equal card. */
+.contract-area-unclassified-warning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 10px 14px;
+  border: 1px solid #f59e0b;
+  border-radius: 6px;
+  background: rgba(245, 158, 11, 0.08);
+  color: #f59e0b;
+  font-size: 0.85rem;
+}
+
+.contract-area-details-toggle {
+  margin-top: 14px;
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  border-radius: 6px;
+  border: 1px solid #1f2937;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+}
+
+.contract-area-details-toggle:hover {
+  color: #ffffff;
+  border-color: #3b82f6;
+}
+
+.contract-area-details {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #1f2937;
+}
+
 @media (max-width: 1024px) {
-  .basic-fleet-distribution-row {
+  .contract-area-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .contract-area-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* MWO-LTSA-DASHBOARD-RECOVERY-001 -- raw area/status distributions, now
+   shown only inside the "View Details" collapsible section above. */
+.basic-fleet-distribution-row {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+@media (max-width: 768px) {
+  .basic-fleet-distribution-row {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -208,12 +341,6 @@
 
 .basic-fleet-distribution li:last-child {
   border-bottom: none;
-}
-
-@media (max-width: 768px) {
-  .basic-fleet-distribution-row {
-    grid-template-columns: 1fr;
-  }
 }
 
 /* MWO-LTSA-DASHBOARD-COMMAND-CENTER-001 -- Assets Needing Attention */

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import BasicFleetOverviewPanel from "./BasicFleetOverviewPanel";
 
@@ -6,16 +6,11 @@ import BasicFleetOverviewPanel from "./BasicFleetOverviewPanel";
 // (GET /api/ltsa/fleet/overview) exactly as returned, no derived/invented
 // fields.
 //
-// MWO-LTSA-DASHBOARD-COMMAND-CENTER-001 -- trimmed to area/status
-// distributions only; pump_count/work_order_count/pm_schedule_count/
-// cm_report_count/seal_stock_count/low_stock_seal_count moved to
-// FleetKpiStrip/MaintenanceActivityPanel/SealInventoryPanel (see those
-// components' own dedicated tests) -- not duplicated here.
-//
-// MWO-LTSA-FLEET-CONTRACT-AREA-001 -- "Fleet by Contract Area" renders the
-// backend's canonical contract_area_distribution, never a frontend-derived
-// remapping of the raw area_distribution (which stays, relabeled, alongside
-// it as "Pumps by Raw Area/Location").
+// MWO-LTSA-RELIABILITY-COMMAND-CENTER-001 -- "Fleet by Contract Area" is
+// the card's primary content: 4 canonical group cards (count + % of
+// fleet, arithmetic only, never a re-classification), Unclassified shown
+// separately at lower visual weight, raw area/status preserved behind a
+// "View Details" toggle (never deleted).
 
 function overview(overrides = {}) {
   return {
@@ -40,14 +35,76 @@ function overview(overrides = {}) {
 }
 
 describe("BasicFleetOverviewPanel", () => {
-  it("renders the Fleet Overview heading", () => {
+  it("renders the Fleet by Contract Area heading", () => {
     render(<BasicFleetOverviewPanel overview={overview()} />);
 
-    expect(screen.getByRole("heading", { name: "Fleet Overview" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Fleet by Contract Area" })).toBeTruthy();
   });
 
-  it("renders the raw area and status distributions", () => {
+  it("renders exactly the 4 canonical contract-area cards with count and % of fleet", () => {
+    render(
+      <BasicFleetOverviewPanel
+        overview={overview({
+          pump_count: 4,
+          contract_area_distribution: {
+            HOC: 1,
+            "HSC & S. Pakning": 1,
+            HCC: 1,
+            "OM & UTL": 0,
+            Unclassified: 1,
+          },
+        })}
+      />
+    );
+
+    expect(screen.getByText("HOC")).toBeTruthy();
+    expect(screen.getByText("HSC & S. Pakning")).toBeTruthy();
+    expect(screen.getByText("HCC")).toBeTruthy();
+    expect(screen.getByText("OM & UTL")).toBeTruthy();
+    // Each of the 3 non-zero canonical groups is 1/4 = 25% of the fleet.
+    expect(screen.getAllByText("25% of fleet").length).toBe(3);
+  });
+
+  it("shows the Unclassified count as a lower-priority warning, not a 5th equal card", () => {
+    render(
+      <BasicFleetOverviewPanel
+        overview={overview({
+          contract_area_distribution: { HOC: 3, "HSC & S. Pakning": 0, HCC: 0, "OM & UTL": 0, Unclassified: 1 },
+        })}
+      />
+    );
+
+    expect(screen.getByRole("status").textContent).toMatch(/1 asset requires area classification/i);
+    // Not rendered as one of the 4 contract-area-card labels.
+    expect(screen.queryByText("Unclassified")).toBeNull();
+  });
+
+  it("does not show the Unclassified warning when there are zero unclassified assets", () => {
+    render(
+      <BasicFleetOverviewPanel
+        overview={overview({
+          contract_area_distribution: { HOC: 4, "HSC & S. Pakning": 0, HCC: 0, "OM & UTL": 0, Unclassified: 0 },
+        })}
+      />
+    );
+
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("renders an explicit N/A/unavailable state, not a fallback to raw area, when contract_area_distribution is absent", () => {
+    render(<BasicFleetOverviewPanel overview={overview({ contract_area_distribution: undefined })} />);
+
+    expect(screen.getByText(/n\/a.*unavailable/i)).toBeTruthy();
+    expect(screen.queryByText("HOC")).toBeNull();
+  });
+
+  it("hides raw area/status distributions by default; View Details reveals them without deleting the data", () => {
     render(<BasicFleetOverviewPanel overview={overview()} />);
+
+    expect(screen.queryByText("Pumps by Raw Area/Location")).toBeNull();
+    expect(screen.queryByText("Reaktor")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "View Details" }));
 
     expect(screen.getByText("Pumps by Raw Area/Location")).toBeTruthy();
     expect(screen.getByText("Reaktor")).toBeTruthy();
@@ -56,82 +113,26 @@ describe("BasicFleetOverviewPanel", () => {
     expect(screen.getByText("ACTIVE")).toBeTruthy();
   });
 
-  it("does not render a Work Orders by Status distribution -- moved to MaintenanceActivityPanel", () => {
-    render(<BasicFleetOverviewPanel overview={overview()} />);
+  it("View Details is available even when there are zero unclassified assets -- raw data access is never conditional on that", () => {
+    render(
+      <BasicFleetOverviewPanel
+        overview={overview({
+          contract_area_distribution: { HOC: 4, "HSC & S. Pakning": 0, HCC: 0, "OM & UTL": 0, Unclassified: 0 },
+        })}
+      />
+    );
 
-    expect(screen.queryByText("Work Orders by Status")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "View Details" }));
+
+    expect(screen.getByText("Pumps by Raw Area/Location")).toBeTruthy();
   });
 
-  it("shows an empty-distribution message rather than a blank section when a distribution is empty", () => {
+  it("shows an empty-distribution message rather than a blank section for an empty raw distribution", () => {
     render(<BasicFleetOverviewPanel overview={overview({ area_distribution: {}, status_distribution: {} })} />);
 
+    fireEvent.click(screen.getByRole("button", { name: "View Details" }));
+
     expect(screen.getAllByText(/no data available/i).length).toBe(2);
-  });
-
-  it("renders 'Fleet by Contract Area' sourced from contract_area_distribution, not raw area", () => {
-    render(
-      <BasicFleetOverviewPanel
-        overview={overview({
-          // Raw values deliberately preserved/shown elsewhere on the page
-          // (see "renders the raw area and status distributions") -- this
-          // test proves they do NOT also leak into the contract-area
-          // section itself.
-          area_distribution: { CDU: 1, REAKTOR: 1, HCC: 1, HOC: 1 },
-          contract_area_distribution: {
-            HOC: 1,
-            "HSC & S. Pakning": 0,
-            HCC: 1,
-            "OM & UTL": 0,
-            Unclassified: 2,
-          },
-        })}
-      />
-    );
-
-    const section = screen.getByText("Fleet by Contract Area").closest("div");
-    // The raw tokens CDU/REAKTOR must never appear inside the contract-area
-    // section -- only the 5 canonical labels do.
-    expect(section.textContent).not.toContain("CDU");
-    expect(section.textContent).not.toContain("REAKTOR");
-  });
-
-  it("renders exactly the 5 canonical groups, in order, including Unclassified", () => {
-    render(<BasicFleetOverviewPanel overview={overview()} />);
-
-    const section = screen.getByText("Fleet by Contract Area").closest("div");
-    const labels = Array.from(section.querySelectorAll("li > span:first-child")).map((el) => el.textContent);
-
-    expect(labels).toEqual(["HOC", "HSC & S. Pakning", "HCC", "OM & UTL", "Unclassified"]);
-  });
-
-  it("always renders Unclassified even when it is zero -- never hidden or dropped", () => {
-    render(
-      <BasicFleetOverviewPanel
-        overview={overview({
-          contract_area_distribution: {
-            HOC: 4,
-            "HSC & S. Pakning": 0,
-            HCC: 0,
-            "OM & UTL": 0,
-            Unclassified: 0,
-          },
-        })}
-      />
-    );
-
-    const section = screen.getByText("Fleet by Contract Area").closest("div");
-    expect(section.textContent).toContain("Unclassified");
-    expect(section.textContent).toContain("0");
-  });
-
-  it("renders an explicit N/A/unavailable state, not a fallback to raw area, when contract_area_distribution is absent", () => {
-    render(<BasicFleetOverviewPanel overview={overview({ contract_area_distribution: undefined })} />);
-
-    const section = screen.getByText("Fleet by Contract Area").closest("div");
-    expect(section.textContent).toMatch(/n\/a|unavailable/i);
-    // Confirms no silent substitution of the raw distribution's own labels
-    // into the contract-area section.
-    expect(screen.queryByText("HOC")).toBeNull();
   });
 
   it("displayed contract-area total reconciles to pump_count", () => {

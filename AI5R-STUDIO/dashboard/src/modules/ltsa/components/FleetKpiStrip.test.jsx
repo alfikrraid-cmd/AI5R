@@ -16,10 +16,10 @@ function overview(overrides = {}) {
 }
 
 describe("FleetKpiStrip", () => {
-  it("renders Pumps from overview.pump_count", () => {
+  it("renders Total Pumps from overview.pump_count", () => {
     render(<FleetKpiStrip overview={overview()} summary={null} />);
 
-    expect(screen.getByText("Pumps")).toBeTruthy();
+    expect(screen.getByText("Total Pumps")).toBeTruthy();
     expect(screen.getByText("4")).toBeTruthy();
   });
 

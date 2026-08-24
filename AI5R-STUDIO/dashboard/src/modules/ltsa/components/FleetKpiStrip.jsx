@@ -38,7 +38,7 @@ export default function FleetKpiStrip({ overview, summary }) {
   const attention = summary ? summary.critical_asset_count : null;
 
   const cards = [
-    { title: "Pumps", value: overview.pump_count },
+    { title: "Total Pumps", value: overview.pump_count },
     { title: "Running", value: running ?? "N/A" },
     { title: "Standby", value: standby ?? "N/A" },
     { title: "Attention", value: attention ?? "N/A" },

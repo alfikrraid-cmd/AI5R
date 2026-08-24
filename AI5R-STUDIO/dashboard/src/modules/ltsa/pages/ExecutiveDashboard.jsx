@@ -127,14 +127,14 @@ export default function ExecutiveDashboard({ onNavigate }) {
 
       {loading ? (
         <>
-          <Card title="Fleet Overview">
+          <Card title="Fleet by Contract Area">
             <p>Loading executive dashboard...</p>
           </Card>
           <QuickNavigationPanel onNavigate={onNavigate} />
         </>
       ) : overviewError ? (
         <>
-          <Card title="Fleet Overview">
+          <Card title="Fleet by Contract Area">
             <p role="alert">{overviewError}</p>
           </Card>
           <QuickNavigationPanel onNavigate={onNavigate} />
