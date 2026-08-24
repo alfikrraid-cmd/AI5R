@@ -164,11 +164,20 @@
   gap: 8px;
 }
 
-/* MWO-LTSA-DASHBOARD-RECOVERY-001 -- BasicFleetOverviewPanel distributions */
+/* MWO-LTSA-DASHBOARD-RECOVERY-001 -- BasicFleetOverviewPanel distributions.
+   MWO-LTSA-FLEET-CONTRACT-AREA-001 -- 3 columns (Contract Area/Raw Area/
+   Status) on wide viewports; the 1024px step keeps 2 before collapsing to
+   1 at the existing 768px breakpoint below. */
 .basic-fleet-distribution-row {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 16px;
+}
+
+@media (max-width: 1024px) {
+  .basic-fleet-distribution-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 .basic-fleet-distribution h4 {

@@ -38,6 +38,13 @@ function overviewResponse(overrides = {}) {
     data: {
       pump_count: 4,
       area_distribution: { Reaktor: 3, Utility: 1 },
+      contract_area_distribution: {
+        HOC: 1,
+        "HSC & S. Pakning": 1,
+        HCC: 1,
+        "OM & UTL": 0,
+        Unclassified: 1,
+      },
       status_distribution: { ACTIVE: 4 },
       work_order_count: 2,
       work_order_status_distribution: { OPEN: 2 },
@@ -237,7 +244,8 @@ describe("ExecutiveDashboard -- Command Center layout (MWO-LTSA-DASHBOARD-COMMAN
     render(<ExecutiveDashboard />);
 
     expect(await screen.findByRole("heading", { name: "Fleet Overview" })).toBeTruthy();
-    expect(screen.getByText("Pumps by Area")).toBeTruthy();
+    expect(screen.getByText("Fleet by Contract Area")).toBeTruthy();
+    expect(screen.getByText("Pumps by Raw Area/Location")).toBeTruthy();
     expect(screen.getByText("Pumps by Status")).toBeTruthy();
   });
 
