@@ -39,6 +39,7 @@ from typing import Any, Callable
 from .cm_report_gateway import CMReportGateway
 from .pm_schedule_gateway import PMScheduleGateway
 from .pump_area_scope import is_area_in_scope
+from .pump_contract_area import CONTRACT_AREA_GROUPS, UNCLASSIFIED, resolve_contract_area
 from .pump_gateway import PumpGateway
 from .seal_stock_gateway import SealStockGateway
 from .work_order_gateway import WorkOrderGateway
@@ -52,6 +53,7 @@ class BasicFleetOverview:
 
     pump_count: int
     area_distribution: dict[str, int]
+    contract_area_distribution: dict[str, int]
     status_distribution: dict[str, int]
     work_order_count: int
     work_order_status_distribution: dict[str, int]
@@ -100,6 +102,7 @@ class BasicFleetOverviewService:
         return BasicFleetOverview(
             pump_count=len(pumps),
             area_distribution=_distribution(pumps, "area"),
+            contract_area_distribution=_contract_area_distribution(pumps),
             status_distribution=_distribution(pumps, "status"),
             work_order_count=len(work_orders),
             work_order_status_distribution=_distribution(work_orders, "status"),
@@ -137,6 +140,17 @@ def _safe_list(list_fn: Callable[[], dict[str, Any]]) -> list[dict[str, Any]]:
 def _distribution(records: list[dict[str, Any]], field_name: str) -> dict[str, int]:
     counts = Counter(r.get(field_name) for r in records if r.get(field_name))
     return dict(counts)
+
+
+def _contract_area_distribution(pumps: list[dict[str, Any]]) -> dict[str, int]:
+    # Fixed, closed enumeration (unlike raw area_distribution's open
+    # vocabulary) -- every bucket is always present, even at zero, since
+    # resolve_contract_area's output space is exactly these 5 values.
+    counts = {group: 0 for group in CONTRACT_AREA_GROUPS}
+    counts[UNCLASSIFIED] = 0
+    for pump in pumps:
+        counts[resolve_contract_area(pump.get("area"))] += 1
+    return counts
 
 
 def _count_low_stock(seal_stocks: list[dict[str, Any]]) -> int | None:

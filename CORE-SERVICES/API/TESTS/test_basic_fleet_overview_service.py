@@ -12,6 +12,7 @@ if str(CORE_SERVICES_DIR) not in sys.path:
     sys.path.insert(0, str(CORE_SERVICES_DIR))
 
 from API.basic_fleet_overview_service import BasicFleetOverview, BasicFleetOverviewService
+from API.pump_contract_area import UNCLASSIFIED, resolve_contract_area
 
 
 class FakeListGateway:
@@ -168,6 +169,13 @@ def test_empty_fleet_returns_all_empty_and_zero_fields_never_fabricated():
     assert result == BasicFleetOverview(
         pump_count=0,
         area_distribution={},
+        contract_area_distribution={
+            "HOC": 0,
+            "HSC & S. Pakning": 0,
+            "HCC": 0,
+            "OM & UTL": 0,
+            UNCLASSIFIED: 0,
+        },
         status_distribution={},
         work_order_count=0,
         work_order_status_distribution={},
@@ -199,3 +207,140 @@ def test_one_gateway_failing_does_not_break_the_others():
     assert result.work_order_count == 0
     assert result.seal_stock_count == 1
     assert result.low_stock_seal_count == 1
+
+
+# MWO-LTSA-FLEET-CONTRACT-AREA-001 -- contract_area_distribution: explicit-
+# token classification only, never inferred from tag-number prefix or any
+# other signal. area_distribution (raw) is unchanged/untouched by this.
+
+
+def test_contract_area_distribution_maps_the_seven_explicit_tokens():
+    pumps = [
+        {"tag_number": "P-1", "area": "HOC", "status": "ACTIVE"},
+        {"tag_number": "P-2", "area": "HSC", "status": "ACTIVE"},
+        {"tag_number": "P-3", "area": "SPK", "status": "ACTIVE"},
+        {"tag_number": "P-4", "area": "S_PAKNING", "status": "ACTIVE"},
+        {"tag_number": "P-5", "area": "HCC", "status": "ACTIVE"},
+        {"tag_number": "P-6", "area": "OM", "status": "ACTIVE"},
+        {"tag_number": "P-7", "area": "UTL", "status": "ACTIVE"},
+    ]
+    service, _ = _service(pumps=pumps)
+
+    result = service.build()
+
+    assert result.contract_area_distribution == {
+        "HOC": 1,
+        "HSC & S. Pakning": 3,
+        "HCC": 1,
+        "OM & UTL": 2,
+        UNCLASSIFIED: 0,
+    }
+
+
+def test_contract_area_distribution_sends_unknown_tokens_to_unclassified():
+    pumps = [
+        {"tag_number": "P-1", "area": "REAKTOR", "status": "ACTIVE"},
+        {"tag_number": "P-2", "area": "CDU", "status": "ACTIVE"},
+        {"tag_number": "P-3", "area": "FRAKSINASI", "status": "ACTIVE"},
+        {"tag_number": "P-4", "area": None, "status": "ACTIVE"},
+    ]
+    service, _ = _service(pumps=pumps)
+
+    result = service.build()
+
+    assert result.contract_area_distribution == {
+        "HOC": 0,
+        "HSC & S. Pakning": 0,
+        "HCC": 0,
+        "OM & UTL": 0,
+        UNCLASSIFIED: 4,
+    }
+
+
+def test_contract_area_never_infers_from_tag_number_prefix():
+    # Same tag-number prefix as an HCC-mapped sibling is NOT evidence --
+    # REAKTOR must resolve Unclassified regardless of what its neighbors
+    # under the same prefix are mapped to.
+    pumps = [
+        {"tag_number": "212-P-4A", "area": "REAKTOR", "status": "ACTIVE"},
+        {"tag_number": "212-P-4B", "area": "HCC", "status": "ACTIVE"},
+        {"tag_number": "212-P-4C", "area": "HCC", "status": "ACTIVE"},
+    ]
+    service, _ = _service(pumps=pumps)
+
+    result = service.build()
+
+    assert result.contract_area_distribution["HCC"] == 2
+    assert result.contract_area_distribution[UNCLASSIFIED] == 1
+
+
+def test_raw_area_distribution_is_unchanged_by_contract_area_classification():
+    pumps = [
+        {"tag_number": "P-1", "area": "REAKTOR", "status": "ACTIVE"},
+        {"tag_number": "P-2", "area": "HCC", "status": "ACTIVE"},
+    ]
+    service, _ = _service(pumps=pumps)
+
+    result = service.build()
+
+    assert result.area_distribution == {"REAKTOR": 1, "HCC": 1}
+    assert result.contract_area_distribution == {
+        "HOC": 0,
+        "HSC & S. Pakning": 0,
+        "HCC": 1,
+        "OM & UTL": 0,
+        UNCLASSIFIED: 1,
+    }
+
+
+def test_contract_area_distribution_totals_reconcile_to_pump_count():
+    pumps = [
+        {"tag_number": "P-1", "area": "HOC", "status": "ACTIVE"},
+        {"tag_number": "P-2", "area": "REAKTOR", "status": "ACTIVE"},
+        {"tag_number": "P-3", "area": "OM", "status": "ACTIVE"},
+        {"tag_number": "P-4", "area": None, "status": "ACTIVE"},
+    ]
+    service, _ = _service(pumps=pumps)
+
+    result = service.build()
+
+    assert sum(result.contract_area_distribution.values()) == result.pump_count == 4
+
+
+def test_contract_area_distribution_respects_existing_area_scope_filtering():
+    # Scope filtering happens on the raw `area` field before classification,
+    # same choke point as area_distribution/status_distribution -- proving
+    # contract_area_distribution doesn't bypass or duplicate scope logic.
+    pumps = [
+        {"tag_number": "P-A", "area": "HCC", "status": "ACTIVE"},
+        {"tag_number": "P-B", "area": "OM", "status": "ACTIVE"},
+    ]
+    service, _ = _service(pumps=pumps)
+
+    result = service.build(scope=frozenset({"HCC"}))
+
+    assert result.pump_count == 1
+    assert result.contract_area_distribution == {
+        "HOC": 0,
+        "HSC & S. Pakning": 0,
+        "HCC": 1,
+        "OM & UTL": 0,
+        UNCLASSIFIED: 0,
+    }
+
+
+def test_resolve_contract_area_is_a_pure_explicit_token_lookup():
+    assert resolve_contract_area("HOC") == "HOC"
+    assert resolve_contract_area("HSC") == "HSC & S. Pakning"
+    assert resolve_contract_area("SPK") == "HSC & S. Pakning"
+    assert resolve_contract_area("S_PAKNING") == "HSC & S. Pakning"
+    assert resolve_contract_area("HCC") == "HCC"
+    assert resolve_contract_area("OM") == "OM & UTL"
+    assert resolve_contract_area("UTL") == "OM & UTL"
+    assert resolve_contract_area("REAKTOR") == UNCLASSIFIED
+    assert resolve_contract_area("CDU") == UNCLASSIFIED
+    assert resolve_contract_area(None) == UNCLASSIFIED
+    assert resolve_contract_area("") == UNCLASSIFIED
+    # Case-sensitive exact match only -- lowercase variants of a real
+    # token are not silently normalized, per "map ONLY explicit tokens".
+    assert resolve_contract_area("hoc") == UNCLASSIFIED

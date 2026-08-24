@@ -360,6 +360,13 @@ def _overview(**overrides):
     defaults = dict(
         pump_count=3,
         area_distribution={"Reaktor": 2, "Utility": 1},
+        contract_area_distribution={
+            "HOC": 0,
+            "HSC & S. Pakning": 0,
+            "HCC": 0,
+            "OM & UTL": 0,
+            "Unclassified": 3,
+        },
         status_distribution={"ACTIVE": 3},
         work_order_count=2,
         work_order_status_distribution={"OPEN": 2},
@@ -415,6 +422,13 @@ def test_get_fleet_overview_response_shape_matches_the_service_result_unchanged(
     assert response["data"] == {
         "pump_count": 7,
         "area_distribution": {"Reaktor": 7},
+        "contract_area_distribution": {
+            "HOC": 0,
+            "HSC & S. Pakning": 0,
+            "HCC": 0,
+            "OM & UTL": 0,
+            "Unclassified": 3,
+        },
         "status_distribution": {"ACTIVE": 3},
         "work_order_count": 2,
         "work_order_status_distribution": {"OPEN": 2},
@@ -438,6 +452,13 @@ def test_get_fleet_overview_empty_fleet_returns_zero_and_empty_fields():
         result=_overview(
             pump_count=0,
             area_distribution={},
+            contract_area_distribution={
+                "HOC": 0,
+                "HSC & S. Pakning": 0,
+                "HCC": 0,
+                "OM & UTL": 0,
+                "Unclassified": 0,
+            },
             status_distribution={},
             work_order_count=0,
             work_order_status_distribution={},
