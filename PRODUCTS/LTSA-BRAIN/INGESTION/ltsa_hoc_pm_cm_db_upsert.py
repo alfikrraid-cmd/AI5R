@@ -34,6 +34,90 @@ def load_state(runner: DatabaseRunner) -> dict[str, list[dict[str, Any]]]:
     }
 
 
+# MWO-LTSA-JUNE-HOC-FINDING-ATTACHMENT-001 -- findings from this workbook's
+# "finnding" sheet are supporting evidence for an existing
+# condition_monitoring_reading leak observation, never a standalone
+# cm_report row (cm_report is the reactive Corrective-Maintenance domain;
+# a leak noted during routine Condition Monitoring is a different concept
+# that happens to share the "CM" initials -- see this line's own
+# terminology-collision finding). plan_import()'s generic findings->
+# cm_report shape is therefore deliberately NOT used as the write path
+# below; this module attaches each safely-matched finding's text to
+# condition_monitoring_reading.finding instead.
+#
+# Two disclosed exclusions, for two different reasons -- never merged into
+# one bucket:
+#   - 140-P-13A (finnding row 10): a genuine unique match exists (see
+#     _match_finding_to_reading), but is held pending human review against
+#     a separate, already-staged August-batch finding candidate for the
+#     same pump -- a cross-batch duplicate concern this ingestion path has
+#     no evidence to resolve on its own.
+#   - 110-P-12B (finnding row 7): no printed date in source, and this pump
+#     has TWO leak='Y' readings in June (06-18, 06-24) -- already excluded
+#     by _match_finding_to_reading's own uniqueness rule (no date -> no
+#     match). Listed here too so the exclusion is explicit and traceable
+#     in one place, not an incidental side effect of the matching
+#     algorithm alone.
+QUARANTINED_FINDING_ROWS: frozenset[tuple[str, int]] = frozenset(
+    {
+        ("finnding", 10),  # 140-P-13A -- cross-batch duplicate review pending
+        ("finnding", 7),  # 110-P-12B -- ambiguous match, no safe target reading
+    }
+)
+
+
+def _match_finding_to_reading(
+    finding: dict[str, Any], cmon_inserts: list[dict[str, Any]]
+) -> dict[str, Any] | None:
+    """Returns the one condition_monitoring_reading insert row this
+    finding is safe to attach to, or None if no safe match exists. Never
+    guesses: requires exactly one insert row for the same asset_code +
+    reading_date with a leak flag set (DE or NDE) -- the same evidence
+    link a human reviewer would use. A finding with no date, zero matching
+    leak readings, or more than one (ambiguous) same-day leak reading
+    returns None rather than picking one."""
+    if finding["failure_date"] is None:
+        return None
+    candidates = [
+        reading
+        for reading in cmon_inserts
+        if reading["asset_code"] == finding["asset_code"]
+        and reading["reading_date"] == finding["failure_date"]
+        and (reading.get("mechanical_seal_leak_de") or reading.get("mechanical_seal_leak_nde"))
+    ]
+    if len(candidates) != 1:
+        return None
+    return candidates[0]
+
+
+def plan_finding_attachments(plan: dict[str, Any]) -> dict[str, Any]:
+    """Pure: never mutates `plan`. Classifies every proposed finding into
+    exactly one of attach/quarantine/unmatched, so the decision is
+    inspectable before any SQL is built. `attachments` maps
+    condition_monitoring_reading_code -> finding text (at most one finding
+    per reading, matching this workbook's own 1:1 evidence -- see
+    _match_finding_to_reading)."""
+    cmon_inserts = plan["condition_monitoring_readings"]["insert"]
+    attachments: dict[str, str] = {}
+    quarantined: list[dict[str, Any]] = []
+    unmatched: list[dict[str, Any]] = []
+
+    for finding in plan["findings"]["insert"]:
+        key = (finding["source_sheet_name"], finding["source_row_number"])
+        if key in QUARANTINED_FINDING_ROWS:
+            quarantined.append(finding)
+            continue
+
+        matched = _match_finding_to_reading(finding, cmon_inserts)
+        if matched is None:
+            unmatched.append(finding)
+            continue
+
+        attachments[matched["condition_monitoring_reading_code"]] = finding["failure_description"]
+
+    return {"attachments": attachments, "quarantined": quarantined, "unmatched": unmatched}
+
+
 def _sql(value: Any) -> str:
     if value is None:
         return "NULL"
@@ -55,6 +139,9 @@ def _sql_date(value: str | None) -> str:
 
 
 def apply_plan(plan: dict[str, Any], runner: DatabaseRunner) -> dict[str, Any]:
+    finding_plan = plan_finding_attachments(plan)
+    attachments = finding_plan["attachments"]
+
     statements = ["BEGIN;"]
 
     for reading in plan["condition_monitoring_readings"]["insert"]:
@@ -71,8 +158,10 @@ def apply_plan(plan: dict[str, Any], runner: DatabaseRunner) -> dict[str, Any]:
             _sql_date(reading["reading_date"]) if column == "reading_date" else _sql(reading[column])
             for column in columns
         )
+        finding_text = attachments.get(reading["condition_monitoring_reading_code"])
         statements.append(
-            f"INSERT INTO condition_monitoring_reading ({', '.join(columns)}) VALUES ({values});"
+            f"INSERT INTO condition_monitoring_reading ({', '.join(columns)}, finding) "
+            f"VALUES ({values}, {_sql(finding_text)});"
         )
 
     for occurrence in plan["pm_occurrences"]["insert"]:
@@ -89,22 +178,22 @@ def apply_plan(plan: dict[str, Any], runner: DatabaseRunner) -> dict[str, Any]:
             f"({', '.join(columns)}, checklist_completion) VALUES ({values}, {_sql_jsonb(occurrence['checklist_completion'])});"
         )
 
-    for finding in plan["findings"]["insert"]:
-        columns = [
-            "cm_report_code", "asset_code", "asset_type", "failure_category", "severity",
-            "failure_description", "status", "source_workbook_name", "source_sheet_name", "source_row_number",
-        ]
-        values = ", ".join(_sql(finding[column]) for column in columns)
-        statements.append(
-            "INSERT INTO cm_report "
-            f"({', '.join(columns)}, failure_date) VALUES ({values}, {_sql_date(finding['failure_date'])});"
-        )
+    # Findings are attached to their matched condition_monitoring_reading
+    # row above (plan_finding_attachments), never inserted as a standalone
+    # cm_report row -- deliberately no loop over plan["findings"]["insert"]
+    # here (see this module's own header note on QUARANTINED_FINDING_ROWS).
 
     statements.append("COMMIT;")
     runner.execute_script("\n".join(statements))
     return {
-        entity: {"inserted": len(plan[entity]["insert"])}
-        for entity in ("condition_monitoring_readings", "pm_occurrences", "findings")
+        "condition_monitoring_readings": {"inserted": len(plan["condition_monitoring_readings"]["insert"])},
+        "pm_occurrences": {"inserted": len(plan["pm_occurrences"]["insert"])},
+        "findings": {
+            "attached": len(finding_plan["attachments"]),
+            "quarantined": len(finding_plan["quarantined"]),
+            "unmatched": len(finding_plan["unmatched"]),
+        },
+        "cm_reports": {"inserted": 0},
     }
 
 
