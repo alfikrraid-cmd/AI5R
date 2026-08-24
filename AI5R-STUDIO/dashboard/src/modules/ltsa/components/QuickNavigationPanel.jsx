@@ -31,9 +31,12 @@ export const DESTINATIONS = [
   { key: "inventory", label: "Open Inventory", disabled: true },
 ];
 
+// MWO-LTSA-DASHBOARD-COMMAND-CENTER-001 -- retitled "Quick Actions" (was
+// "Quick Navigation") per this MWO's "secondary Quick Actions" placement;
+// DESTINATIONS/onNavigate/every other behavior below is unchanged.
 export default function QuickNavigationPanel({ onNavigate }) {
   return (
-    <Card title="Quick Navigation">
+    <Card title="Quick Actions">
       <div style={{ display: "flex", flexWrap: "wrap", gap: spacing.sm }}>
         {DESTINATIONS.map((destination) => (
           <Button

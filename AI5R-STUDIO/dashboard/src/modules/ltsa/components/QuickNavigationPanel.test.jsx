@@ -6,7 +6,8 @@ describe("QuickNavigationPanel", () => {
   it("renders every quick navigation action", () => {
     render(<QuickNavigationPanel onNavigate={() => {}} />);
 
-    expect(screen.getByRole("heading", { name: "Quick Navigation" })).toBeTruthy();
+    // MWO-LTSA-DASHBOARD-COMMAND-CENTER-001 -- retitled "Quick Actions"
+    expect(screen.getByRole("heading", { name: "Quick Actions" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Open Pump Registry" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Open Work Orders" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Open Preventive Maintenance" })).toBeTruthy();

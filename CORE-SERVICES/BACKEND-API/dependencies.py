@@ -25,6 +25,7 @@ from API.condition_monitoring_reading_repository import ConditionMonitoringReadi
 from API.condition_monitoring_schedule_gateway import ConditionMonitoringScheduleGateway
 from API.engineering_context_engine import EngineeringContextEngine
 from API.equipment_timeline_service import EquipmentTimelineService
+from API.basic_fleet_overview_service import BasicFleetOverviewService
 from API.fleet_executive_summary import FleetExecutiveSummaryService
 from API.fleet_reliability_service import FleetReliabilityService
 from API.import_session_repository import ImportSessionRepository
@@ -238,6 +239,17 @@ _fleet_executive_summary_service = FleetExecutiveSummaryService(
     fleet_reliability_service=_fleet_reliability_service,
 )
 
+# MWO-LTSA-DASHBOARD-RECOVERY-001 -- bounded fleet summary, built from the
+# same singleton gateways above (pump/work-order/pm-schedule/cm-report/
+# seal-stock), never LTSAKnowledgeService -- no per-pump fan-out.
+_basic_fleet_overview_service = BasicFleetOverviewService(
+    pump_gateway=_pump_gateway,
+    work_order_gateway=_work_order_gateway,
+    pm_schedule_gateway=_pm_schedule_gateway,
+    cm_report_gateway=_cm_report_gateway,
+    seal_stock_gateway=_seal_stock_gateway,
+)
+
 _engineering_context_engine = EngineeringContextEngine(
     pump_gateway=_pump_gateway,
     maintenance_history_gateway=_maintenance_history_gateway,
@@ -330,6 +342,10 @@ def get_fleet_reliability_service() -> FleetReliabilityService:
 
 def get_fleet_executive_summary_service() -> FleetExecutiveSummaryService:
     return _fleet_executive_summary_service
+
+
+def get_basic_fleet_overview_service() -> BasicFleetOverviewService:
+    return _basic_fleet_overview_service
 
 
 def get_engineering_context_engine() -> EngineeringContextEngine:

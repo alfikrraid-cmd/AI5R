@@ -111,9 +111,15 @@ describe("App", () => {
     window.history.replaceState({}, "", "/ltsa");
 
     render(<App />);
-    await loginAsTapAdmin();
+    await screen.findByLabelText("Email");
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "admin@tap.co.id" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "demo123" } });
+    fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
 
-    expect(screen.getByRole("heading", { name: "Pump Workspace" })).toBeTruthy();
+    // MWO-AI5R-LTSA-COPILOT-001 -- a bare /ltsa entry (no deep link) lands
+    // on the canonical Executive Dashboard, not the pre-Copilot "history"
+    // default (see LTSAAuthGate.jsx's own DEFAULT_LANDING_KEY).
+    expect(await screen.findByRole("heading", { name: "Executive Dashboard" })).toBeTruthy();
     expect(screen.queryByRole("tab", { name: "LTSA" })).toBeNull();
     expect(screen.queryByText("AI5R STUDIO")).toBeNull();
   });
@@ -122,9 +128,16 @@ describe("App", () => {
     window.history.replaceState({}, "", "/ltsa/tap");
 
     render(<App />);
-    await loginAsTapAdmin();
+    await screen.findByLabelText("Email");
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "admin@tap.co.id" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "demo123" } });
+    fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
 
-    expect(screen.getByRole("heading", { name: "Pump Workspace" })).toBeTruthy();
+    // MWO-AI5R-LTSA-COPILOT-001 -- same canonical-dashboard landing as the
+    // bare /ltsa case above; the organization slug is resolved separately
+    // (ApplicationRouter/OrganizationResolver) and is not itself a
+    // workspace deep link.
+    expect(await screen.findByRole("heading", { name: "Executive Dashboard" })).toBeTruthy();
     expect(screen.queryByRole("heading", { level: 1, name: "AI5ROS" })).toBeNull();
     expect(screen.queryByRole("tab", { name: "LTSA" })).toBeNull();
     expect(screen.queryByText("AI5R STUDIO")).toBeNull();
@@ -151,4 +164,36 @@ describe("App", () => {
     expect(screen.getByRole("tab", { name: "AI5ROS" }).getAttribute("aria-selected")).toBe("true");
     expect(screen.getByRole("tab", { name: "LTSA" })).toBeTruthy();
   });
+});
+
+describe("App -- Executive Dashboard login routing (MWO-LTSA-DASHBOARD-RECOVERY-001)", () => {
+  it("URL agrees with the rendered view after a bare-/ltsa login: both are the canonical dashboard route", async () => {
+    window.history.replaceState({}, "", "/ltsa");
+
+    render(<App />);
+    await screen.findByLabelText("Email");
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "admin@tap.co.id" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "demo123" } });
+    fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
+
+    await screen.findByRole("heading", { name: "Executive Dashboard" });
+    expect(window.location.pathname).toBe("/ltsa/dashboard");
+  });
+
+  it("a page refresh on the canonical dashboard route lands back on the dashboard, not Pump Workspace", async () => {
+    window.history.replaceState({}, "", "/ltsa/dashboard");
+
+    render(<App />);
+    await screen.findByLabelText("Email");
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "admin@tap.co.id" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "demo123" } });
+    fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
+
+    expect(await screen.findByRole("heading", { name: "Executive Dashboard" })).toBeTruthy();
+    expect(window.location.pathname).toBe("/ltsa/dashboard");
+  });
+
+  // Direct Pump route preservation is already covered by the pre-existing
+  // "registers the Pump Workspace as a directly reachable route" test
+  // above (PUMP_WORKSPACE_ROUTE + loginAsTapAdmin) -- not duplicated here.
 });

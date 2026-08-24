@@ -219,6 +219,21 @@ export default function LTSAWorkspace({ initialActiveKey = "dashboard", capabili
   const [activeKey, setActiveKey] = useState(initialLocation?.key ?? initialActiveKey);
   const [navContext, setNavContext] = useState(initialLocation?.context ?? null);
   const ActivePage = PAGES[activeKey];
+
+  // MWO-LTSA-DASHBOARD-RECOVERY-001 -- when the URL on mount didn't
+  // already resolve to a valid workspace location (initialLocation is
+  // null: e.g. a fresh login landing on "/" or "/ltsa"), activeKey falls
+  // back to initialActiveKey above, but nothing used to update the URL to
+  // match -- the browser kept showing whatever stale/unrecognized path it
+  // was already on while the canonical Executive Dashboard rendered.
+  // replaceState (not pushState) so this sync never adds an extra history
+  // entry; runs once, only when the URL didn't already agree.
+  useEffect(() => {
+    if (!initialLocation) {
+      window.history.replaceState({}, "", workspaceLocation(activeKey, {}));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const visibleTabs = capabilities
     ? TABS.filter((tab) => capabilities.allowedKeys.includes(tab.key))
     : TABS;

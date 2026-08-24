@@ -23,6 +23,7 @@ import {
   getConditionMonitoringReadings,
   getConditionMonitoringSchedules,
   getPumpKnowledge,
+  getFleetOverview,
   getFleetReliability,
   getFleetPowerBI,
   postEngineeringAI,
@@ -54,6 +55,7 @@ vi.mock("../../../api/ai5rClient", () => ({
   getConditionMonitoringReadings: vi.fn(),
   getConditionMonitoringSchedules: vi.fn(),
   getPumpKnowledge: vi.fn(),
+  getFleetOverview: vi.fn(),
   getFleetReliability: vi.fn(),
   getFleetPowerBI: vi.fn(),
   postEngineeringAI: vi.fn(),
@@ -114,6 +116,20 @@ beforeEach(() => {
       breakdown: [],
       drawings: null,
       recommendation: null,
+    },
+  });
+  getFleetOverview.mockResolvedValue({
+    success: true,
+    data: {
+      pump_count: 0,
+      area_distribution: {},
+      status_distribution: {},
+      work_order_count: 0,
+      work_order_status_distribution: {},
+      pm_schedule_count: 0,
+      cm_report_count: 0,
+      seal_stock_count: 0,
+      low_stock_seal_count: null,
     },
   });
   getFleetReliability.mockResolvedValue({
@@ -230,6 +246,26 @@ describe("LTSAWorkspace navigation shell", () => {
       "true"
     );
     expect(screen.getByRole("heading", { name: "Executive Dashboard" })).toBeTruthy();
+  });
+
+  // MWO-LTSA-DASHBOARD-RECOVERY-001 -- a fresh mount whose URL doesn't
+  // already resolve to a workspace location (e.g. "/", the default from
+  // afterEach above) must sync the URL to the canonical route of whatever
+  // it actually renders, not leave the browser showing a stale/unrelated
+  // path while the content underneath has already moved on.
+  it("syncs the URL to the canonical dashboard route when the initial URL didn't resolve to anything", () => {
+    render(<LTSAWorkspace />);
+
+    expect(window.location.pathname).toBe("/ltsa/dashboard");
+  });
+
+  it("does not rewrite the URL when it already resolved to a valid deep link on mount", () => {
+    const tag = "305-P-2";
+    window.history.pushState({}, "", workspaceLocation(WORKSPACE_KEYS.PUMP, { assetTag: tag }));
+
+    render(<LTSAWorkspace />);
+
+    expect(window.location.pathname).toBe(`/ltsa/pump/${tag}`);
   });
 
   it("can open Asset 360 as its initial route page -- untagged, resolves via MaintenanceHistory's asset picker (MWO-LTSA-036G)", async () => {

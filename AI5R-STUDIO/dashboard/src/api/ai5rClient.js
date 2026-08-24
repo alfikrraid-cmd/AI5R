@@ -634,6 +634,28 @@ export async function getFleetPowerBI() {
     return payload;
 }
 
+// Basic Fleet Overview API (MWO-LTSA-DASHBOARD-RECOVERY-001) -- bounded
+// alternative to getFleetReliability/getFleetPowerBI for the Executive
+// Dashboard's REQUIRED core Fleet Overview: one call per canonical
+// gateway on the backend, no per-pump n8n fan-out, so this is expected to
+// stay fast/reliable even when the two calls above cannot. Same
+// {success, data} convention.
+export async function getFleetOverview() {
+    const response = await apiFetch(`${API_URL}/api/ltsa/fleet/overview`);
+
+    if (!response.ok) {
+        throw new Error("Fleet overview API unavailable");
+    }
+
+    const payload = await response.json();
+
+    if (payload?.success === false) {
+        throw new Error(payload?.message || "Fleet overview API returned a failure");
+    }
+
+    return payload;
+}
+
 // Mechanical Seal Workspace API (MWO-LTSA-041, per MWO-LTSA-040's
 // archaeology). Same list-unwrapping convention as getPumps().
 export async function getSeals() {

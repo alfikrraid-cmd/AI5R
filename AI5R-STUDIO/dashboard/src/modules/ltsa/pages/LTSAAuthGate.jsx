@@ -100,13 +100,16 @@ function IdentityBar({ session, onLogout, canManageUsers, isAdminUsersRoute, onN
   );
 }
 
-// Pre-auth (MWO-LTSA-UI-V2-001 and earlier), every LTSA caller landed on
-// "history" by default (ApplicationAdapter's initialActiveKey="history").
-// AUTH must not change that default for a role that still has it -- only
-// fall back to that role's first visible tab when "history" itself isn't
-// permitted, so this stays additive (permission-driven), not a re-pick of
-// the existing landing behavior.
-const DEFAULT_LANDING_KEY = "history";
+// MWO-AI5R-LTSA-COPILOT-001 -- repointed from "history" to "dashboard" so
+// a successful login lands directly on the Executive Dashboard (where the
+// new Engineering Copilot is mounted), per this MWO's own "Dashboard AI
+// must be immediately usable after login" requirement -- the one minimum
+// redirect change its Hard Rule 8 allows. Guard below is unchanged: a
+// role without dashboard access (PERMISSIONS.DASHBOARD_READ ==
+// internal_inventory.read -- TAP_ADMIN/TAP_ENGINEER/SUPERUSER only, per
+// permissions.js's own frozen-screenshot rationale) still falls back to
+// that role's first visible tab, exactly as it already did for "history".
+const DEFAULT_LANDING_KEY = "dashboard";
 
 function AuthenticatedLTSA({ organizationContext, platformContext }) {
   const { session, logout } = useAuth();

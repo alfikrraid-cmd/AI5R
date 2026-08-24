@@ -9,8 +9,14 @@ if str(BACKEND_API_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_API_DIR))
 
 from main import app
-from dependencies import get_current_user, get_fleet_executive_summary_service, get_fleet_reliability_service
+from dependencies import (
+    get_basic_fleet_overview_service,
+    get_current_user,
+    get_fleet_executive_summary_service,
+    get_fleet_reliability_service,
+)
 from API.auth_service import ROLE_PERMISSIONS, AuthenticatedIdentity
+from API.basic_fleet_overview_service import BasicFleetOverview
 from API.fleet_executive_summary import FleetExecutiveSummary, TopRisk
 from API.fleet_reliability_service import FleetReliability
 
@@ -328,3 +334,130 @@ def test_get_powerbi_does_not_call_fleet_executive_summary_service_more_than_onc
     client.get("/api/ltsa/fleet/powerbi")
 
     assert fake.calls == 1
+
+
+# MWO-LTSA-DASHBOARD-RECOVERY-001 -- Basic Fleet Overview API: a bounded
+# alternative to /reliability and /powerbi for the Executive Dashboard's
+# core panel, backed by BasicFleetOverviewService (canonical bulk-list
+# gateways only, no per-pump LTSAKnowledgeService fan-out). Router only:
+# no filtering, no derivation here -- .build()'s own result is used
+# unchanged, same discipline as every other endpoint in this file.
+
+
+class FakeBasicFleetOverviewService:
+    def __init__(self, result):
+        self.result = result
+        self.calls = 0
+        self.scopes_seen = []
+
+    def build(self, *, scope=None):
+        self.calls += 1
+        self.scopes_seen.append(scope)
+        return self.result
+
+
+def _overview(**overrides):
+    defaults = dict(
+        pump_count=3,
+        area_distribution={"Reaktor": 2, "Utility": 1},
+        status_distribution={"ACTIVE": 3},
+        work_order_count=2,
+        work_order_status_distribution={"OPEN": 2},
+        pm_schedule_count=1,
+        cm_report_count=1,
+        seal_stock_count=5,
+        low_stock_seal_count=1,
+    )
+    defaults.update(overrides)
+    return BasicFleetOverview(**defaults)
+
+
+def _override_overview(result=None):
+    fake = FakeBasicFleetOverviewService(result if result is not None else _overview())
+    app.dependency_overrides[get_basic_fleet_overview_service] = lambda: fake
+    return fake
+
+
+def test_fleet_overview_route_is_registered():
+    paths = client.get("/openapi.json").json()["paths"]
+
+    assert "/api/ltsa/fleet/overview" in paths
+
+
+def test_fleet_overview_route_allows_only_get():
+    methods = client.get("/openapi.json").json()["paths"]["/api/ltsa/fleet/overview"]
+
+    assert set(methods) == {"get"}
+
+
+def test_get_fleet_overview_returns_200():
+    _override_overview()
+
+    response = client.get("/api/ltsa/fleet/overview")
+
+    assert response.status_code == 200
+
+
+def test_get_fleet_overview_calls_the_service_exactly_once():
+    fake = _override_overview()
+
+    client.get("/api/ltsa/fleet/overview")
+
+    assert fake.calls == 1
+
+
+def test_get_fleet_overview_response_shape_matches_the_service_result_unchanged():
+    _override_overview(result=_overview(pump_count=7, area_distribution={"Reaktor": 7}))
+
+    response = client.get("/api/ltsa/fleet/overview").json()
+
+    assert response["success"] is True
+    assert response["data"] == {
+        "pump_count": 7,
+        "area_distribution": {"Reaktor": 7},
+        "status_distribution": {"ACTIVE": 3},
+        "work_order_count": 2,
+        "work_order_status_distribution": {"OPEN": 2},
+        "pm_schedule_count": 1,
+        "cm_report_count": 1,
+        "seal_stock_count": 5,
+        "low_stock_seal_count": 1,
+    }
+
+
+def test_get_fleet_overview_none_fields_serialize_as_json_null():
+    _override_overview(result=_overview(low_stock_seal_count=None))
+
+    data = client.get("/api/ltsa/fleet/overview").json()["data"]
+
+    assert data["low_stock_seal_count"] is None
+
+
+def test_get_fleet_overview_empty_fleet_returns_zero_and_empty_fields():
+    _override_overview(
+        result=_overview(
+            pump_count=0,
+            area_distribution={},
+            status_distribution={},
+            work_order_count=0,
+            work_order_status_distribution={},
+            pm_schedule_count=0,
+            cm_report_count=0,
+            seal_stock_count=0,
+            low_stock_seal_count=None,
+        )
+    )
+
+    data = client.get("/api/ltsa/fleet/overview").json()["data"]
+
+    assert data["pump_count"] == 0
+    assert data["area_distribution"] == {}
+    assert data["work_order_count"] == 0
+
+
+def test_get_fleet_overview_passes_resolved_scope_to_the_service():
+    fake = _override_overview()
+
+    client.get("/api/ltsa/fleet/overview")
+
+    assert len(fake.scopes_seen) == 1

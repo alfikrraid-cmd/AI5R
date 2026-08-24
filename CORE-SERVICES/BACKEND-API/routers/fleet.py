@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends
 from API.auth_service import AuthenticatedIdentity, resolve_area_scope
 from API.fleet_insight import build_fleet_insight
 from dependencies import (
+    get_basic_fleet_overview_service,
     get_current_user,
     get_fleet_executive_summary_service,
     get_fleet_reliability_service,
@@ -33,6 +34,28 @@ DATASET_VERSION = "1.0.0"
 # (FleetReliabilityService), One API (this single route) -- no Bad Actor,
 # Site KPI, or Trend endpoint here, since FleetReliabilityService itself
 # does not compute them (explicitly out of MWO-LTSA-037B's own scope).
+
+
+# Basic Fleet Overview API (MWO-LTSA-DASHBOARD-RECOVERY-001) -- the
+# Executive Dashboard's core Fleet Overview panel calls this, not
+# /reliability or /powerbi: those two require a per-pump
+# LTSAKnowledgeService.build() fan-out (via FleetReliabilityService) that
+# times out against a real fleet. This endpoint is bounded -- one call
+# per canonical bulk-list gateway -- and safe to load synchronously on
+# every dashboard visit.
+
+
+@router.get("/api/ltsa/fleet/overview")
+def get_fleet_overview(
+    basic_fleet_overview_service=Depends(get_basic_fleet_overview_service),
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
+) -> Payload:
+    overview = basic_fleet_overview_service.build(scope=resolve_area_scope(current_user))
+
+    return {
+        "success": True,
+        "data": dataclasses.asdict(overview),
+    }
 
 
 @router.get("/api/ltsa/fleet/reliability")
