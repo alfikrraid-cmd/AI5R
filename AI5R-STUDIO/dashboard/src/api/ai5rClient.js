@@ -319,8 +319,8 @@ export async function getPMSchedules() {
     throw new Error("PM schedules API returned an invalid list");
 }
 
-export async function getCMReports() {
-    const response = await apiFetch(`${API_URL}/api/ltsa/cm-reports`);
+export async function getCMReports(options = {}) {
+    const response = await apiFetch(`${API_URL}/api/ltsa/cm-reports`, options);
 
     if (!response.ok) {
         throw new Error("CM reports API unavailable");

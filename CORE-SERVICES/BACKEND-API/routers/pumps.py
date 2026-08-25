@@ -253,7 +253,12 @@ def get_ltsa_pump_knowledge(
 ) -> Payload:
     _guard_tag_in_scope(tag, pump_gateway, current_user)
     knowledge = ltsa_knowledge_service.build(tag)
-    timeline = equipment_timeline_service.build(tag)
+    build_with_knowledge = getattr(equipment_timeline_service, "build_with_knowledge", None)
+    timeline = (
+        build_with_knowledge(tag, knowledge)
+        if build_with_knowledge is not None
+        else equipment_timeline_service.build(tag)
+    )
     summary = engineering_context_engine.build(tag)
     ai_insight = build_engineering_insight(knowledge.recommendation or (), summary)
     executive_metrics = compute_executive_metrics(knowledge)

@@ -1,10 +1,10 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { EmptyState, PageHeader, Panel } from "../../../design-system";
 import PrintButton from "../components/PrintButton";
 import ReportGeneratedOn from "../components/ReportGeneratedOn";
 import CMReportTable from "../components/CMReportTable";
 import { getCMReports } from "../../../api/ai5rClient";
-import { mapCMReportRecord, withResolvedArea } from "../utils/cmMapping";
+import { mapCMReportRecord } from "../utils/cmMapping";
 
 export default function CorrectiveMaintenanceReport() {
   const [cmReports, setCMReports] = useState([]);
@@ -14,8 +14,8 @@ export default function CorrectiveMaintenanceReport() {
   useEffect(() => {
     let active = true;
 
-    getCMReports()
-      .then((records) => Promise.all(records.map(mapCMReportRecord).map(withResolvedArea)))
+    getCMReports({ timeoutMs: 5000 })
+      .then((records) => records.map(mapCMReportRecord))
       .then((resolved) => {
         if (active) {
           setCMReports(resolved);

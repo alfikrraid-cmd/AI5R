@@ -9,13 +9,32 @@ const LiveStreamContext = createContext({
 export function LiveStreamProvider({ children }) {
   const [events, setEvents] = useState([]);
   const [status, setStatus] = useState("CONNECTING");
+  const [pathname, setPathname] = useState(() => window.location.pathname);
 
   useEffect(() => {
+    const originalPushState = window.history.pushState;
+    const originalReplaceState = window.history.replaceState;
+    const notifyPathChange = () => setPathname(window.location.pathname);
+    window.history.pushState = function pushState(...args) {
+      const result = originalPushState.apply(this, args);
+      notifyPathChange();
+      return result;
+    };
+    window.history.replaceState = function replaceState(...args) {
+      const result = originalReplaceState.apply(this, args);
+      notifyPathChange();
+      return result;
+    };
+    window.addEventListener("popstate", notifyPathChange);
     let client;
 
-    if (window.location.pathname.startsWith("/ltsa")) {
+    if (pathname.startsWith("/ltsa")) {
       setStatus("UNAVAILABLE");
-      return () => {};
+      return () => {
+        window.history.pushState = originalPushState;
+        window.history.replaceState = originalReplaceState;
+        window.removeEventListener("popstate", notifyPathChange);
+      };
     }
 
     try {
@@ -32,8 +51,13 @@ export function LiveStreamProvider({ children }) {
       setStatus("UNAVAILABLE");
     }
 
-    return () => client?.close();
-  }, []);
+    return () => {
+      client?.close();
+      window.history.pushState = originalPushState;
+      window.history.replaceState = originalReplaceState;
+      window.removeEventListener("popstate", notifyPathChange);
+    };
+  }, [pathname]);
 
   const value = useMemo(
     () => ({

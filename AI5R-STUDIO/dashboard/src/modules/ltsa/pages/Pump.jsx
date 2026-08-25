@@ -5,7 +5,7 @@ import PumpRegistryTable from "../components/PumpRegistryTable";
 import PumpOpenDesignView from "../components/PumpOpenDesignView";
 import CreatePMScheduleModal from "../components/CreatePMScheduleModal";
 import CreateCMReportModal from "../components/CreateCMReportModal";
-import { getPumps, getPumpLifecycle, getSeals, getSealCompatibility, postEngineeringAI } from "../../../api/ai5rClient";
+import { getPumps, getPump, getPumpLifecycle, getSeals, getSealCompatibility, postEngineeringAI } from "../../../api/ai5rClient";
 import { mapPumpRecord, withResolvedOpenWO } from "../utils/pumpMapping";
 import { mapPumpLifecycleRecord } from "../utils/pumpLifecycleMapping";
 import { buildSealInventoryGroups } from "../utils/sealMapping";
@@ -59,7 +59,11 @@ export default function Pump({ onNavigate, navContext }) {
       .then((records) => Promise.all(records.map(mapPumpRecord).map(withResolvedOpenWO)))
       .then((resolved) => {
         if (active) {
-          setPumps(resolved);
+          setPumps((current) => {
+            const byCode = new Map(current.map((pump) => [pump.code, pump]));
+            resolved.forEach((pump) => byCode.set(pump.code, pump));
+            return [...byCode.values()];
+          });
           setListError(null);
         }
       })
@@ -78,6 +82,37 @@ export default function Pump({ onNavigate, navContext }) {
       active = false;
     };
   }, []);
+
+  // MWO-LTSA-ASSET360-FAST-INITIAL-LOAD-003 -- a tagged Asset 360 entry
+  // already knows the one pump it must display. Fetch that real pump record
+  // independently so the useful core view does not wait for the full
+  // registry list; the registry request above reconciles into the same list
+  // when it completes. Lifecycle/knowledge remains secondary.
+  useEffect(() => {
+    const tag = navContext?.selectId;
+    if (!tag) return undefined;
+
+    let active = true;
+    getPump(tag)
+      .then((record) => {
+        if (!active) return;
+        const pump = mapPumpRecord(record);
+        setPumps((current) => {
+          const withoutExisting = current.filter((item) => item.code !== pump.code);
+          return [...withoutExisting, pump];
+        });
+        setSelectedCode(pump.code);
+        setLoading(false);
+        setListError(null);
+      })
+      .catch(() => {
+        if (active) setListError("Pump could not be loaded.");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [navContext?.selectId]);
 
   // Deep-link entry point (APP-ASSET360-001, per ADR-ASSET360-001):
   // cross-domain links elsewhere (e.g. CMDetailPanel's "Related Pump")

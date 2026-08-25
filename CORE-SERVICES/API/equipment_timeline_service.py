@@ -115,8 +115,8 @@ class EquipmentTimelineService:
             )
         )
 
-    def build(self, tag_number: str) -> EquipmentTimeline:
-        knowledge = self._knowledge_service.build(tag_number)
+    def build(self, tag_number: str, *, knowledge: Any | None = None) -> EquipmentTimeline:
+        knowledge = knowledge or self._knowledge_service.build(tag_number)
 
         events: list[TimelineEvent] = []
         events.extend(self._build_pm_events(knowledge.pm_history))
@@ -130,6 +130,9 @@ class EquipmentTimelineService:
         events_sorted = tuple(sorted(events, key=lambda event: event.occurred_at or ""))
 
         return EquipmentTimeline(tag_number=tag_number, events=events_sorted)
+
+    def build_with_knowledge(self, tag_number: str, knowledge: Any) -> EquipmentTimeline:
+        return self.build(tag_number, knowledge=knowledge)
 
     # MWO-LTSA-ASSET360-MECHANICAL-SEAL-WIRING-001 -- exposes
     # build_lifecycle()'s existing current-seal resolution (Section 3
@@ -146,8 +149,14 @@ class EquipmentTimelineService:
         current_installation_record = installations[-1] if installations else None
         return self._build_current_seal(current_installation_record)
 
-    def build_lifecycle(self, tag_number: str, *, today: date | None = None) -> PumpLifecycle:
-        knowledge = self._knowledge_service.build(tag_number)
+    def build_lifecycle(
+        self,
+        tag_number: str,
+        *,
+        today: date | None = None,
+        knowledge: Any | None = None,
+    ) -> PumpLifecycle:
+        knowledge = knowledge or self._knowledge_service.build(tag_number)
         installations = self._list_installations(tag_number)
         work_orders = self._list_work_orders(tag_number)
         current_installation_record = installations[-1] if installations else None

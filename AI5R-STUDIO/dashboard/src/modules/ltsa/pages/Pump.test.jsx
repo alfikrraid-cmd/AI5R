@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import Pump from "./Pump";
 import {
-  getPumps, getPumpOpenWorkOrders, getPumpLifecycle, getSeals, getSealCompatibility, postEngineeringAI,
+  getPumps, getPump, getPumpOpenWorkOrders, getPumpLifecycle, getSeals, getSealCompatibility, postEngineeringAI,
 } from "../../../api/ai5rClient";
 
 // postEngineeringAI stubbed here only because Pump.jsx now calls it (MWO:
@@ -24,6 +24,7 @@ import {
 // new backend route -- see sealMapping.js's buildSealInventoryGroups().
 vi.mock("../../../api/ai5rClient", () => ({
   getPumps: vi.fn(),
+  getPump: vi.fn(),
   getPumpOpenWorkOrders: vi.fn(),
   getPumpLifecycle: vi.fn(),
   getSeals: vi.fn(),
@@ -147,6 +148,21 @@ describe("Pump workspace page", () => {
     render(<Pump />);
 
     expect(screen.getByText("Loading pumps...")).toBeTruthy();
+  });
+
+  it("renders a tagged Asset 360 pump from the core endpoint before the registry resolves", async () => {
+    getPumps.mockReturnValue(new Promise(() => {}));
+    getPump.mockResolvedValue(PUMPS[0]);
+    getPumpLifecycle.mockResolvedValue({ success: true, tag_number: PUMPS[0].tag_number, data: EMPTY_LIFECYCLE_DATA });
+    getSeals.mockResolvedValue([]);
+    getSealCompatibility.mockResolvedValue([]);
+    postEngineeringAI.mockResolvedValue({ summary: "", findings: [], confidence: null, evidence: [], recommendations: [], risk: null, remaining_life: null, provider: "UNKNOWN", model: "UNKNOWN", latency: 0, token_usage: {}, trace_id: "trace-test", execution_status: "SUCCESS", source_references: [], error: null });
+
+    render(<Pump navContext={{ selectId: PUMPS[0].tag_number }} />);
+
+    expect((await screen.findAllByText(PUMPS[0].tag_number)).length).toBeGreaterThan(0);
+    expect(screen.queryByText("Loading pumps...")).toBeNull();
+    expect(getPump).toHaveBeenCalledWith(PUMPS[0].tag_number);
   });
 
   it("renders list API errors without fallback mock data", async () => {
