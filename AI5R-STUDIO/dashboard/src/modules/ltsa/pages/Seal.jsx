@@ -4,7 +4,6 @@ import SealFilterBar from "../components/SealFilterBar";
 import SealRegistryTable from "../components/SealRegistryTable";
 import SealOpenDesignView from "../components/SealOpenDesignView";
 import PhysicalSealWorkspace from "../components/PhysicalSealWorkspace";
-import samplePumps from "../data/samplePumps";
 import {
   getSeals, getSealCompatibility, getSealStock, postEngineeringAI,
   getPMSchedules, getCMReports, getWorkOrders, updateSealIdentifiers,
@@ -31,30 +30,12 @@ import "./LTSAOpenDesign.css";
 // (EngineeringContextEngine already exposes seal_summary/
 // inventory_summary) -- no new intent invented, no backend change.
 //
-// EngineeringContextEngine.build(tag_number) resolves context for a
-// PUMP asset_code, not a seal code -- a seal itself has no asset_code.
-// asset_code is therefore resolved via the seal's first compatible pump
-// (seal.compatiblePumps[0]) cross-referenced to that pump's `tag` field,
-// exactly as sampleSeals.js's own header comment documents
-// ("compatiblePumps codes match samplePumps.js's own code field"). A
-// seal with no compatible pump (or no matching pump record) has no
-// resolvable asset_code, so no AI request is made for it -- mirroring
-// the Golden Reference's "no selection -> skip" guard.
-//
-// MWO-LTSA-042 -- the real backend path (getSealCompatibility(), via
-// resolveCompatiblePumps in sealMapping.js) populates compatiblePumps
-// with the real seal_pump_compatibility.pump_tag_number column, which is
-// already a real pump tag, not a samplePumps "code" needing translation.
-// samplePumps lookup is tried FIRST (unchanged, preserves every existing
-// test's fixture-data behavior, sampleSeals.js's "PMP-xxx" codes still
-// resolve exactly as before) -- if no match is found there, the value is
-// used as-is, since it is then coming from the real endpoint and is
-// already a tag, not a fabrication.
+// EngineeringContextEngine.build(tag_number) resolves context for a PUMP
+// asset_code. Compatible pump values from production must already be real
+// pump tags from the API; no frontend sample-pump lookup is allowed because
+// tag/code equality must never attach demo metadata to a production asset.
 function resolveAssetCode(seal) {
-  const pumpCode = seal?.compatiblePumps?.[0];
-  if (!pumpCode) return null;
-  const pump = samplePumps.find((candidate) => candidate.code === pumpCode);
-  return pump?.tag ?? pumpCode;
+  return seal?.compatiblePumps?.[0] ?? null;
 }
 
 // MWO-LTSA-SEAL-INVENTORY-IDENTIFIERS-001 Phase 11 -- extended to KIMAP

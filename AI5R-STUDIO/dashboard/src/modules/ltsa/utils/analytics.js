@@ -1,5 +1,3 @@
-import samplePumps from "../data/samplePumps";
-import { buildPlantTimeline } from "./maintenanceHistory";
 import { buildAttentionAssets, buildKpiSummary, buildMaintenanceHealth, daysBeforeReference } from "./executiveDashboard";
 
 const TREND_WEEK_COUNT = 4;
@@ -16,16 +14,18 @@ function weekBucketIndex(dateString) {
   return index >= 0 ? index : null;
 }
 
-/**
- * Maintenance Activity Trend — the last four weeks of plant-wide PM/CM/WO
- * activity, oldest first, so a reader can see whether activity (and
- * specifically corrective/reactive work) is rising or falling. No chart:
- * a plain weekly count table, plus a simple UP/DOWN/FLAT direction
- * derived by comparing the two most recent weeks' corrective maintenance
- * counts — rising reactive work is the clearest "getting worse" signal
- * available in this dataset.
- */
-export function buildActivityTrend() {
+function formatDateOnly(value) {
+  if (!value) return null;
+  return String(value).slice(0, 10);
+}
+
+export function buildActivityTrend({
+  workOrders = [],
+  cmReports = [],
+  pmOccurrences = [],
+  maintenanceHistory = [],
+  conditionMonitoringReadings = [],
+} = {}) {
   const buckets = TREND_WEEK_LABELS.map((label) => ({
     label,
     pmCount: 0,
@@ -34,7 +34,15 @@ export function buildActivityTrend() {
     total: 0,
   }));
 
-  buildPlantTimeline().forEach((event) => {
+  const events = [
+    ...workOrders.map((wo) => ({ type: "WO", date: wo.createdDate ?? formatDateOnly(wo.created_at) })),
+    ...cmReports.map((cm) => ({ type: "CM", date: formatDateOnly(cm.created_at) })),
+    ...pmOccurrences.map((pm) => ({ type: "PM", date: formatDateOnly(pm.occurrence_date) })),
+    ...maintenanceHistory.map((record) => ({ type: "MH", date: formatDateOnly(record.performed_at) })),
+    ...conditionMonitoringReadings.map((reading) => ({ type: "CMON", date: formatDateOnly(reading.reading_date) })),
+  ];
+
+  events.forEach((event) => {
     const index = weekBucketIndex(event.date);
 
     if (index === null) {
@@ -48,7 +56,7 @@ export function buildActivityTrend() {
       bucket.pmCount += 1;
     } else if (event.type === "CM") {
       bucket.cmCount += 1;
-    } else {
+    } else if (event.type === "WO") {
       bucket.woCount += 1;
     }
   });
@@ -66,36 +74,25 @@ export function buildActivityTrend() {
   return { buckets, correctiveMaintenanceDirection };
 }
 
-/**
- * Asset Criticality Distribution — count of pumps per criticality level
- * actually present in the sample data (no synthetic zero-rows for
- * criticality levels that don't occur).
- */
-export function buildCriticalityDistribution() {
-  const counts = samplePumps.reduce((acc, pump) => {
-    acc[pump.criticality] = (acc[pump.criticality] ?? 0) + 1;
+export function buildCriticalityDistribution({ pumps = [] } = {}) {
+  const counts = pumps.reduce((acc, pump) => {
+    const criticality = pump.criticality ?? "UNKNOWN";
+    acc[criticality] = (acc[criticality] ?? 0) + 1;
     return acc;
   }, {});
 
-  const order = ["HIGH", "MEDIUM", "LOW"];
+  const order = ["HIGH", "MEDIUM", "LOW", "UNKNOWN"];
 
   return order
     .filter((criticality) => counts[criticality] > 0)
     .map((criticality) => ({ criticality, count: counts[criticality] }));
 }
 
-/**
- * Recommended Actions — short, prioritized, plain-language next steps for
- * a manager, generated entirely from already-derived metrics (KPIs,
- * attention assets, activity trend). Every recommendation carries the
- * real count it was derived from; nothing here is a static message
- * unrelated to the underlying data.
- */
-export function buildRecommendedActions() {
-  const kpis = buildKpiSummary();
-  const health = buildMaintenanceHealth();
-  const attentionAssets = buildAttentionAssets();
-  const trend = buildActivityTrend();
+export function buildRecommendedActions(source = {}) {
+  const kpis = buildKpiSummary(source);
+  const health = buildMaintenanceHealth(source);
+  const attentionAssets = buildAttentionAssets(source);
+  const trend = buildActivityTrend(source);
   const actions = [];
 
   if (kpis.overduePM > 0) {
@@ -126,7 +123,7 @@ export function buildRecommendedActions() {
     actions.push({
       id: "rising-cm-trend",
       severity: "danger",
-      text: "Corrective maintenance activity is rising week over week — investigate for a systemic cause.",
+      text: "Corrective maintenance activity is rising week over week - investigate for a systemic cause.",
     });
   }
 
@@ -134,7 +131,7 @@ export function buildRecommendedActions() {
     actions.push({
       id: "wo-backlog",
       severity: "info",
-      text: `Clear the work order backlog — ${health.openWorkOrders} open versus ${health.closedWorkOrders} closed.`,
+      text: `Clear the work order backlog - ${health.openWorkOrders} open versus ${health.closedWorkOrders} closed.`,
     });
   }
 

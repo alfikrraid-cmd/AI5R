@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildAssetEventStream,
   buildAssetSummary,
   buildAssetTimeline,
   buildPlantTimeline,
@@ -11,28 +12,26 @@ import {
   findAssetByTag,
   isOpenWorkOrderStatus,
   listAssets,
+  mapConditionMonitoringReadingToEvent,
+  mapMaintenanceHistoryToEvent,
+  mapPMOccurrenceToEvent,
 } from "./maintenanceHistory";
-import samplePMSchedules from "../data/samplePMSchedules";
-import sampleCMReports from "../data/sampleCMReports";
-import sampleWorkOrders from "../data/sampleWorkOrders";
 
-describe("listAssets / findAssetByTag", () => {
-  it("lists every sample pump sorted by tag", () => {
-    const assets = listAssets();
-
-    expect(assets.length).toBeGreaterThan(0);
-    const tags = assets.map((asset) => asset.tag);
-    expect([...tags].sort()).toEqual(tags);
+describe("legacy timeline helpers", () => {
+  it("do not expose frontend sample assets or timelines at runtime", () => {
+    expect(listAssets()).toEqual([]);
+    expect(findAssetByTag("211-P-1A")).toBeNull();
+    expect(buildAssetTimeline("211-P-1A")).toEqual([]);
+    expect(buildPlantTimeline()).toEqual([]);
   });
 
-  it("finds an asset by tag", () => {
-    const asset = findAssetByTag("641-P-5");
+  it("does not attach sample metadata to a real production pump tag", () => {
+    const summary = buildAssetSummary({ tag: "211-P-1A", name: "FRESH FEED CHARGE PUMP", area: "REAKTOR" });
 
-    expect(asset?.code).toBe("PMP-009");
-  });
-
-  it("returns null for an unknown tag", () => {
-    expect(findAssetByTag("NO-SUCH-TAG")).toBeNull();
+    expect(summary.pump).toBe("FRESH FEED CHARGE PUMP");
+    expect(summary.tag).toBe("211-P-1A");
+    expect(summary.area).toBe("REAKTOR");
+    expect(summary.pump).not.toContain("Boiler Feedwater");
   });
 });
 
@@ -66,19 +65,11 @@ describe("eventStatusBadgeVariant / eventStatusLabel", () => {
 });
 
 describe("filterStatusLabel", () => {
-  it("humanizes a status shared across modules the same way regardless of source", () => {
+  it("humanizes statuses and falls back to raw unknowns", () => {
     expect(filterStatusLabel("ON_HOLD")).toBe("On Hold");
-    expect(filterStatusLabel("OPEN")).toBe("Open");
-    expect(filterStatusLabel("IN_PROGRESS")).toBe("In Progress");
-  });
-
-  it("humanizes a status unique to a single module", () => {
     expect(filterStatusLabel("DUE_SOON")).toBe("Due Soon");
     expect(filterStatusLabel("RESOLVED")).toBe("Resolved");
     expect(filterStatusLabel("COMPLETED")).toBe("Completed");
-  });
-
-  it("falls back to the raw value for an unknown status", () => {
     expect(filterStatusLabel("UNKNOWN")).toBe("UNKNOWN");
   });
 });
@@ -88,91 +79,18 @@ describe("isOpenWorkOrderStatus", () => {
     expect(isOpenWorkOrderStatus("OPEN")).toBe(true);
     expect(isOpenWorkOrderStatus("IN_PROGRESS")).toBe(true);
     expect(isOpenWorkOrderStatus("ON_HOLD")).toBe(true);
-  });
-
-  it("treats COMPLETED as not open", () => {
     expect(isOpenWorkOrderStatus("COMPLETED")).toBe(false);
   });
 });
 
-describe("buildPlantTimeline", () => {
-  it("merges every PM, CM, and Work Order sample record across the whole plant", () => {
-    const timeline = buildPlantTimeline();
+describe("real API-backed asset event stream", () => {
+  it("merges only matching production asset events without sample fallback", () => {
+    const events = [
+      mapMaintenanceHistoryToEvent({ maintenance_record_code: "MH-1", asset_code: "211-P-1A", performed_at: "2026-08-02", action_taken: "Checked", performed_by: "Engineer" }),
+      mapPMOccurrenceToEvent({ pm_occurrence_code: "PM-OCC-1", asset_code: "220-P-4A", occurrence_date: "2026-08-03", checklist_completion: [] }),
+      mapConditionMonitoringReadingToEvent({ condition_monitoring_reading_code: "CMON-1", asset_code: "211-P-1A", reading_date: "2026-08-04" }),
+    ];
 
-    expect(timeline).toHaveLength(
-      samplePMSchedules.length + sampleCMReports.length + sampleWorkOrders.length
-    );
-  });
-
-  it("sorts the plant-wide timeline in descending chronological order", () => {
-    const timeline = buildPlantTimeline();
-
-    for (let i = 1; i < timeline.length; i += 1) {
-      const previous = timeline[i - 1].date;
-      const current = timeline[i].date;
-
-      if (previous !== null && current !== null) {
-        expect(previous >= current).toBe(true);
-      }
-    }
-  });
-});
-
-describe("buildAssetTimeline", () => {
-  it("merges PM, CM, and Work Order events for a single asset", () => {
-    const timeline = buildAssetTimeline("641-P-5");
-
-    expect(timeline).toHaveLength(3);
-    expect(timeline.map((event) => event.id).sort()).toEqual(["CM-3001", "PM-2008", "WO-1001"]);
-  });
-
-  it("sorts events in descending chronological order", () => {
-    const timeline = buildAssetTimeline("641-P-5");
-
-    const pmEvent = timeline.find((event) => event.id === "PM-2008");
-    expect(timeline.indexOf(pmEvent)).toBe(timeline.length - 1);
-  });
-
-  it("returns an empty array for an asset with no history", () => {
-    expect(buildAssetTimeline("NO-SUCH-TAG")).toEqual([]);
-  });
-
-  it("attaches the raw source record to every event", () => {
-    const timeline = buildAssetTimeline("641-P-5");
-    const cmEvent = timeline.find((event) => event.id === "CM-3001");
-
-    expect(cmEvent.raw.failureDescription).toContain("seal failure");
-    expect(cmEvent.title).toBe(cmEvent.raw.failureDescription);
-  });
-});
-
-describe("buildAssetSummary", () => {
-  it("derives every summary field from the pump and its timeline", () => {
-    const pump = findAssetByTag("641-P-5");
-    const timeline = buildAssetTimeline("641-P-5");
-
-    const summary = buildAssetSummary(pump, timeline);
-
-    expect(summary.pump).toBe(pump.name);
-    expect(summary.tag).toBe("641-P-5");
-    expect(summary.area).toBe(pump.area);
-    expect(summary.status).toBe(pump.status);
-    expect(summary.criticality).toBe(pump.criticality);
-    expect(summary.lastPreventiveMaintenance).toBe("2025-12-10");
-    expect(summary.lastCorrectiveMaintenance).toBe("2026-07-18");
-    expect(summary.openWorkOrders).toBe(1);
-    expect(summary.lastActivity).toBe(timeline[0].date);
-  });
-
-  it("reports zero open work orders and null history dates when there is none", () => {
-    const pump = findAssetByTag("211-P-1B");
-    const timeline = buildAssetTimeline("NO-SUCH-TAG");
-
-    const summary = buildAssetSummary(pump, timeline);
-
-    expect(summary.openWorkOrders).toBe(0);
-    expect(summary.lastPreventiveMaintenance).toBeNull();
-    expect(summary.lastCorrectiveMaintenance).toBeNull();
-    expect(summary.lastActivity).toBeNull();
+    expect(buildAssetEventStream(events, "211-P-1A").map((event) => event.id)).toEqual(["CMON-1", "MH-1"]);
   });
 });

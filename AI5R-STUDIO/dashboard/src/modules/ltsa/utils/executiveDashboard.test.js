@@ -1,126 +1,122 @@
 import { describe, expect, it } from "vitest";
 import {
   buildAttentionAssets,
+  buildEngineeringAlerts,
+  buildEngineeringReadiness,
   buildKpiSummary,
   buildMaintenanceHealth,
   buildRecentActivities,
   buildUpcomingMaintenance,
 } from "./executiveDashboard";
-import samplePMSchedules from "../data/samplePMSchedules";
-import sampleCMReports from "../data/sampleCMReports";
-import sampleWorkOrders from "../data/sampleWorkOrders";
+
+const source = {
+  pumps: [
+    { tag: "211-P-1A", name: "FRESH FEED CHARGE PUMP", area: "REAKTOR", status: "RUNNING", criticality: "HIGH" },
+    { tag: "220-P-4A", name: "Pump 4A", area: "UTILITIES", status: "FAULT", criticality: "HIGH" },
+  ],
+  workOrders: [
+    { id: "WO-REAL-1", equipmentTag: "220-P-4A", status: "OPEN", priority: "CRITICAL", createdDate: "2026-07-18" },
+    { id: "WO-REAL-2", equipmentTag: "211-P-1A", status: "COMPLETED", priority: "LOW", createdDate: "2026-07-10" },
+  ],
+  pmSchedules: [
+    { id: "PM-REAL-1", status: "OVERDUE", nextDue: "2026-07-21" },
+    { id: "PM-REAL-2", status: "DUE_SOON", nextDue: "2026-07-25" },
+  ],
+  cmReports: [
+    { cm_report_code: "CM-REAL-1", asset_code: "220-P-4A", status: "OPEN", severity: "CRITICAL", created_at: "2026-07-19T00:00:00Z" },
+  ],
+  maintenanceHistory: [{ maintenance_record_code: "MH-REAL-1", performed_at: "2026-07-19T00:00:00Z", action_taken: "Checked" }],
+  pmOccurrences: [{ pm_occurrence_code: "PMO-REAL-1", occurrence_date: "2026-07-18" }],
+  conditionMonitoringReadings: [{ condition_monitoring_reading_code: "CMON-REAL-1", reading_date: "2026-07-17" }],
+};
 
 describe("buildKpiSummary", () => {
-  it("derives every KPI from the current sample data, matching a manual recount", () => {
-    const kpis = buildKpiSummary();
-
-    const expectedOpenWO = sampleWorkOrders.filter((wo) =>
-      ["OPEN", "IN_PROGRESS", "ON_HOLD"].includes(wo.status)
-    ).length;
-    const expectedOverduePM = samplePMSchedules.filter((pm) => pm.status === "OVERDUE").length;
-    const expectedUpcomingPM = samplePMSchedules.filter((pm) => pm.status === "DUE_SOON").length;
-    const expectedOpenCM = sampleCMReports.filter((cm) =>
-      ["OPEN", "IN_PROGRESS"].includes(cm.status)
-    ).length;
-
-    expect(kpis.openWorkOrders).toBe(expectedOpenWO);
-    expect(kpis.overduePM).toBe(expectedOverduePM);
-    expect(kpis.upcomingPM).toBe(expectedUpcomingPM);
-    expect(kpis.openCorrectiveMaintenance).toBe(expectedOpenCM);
-    expect(kpis.criticalAssets).toBeGreaterThan(0);
-    expect(kpis.recentMaintenanceActivity).toBeGreaterThan(0);
+  it("derives KPIs from supplied production API data only", () => {
+    expect(buildKpiSummary(source)).toMatchObject({
+      openWorkOrders: 1,
+      overduePM: 1,
+      upcomingPM: 1,
+      openCorrectiveMaintenance: 1,
+      criticalAssets: 1,
+      totalPumps: 2,
+      criticalFailures: 1,
+    });
   });
 
-  it("counts critical assets consistently with buildAttentionAssets", () => {
-    const kpis = buildKpiSummary();
-    const attentionAssets = buildAttentionAssets();
+  it("returns empty/N/A-safe defaults when no production records exist", () => {
+    expect(buildKpiSummary()).toMatchObject({
+      openWorkOrders: 0,
+      overduePM: 0,
+      upcomingPM: 0,
+      openCorrectiveMaintenance: 0,
+      criticalAssets: 0,
+      totalPumps: 0,
+    });
+  });
+});
 
-    expect(kpis.criticalAssets).toBe(attentionAssets.length);
+describe("buildEngineeringReadiness", () => {
+  it("computes pump readiness from supplied production pumps", () => {
+    expect(buildEngineeringReadiness(source).pump).toBe(50);
+  });
+
+  it("does not fabricate readiness when pump data is absent", () => {
+    expect(buildEngineeringReadiness().pump).toBeNull();
+  });
+});
+
+describe("buildEngineeringAlerts", () => {
+  it("counts alerts from supplied production API records", () => {
+    expect(buildEngineeringAlerts(source)).toEqual({
+      overduePM: 1,
+      criticalOpenCM: 1,
+      criticalOpenWorkOrders: 1,
+    });
   });
 });
 
 describe("buildMaintenanceHealth", () => {
-  it("computes a PM compliance percentage as (total - overdue) / total", () => {
-    const health = buildMaintenanceHealth();
-
-    const overdue = samplePMSchedules.filter((pm) => pm.status === "OVERDUE").length;
-    const expectedRate = Math.round(((samplePMSchedules.length - overdue) / samplePMSchedules.length) * 100);
-
-    expect(health.totalPM).toBe(samplePMSchedules.length);
-    expect(health.overduePM).toBe(overdue);
-    expect(health.pmComplianceRate).toBe(expectedRate);
+  it("computes health from supplied production API records", () => {
+    expect(buildMaintenanceHealth(source)).toEqual({
+      pmComplianceRate: 50,
+      totalPM: 2,
+      overduePM: 1,
+      totalWorkOrders: 2,
+      openWorkOrders: 1,
+      closedWorkOrders: 1,
+      cmStatusCounts: { OPEN: 1 },
+    });
   });
 
-  it("splits work orders into open and closed", () => {
-    const health = buildMaintenanceHealth();
-
-    expect(health.totalWorkOrders).toBe(sampleWorkOrders.length);
-    expect(health.closedWorkOrders).toBe(
-      sampleWorkOrders.filter((wo) => wo.status === "COMPLETED").length
-    );
-    expect(health.openWorkOrders).toBe(health.totalWorkOrders - health.closedWorkOrders);
-  });
-
-  it("counts corrective maintenance reports by status", () => {
-    const health = buildMaintenanceHealth();
-
-    const total = Object.values(health.cmStatusCounts).reduce((sum, count) => sum + count, 0);
-    expect(total).toBe(sampleCMReports.length);
+  it("does not fabricate PM compliance when PM schedules are absent", () => {
+    expect(buildMaintenanceHealth().pmComplianceRate).toBeNull();
   });
 });
 
 describe("buildAttentionAssets", () => {
-  it("returns only high-criticality pumps in a concerning state or with an open work order", () => {
-    const assets = buildAttentionAssets();
+  it("uses production pump identities without overriding 211-P-1A with sample metadata", () => {
+    const assets = buildAttentionAssets(source);
 
-    expect(assets.length).toBeGreaterThan(0);
-    assets.forEach((asset) => {
-      expect(asset.criticality).toBe("HIGH");
-      expect(asset.status === "FAULT" || asset.status === "MAINTENANCE" || asset.openWorkOrders > 0).toBe(
-        true
-      );
-    });
-  });
-
-  it("sorts assets with the most open work orders first", () => {
-    const assets = buildAttentionAssets();
-
-    for (let i = 1; i < assets.length; i += 1) {
-      expect(assets[i - 1].openWorkOrders).toBeGreaterThanOrEqual(assets[i].openWorkOrders);
-    }
+    expect(assets).toHaveLength(1);
+    expect(assets[0].tag).toBe("220-P-4A");
+    expect(assets.map((asset) => asset.pump).join(" ")).not.toContain("Boiler Feedwater");
   });
 });
 
 describe("buildUpcomingMaintenance", () => {
-  it("returns only PM schedules that are due soon or overdue", () => {
-    const upcoming = buildUpcomingMaintenance();
-
-    expect(upcoming.length).toBeGreaterThan(0);
-    upcoming.forEach((pm) => {
-      expect(["DUE_SOON", "OVERDUE"]).toContain(pm.status);
-    });
-  });
-
-  it("sorts by next due date, soonest first", () => {
-    const upcoming = buildUpcomingMaintenance();
-
-    for (let i = 1; i < upcoming.length; i += 1) {
-      expect(upcoming[i - 1].nextDue <= upcoming[i].nextDue).toBe(true);
-    }
+  it("returns due soon and overdue PM schedules from supplied data", () => {
+    expect(buildUpcomingMaintenance(source)).toHaveLength(2);
   });
 });
 
 describe("buildRecentActivities", () => {
-  it("returns the most recent events across the whole plant, newest first", () => {
-    const activities = buildRecentActivities(5);
+  it("returns the most recent supplied production events", () => {
+    const activities = buildRecentActivities(source, 3);
 
-    expect(activities).toHaveLength(5);
-    for (let i = 1; i < activities.length; i += 1) {
-      expect(activities[i - 1].date >= activities[i].date).toBe(true);
-    }
+    expect(activities.map((activity) => activity.id)).toEqual(["CM-REAL-1", "MH-REAL-1", "WO-REAL-1"]);
   });
 
-  it("defaults to a limit of 8", () => {
-    expect(buildRecentActivities()).toHaveLength(8);
+  it("returns no sample activities when no production data is supplied", () => {
+    expect(buildRecentActivities()).toEqual([]);
   });
 });

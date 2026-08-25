@@ -4,13 +4,23 @@ import {
   buildCriticalityDistribution,
   buildRecommendedActions,
 } from "./analytics";
-import { buildAttentionAssets, buildKpiSummary, buildMaintenanceHealth, daysBeforeReference } from "./executiveDashboard";
-import { buildPlantTimeline } from "./maintenanceHistory";
-import samplePumps from "../data/samplePumps";
+
+const source = {
+  pumps: [
+    { tag: "211-P-1A", name: "FRESH FEED CHARGE PUMP", criticality: "HIGH", status: "RUNNING" },
+    { tag: "220-P-4A", name: "Pump 4A", criticality: "LOW", status: "RUNNING" },
+  ],
+  workOrders: [{ id: "WO-1", equipmentTag: "211-P-1A", status: "OPEN", createdDate: "2026-07-19" }],
+  pmSchedules: [{ id: "PM-1", status: "OVERDUE" }],
+  cmReports: [{ cm_report_code: "CM-1", asset_code: "211-P-1A", status: "OPEN", severity: "LOW", created_at: "2026-07-19T00:00:00Z" }],
+  pmOccurrences: [{ pm_occurrence_code: "PMO-1", occurrence_date: "2026-07-18" }],
+  maintenanceHistory: [],
+  conditionMonitoringReadings: [],
+};
 
 describe("buildActivityTrend", () => {
   it("returns four weekly buckets, oldest first, ending in This Week", () => {
-    const trend = buildActivityTrend();
+    const trend = buildActivityTrend(source);
 
     expect(trend.buckets.map((bucket) => bucket.label)).toEqual([
       "4 Weeks Ago",
@@ -20,111 +30,47 @@ describe("buildActivityTrend", () => {
     ]);
   });
 
-  it("accounts for every plant event within the last 28 days, and no others", () => {
-    const trend = buildActivityTrend();
+  it("counts only supplied production events and no sample fallback", () => {
+    const trend = buildActivityTrend(source);
     const bucketedTotal = trend.buckets.reduce((sum, bucket) => sum + bucket.total, 0);
 
-    const expectedTotal = buildPlantTimeline().filter((event) => {
-      const days = daysBeforeReference(event.date);
-      return days !== null && days >= 0 && days < 28;
-    }).length;
-
-    expect(bucketedTotal).toBe(expectedTotal);
+    expect(bucketedTotal).toBe(3);
+    expect(trend.buckets.reduce((sum, bucket) => sum + bucket.pmCount, 0)).toBe(1);
+    expect(trend.buckets.reduce((sum, bucket) => sum + bucket.cmCount, 0)).toBe(1);
+    expect(trend.buckets.reduce((sum, bucket) => sum + bucket.woCount, 0)).toBe(1);
   });
 
-  it("splits each bucket's total across PM/CM/WO counts consistently", () => {
+  it("returns empty trend buckets when no production events exist", () => {
     const trend = buildActivityTrend();
 
-    trend.buckets.forEach((bucket) => {
-      expect(bucket.pmCount + bucket.cmCount + bucket.woCount).toBe(bucket.total);
-    });
-  });
-
-  it("reports a valid corrective maintenance trend direction", () => {
-    const trend = buildActivityTrend();
-
-    expect(["UP", "DOWN", "FLAT"]).toContain(trend.correctiveMaintenanceDirection);
-
-    const [previousWeek, lastWeek] = trend.buckets.slice(-2);
-    if (lastWeek.cmCount > previousWeek.cmCount) {
-      expect(trend.correctiveMaintenanceDirection).toBe("UP");
-    } else if (lastWeek.cmCount < previousWeek.cmCount) {
-      expect(trend.correctiveMaintenanceDirection).toBe("DOWN");
-    } else {
-      expect(trend.correctiveMaintenanceDirection).toBe("FLAT");
-    }
+    expect(trend.buckets.every((bucket) => bucket.total === 0)).toBe(true);
+    expect(trend.correctiveMaintenanceDirection).toBe("FLAT");
   });
 });
 
 describe("buildCriticalityDistribution", () => {
-  it("counts every pump exactly once, across only the criticality levels present", () => {
-    const distribution = buildCriticalityDistribution();
-
-    const total = distribution.reduce((sum, entry) => sum + entry.count, 0);
-    expect(total).toBe(samplePumps.length);
-
-    distribution.forEach((entry) => {
-      expect(["HIGH", "MEDIUM", "LOW"]).toContain(entry.criticality);
-      expect(entry.count).toBeGreaterThan(0);
-    });
+  it("counts supplied production pumps only", () => {
+    expect(buildCriticalityDistribution(source)).toEqual([
+      { criticality: "HIGH", count: 1 },
+      { criticality: "LOW", count: 1 },
+    ]);
   });
 
-  it("orders entries HIGH, then MEDIUM, then LOW", () => {
-    const distribution = buildCriticalityDistribution();
-    const order = distribution.map((entry) => entry.criticality);
-    const expectedOrder = ["HIGH", "MEDIUM", "LOW"].filter((level) => order.includes(level));
-
-    expect(order).toEqual(expectedOrder);
+  it("returns no distribution when no production pumps exist", () => {
+    expect(buildCriticalityDistribution()).toEqual([]);
   });
 });
 
 describe("buildRecommendedActions", () => {
-  it("recommends scheduling overdue PM when there is any", () => {
-    const kpis = buildKpiSummary();
-    const actions = buildRecommendedActions();
-    const overdueAction = actions.find((action) => action.id === "overdue-pm");
+  it("recommends actions only from supplied production metrics", () => {
+    const actions = buildRecommendedActions(source);
 
-    if (kpis.overduePM > 0) {
-      expect(overdueAction).toBeTruthy();
-      expect(overdueAction.text).toContain(String(kpis.overduePM));
-    } else {
-      expect(overdueAction).toBeUndefined();
-    }
+    expect(actions.map((action) => action.id)).toContain("overdue-pm");
+    expect(actions.map((action) => action.id)).toContain("open-cm");
+    expect(actions.map((action) => action.id)).toContain("attention-assets");
   });
 
-  it("recommends reviewing attention assets when there are any", () => {
-    const attentionAssets = buildAttentionAssets();
-    const actions = buildRecommendedActions();
-    const attentionAction = actions.find((action) => action.id === "attention-assets");
-
-    if (attentionAssets.length > 0) {
-      expect(attentionAction).toBeTruthy();
-      expect(attentionAction.text).toContain(String(attentionAssets.length));
-    } else {
-      expect(attentionAction).toBeUndefined();
-    }
-  });
-
-  it("recommends clearing the work order backlog when open exceeds closed", () => {
-    const health = buildMaintenanceHealth();
-    const actions = buildRecommendedActions();
-    const backlogAction = actions.find((action) => action.id === "wo-backlog");
-
-    if (health.openWorkOrders > health.closedWorkOrders) {
-      expect(backlogAction).toBeTruthy();
-    } else {
-      expect(backlogAction).toBeUndefined();
-    }
-  });
-
-  it("every action has an id, a severity, and non-empty text", () => {
-    const actions = buildRecommendedActions();
-
-    expect(actions.length).toBeGreaterThan(0);
-    actions.forEach((action) => {
-      expect(action.id).toBeTruthy();
-      expect(["danger", "warning", "info"]).toContain(action.severity);
-      expect(action.text.length).toBeGreaterThan(0);
-    });
+  it("returns no sample recommendations when no production data exists", () => {
+    expect(buildRecommendedActions()).toEqual([]);
   });
 });
