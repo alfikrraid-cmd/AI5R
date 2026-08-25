@@ -15,7 +15,7 @@ def _identity_payload(identity: AuthenticatedIdentity) -> dict:
     # no such field -- resolve_identity()/authenticate() never copy it
     # out of UserRecord), so there is no field to accidentally serialize.
     return {
-        "user": {"id": identity.user_id, "email": identity.email},
+        "user": {"id": identity.user_id, "username": identity.username, "email": identity.email},
         "organization": {"id": identity.organization_id, "code": identity.organization_code},
         "role": identity.role,
         "permissions": sorted(identity.permissions),
@@ -25,7 +25,10 @@ def _identity_payload(identity: AuthenticatedIdentity) -> dict:
 @router.post("/api/auth/login")
 def login(payload: LoginRequest, auth_repository=Depends(get_auth_repository)) -> Payload:
     try:
-        token, identity = authenticate(auth_repository, payload.email, payload.password)
+        identifier = payload.identifier or payload.email
+        if not identifier:
+            raise AuthenticationError("Invalid username/email or password")
+        token, identity = authenticate(auth_repository, identifier, payload.password)
     except AuthenticationError as error:
         raise HTTPException(status_code=401, detail=str(error))
 

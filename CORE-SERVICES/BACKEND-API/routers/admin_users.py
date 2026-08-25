@@ -9,6 +9,7 @@ from API.auth_admin_service import (
     guard_last_superuser,
 )
 from API.auth_password import hash_password
+from API.auth_service import normalize_username
 from dependencies import get_auth_repository, get_current_user
 from models.requests import (
     AdminCreateUserRequest,
@@ -36,7 +37,8 @@ router = APIRouter(dependencies=[Depends(get_current_user)])
 def _user_summary(row: dict) -> dict:
     return {
         "id": row["id"],
-        "email": row["email"],
+        "username": row.get("username"),
+        "email": row.get("email"),
         "status": row["user_status"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
@@ -80,8 +82,17 @@ def create_user(
     except DelegationDeniedError as error:
         raise HTTPException(status_code=403, detail=str(error))
 
+    try:
+        username = normalize_username(payload.username)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error))
+    if auth_repository.find_user_by_username(username) is not None:
+        raise HTTPException(status_code=409, detail="Username already exists")
+
+    email = payload.email.strip().lower() if payload.email else None
     user_id = auth_repository.create_user(
-        email=payload.email,
+        username=username,
+        email=email,
         password_hash=hash_password(payload.password),
         created_by=current_user.user_id,
     )
@@ -91,8 +102,7 @@ def create_user(
         role=payload.role,
         created_by=current_user.user_id,
     )
-    return {"id": user_id, "email": payload.email, "organization_id": payload.organization_id, "role": payload.role}
-
+    return {"id": user_id, "username": username, "email": email, "organization_id": payload.organization_id, "role": payload.role}
 
 @router.patch("/api/admin/users/{user_id}/status")
 def update_user_status(

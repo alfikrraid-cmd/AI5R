@@ -39,7 +39,7 @@ describe("authClient.login", () => {
       expect.stringContaining("/api/auth/login"),
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ email: "engineer@tap.internal", password: "correct" }),
+        body: JSON.stringify({ identifier: "engineer@tap.internal", email: "engineer@tap.internal", password: "correct" }),
       })
     );
     expect(session.token).toBe("real.jwt.token");
@@ -49,6 +49,30 @@ describe("authClient.login", () => {
     expect(getStoredSession()).toEqual(session);
   });
 
+
+  it("posts username identifier while preserving the legacy email field contract", async () => {
+    global.fetch.mockResolvedValue(
+      jsonResponse(200, {
+        access_token: "real.jwt.token",
+        user: { id: "u-1", username: "ravi", email: null },
+        organization: { id: "org-tap", code: "TAP" },
+        role: "TAP_ENGINEER",
+        permissions: ["pump.read"],
+      })
+    );
+
+    const session = await login({ identifier: "ravi", password: "correct" });
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/auth/login"),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ identifier: "ravi", email: undefined, password: "correct" }),
+      })
+    );
+    expect(session.user.name).toBe("ravi");
+    expect(session.user.email).toBeNull();
+  });
   it("maps a 401 (wrong password, unknown user, or disabled user) to invalid_credentials, never distinguishing them", async () => {
     global.fetch.mockResolvedValue(jsonResponse(401, { detail: "Invalid email or password" }));
 

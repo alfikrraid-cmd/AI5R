@@ -19,13 +19,13 @@ vi.mock("../../../api/ai5rClient", () => ({
 
 const SAMPLE_USERS = [
   {
-    id: "u-1", email: "tap-eng@tap.internal", status: "ACTIVE",
+    id: "u-1", username: "tapeng", email: "tap-eng@tap.internal", status: "ACTIVE",
     created_at: "2026-01-01T00:00:00", updated_at: "2026-01-02T00:00:00",
     organization_id: "org-tap", organization_code: "TAP",
     role: "TAP_ENGINEER", membership_status: "ACTIVE",
   },
   {
-    id: "u-2", email: "su@tap.internal", status: "ACTIVE",
+    id: "u-2", username: "superuser", email: null, status: "ACTIVE",
     created_at: "2026-01-01T00:00:00", updated_at: "2026-01-01T00:00:00",
     organization_id: "org-tap", organization_code: "TAP",
     role: "SUPERUSER", membership_status: "ACTIVE",
@@ -55,15 +55,22 @@ describe("AdminUsersView authorization gate", () => {
 });
 
 describe("AdminUsersView list", () => {
-  it("renders every user's email, role, organization, and status", async () => {
+  it("renders every user's username, email, role, organization, and status", async () => {
     render(<AdminUsersView canManageUsers={true} />);
     await waitFor(() => expect(screen.getByText("tap-eng@tap.internal")).toBeTruthy());
 
-    expect(screen.getByText("su@tap.internal")).toBeTruthy();
+    expect(screen.getByText("superuser")).toBeTruthy();
     expect(screen.getAllByText("TAP").length).toBeGreaterThan(0);
     expect(screen.getAllByText("ACTIVE").length).toBeGreaterThan(0);
   });
 
+  it("shows username and N/A for a null email", async () => {
+    render(<AdminUsersView canManageUsers={true} />);
+    await waitFor(() => expect(screen.getByText("superuser")).toBeTruthy());
+
+    expect(screen.getByText("tapeng")).toBeTruthy();
+    expect(screen.getByText("N/A")).toBeTruthy();
+  });
   it("never renders a password or password_hash field anywhere", async () => {
     render(<AdminUsersView canManageUsers={true} />);
     await waitFor(() => expect(screen.getByText("tap-eng@tap.internal")).toBeTruthy());
@@ -91,7 +98,7 @@ describe("AdminUsersView actions", () => {
   it("a 409 last-superuser error from the backend is surfaced verbatim, not swallowed", async () => {
     updateAdminUserStatus.mockRejectedValueOnce(new Error("cannot disable: this is the last active SUPERUSER account"));
     render(<AdminUsersView canManageUsers={true} />);
-    await waitFor(() => expect(screen.getByText("su@tap.internal")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("superuser")).toBeTruthy());
 
     const disableButtons = screen.getAllByText("Disable");
     fireEvent.click(disableButtons[1]);
@@ -106,7 +113,7 @@ describe("AdminUsersView actions", () => {
     render(<AdminUsersView canManageUsers={true} />);
     await waitFor(() => expect(screen.getByText("tap-eng@tap.internal")).toBeTruthy());
 
-    fireEvent.change(screen.getByLabelText("Change role for tap-eng@tap.internal"), { target: { value: "SUPERUSER" } });
+    fireEvent.change(screen.getByLabelText("Change role for tapeng"), { target: { value: "SUPERUSER" } });
 
     await waitFor(() =>
       expect(screen.getByTestId("admin-users-action-error").textContent).toMatch(/not authorized to manage SUPERUSER/)
@@ -143,6 +150,7 @@ describe("AdminUsersView actions", () => {
     await waitFor(() => expect(screen.getByText("tap-eng@tap.internal")).toBeTruthy());
 
     fireEvent.click(screen.getByText("Create User"));
+    fireEvent.change(screen.getByLabelText("Username"), { target: { value: "ravi" } });
     fireEvent.change(screen.getByLabelText("Email"), { target: { value: "new@tap.internal" } });
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "temp-pw" } });
     fireEvent.change(screen.getByLabelText("Organization ID"), { target: { value: "org-tap" } });
@@ -150,7 +158,24 @@ describe("AdminUsersView actions", () => {
 
     await waitFor(() =>
       expect(createAdminUser).toHaveBeenCalledWith({
-        email: "new@tap.internal", password: "temp-pw", organizationId: "org-tap", role: "TAP_ENGINEER",
+        username: "ravi", email: "new@tap.internal", password: "temp-pw", organizationId: "org-tap", role: "TAP_ENGINEER",
+      })
+    );
+  });
+
+  it("creating a username-only user submits null email", async () => {
+    render(<AdminUsersView canManageUsers={true} />);
+    await waitFor(() => expect(screen.getByText("tapeng")).toBeTruthy());
+
+    fireEvent.click(screen.getByText("Create User"));
+    fireEvent.change(screen.getByLabelText("Username"), { target: { value: "ravi" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "temp-pw" } });
+    fireEvent.change(screen.getByLabelText("Organization ID"), { target: { value: "org-tap" } });
+    fireEvent.click(screen.getByText("Create"));
+
+    await waitFor(() =>
+      expect(createAdminUser).toHaveBeenCalledWith({
+        username: "ravi", email: null, password: "temp-pw", organizationId: "org-tap", role: "TAP_ENGINEER",
       })
     );
   });

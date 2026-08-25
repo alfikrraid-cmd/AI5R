@@ -3,24 +3,24 @@ import "./LTSAOpenDesign.css";
 import "./LoginView.css";
 
 const ERROR_COPY = {
-  invalid_credentials: "Email or password is incorrect. Please try again.",
+  invalid_credentials: "Username/email or password is incorrect. Please try again.",
   inactive_account: "This account is inactive. Contact your AI5R administrator.",
   server_unavailable: "LTSA Engineering is temporarily unavailable. Please try again shortly.",
 };
 
 export default function LoginView({ status, error, onSubmit }) {
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const isLoading = status === "authenticating";
 
   function handleSubmit(event) {
     event.preventDefault();
-    if (isLoading || !email || !password) return;
+    if (isLoading || !identifier || !password) return;
     // AuthContext already tracks the rejection in `status`/`error` state;
     // this call site only needs to trigger it, not handle the rejection
     // itself, but an unawaited rejected promise would otherwise surface as
     // an unhandled rejection.
-    onSubmit(email, password).catch(() => {});
+    onSubmit(identifier, password).catch(() => {});
   }
 
   return (
@@ -49,13 +49,13 @@ export default function LoginView({ status, error, onSubmit }) {
 
           <form onSubmit={handleSubmit} noValidate>
             <label className="login-field">
-              <span>Email</span>
+              <span>Username or Email</span>
               <input
-                type="email"
-                name="email"
+                type="text"
+                name="identifier"
                 autoComplete="username"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
+                value={identifier}
+                onChange={(event) => setIdentifier(event.target.value)}
                 disabled={isLoading}
                 required
               />

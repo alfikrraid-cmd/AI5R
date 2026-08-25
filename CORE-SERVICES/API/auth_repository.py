@@ -25,7 +25,7 @@ if str(_INGESTION_DIR) not in sys.path:
 
 from ltsa_pump_inventory_db_upsert import _json_query, _sql  # noqa: E402
 
-from .auth_service import MembershipRecord, UserRecord  # noqa: E402
+from .auth_service import MembershipRecord, UserRecord, normalize_username  # noqa: E402
 
 if TYPE_CHECKING:
     from ltsa_pump_inventory_db_upsert import DatabaseRunner
@@ -39,18 +39,25 @@ class AuthRepository:
 
     def find_user_by_email(self, email: str) -> UserRecord | None:
         rows = _json_query(
-            f"SELECT id, email, password_hash, status FROM users WHERE email = {_sql(email)}",
+            f"SELECT id, username, email, password_hash, status FROM users WHERE lower(email) = lower({_sql(email)})",
             self._runner,
         )
         return _row_to_user(rows[0]) if rows else None
 
     def find_user_by_id(self, user_id: str) -> UserRecord | None:
         rows = _json_query(
-            f"SELECT id, email, password_hash, status FROM users WHERE id = {_sql(user_id)}",
+            f"SELECT id, username, email, password_hash, status FROM users WHERE id = {_sql(user_id)}",
             self._runner,
         )
         return _row_to_user(rows[0]) if rows else None
 
+    def find_user_by_username(self, username: str) -> UserRecord | None:
+        normalized = normalize_username(username)
+        rows = _json_query(
+            f"SELECT id, username, email, password_hash, status FROM users WHERE username = {_sql(normalized)}",
+            self._runner,
+        )
+        return _row_to_user(rows[0]) if rows else None
     def find_active_membership_for_user(self, user_id: str) -> MembershipRecord | None:
         rows = _json_query(
             "SELECT m.organization_id, o.code AS organization_code, m.role, m.status, "
@@ -92,7 +99,7 @@ class AuthRepository:
         Users UI's own per-organization row. LEFT JOIN so a user with no
         membership yet (mid-creation) still appears."""
         return _json_query(
-            "SELECT u.id, u.email, u.status AS user_status, "
+            "SELECT u.id, u.username, u.email, u.status AS user_status, "
             "u.created_at, u.updated_at, u.created_by, u.updated_by, "
             "m.organization_id, o.code AS organization_code, o.name AS organization_name, "
             "m.role, m.status AS membership_status "
@@ -129,7 +136,7 @@ class AuthRepository:
     # --- writes (bootstrap-admin script + the new Admin Users router;
     # never called on the ordinary request path) ---------------------------
 
-    def create_user(self, *, email: str, password_hash: str, created_by: str | None = None) -> str:
+    def create_user(self, *, email: str | None, password_hash: str, username: str | None = None, created_by: str | None = None) -> str:
         # MWO-LTSA-AUTH-001A -- _json_query's own `FROM (sql) t` wrapping
         # only works for a plain SELECT; a data-modifying INSERT...
         # RETURNING needs a real CTE (same fix shape as
@@ -150,8 +157,8 @@ class AuthRepository:
         rows = json.loads(
             self._runner.query_scalar(
                 "WITH ins AS ("
-                "INSERT INTO users (email, password_hash, created_by, updated_by) VALUES "
-                f"({_sql(email)}, {_sql(password_hash)}, {_sql(created_by)}, {_sql(created_by)}) "
+                "INSERT INTO users (username, email, password_hash, created_by, updated_by) VALUES "
+                f"({_sql(normalize_username(username) if username is not None else None)}, {_sql(email.lower() if email else None)}, {_sql(password_hash)}, {_sql(created_by)}, {_sql(created_by)}) "
                 "RETURNING id"
                 ") SELECT COALESCE(json_agg(row_to_json(t))::text, '[]') FROM ins t;"
             )
@@ -197,7 +204,7 @@ class AuthRepository:
 
 
 def _row_to_user(row: dict) -> UserRecord:
-    return UserRecord(id=row["id"], email=row["email"], password_hash=row["password_hash"], status=row["status"])
+    return UserRecord(id=row["id"], email=row.get("email"), password_hash=row["password_hash"], status=row["status"], username=row.get("username"))
 
 
 def _row_to_membership(row: dict) -> MembershipRecord:

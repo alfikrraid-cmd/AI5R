@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+﻿import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App, { PUMP_WORKSPACE_ROUTE } from "./App";
 
@@ -24,7 +24,7 @@ const TAP_ADMIN_LOGIN_RESPONSE = {
 };
 
 async function loginAsTapAdmin() {
-  fireEvent.change(await screen.findByLabelText("Email"), { target: { value: "admin@tap.co.id" } });
+  fireEvent.change(await screen.findByLabelText("Username or Email"), { target: { value: "admin@tap.co.id" } });
   fireEvent.change(screen.getByLabelText("Password"), { target: { value: "demo123" } });
   fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
   await screen.findByRole("heading", { name: "Pump Workspace" });
@@ -111,8 +111,8 @@ describe("App", () => {
     window.history.replaceState({}, "", "/ltsa");
 
     render(<App />);
-    await screen.findByLabelText("Email");
-    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "admin@tap.co.id" } });
+    await screen.findByLabelText("Username or Email");
+    fireEvent.change(screen.getByLabelText("Username or Email"), { target: { value: "admin@tap.co.id" } });
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "demo123" } });
     fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
 
@@ -128,8 +128,8 @@ describe("App", () => {
     window.history.replaceState({}, "", "/ltsa/tap");
 
     render(<App />);
-    await screen.findByLabelText("Email");
-    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "admin@tap.co.id" } });
+    await screen.findByLabelText("Username or Email");
+    fireEvent.change(screen.getByLabelText("Username or Email"), { target: { value: "admin@tap.co.id" } });
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "demo123" } });
     fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
 
@@ -171,8 +171,8 @@ describe("App -- Executive Dashboard login routing (MWO-LTSA-DASHBOARD-RECOVERY-
     window.history.replaceState({}, "", "/ltsa");
 
     render(<App />);
-    await screen.findByLabelText("Email");
-    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "admin@tap.co.id" } });
+    await screen.findByLabelText("Username or Email");
+    fireEvent.change(screen.getByLabelText("Username or Email"), { target: { value: "admin@tap.co.id" } });
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "demo123" } });
     fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
 
@@ -184,8 +184,8 @@ describe("App -- Executive Dashboard login routing (MWO-LTSA-DASHBOARD-RECOVERY-
     window.history.replaceState({}, "", "/ltsa/dashboard");
 
     render(<App />);
-    await screen.findByLabelText("Email");
-    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "admin@tap.co.id" } });
+    await screen.findByLabelText("Username or Email");
+    fireEvent.change(screen.getByLabelText("Username or Email"), { target: { value: "admin@tap.co.id" } });
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "demo123" } });
     fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
 

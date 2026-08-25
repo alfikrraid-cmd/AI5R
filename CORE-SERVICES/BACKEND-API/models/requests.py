@@ -8,7 +8,8 @@ from pydantic import BaseModel, Field
 
 
 class LoginRequest(BaseModel):
-    email: str
+    email: str | None = None
+    identifier: str | None = None
     password: str
 
 
@@ -28,7 +29,8 @@ class CopilotAskRequest(BaseModel):
 # before any repository call; no response model ever echoes a password
 # field back).
 class AdminCreateUserRequest(BaseModel):
-    email: str
+    username: str
+    email: str | None = None
     password: str
     organization_id: str
     role: str

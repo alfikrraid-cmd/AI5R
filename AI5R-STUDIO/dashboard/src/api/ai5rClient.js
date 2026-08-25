@@ -1,4 +1,4 @@
-﻿const API_URL = import.meta.env.VITE_API_URL || "http://localhost:18000";
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:18000";
 
 // MWO-LTSA-AUTH-002 -- the one canonical session store + authenticated-
 // request mechanism every LTSA API call goes through (Authorization:
@@ -997,11 +997,11 @@ export async function getAdminUsers() {
     return Array.isArray(payload?.users) ? payload.users : [];
 }
 
-export async function createAdminUser({ email, password, organizationId, role }) {
+export async function createAdminUser({ username, email, password, organizationId, role }) {
     return _adminUsersRequest(`${API_URL}/api/admin/users`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, organization_id: organizationId, role }),
+        body: JSON.stringify({ username, email: email || null, password, organization_id: organizationId, role }),
     });
 }
 

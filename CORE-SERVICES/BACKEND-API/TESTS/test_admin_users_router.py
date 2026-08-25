@@ -12,7 +12,7 @@ if str(BACKEND_API_DIR) not in sys.path:
 
 from main import app  # noqa: E402
 from dependencies import get_auth_repository, get_current_user  # noqa: E402
-from API.auth_service import ROLE_PERMISSIONS, AuthenticatedIdentity  # noqa: E402
+from API.auth_service import ROLE_PERMISSIONS, AuthenticatedIdentity, normalize_username  # noqa: E402
 
 client = TestClient(app)
 
@@ -40,6 +40,7 @@ class FakeAuthRepository:
         self._active_superuser_count = active_superuser_count
         self._superuser_ids = superuser_ids or set()
         self.created_users = []
+        self.existing_usernames = set()
         self.created_memberships = []
         self.status_updates = []
         self.role_updates = []
@@ -48,7 +49,7 @@ class FakeAuthRepository:
     def list_users(self):
         return [
             {
-                "id": "u-1", "email": "u1@tap.internal", "user_status": "ACTIVE",
+                "id": "u-1", "username": "tapeng", "email": "u1@tap.internal", "user_status": "ACTIVE",
                 "created_at": "2026-01-01T00:00:00", "updated_at": "2026-01-01T00:00:00",
                 "created_by": None, "updated_by": None,
                 "organization_id": "org-tap", "organization_code": "TAP", "organization_name": "TAP",
@@ -56,8 +57,11 @@ class FakeAuthRepository:
             }
         ]
 
-    def create_user(self, *, email, password_hash, created_by=None):
-        self.created_users.append({"email": email, "password_hash": password_hash, "created_by": created_by})
+    def find_user_by_username(self, username):
+        return {"username": username} if normalize_username(username) in self.existing_usernames else None
+
+    def create_user(self, *, username, email, password_hash, created_by=None):
+        self.created_users.append({"username": username, "email": email, "password_hash": password_hash, "created_by": created_by})
         return "new-user-id"
 
     def create_membership(self, *, user_id, organization_id, role, created_by=None):
@@ -143,7 +147,7 @@ class TestCreateUser:
         _override(role="SUPERUSER", repo=repo)
         response = client.post(
             "/api/admin/users",
-            json={"email": "new@tap.internal", "password": "s3cret-pw", "organization_id": "org-tap", "role": "TAP_ENGINEER"},
+            json={"username": "newuser", "email": "new@tap.internal", "password": "s3cret-pw", "organization_id": "org-tap", "role": "TAP_ENGINEER"},
         )
         assert response.status_code == 200
         assert repo.created_users[0]["created_by"] == "actor-1"
@@ -155,7 +159,7 @@ class TestCreateUser:
         _override(role="SUPERUSER", repo=repo)
         client.post(
             "/api/admin/users",
-            json={"email": "new@tap.internal", "password": "s3cret-pw", "organization_id": "org-tap", "role": "TAP_ENGINEER"},
+            json={"username": "newuser", "email": "new@tap.internal", "password": "s3cret-pw", "organization_id": "org-tap", "role": "TAP_ENGINEER"},
         )
         assert repo.created_users[0]["password_hash"] != "s3cret-pw"
 
@@ -164,7 +168,7 @@ class TestCreateUser:
         _override(role="TAP_ADMIN", repo=repo)
         response = client.post(
             "/api/admin/users",
-            json={"email": "new@tap.internal", "password": "s3cret-pw", "organization_id": "org-tap", "role": "TAP_ENGINEER"},
+            json={"username": "newuser", "email": "new@tap.internal", "password": "s3cret-pw", "organization_id": "org-tap", "role": "TAP_ENGINEER"},
         )
         assert response.status_code == 200
 
@@ -173,7 +177,7 @@ class TestCreateUser:
         _override(role="TAP_ADMIN", repo=repo)
         response = client.post(
             "/api/admin/users",
-            json={"email": "new@tap.internal", "password": "s3cret-pw", "organization_id": "org-tap", "role": "SUPERUSER"},
+            json={"username": "newadmin", "email": "new@tap.internal", "password": "s3cret-pw", "organization_id": "org-tap", "role": "SUPERUSER"},
         )
         assert response.status_code == 403
         assert repo.created_users == []
@@ -183,7 +187,7 @@ class TestCreateUser:
         _override(role="TAP_ADMIN", repo=repo)
         response = client.post(
             "/api/admin/users",
-            json={"email": "jc@johncrane.internal", "password": "s3cret-pw", "organization_id": "org-tap", "role": "JOHN_CRANE_ENGINEER"},
+            json={"username": "jcuser", "email": "jc@johncrane.internal", "password": "s3cret-pw", "organization_id": "org-tap", "role": "JOHN_CRANE_ENGINEER"},
         )
         assert response.status_code == 403
         assert repo.created_users == []
@@ -287,3 +291,62 @@ class TestResetPassword:
         response = client.post("/api/admin/users/su-1/password-reset", json={"new_password": "brand-new-pw"})
         assert response.status_code == 403
         assert repo.password_updates == []
+
+# --- MWO-AUTH-USERNAME-001: username create contract ---------------------
+
+
+def test_create_user_username_only_email_null():
+    repo = FakeAuthRepository()
+    _override(role="SUPERUSER", repo=repo)
+
+    response = client.post(
+        "/api/admin/users",
+        json={"username": " Ravi ", "password": "s3cret-pw", "organization_id": "org-tap", "role": "TAP_ENGINEER"},
+    )
+
+    assert response.status_code == 200
+    assert repo.created_users[0]["username"] == "ravi"
+    assert repo.created_users[0]["email"] is None
+    assert response.json()["email"] is None
+
+
+def test_create_user_username_and_email():
+    repo = FakeAuthRepository()
+    _override(role="SUPERUSER", repo=repo)
+
+    response = client.post(
+        "/api/admin/users",
+        json={"username": "ravi", "email": "RAVI@TAP.INTERNAL", "password": "s3cret-pw", "organization_id": "org-tap", "role": "TAP_ENGINEER"},
+    )
+
+    assert response.status_code == 200
+    assert repo.created_users[0]["username"] == "ravi"
+    assert repo.created_users[0]["email"] == "ravi@tap.internal"
+
+
+def test_create_user_duplicate_username_rejected():
+    repo = FakeAuthRepository()
+    repo.existing_usernames.add("ravi")
+    _override(role="SUPERUSER", repo=repo)
+
+    response = client.post(
+        "/api/admin/users",
+        json={"username": "ravi", "password": "s3cret-pw", "organization_id": "org-tap", "role": "TAP_ENGINEER"},
+    )
+
+    assert response.status_code == 409
+    assert repo.created_users == []
+
+
+def test_create_user_case_collision_rejected():
+    repo = FakeAuthRepository()
+    repo.existing_usernames.add("ravi")
+    _override(role="SUPERUSER", repo=repo)
+
+    response = client.post(
+        "/api/admin/users",
+        json={"username": " RAVI ", "password": "s3cret-pw", "organization_id": "org-tap", "role": "TAP_ENGINEER"},
+    )
+
+    assert response.status_code == 409
+    assert repo.created_users == []

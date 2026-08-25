@@ -45,7 +45,7 @@ def test_create_user_never_wraps_a_bare_insert_in_a_select_from_subquery():
     runner = FakeRunner(scalar_response=json.dumps([{"id": "u-1"}]))
     repo = AuthRepository(runner)
 
-    repo.create_user(email="new@tap.internal", password_hash="scrypt$...")
+    repo.create_user(username="newuser", email="new@tap.internal", password_hash="scrypt$...")
 
     sql = runner.scalar_calls[0]
     assert "FROM (INSERT" not in sql
@@ -58,7 +58,7 @@ def test_create_user_uses_a_data_modifying_cte_shape():
     runner = FakeRunner(scalar_response=json.dumps([{"id": "u-1"}]))
     repo = AuthRepository(runner)
 
-    repo.create_user(email="new@tap.internal", password_hash="scrypt$...")
+    repo.create_user(username="newuser", email="new@tap.internal", password_hash="scrypt$...")
 
     sql = runner.scalar_calls[0]
     assert sql.strip().upper().startswith("WITH")
@@ -70,7 +70,7 @@ def test_create_user_returns_the_id_from_the_real_response_shape():
     runner = FakeRunner(scalar_response=json.dumps([{"id": "real-uuid-value"}]))
     repo = AuthRepository(runner)
 
-    user_id = repo.create_user(email="new@tap.internal", password_hash="scrypt$...")
+    user_id = repo.create_user(username="newuser", email="new@tap.internal", password_hash="scrypt$...")
 
     assert user_id == "real-uuid-value"
 
@@ -109,7 +109,7 @@ def test_create_user_defaults_created_by_and_updated_by_to_null_for_the_bootstra
     runner = FakeRunner(scalar_response=json.dumps([{"id": "u-1"}]))
     repo = AuthRepository(runner)
 
-    repo.create_user(email="new@tap.internal", password_hash="scrypt$...")
+    repo.create_user(username="newuser", email="new@tap.internal", password_hash="scrypt$...")
 
     sql = runner.scalar_calls[0]
     assert "NULL, NULL" in sql or "NULL,NULL" in sql.replace(" ", "")
@@ -119,7 +119,7 @@ def test_create_user_records_created_by_when_an_authenticated_actor_exists():
     runner = FakeRunner(scalar_response=json.dumps([{"id": "u-2"}]))
     repo = AuthRepository(runner)
 
-    repo.create_user(email="new@tap.internal", password_hash="scrypt$...", created_by="actor-uuid")
+    repo.create_user(username="newuser", email="new@tap.internal", password_hash="scrypt$...", created_by="actor-uuid")
 
     sql = runner.scalar_calls[0]
     assert "'actor-uuid'" in sql
@@ -129,7 +129,7 @@ def test_create_user_never_logs_or_returns_a_plaintext_password():
     runner = FakeRunner(scalar_response=json.dumps([{"id": "u-3"}]))
     repo = AuthRepository(runner)
 
-    user_id = repo.create_user(email="new@tap.internal", password_hash="scrypt$n$r$p$salt$hash", created_by=None)
+    user_id = repo.create_user(username="newuser", email="new@tap.internal", password_hash="scrypt$n$r$p$salt$hash", created_by=None)
 
     # Only the already-hashed value ever appears -- this function never
     # receives a plaintext password at all (the caller hashes first).
@@ -202,3 +202,37 @@ def test_list_users_left_joins_membership_so_a_membershipless_user_still_appears
     sql = runner.scalar_calls[0]
     assert "LEFT JOIN organization_memberships" in sql
     assert "LEFT JOIN organizations" in sql
+
+# --- MWO-AUTH-USERNAME-001: username SQL shape ---------------------------
+
+
+def test_create_user_writes_normalized_username_and_nullable_email():
+    runner = FakeRunner(scalar_response=json.dumps([{"id": "u-4"}]))
+    repo = AuthRepository(runner)
+
+    repo.create_user(username=" Ravi ", email=None, password_hash="scrypt$...", created_by="actor-uuid")
+
+    sql = runner.scalar_calls[0]
+    assert "INSERT INTO users (username, email, password_hash" in sql
+    assert "'ravi'" in sql
+    assert "NULL" in sql
+
+
+def test_find_user_by_username_uses_normalized_username_lookup():
+    runner = FakeRunner(scalar_response=json.dumps([{"id": "u-1", "username": "ravi", "email": None, "password_hash": "scrypt$...", "status": "ACTIVE"}]))
+    repo = AuthRepository(runner)
+
+    user = repo.find_user_by_username(" RAVI ")
+
+    assert user.username == "ravi"
+    assert user.email is None
+    assert "WHERE username = 'ravi'" in runner.scalar_calls[0]
+
+
+def test_list_users_selects_username_for_admin_user_management():
+    runner = FakeRunner(scalar_response=json.dumps([]))
+    repo = AuthRepository(runner)
+
+    repo.list_users()
+
+    assert "u.username" in runner.scalar_calls[0]

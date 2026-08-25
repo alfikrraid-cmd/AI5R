@@ -36,6 +36,7 @@ from API.auth_service import (  # noqa: E402
     signing_secret,
 )
 from API.auth_password import hash_password  # noqa: E402
+from API.auth_service import normalize_username  # noqa: E402
 
 client = TestClient(app)
 
@@ -50,10 +51,15 @@ def _clean_overrides():
 class FakeAuthRepository:
     def __init__(self):
         self.users: dict[str, UserRecord] = {}
+        self.usernames: dict[str, UserRecord] = {}
         self.memberships: dict[tuple[str, str], MembershipRecord] = {}
 
-    def add_user(self, user_id, email, password, status="ACTIVE"):
-        self.users[email] = UserRecord(id=user_id, email=email, password_hash=hash_password(password), status=status)
+    def add_user(self, user_id, email, password, status="ACTIVE", username=None):
+        user = UserRecord(id=user_id, email=email, password_hash=hash_password(password), status=status, username=normalize_username(username) if username else None)
+        if email is not None:
+            self.users[email.lower()] = user
+        if user.username is not None:
+            self.usernames[user.username] = user
 
     def add_membership(self, user_id, organization_id, organization_code, role, status="ACTIVE"):
         self.memberships[(user_id, organization_id)] = MembershipRecord(
@@ -61,10 +67,13 @@ class FakeAuthRepository:
         )
 
     def find_user_by_email(self, email):
-        return self.users.get(email)
+        return self.users.get(email.lower())
+
+    def find_user_by_username(self, username):
+        return self.usernames.get(normalize_username(username))
 
     def find_user_by_id(self, user_id):
-        return next((u for u in self.users.values() if u.id == user_id), None)
+        return next((u for u in [*self.users.values(), *self.usernames.values()] if u.id == user_id), None)
 
     def find_active_membership_for_user(self, user_id):
         for (uid, _org), m in self.memberships.items():
@@ -479,3 +488,70 @@ def test_require_permission_dependency_rejects_a_role_missing_engineering_ai_ask
         with pytest.raises(HTTPException) as exc_info:
             check(current_user=_identity(role))
         assert exc_info.value.status_code == 403
+
+# --- MWO-AUTH-USERNAME-001: login contract compatibility -----------------
+
+
+def test_username_login_by_identifier_returns_token_and_user_id_subject():
+    repo = FakeAuthRepository()
+    repo.add_user("u-ravi", None, "correct-password", username="ravi")
+    repo.add_membership("u-ravi", "org-tap", "TAP", "TAP_ENGINEER")
+    app.dependency_overrides[get_auth_repository] = lambda: repo
+
+    response = client.post("/api/auth/login", json={"identifier": "ravi", "password": "correct-password"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["user"]["id"] == "u-ravi"
+    assert body["user"]["email"] is None
+    assert body["user"]["username"] == "ravi"
+
+
+def test_username_login_is_case_insensitive_and_trimmed():
+    repo = FakeAuthRepository()
+    repo.add_user("u-ravi", None, "correct-password", username="ravi")
+    repo.add_membership("u-ravi", "org-tap", "TAP", "TAP_ENGINEER")
+    app.dependency_overrides[get_auth_repository] = lambda: repo
+
+    response = client.post("/api/auth/login", json={"identifier": " RAVI ", "password": "correct-password"})
+
+    assert response.status_code == 200
+    assert response.json()["user"]["id"] == "u-ravi"
+
+
+def test_legacy_email_field_still_logs_in():
+    repo = FakeAuthRepository()
+    repo.add_user("u-email", "engineer@tap.internal", "correct-password", username=None)
+    repo.add_membership("u-email", "org-tap", "TAP", "TAP_ENGINEER")
+    app.dependency_overrides[get_auth_repository] = lambda: repo
+
+    response = client.post("/api/auth/login", json={"email": "engineer@tap.internal", "password": "correct-password"})
+
+    assert response.status_code == 200
+    assert response.json()["user"]["id"] == "u-email"
+
+
+def test_username_user_with_email_can_login_by_email_fallback():
+    repo = FakeAuthRepository()
+    repo.add_user("u-both", "ravi@tap.internal", "correct-password", username="ravi")
+    repo.add_membership("u-both", "org-tap", "TAP", "TAP_ENGINEER")
+    app.dependency_overrides[get_auth_repository] = lambda: repo
+
+    response = client.post("/api/auth/login", json={"email": "ravi@tap.internal", "password": "correct-password"})
+
+    assert response.status_code == 200
+    assert response.json()["user"]["id"] == "u-both"
+
+
+def test_username_login_wrong_password_and_unknown_identifier_are_rejected_generically():
+    repo = FakeAuthRepository()
+    repo.add_user("u-ravi", None, "correct-password", username="ravi")
+    repo.add_membership("u-ravi", "org-tap", "TAP", "TAP_ENGINEER")
+    app.dependency_overrides[get_auth_repository] = lambda: repo
+
+    wrong = client.post("/api/auth/login", json={"identifier": "ravi", "password": "wrong"})
+    unknown = client.post("/api/auth/login", json={"identifier": "ghost", "password": "wrong"})
+
+    assert wrong.status_code == 401
+    assert unknown.status_code == 401
+    assert wrong.json()["detail"] == unknown.json()["detail"]

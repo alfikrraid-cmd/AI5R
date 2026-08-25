@@ -28,11 +28,11 @@ export function AuthProvider({ children, client = authClient }) {
   }, [client]);
 
   const login = useCallback(
-    async (email, password) => {
+    async (identifier, password) => {
       setStatus("authenticating");
       setError(null);
       try {
-        const nextSession = await client.login({ email, password });
+        const nextSession = await client.login({ identifier, password });
         setSession(nextSession);
         setStatus("authenticated");
         return nextSession;

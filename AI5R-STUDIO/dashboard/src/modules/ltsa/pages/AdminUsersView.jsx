@@ -56,7 +56,7 @@ export default function AdminUsersView({ canManageUsers = false }) {
   const [actionError, setActionError] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
   const [createForm, setCreateForm] = useState({
-    email: "", password: "", organizationId: "", role: "TAP_ENGINEER",
+    username: "", email: "", password: "", organizationId: "", role: "TAP_ENGINEER",
   });
 
   function reload() {
@@ -97,7 +97,7 @@ export default function AdminUsersView({ canManageUsers = false }) {
   }
 
   function handlePasswordReset(user) {
-    const newPassword = window.prompt(`New password for ${user.email}:`);
+    const newPassword = window.prompt(`New password for ${user.username || user.email}:`);
     if (!newPassword) return;
     runAction(() => resetAdminUserPassword(user.id, newPassword));
   }
@@ -106,14 +106,15 @@ export default function AdminUsersView({ canManageUsers = false }) {
     event.preventDefault();
     runAction(() =>
       createAdminUser({
-        email: createForm.email,
+        username: createForm.username,
+        email: createForm.email || null,
         password: createForm.password,
         organizationId: createForm.organizationId,
         role: createForm.role,
       })
     );
     setShowCreate(false);
-    setCreateForm({ email: "", password: "", organizationId: "", role: "TAP_ENGINEER" });
+    setCreateForm({ username: "", email: "", password: "", organizationId: "", role: "TAP_ENGINEER" });
   }
 
   if (!canManageUsers) {
@@ -141,11 +142,17 @@ export default function AdminUsersView({ canManageUsers = false }) {
       {showCreate && (
         <form onSubmit={handleCreateSubmit} data-testid="admin-users-create-form" style={{ marginBottom: "var(--space-4)" }}>
           <input
+            aria-label="Username"
+            placeholder="Username"
+            value={createForm.username}
+            onChange={(e) => setCreateForm((f) => ({ ...f, username: e.target.value }))}
+            required
+          />
+          <input
             aria-label="Email"
             placeholder="Email"
             value={createForm.email}
             onChange={(e) => setCreateForm((f) => ({ ...f, email: e.target.value }))}
-            required
           />
           <input
             aria-label="Password"
@@ -204,7 +211,8 @@ export default function AdminUsersView({ canManageUsers = false }) {
           rowKey="id"
           data={users}
           columns={[
-            { key: "email", header: "Email" },
+            { key: "username", header: "Username", render: (v) => v ?? "N/A" },
+            { key: "email", header: "Email", render: (v) => v ?? "N/A" },
             {
               key: "role",
               header: "Role",
@@ -227,7 +235,7 @@ export default function AdminUsersView({ canManageUsers = false }) {
                     {user.status === "ACTIVE" ? "Disable" : "Enable"}
                   </Button>
                   <select
-                    aria-label={`Change role for ${user.email}`}
+                    aria-label={`Change role for ${user.username || user.email}`}
                     value={user.role ?? ""}
                     onChange={(e) => handleRoleChange(user, e.target.value)}
                   >

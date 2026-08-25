@@ -19,6 +19,7 @@ added).
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Protocol
@@ -29,8 +30,9 @@ from .auth_password import verify_password
 
 _ALGORITHM = "HS256"
 ACCESS_TOKEN_TTL_MINUTES = 30
+_USERNAME_PATTERN = re.compile(r"^[a-z0-9._-]{3,50}$")
 
-_GENERIC_LOGIN_FAILURE = "Invalid email or password"
+_GENERIC_LOGIN_FAILURE = "Invalid username/email or password"
 
 
 class AuthConfigurationError(RuntimeError):
@@ -272,9 +274,10 @@ def decode_access_token(token: str) -> dict[str, Any]:
 @dataclass(frozen=True, slots=True)
 class UserRecord:
     id: str
-    email: str
+    email: str | None
     password_hash: str
     status: str
+    username: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -295,6 +298,7 @@ class MembershipRecord:
 
 class AuthRepositoryProtocol(Protocol):
     def find_user_by_email(self, email: str) -> UserRecord | None: ...
+    def find_user_by_username(self, username: str) -> UserRecord | None: ...
     def find_user_by_id(self, user_id: str) -> UserRecord | None: ...
     def find_active_membership_for_user(self, user_id: str) -> MembershipRecord | None: ...
     def find_membership(self, user_id: str, organization_id: str) -> MembershipRecord | None: ...
@@ -303,7 +307,7 @@ class AuthRepositoryProtocol(Protocol):
 @dataclass(frozen=True, slots=True)
 class AuthenticatedIdentity:
     user_id: str
-    email: str
+    email: str | None
     organization_id: str
     organization_code: str
     role: str
@@ -312,15 +316,39 @@ class AuthenticatedIdentity:
     # MembershipRecord's own identical note.
     data_scope_type: str | None = None
     data_scope_value: str | None = None
+    username: str | None = None
 
 
-def authenticate(repository: AuthRepositoryProtocol, email: str, password: str) -> tuple[str, AuthenticatedIdentity]:
+def normalize_username(username: str | None) -> str:
+    normalized = (username or "").strip().lower()
+    if not normalized or not _USERNAME_PATTERN.fullmatch(normalized):
+        raise ValueError("Username must be 3-50 characters using letters, numbers, dot, underscore, or hyphen")
+    return normalized
+
+
+def _find_user_for_login(repository: AuthRepositoryProtocol, identifier: str) -> UserRecord | None:
+    candidate = (identifier or "").strip()
+    if not candidate:
+        return None
+
+    try:
+        normalized_username = normalize_username(candidate)
+    except ValueError:
+        normalized_username = None
+
+    if normalized_username is not None:
+        user = repository.find_user_by_username(normalized_username)
+        if user is not None:
+            return user
+
+    return repository.find_user_by_email(candidate.lower())
+
+
+def authenticate(repository: AuthRepositoryProtocol, identifier: str, password: str) -> tuple[str, AuthenticatedIdentity]:
     """POST /api/auth/login's own logic. Unknown user, disabled user, and
     wrong password all raise the SAME generic AuthenticationError message
-    -- never disclosing which reason, the standard login-enumeration-
-    resistance discipline (a 401 must not tell an attacker whether the
-    email exists)."""
-    user = repository.find_user_by_email(email)
+    -- never disclosing which reason or whether username/email exists."""
+    user = _find_user_for_login(repository, identifier)
     if user is None or user.status != "ACTIVE" or not verify_password(password, user.password_hash):
         raise AuthenticationError(_GENERIC_LOGIN_FAILURE)
 
@@ -332,6 +360,7 @@ def authenticate(repository: AuthRepositoryProtocol, email: str, password: str) 
     identity = AuthenticatedIdentity(
         user_id=user.id,
         email=user.email,
+        username=user.username,
         organization_id=membership.organization_id,
         organization_code=membership.organization_code,
         role=membership.role,
@@ -360,6 +389,7 @@ def resolve_identity(repository: AuthRepositoryProtocol, user_id: str, organizat
     return AuthenticatedIdentity(
         user_id=user.id,
         email=user.email,
+        username=user.username,
         organization_id=membership.organization_id,
         organization_code=membership.organization_code,
         role=membership.role,
@@ -413,6 +443,7 @@ __all__ = [
     "MembershipRecord",
     "AuthRepositoryProtocol",
     "AuthenticatedIdentity",
+    "normalize_username",
     "authenticate",
     "resolve_identity",
 ]

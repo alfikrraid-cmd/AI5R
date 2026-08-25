@@ -22,24 +22,37 @@ from API.auth_service import (  # noqa: E402
     permissions_for_role,
     resolve_identity,
     signing_secret,
+    normalize_username,
 )
 
 
 class InMemoryAuthRepository:
-    """Test double for API.auth_service.AuthRepositoryProtocol. Real
-    unit tests over real logic (auth_service.py's own authenticate()/
-    resolve_identity()), zero database dependency -- matches this MWO's
-    own "tests may use explicit test identities" allowance without
-    requiring a live Postgres this session has repeatedly found
-    unreachable in this environment."""
+    """Test double for API.auth_service.AuthRepositoryProtocol."""
 
     def __init__(self):
         self.users: dict[str, UserRecord] = {}
+        self.usernames: dict[str, UserRecord] = {}
         self.memberships: dict[tuple[str, str], MembershipRecord] = {}
 
-    def add_user(self, user_id: str, email: str, password: str, status: str = "ACTIVE") -> UserRecord:
-        user = UserRecord(id=user_id, email=email, password_hash=hash_password(password), status=status)
-        self.users[email] = user
+    def add_user(
+        self,
+        user_id: str,
+        email: str | None,
+        password: str,
+        status: str = "ACTIVE",
+        username: str | None = None,
+    ) -> UserRecord:
+        user = UserRecord(
+            id=user_id,
+            email=email,
+            password_hash=hash_password(password),
+            status=status,
+            username=normalize_username(username) if username is not None else None,
+        )
+        if email is not None:
+            self.users[email.lower()] = user
+        if user.username is not None:
+            self.usernames[user.username] = user
         return user
 
     def add_membership(self, user_id: str, organization_id: str, organization_code: str, role: str, status: str = "ACTIVE"):
@@ -48,10 +61,13 @@ class InMemoryAuthRepository:
         )
 
     def find_user_by_email(self, email):
-        return self.users.get(email)
+        return self.users.get(email.lower())
+
+    def find_user_by_username(self, username):
+        return self.usernames.get(normalize_username(username))
 
     def find_user_by_id(self, user_id):
-        for user in self.users.values():
+        for user in [*self.users.values(), *self.usernames.values()]:
             if user.id == user_id:
                 return user
         return None
@@ -64,7 +80,6 @@ class InMemoryAuthRepository:
 
     def find_membership(self, user_id, organization_id):
         return self.memberships.get((user_id, organization_id))
-
 
 @pytest.fixture
 def repository():
@@ -349,3 +364,66 @@ def test_non_production_env_value_with_no_secret_also_uses_the_dev_fallback(monk
     monkeypatch.setenv("AI5R_ENV", "development")
 
     assert signing_secret() == "INSECURE-DEV-ONLY-JWT-SECRET-DO-NOT-USE-IN-PRODUCTION"
+
+# --- MWO-AUTH-USERNAME-001: username/email login compatibility -----------
+
+
+def test_username_login_success():
+    repo = InMemoryAuthRepository()
+    repo.add_user("user-username", None, "correct-password", username="ravi")
+    repo.add_membership("user-username", "org-tap", "TAP", "TAP_ENGINEER")
+
+    token, identity = authenticate(repo, "ravi", "correct-password")
+
+    assert token
+    assert identity.user_id == "user-username"
+    assert identity.email is None
+    assert identity.username == "ravi"
+
+
+def test_legacy_email_login_success(repository):
+    token, identity = authenticate(repository, "engineer@tap.internal", "correct-password")
+
+    assert token
+    assert identity.user_id == "user-1"
+
+
+def test_username_case_insensitive_and_trimmed():
+    repo = InMemoryAuthRepository()
+    repo.add_user("user-ravi", None, "correct-password", username="ravi")
+    repo.add_membership("user-ravi", "org-tap", "TAP", "TAP_ENGINEER")
+
+    token, identity = authenticate(repo, " RAVI ", "correct-password")
+
+    assert token
+    assert identity.user_id == "user-ravi"
+
+
+def test_wrong_password_for_username_is_rejected():
+    repo = InMemoryAuthRepository()
+    repo.add_user("user-ravi", None, "correct-password", username="ravi")
+    repo.add_membership("user-ravi", "org-tap", "TAP", "TAP_ENGINEER")
+
+    with pytest.raises(AuthenticationError):
+        authenticate(repo, "ravi", "wrong-password")
+
+
+def test_unknown_identifier_rejected(repository):
+    with pytest.raises(AuthenticationError):
+        authenticate(repository, "unknown-user", "anything")
+
+
+def test_jwt_subject_remains_user_id_for_username_login():
+    repo = InMemoryAuthRepository()
+    repo.add_user("user-ravi", None, "correct-password", username="ravi")
+    repo.add_membership("user-ravi", "org-tap", "TAP", "TAP_ENGINEER")
+
+    token, _identity = authenticate(repo, "ravi", "correct-password")
+    payload = decode_access_token(token)
+
+    assert payload["sub"] == "user-ravi"
+    assert payload["sub"] != "ravi"
+
+
+def test_password_scheme_unchanged_for_username_login():
+    assert hash_password("correct-password").startswith("scrypt$")

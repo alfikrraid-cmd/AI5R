@@ -16,7 +16,7 @@ import { clearStoredSession, getStoredSession, storeSession } from "../../../api
 //     -> {user:{id,email}, organization:{id,code}, role, permissions}
 //
 // The backend's users table (migration 007) has no display-name column --
-// email is the only real identity string it has, so it is what's shown
+// email or username can be the real identity string; username is preferred for display when present, with email preserved for legacy users
 // where the frozen IdentityBar renders session.user.name. Likewise
 // organization.displayName is the backend's own `code` (e.g. "TAP",
 // "PERTAMINA_RU_II") verbatim -- never a hardcoded TAP/Pertamina RU II
@@ -28,7 +28,7 @@ function toSession(identityPayload, token) {
     user: {
       id: identityPayload.user.id,
       email: identityPayload.user.email,
-      name: identityPayload.user.email,
+      name: identityPayload.user.username || identityPayload.user.email,
     },
     organization: {
       id: identityPayload.organization.id,
@@ -47,13 +47,13 @@ function serverUnavailableError() {
   return error;
 }
 
-export async function login({ email, password }) {
+export async function login({ identifier, email, password }) {
   let response;
   try {
     response = await fetch(`${API_URL}/api/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ identifier: identifier ?? email, email, password }),
     });
   } catch {
     throw serverUnavailableError();
