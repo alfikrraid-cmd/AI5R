@@ -31,8 +31,9 @@ const FIELD_OPTIONS = [
 ];
 
 const WIDTH = 640;
-const HEIGHT = 200;
-const PAD = { top: 16, right: 16, bottom: 28, left: 40 };
+const HEIGHT = 240;
+const PAD = { top: 20, right: 20, bottom: 46, left: 54 };
+const DATE_LABEL = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short" });
 
 function parseDate(value) {
   if (!value) return null;
@@ -59,18 +60,38 @@ function buildSeries(readings, field, rangeDays) {
   };
 }
 
-function scalePoints(points, { minDate, maxDate, minTemp, maxTemp }) {
+function scaleDate(date, minDate, maxDate) {
   const dateSpan = maxDate - minDate || 1;
-  const tempSpan = maxTemp - minTemp || 1;
-  const plotWidth = WIDTH - PAD.left - PAD.right;
-  const plotHeight = HEIGHT - PAD.top - PAD.bottom;
+  return PAD.left + ((date - minDate) / dateSpan) * (WIDTH - PAD.left - PAD.right);
+}
 
+function scaleTemp(value, minTemp, maxTemp) {
+  const tempSpan = maxTemp - minTemp || 1;
+  return PAD.top + (HEIGHT - PAD.top - PAD.bottom) - ((value - minTemp) / tempSpan) * (HEIGHT - PAD.top - PAD.bottom);
+}
+
+function scalePoints(points, bounds) {
   return points.map((point) => ({
-    x: PAD.left + ((point.date - minDate) / dateSpan) * plotWidth,
-    y: PAD.top + plotHeight - ((point.value - minTemp) / tempSpan) * plotHeight,
+    x: scaleDate(point.date, bounds.minDate, bounds.maxDate),
+    y: scaleTemp(point.value, bounds.minTemp, bounds.maxTemp),
     value: point.value,
     date: point.date,
   }));
+}
+
+function buildDateTicks(dates) {
+  const uniqueDates = Array.from(new Set(dates.map((date) => date.getTime())))
+    .sort((a, b) => a - b)
+    .map((time) => new Date(time));
+
+  if (uniqueDates.length <= 3) return uniqueDates;
+
+  return [uniqueDates[0], uniqueDates[Math.floor(uniqueDates.length / 2)], uniqueDates[uniqueDates.length - 1]];
+}
+
+function buildTempTicks(minTemp, maxTemp) {
+  if (minTemp === maxTemp) return [minTemp];
+  return [minTemp, (minTemp + maxTemp) / 2, maxTemp];
 }
 
 export default function TemperatureTrendChart({ readings }) {
@@ -92,15 +113,20 @@ export default function TemperatureTrendChart({ readings }) {
 
   let deScaled = [];
   let ndeScaled = [];
+  let axisBounds = null;
+  let dateTicks = [];
+  let tempTicks = [];
   if (hasAnyData) {
-    const bounds = {
+    axisBounds = {
       minDate: new Date(Math.min(...allDates)),
       maxDate: new Date(Math.max(...allDates)),
       minTemp: Math.min(...allValues),
       maxTemp: Math.max(...allValues),
     };
-    deScaled = scalePoints(series.de.map((p) => ({ date: p.date, value: p.de })), bounds);
-    ndeScaled = scalePoints(series.nde.map((p) => ({ date: p.date, value: p.nde })), bounds);
+    deScaled = scalePoints(series.de.map((p) => ({ date: p.date, value: p.de })), axisBounds);
+    ndeScaled = scalePoints(series.nde.map((p) => ({ date: p.date, value: p.nde })), axisBounds);
+    dateTicks = buildDateTicks(allDates);
+    tempTicks = buildTempTicks(axisBounds.minTemp, axisBounds.maxTemp);
   }
 
   return (
@@ -119,21 +145,34 @@ export default function TemperatureTrendChart({ readings }) {
           ))}
         </select>
 
-        <div role="group" aria-label="Trend time range" style={{ display: "flex", gap: spacing.xs }}>
+        <div
+          role="group"
+          aria-label="Trend time range"
+          style={{ display: "flex", flexWrap: "wrap", gap: spacing.xs, alignItems: "center" }}
+        >
           {RANGE_OPTIONS.map((option) => (
             <button
               key={option.key}
               type="button"
               aria-pressed={option.key === rangeKey}
+              aria-label={option.label}
               onClick={() => setRangeKey(option.key)}
               style={{
-                padding: `2px ${spacing.xs}px`,
+                minWidth: 36,
+                minHeight: 28,
+                padding: `4px ${spacing.sm}px`,
                 borderRadius: spacing.xs,
-                border: `1px solid ${colors.border}`,
-                background: option.key === rangeKey ? colors.accent : "transparent",
+                border: `1px solid ${option.key === rangeKey ? colors.accent : colors.border}`,
+                background: option.key === rangeKey ? colors.accent : colors.panel,
                 color: option.key === rangeKey ? colors.background : colors.text,
                 cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
                 fontSize: 12,
+                fontWeight: 700,
+                lineHeight: 1,
+                whiteSpace: "nowrap",
               }}
             >
               {option.label}
@@ -158,6 +197,37 @@ export default function TemperatureTrendChart({ readings }) {
             <line x1={PAD.left} y1={HEIGHT - PAD.bottom} x2={WIDTH - PAD.right} y2={HEIGHT - PAD.bottom} stroke={colors.border} />
             <line x1={PAD.left} y1={PAD.top} x2={PAD.left} y2={HEIGHT - PAD.bottom} stroke={colors.border} />
 
+            {axisBounds && dateTicks.map((date) => {
+              const x = scaleDate(date, axisBounds.minDate, axisBounds.maxDate);
+              return (
+                <g key={`date-${date.toISOString()}`} data-testid="trend-date-tick">
+                  <line x1={x} y1={HEIGHT - PAD.bottom} x2={x} y2={HEIGHT - PAD.bottom + 5} stroke={colors.border} />
+                  <text x={x} y={HEIGHT - PAD.bottom + 19} textAnchor="middle" fontSize="11" fill={colors.textMuted}>
+                    {DATE_LABEL.format(date)}
+                  </text>
+                </g>
+              );
+            })}
+
+            {axisBounds && tempTicks.map((value) => {
+              const y = scaleTemp(value, axisBounds.minTemp, axisBounds.maxTemp);
+              return (
+                <g key={`temp-${value}`} data-testid="trend-temp-tick">
+                  <line x1={PAD.left - 5} y1={y} x2={PAD.left} y2={y} stroke={colors.border} />
+                  <text x={PAD.left - 8} y={y + 4} textAnchor="end" fontSize="11" fill={colors.textMuted}>
+                    {Math.round(value)}
+                  </text>
+                </g>
+              );
+            })}
+
+            <text x={(PAD.left + WIDTH - PAD.right) / 2} y={HEIGHT - 8} textAnchor="middle" fontSize="12" fill={colors.textMuted} data-testid="trend-date-axis-label">
+              Measurement date
+            </text>
+            <text x="14" y={(PAD.top + HEIGHT - PAD.bottom) / 2} textAnchor="middle" fontSize="12" fill={colors.textMuted} transform={`rotate(-90 14 ${(PAD.top + HEIGHT - PAD.bottom) / 2})`} data-testid="trend-temp-axis-label">
+              {"Temperature (\u00b0C)"}
+            </text>
+
             {deScaled.length > 0 && (
               <polyline
                 points={deScaled.map((p) => `${p.x},${p.y}`).join(" ")}
@@ -169,7 +239,7 @@ export default function TemperatureTrendChart({ readings }) {
             )}
             {deScaled.map((p, index) => (
               <circle key={`de-${index}`} cx={p.x} cy={p.y} r={3} fill={colors.accent ?? "#3b82f6"}>
-                <title>{`DE ${p.value}°C · ${p.date.toISOString().slice(0, 10)}`}</title>
+                <title>{`DE ${p.value}\u00b0C - ${p.date.toISOString().slice(0, 10)}`}</title>
               </circle>
             ))}
 
@@ -185,7 +255,7 @@ export default function TemperatureTrendChart({ readings }) {
             )}
             {ndeScaled.map((p, index) => (
               <circle key={`nde-${index}`} cx={p.x} cy={p.y} r={3} fill={colors.warning ?? "#f59e0b"}>
-                <title>{`NDE ${p.value}°C · ${p.date.toISOString().slice(0, 10)}`}</title>
+                <title>{`NDE ${p.value}\u00b0C - ${p.date.toISOString().slice(0, 10)}`}</title>
               </circle>
             ))}
           </svg>
