@@ -154,7 +154,7 @@ describe("LTSAAuthGate", () => {
     await screen.findByTestId("admin-users-view-stub");
 
     const logo = screen.getAllByRole("img", { name: "AI5R" }).find((node) => node.getAttribute("width") === "28");
-    expect(logo).toHaveAttribute("src", "/branding/ai5r-logo.svg");
+    expect(logo).toHaveAttribute("src", "/branding/AI5R-logo.svg");
     expect(logo).toHaveAttribute("height", "27");
 
     fireEvent.click(screen.getByRole("button", { name: "Open LTSA workspace" }));

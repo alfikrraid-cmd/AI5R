@@ -42,7 +42,7 @@ function IdentityBar({ session, onLogout, canManageUsers, isAdminUsersRoute, onN
         <div className="chrome-inner">
           <div className="crumb auth-brand">
             <button type="button" className="auth-brand-link" onClick={onNavigateWorkspace} aria-label="Open LTSA workspace">
-              <img className="auth-brand-logo" src="/branding/ai5r-logo.svg" alt="AI5R" width="28" height="27" />
+              <img className="auth-brand-logo" src="/branding/AI5R-logo.svg" alt="AI5R" width="28" height="27" />
             </button>
             <span className="sep">|</span>
             <span className="auth-brand-copy">
