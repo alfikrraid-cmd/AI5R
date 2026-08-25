@@ -302,16 +302,12 @@ class TestCanDelegateRole:
             assert can_delegate_role("SUPERUSER", role) is True
 
     def test_tap_admin_may_delegate_ordinary_operational_roles(self):
-        for role in ("TAP_ENGINEER", "PERTAMINA_ENGINEER", "PERTAMINA_VIEWER"):
+        for role in ("TAP_ENGINEER", "JOHN_CRANE_ENGINEER", "PERTAMINA_ENGINEER", "PERTAMINA_VIEWER"):
             assert can_delegate_role("TAP_ADMIN", role) is True
 
     def test_tap_admin_can_never_delegate_superuser(self):
         assert can_delegate_role("TAP_ADMIN", "SUPERUSER") is False
 
-    def test_tap_admin_cannot_delegate_john_crane_engineer(self):
-        # Disclosed judgment call: JC's technical-review independence from
-        # TAP's own chain means TAP_ADMIN must not control JC accounts.
-        assert can_delegate_role("TAP_ADMIN", "JOHN_CRANE_ENGINEER") is False
 
     def test_tap_admin_cannot_delegate_itself_no_self_promotion_chain(self):
         assert can_delegate_role("TAP_ADMIN", "TAP_ADMIN") is False

@@ -40,6 +40,13 @@ const ROLE_OPTIONS = [
   "PERTAMINA_VIEWER",
 ];
 
+const TAP_ADMIN_ROLE_OPTIONS = [
+  "TAP_ENGINEER",
+  "JOHN_CRANE_ENGINEER",
+  "PERTAMINA_ENGINEER",
+  "PERTAMINA_VIEWER",
+];
+
 const ROLE_BADGE_VARIANT = {
   SUPERUSER: "danger",
   TAP_ADMIN: "warning",
@@ -49,15 +56,35 @@ const ROLE_BADGE_VARIANT = {
   PERTAMINA_VIEWER: "success",
 };
 
-export default function AdminUsersView({ canManageUsers = false }) {
+function roleOptionsFor(session) {
+  return session?.role === "TAP_ADMIN" ? TAP_ADMIN_ROLE_OPTIONS : ROLE_OPTIONS;
+}
+
+function canManageRole(session, role) {
+  if (!session) return true;
+  if (session?.role === "SUPERUSER") return true;
+  if (session?.role === "TAP_ADMIN") return TAP_ADMIN_ROLE_OPTIONS.includes(role);
+  return false;
+}
+
+function canManageUser(session, user) {
+  if (typeof user?.can_manage === "boolean") return user.can_manage;
+  return canManageRole(session, user?.role);
+}
+
+export default function AdminUsersView({ canManageUsers = false, session = null }) {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [actionError, setActionError] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
   const [createForm, setCreateForm] = useState({
-    username: "", email: "", password: "", organizationId: "", role: "TAP_ENGINEER",
+    username: "", email: "", password: "", organizationId: session?.organization?.id ?? "", role: "TAP_ENGINEER",
   });
+  const roleOptions = roleOptionsFor(session);
+  const isTapAdmin = session?.role === "TAP_ADMIN";
+  const currentOrganizationId = session?.organization?.id ?? "";
+  const currentOrganizationLabel = session?.organization?.displayName ?? session?.organization?.code ?? "N/A";
 
   function reload() {
     if (!canManageUsers) return;
@@ -109,12 +136,12 @@ export default function AdminUsersView({ canManageUsers = false }) {
         username: createForm.username,
         email: createForm.email || null,
         password: createForm.password,
-        organizationId: createForm.organizationId,
+        organizationId: isTapAdmin ? currentOrganizationId : createForm.organizationId,
         role: createForm.role,
       })
     );
     setShowCreate(false);
-    setCreateForm({ username: "", email: "", password: "", organizationId: "", role: "TAP_ENGINEER" });
+    setCreateForm({ username: "", email: "", password: "", organizationId: currentOrganizationId, role: roleOptions[0] ?? "TAP_ENGINEER" });
   }
 
   if (!canManageUsers) {
@@ -162,37 +189,36 @@ export default function AdminUsersView({ canManageUsers = false }) {
             onChange={(e) => setCreateForm((f) => ({ ...f, password: e.target.value }))}
             required
           />
-          <input
-            aria-label="Organization ID"
-            placeholder="Organization ID"
-            value={createForm.organizationId}
-            onChange={(e) => setCreateForm((f) => ({ ...f, organizationId: e.target.value }))}
-            required
-          />
+          {isTapAdmin ? (
+            <p className="confidence-label" data-testid="admin-users-organization-display">
+              Organization: {currentOrganizationLabel}
+            </p>
+          ) : (
+            <input
+              aria-label="Organization ID"
+              placeholder="Organization ID"
+              value={createForm.organizationId}
+              onChange={(e) => setCreateForm((f) => ({ ...f, organizationId: e.target.value }))}
+              required
+            />
+          )}
           <select
             aria-label="Role"
             value={createForm.role}
             onChange={(e) => setCreateForm((f) => ({ ...f, role: e.target.value }))}
           >
-            {ROLE_OPTIONS.map((role) => (
+            {roleOptions.map((role) => (
               <option key={role} value={role}>{role}</option>
             ))}
           </select>
-          {/* MWO-LTSA-ADMIN-USERS-WIRING-001 -- Phase 5: no "JOHN_CRANE"
-              organization exists yet (AUTH-003A-FINAL's own disclosed gap;
-              not fabricated here). This is a visible warning, not a
-              block -- the backend accepts any existing organization_id
-              the caller supplies, and only a SUPERUSER can even reach
-              this form for this role (JOHN_CRANE_ENGINEER is outside
-              TAP_ADMIN's delegation scope). Assigning the new account to
-              TAP's own organization is never done silently by this form;
-              the operator must type that organization id themselves,
-              with this warning visible. */}
-          {createForm.role === "JOHN_CRANE_ENGINEER" && (
+          {/* JC organization assignment is explicit for SUPERUSER and follows
+              the current organization for TAP_ADMIN; the backend remains
+              authoritative for organization and role delegation. */}
+          {!isTapAdmin && createForm.role === "JOHN_CRANE_ENGINEER" && (
             <p className="confidence-label" data-testid="admin-users-jc-org-warning" style={{ color: "var(--color-warning, #b58900)" }}>
               No JOHN_CRANE organization currently exists. Assigning this account to an
-              existing organization (e.g. TAP) is a manual choice, not a default -- confirm
-              the correct Organization ID before creating this user.
+              existing organization is a manual choice, not a default -- confirm
+              the correct organization before creating this user.
             </p>
           )}
           <Button type="submit">Create</Button>
@@ -229,7 +255,7 @@ export default function AdminUsersView({ canManageUsers = false }) {
             {
               key: "actions",
               header: "Actions",
-              render: (_value, user) => (
+              render: (_value, user) => canManageUser(session, user) ? (
                 <span style={{ display: "flex", gap: "var(--space-2)" }}>
                   <Button onClick={() => handleToggleStatus(user)}>
                     {user.status === "ACTIVE" ? "Disable" : "Enable"}
@@ -239,13 +265,13 @@ export default function AdminUsersView({ canManageUsers = false }) {
                     value={user.role ?? ""}
                     onChange={(e) => handleRoleChange(user, e.target.value)}
                   >
-                    {ROLE_OPTIONS.map((role) => (
+                    {roleOptions.map((role) => (
                       <option key={role} value={role}>{role}</option>
                     ))}
                   </select>
                   <Button onClick={() => handlePasswordReset(user)}>Reset Password</Button>
                 </span>
-              ),
+              ) : <span className="confidence-label">Read-only</span>,
             },
           ]}
         />

@@ -32,6 +32,16 @@ const SAMPLE_USERS = [
   },
 ];
 
+const TAP_ADMIN_SESSION = {
+  role: "TAP_ADMIN",
+  organization: { id: "org-tap", code: "TAP", displayName: "TAP" },
+};
+
+const SUPERUSER_SESSION = {
+  role: "SUPERUSER",
+  organization: { id: "org-tap", code: "TAP", displayName: "TAP" },
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   getAdminUsers.mockResolvedValue(SAMPLE_USERS);
@@ -85,6 +95,61 @@ describe("AdminUsersView list", () => {
 });
 
 describe("AdminUsersView actions", () => {
+  it("does not show an API-unavailable state when TAP_ADMIN sees unmanageable rows", async () => {
+    render(<AdminUsersView canManageUsers={true} session={TAP_ADMIN_SESSION} />);
+    await waitFor(() => expect(screen.getByText("tapeng")).toBeTruthy());
+
+    expect(screen.queryByText(/Admin Users API unavailable/i)).toBeNull();
+    expect(screen.getAllByText("Read-only").length).toBe(1);
+  });
+
+  it("auto-resolves TAP_ADMIN organization and removes the raw Organization ID input", async () => {
+    render(<AdminUsersView canManageUsers={true} session={TAP_ADMIN_SESSION} />);
+    await waitFor(() => expect(screen.getByText("tapeng")).toBeTruthy());
+
+    fireEvent.click(screen.getByText("Create User"));
+
+    expect(screen.getByTestId("admin-users-organization-display").textContent).toContain("Organization: TAP");
+    expect(screen.queryByLabelText("Organization ID")).toBeNull();
+  });
+
+  it("limits TAP_ADMIN create role choices to authorized roles", async () => {
+    render(<AdminUsersView canManageUsers={true} session={TAP_ADMIN_SESSION} />);
+    await waitFor(() => expect(screen.getByText("tapeng")).toBeTruthy());
+
+    fireEvent.click(screen.getByText("Create User"));
+    const options = Array.from(screen.getByLabelText("Role").querySelectorAll("option")).map((option) => option.value);
+
+    expect(options).toEqual(["TAP_ENGINEER", "JOHN_CRANE_ENGINEER", "PERTAMINA_ENGINEER", "PERTAMINA_VIEWER"]);
+    expect(options).not.toContain("SUPERUSER");
+    expect(options).not.toContain("TAP_ADMIN");
+  });
+
+  it("TAP_ADMIN creates username-only users with the current organization id", async () => {
+    render(<AdminUsersView canManageUsers={true} session={TAP_ADMIN_SESSION} />);
+    await waitFor(() => expect(screen.getByText("tapeng")).toBeTruthy());
+
+    fireEvent.click(screen.getByText("Create User"));
+    fireEvent.change(screen.getByLabelText("Username"), { target: { value: "ravi" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "temp-pw" } });
+    fireEvent.click(screen.getByText("Create"));
+
+    await waitFor(() =>
+      expect(createAdminUser).toHaveBeenCalledWith({
+        username: "ravi", email: null, password: "temp-pw", organizationId: "org-tap", role: "TAP_ENGINEER",
+      })
+    );
+  });
+
+  it("keeps SUPERUSER role choices unchanged", async () => {
+    render(<AdminUsersView canManageUsers={true} session={SUPERUSER_SESSION} />);
+    await waitFor(() => expect(screen.getByText("tapeng")).toBeTruthy());
+
+    fireEvent.click(screen.getByText("Create User"));
+    const options = Array.from(screen.getByLabelText("Role").querySelectorAll("option")).map((option) => option.value);
+
+    expect(options).toEqual(["SUPERUSER", "TAP_ADMIN", "TAP_ENGINEER", "JOHN_CRANE_ENGINEER", "PERTAMINA_ENGINEER", "PERTAMINA_VIEWER"]);
+  });
   it("disabling an active user calls updateAdminUserStatus with DISABLED", async () => {
     render(<AdminUsersView canManageUsers={true} />);
     await waitFor(() => expect(screen.getByText("tap-eng@tap.internal")).toBeTruthy());

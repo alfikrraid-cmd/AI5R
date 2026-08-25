@@ -28,9 +28,8 @@ def authorize_user_management(actor_role: str, target_role: str) -> None:
     change, role change, password reset) must call before touching a
     target user -- raises DelegationDeniedError rather than silently
     allowing an out-of-scope action. SUPERUSER-vs-SUPERUSER and
-    TAP_ADMIN-vs-TAP_ENGINEER/PERTAMINA_* are both legitimate; TAP_ADMIN
-    managing SUPERUSER or JOHN_CRANE_ENGINEER is not (see
-    auth_service.DELEGATION_SCOPE's own header comment for why)."""
+    TAP_ADMIN-vs-TAP_ENGINEER/JOHN_CRANE_ENGINEER/PERTAMINA_* are legitimate;
+    TAP_ADMIN managing SUPERUSER or TAP_ADMIN is not."""
     if not can_delegate_role(actor_role, target_role):
         raise DelegationDeniedError(f"{actor_role} is not authorized to manage {target_role} accounts")
 

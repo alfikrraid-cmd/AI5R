@@ -9,7 +9,7 @@ from API.auth_admin_service import (
     guard_last_superuser,
 )
 from API.auth_password import hash_password
-from API.auth_service import normalize_username
+from API.auth_service import can_delegate_role, normalize_username
 from dependencies import get_auth_repository, get_current_user
 from models.requests import (
     AdminCreateUserRequest,
@@ -52,6 +52,25 @@ def _user_summary(row: dict) -> dict:
     }
 
 
+def _is_same_organization(current_user, organization_id: str | None) -> bool:
+    return current_user.role == "SUPERUSER" or organization_id == current_user.organization_id
+
+
+def _require_same_organization(current_user, organization_id: str | None) -> None:
+    if not _is_same_organization(current_user, organization_id):
+        raise HTTPException(status_code=403, detail="Cannot manage users outside your organization")
+
+
+def _with_manage_flag(row: dict, current_user) -> dict:
+    summary = _user_summary(row)
+    summary["can_manage"] = (
+        summary.get("role") is not None
+        and _is_same_organization(current_user, summary.get("organization_id"))
+        and can_delegate_role(current_user.role, summary["role"])
+    )
+    return summary
+
+
 def _require_admin_users(current_user) -> None:
     if "admin.users" not in current_user.permissions:
         raise HTTPException(status_code=403, detail="Missing permission: admin.users")
@@ -67,7 +86,7 @@ def _target_role_or_404(auth_repository, user_id: str, organization_id: str) -> 
 @router.get("/api/admin/users")
 def list_users(current_user=Depends(get_current_user), auth_repository=Depends(get_auth_repository)) -> Payload:
     _require_admin_users(current_user)
-    return {"users": [_user_summary(row) for row in auth_repository.list_users()]}
+    return {"users": [_with_manage_flag(row, current_user) for row in auth_repository.list_users()]}
 
 
 @router.post("/api/admin/users")
@@ -81,6 +100,7 @@ def create_user(
         authorize_user_management(current_user.role, payload.role)
     except DelegationDeniedError as error:
         raise HTTPException(status_code=403, detail=str(error))
+    _require_same_organization(current_user, payload.organization_id)
 
     try:
         username = normalize_username(payload.username)
@@ -115,6 +135,7 @@ def update_user_status(
     membership = auth_repository.find_active_membership_for_user(user_id)
     target_role = membership.role if membership else None
     if target_role is not None:
+        _require_same_organization(current_user, membership.organization_id)
         try:
             authorize_user_management(current_user.role, target_role)
         except DelegationDeniedError as error:
@@ -143,6 +164,7 @@ def update_membership_role(
 ) -> Payload:
     _require_admin_users(current_user)
     current_role = _target_role_or_404(auth_repository, user_id, payload.organization_id)
+    _require_same_organization(current_user, payload.organization_id)
 
     try:
         authorize_user_management(current_user.role, current_role)
@@ -176,6 +198,7 @@ def reset_password(
     _require_admin_users(current_user)
     membership = auth_repository.find_active_membership_for_user(user_id)
     if membership is not None:
+        _require_same_organization(current_user, membership.organization_id)
         try:
             authorize_user_management(current_user.role, membership.role)
         except DelegationDeniedError as error:

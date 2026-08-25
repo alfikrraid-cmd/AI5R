@@ -154,7 +154,7 @@ function AuthenticatedLTSA({ organizationContext, platformContext }) {
         // EmptyState, never the real user list/actions -- the backend
         // (every /api/admin/users route) remains the actual enforcement
         // point regardless of what this prop says.
-        <AdminUsersView canManageUsers={canManageUsers} />
+        <AdminUsersView canManageUsers={canManageUsers} session={session} />
       ) : (
         <LTSAWorkspace
           initialActiveKey={initialActiveKey}

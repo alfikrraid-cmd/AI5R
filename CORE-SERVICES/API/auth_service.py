@@ -181,30 +181,13 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     ),
 }
 
-# MWO-LTSA-AUTH-003A-FINAL -- delegation scope: which roles an actor with
-# admin.users may create/manage. SUPERUSER may manage every role (subject
-# to last-SUPERUSER safety, see auth_admin_service.py). TAP_ADMIN may only
-# manage ordinary TAP/Pertamina operational roles -- SUPERUSER and
-# JOHN_CRANE_ENGINEER are deliberately excluded from TAP_ADMIN's
-# delegation scope:
-#   - SUPERUSER: obviously never TAP-delegable (Hard Rule "TAP_ADMIN must
-#     never create/promote SUPERUSER").
-#   - JOHN_CRANE_ENGINEER: excluded on the same independence reasoning as
-#     maintenance.technical_review above -- JC's technical review exists
-#     specifically as an authority independent of TAP's own chain of
-#     command; letting TAP_ADMIN create/disable/demote the JC accounts
-#     that review TAP's own work would compromise that independence. This
-#     is a disclosed judgment call (the MWO asked this to be decided by
-#     "business/security reasoning", not assumed), reversible by explicit
-#     Chief Architect decision.
-# Also unresolved (disclosed, not fabricated): no "JOHN_CRANE" organization
-# row exists in `organizations` (migration 007 seeds only TAP and
-# PERTAMINA_RU_II) -- creating a real JOHN_CRANE_ENGINEER user today
-# requires an existing organization_id to be supplied by the caller (never
-# hardcoded here); this MWO does not invent that organization row.
+# MWO-AUTH-USERNAME-002 -- delegation scope is intentionally narrower than
+# permissions. SUPERUSER may manage every role, including break-glass peers.
+# TAP_ADMIN may manage authorized operational accounts, including JC
+# engineering users, but not SUPERUSER or TAP_ADMIN.
 DELEGATION_SCOPE: dict[str, frozenset[str]] = {
     "SUPERUSER": frozenset(ROLE_PERMISSIONS.keys()),
-    "TAP_ADMIN": frozenset({"TAP_ENGINEER", "PERTAMINA_ENGINEER", "PERTAMINA_VIEWER"}),
+    "TAP_ADMIN": frozenset({"TAP_ENGINEER", "JOHN_CRANE_ENGINEER", "PERTAMINA_ENGINEER", "PERTAMINA_VIEWER"}),
 }
 
 

@@ -140,6 +140,19 @@ class TestListUsers:
             assert "password_hash" not in user
             assert "password" not in user
 
+    def test_tap_admin_list_marks_unmanageable_rows_without_failing_page(self):
+        class MixedRoleRepo(FakeAuthRepository):
+            def list_users(self):
+                rows = super().list_users()
+                rows.append({**rows[0], "id": "admin-1", "role": "TAP_ADMIN"})
+                rows.append({**rows[0], "id": "su-1", "role": "SUPERUSER"})
+                return rows
+
+        _override(role="TAP_ADMIN", repo=MixedRoleRepo())
+        response = client.get("/api/admin/users")
+        assert response.status_code == 200
+        users = response.json()["users"]
+        assert [user["can_manage"] for user in users] == [True, False, False]
 
 class TestCreateUser:
     def test_superuser_can_create_any_role(self):
@@ -182,16 +195,34 @@ class TestCreateUser:
         assert response.status_code == 403
         assert repo.created_users == []
 
-    def test_tap_admin_cannot_create_john_crane_engineer(self):
+    def test_tap_admin_can_create_john_crane_engineer(self):
         repo = FakeAuthRepository()
         _override(role="TAP_ADMIN", repo=repo)
         response = client.post(
             "/api/admin/users",
             json={"username": "jcuser", "email": "jc@johncrane.internal", "password": "s3cret-pw", "organization_id": "org-tap", "role": "JOHN_CRANE_ENGINEER"},
         )
+        assert response.status_code == 200
+
+    def test_tap_admin_cannot_create_tap_admin(self):
+        repo = FakeAuthRepository()
+        _override(role="TAP_ADMIN", repo=repo)
+        response = client.post(
+            "/api/admin/users",
+            json={"username": "newadmin", "password": "s3cret-pw", "organization_id": "org-tap", "role": "TAP_ADMIN"},
+        )
         assert response.status_code == 403
         assert repo.created_users == []
 
+    def test_tap_admin_cannot_create_outside_own_organization(self):
+        repo = FakeAuthRepository()
+        _override(role="TAP_ADMIN", repo=repo)
+        response = client.post(
+            "/api/admin/users",
+            json={"username": "newuser", "password": "s3cret-pw", "organization_id": "org-other", "role": "TAP_ENGINEER"},
+        )
+        assert response.status_code == 403
+        assert repo.created_users == []
 
 class TestUpdateUserStatus:
     def test_disabling_an_ordinary_user_succeeds(self):
@@ -221,6 +252,15 @@ class TestUpdateUserStatus:
         _override(role="SUPERUSER", repo=repo)
         response = client.patch("/api/admin/users/su-2/status", json={"status": "DISABLED"})
         assert response.status_code == 200
+
+    def test_tap_admin_cannot_disable_a_tap_admin_account(self):
+        repo = FakeAuthRepository(
+            memberships={("admin-1", "org-tap"): FakeMembership("org-tap", "TAP", "TAP_ADMIN")},
+        )
+        _override(role="TAP_ADMIN", repo=repo)
+        response = client.patch("/api/admin/users/admin-1/status", json={"status": "DISABLED"})
+        assert response.status_code == 403
+        assert repo.status_updates == []
 
     def test_tap_admin_cannot_disable_a_superuser_account(self):
         repo = FakeAuthRepository(
