@@ -13,6 +13,11 @@ export function LiveStreamProvider({ children }) {
   useEffect(() => {
     let client;
 
+    if (window.location.pathname.startsWith("/ltsa")) {
+      setStatus("UNAVAILABLE");
+      return () => {};
+    }
+
     try {
       client = createLiveStreamClient({
         onEvent: (event) => {

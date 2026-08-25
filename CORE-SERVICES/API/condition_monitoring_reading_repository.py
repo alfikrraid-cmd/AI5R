@@ -94,6 +94,29 @@ class ConditionMonitoringReadingRepository:
         )
         return rows[0] if rows else None
 
+    def list_all(self, *, scope: frozenset[str] | None = None) -> dict:
+        scope_clause = ""
+        if scope is not None:
+            if scope:
+                values = ", ".join(_sql(area) for area in sorted(scope))
+                scope_clause = f"WHERE pump.area IN ({values})"
+            else:
+                scope_clause = "WHERE FALSE"
+        rows = _json_query(
+            "SELECT r.*, pump.area, pump.name AS pump_name "
+            "FROM condition_monitoring_reading r "
+            "LEFT JOIN ltsa_pumps pump ON pump.tag_number = r.asset_code "
+            f"{scope_clause} "
+            "ORDER BY r.reading_date DESC NULLS LAST, r.created_at DESC",
+            self._runner,
+        )
+        return {
+            "success": True,
+            "message": "Condition Monitoring reading list retrieved",
+            "count": len(rows),
+            "data": rows,
+            "items": rows,
+        }
     def list_by_asset(self, asset_code: str) -> list[dict]:
         return _json_query(
             f"SELECT {_SELECT_COLUMNS} FROM condition_monitoring_reading "

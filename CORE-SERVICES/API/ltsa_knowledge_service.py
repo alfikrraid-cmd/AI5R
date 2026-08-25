@@ -127,6 +127,9 @@ class LTSAKnowledgeService:
         condition_monitoring_reading_gateway: ConditionMonitoringReadingGateway | None = None,
         pm_occurrence_repository: Any | None = None,
         condition_monitoring_reading_repository: Any | None = None,
+        pm_schedule_repository: Any | None = None,
+        cm_report_repository: Any | None = None,
+        condition_monitoring_schedule_repository: Any | None = None,
     ) -> None:
         self.pump_gateway = pump_gateway or PumpGateway()
         self.maintenance_history_gateway = maintenance_history_gateway or MaintenanceHistoryGateway()
@@ -151,6 +154,9 @@ class LTSAKnowledgeService:
         )
         self.pm_occurrence_repository = pm_occurrence_repository
         self.condition_monitoring_reading_repository = condition_monitoring_reading_repository
+        self.pm_schedule_repository = pm_schedule_repository
+        self.cm_report_repository = cm_report_repository
+        self.condition_monitoring_schedule_repository = condition_monitoring_schedule_repository
 
     def build(self, tag_number: str) -> LTSAKnowledge:
         spare_parts = self._build_spare_parts(tag_number)
@@ -217,7 +223,10 @@ class LTSAKnowledgeService:
         ]
 
     def _build_pm_schedules(self, tag_number: str) -> list[dict[str, Any]]:
-        response = self.pm_schedule_gateway.list_pm_schedules()
+        if self.pm_schedule_repository is not None:
+            response = self.pm_schedule_repository.list_pm_schedules()
+        else:
+            response = self.pm_schedule_gateway.list_pm_schedules()
         return [
             record
             for record in (response.get("data") or [])
@@ -225,7 +234,10 @@ class LTSAKnowledgeService:
         ]
 
     def _build_condition_monitoring_schedules(self, tag_number: str) -> list[dict[str, Any]]:
-        response = self.condition_monitoring_schedule_gateway.list_condition_monitoring_schedules()
+        if self.condition_monitoring_schedule_repository is not None:
+            response = self.condition_monitoring_schedule_repository.list_condition_monitoring_schedules()
+        else:
+            response = self.condition_monitoring_schedule_gateway.list_condition_monitoring_schedules()
         return [
             record
             for record in (response.get("data") or [])
@@ -263,7 +275,10 @@ class LTSAKnowledgeService:
         ]
 
     def _build_cm_history(self, tag_number: str) -> list[dict[str, Any]]:
-        response = self.cm_report_gateway.list_cm_reports()
+        if self.cm_report_repository is not None:
+            response = self.cm_report_repository.list_cm_reports()
+        else:
+            response = self.cm_report_gateway.list_cm_reports()
         return [
             record
             for record in (response.get("data") or [])

@@ -1,4 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:18000";
+﻿const API_URL = import.meta.env.VITE_API_URL || "http://localhost:18000";
 
 // MWO-LTSA-AUTH-002 -- the one canonical session store + authenticated-
 // request mechanism every LTSA API call goes through (Authorization:
@@ -47,14 +47,29 @@ async function apiFetch(input, options = {}) {
     headers.Authorization = `Bearer ${session.token}`;
   }
 
-  const response = await fetch(input, { ...options, headers });
+  const timeoutMs = options.timeoutMs ?? 15000;
+  const controller = new AbortController();
+  const callerSignal = options.signal;
+  const abortFromCaller = () => controller.abort(callerSignal?.reason);
+  if (callerSignal?.aborted) abortFromCaller();
+  callerSignal?.addEventListener?.("abort", abortFromCaller, { once: true });
 
-  if (response.status === 401) {
-    clearStoredSession();
-    _unauthorizedHandler?.();
+  const timeout = window.setTimeout(() => controller.abort(new Error("API request timed out")), timeoutMs);
+  const { timeoutMs: _timeoutMs, signal: _signal, ...fetchOptions } = options;
+
+  try {
+    const response = await fetch(input, { ...fetchOptions, headers, signal: controller.signal });
+
+    if (response.status === 401) {
+      clearStoredSession();
+      _unauthorizedHandler?.();
+    }
+
+    return response;
+  } finally {
+    window.clearTimeout(timeout);
+    callerSignal?.removeEventListener?.("abort", abortFromCaller);
   }
-
-  return response;
 }
 
 

@@ -44,6 +44,11 @@ from API.historical_pm_cmon_staging_repository import HistoricalPMCMONStagingRep
 from API.pm_occurrence_gateway import PMOccurrenceGateway
 from API.pm_occurrence_repository import PMOccurrenceRepository
 from API.pm_schedule_gateway import PMScheduleGateway
+from API.operational_registry_repository import (
+    CMReportRepository,
+    ConditionMonitoringScheduleRepository,
+    PMScheduleRepository,
+)
 from API.pump_gateway import PumpGateway
 from API.seal_engineering_document_gateway import SealEngineeringDocumentGateway
 from API.seal_gateway import SealGateway
@@ -158,6 +163,9 @@ _seal_master_data_repository = SealMasterDataRepository(_import_database_runner)
 # underlying rows this repository writes.
 _pm_occurrence_repository = PMOccurrenceRepository(_import_database_runner)
 _condition_monitoring_reading_repository = ConditionMonitoringReadingRepository(_import_database_runner)
+_pm_schedule_repository = PMScheduleRepository(_import_database_runner)
+_cm_report_repository = CMReportRepository(_import_database_runner)
+_condition_monitoring_schedule_repository = ConditionMonitoringScheduleRepository(_import_database_runner)
 _pm_cm_evidence_repository = PMCMEvidenceRepository(_import_database_runner)
 
 # MWO-LTSA-AUDIT-CHANGE-HISTORY-001 -- same singleton again; the one,
@@ -210,6 +218,9 @@ _ltsa_knowledge_service = LTSAKnowledgeService(
     condition_monitoring_reading_gateway=_condition_monitoring_reading_gateway,
     pm_occurrence_repository=_pm_occurrence_repository,
     condition_monitoring_reading_repository=_condition_monitoring_reading_repository,
+    pm_schedule_repository=_pm_schedule_repository,
+    cm_report_repository=_cm_report_repository,
+    condition_monitoring_schedule_repository=_condition_monitoring_schedule_repository,
 )
 
 # MWO-LTSA-SEAL-EQUIPMENT-HISTORY-INTEGRATION-001 -- same singleton
@@ -284,12 +295,24 @@ def get_pm_schedule_gateway() -> PMScheduleGateway:
     return _pm_schedule_gateway
 
 
+def get_pm_schedule_repository() -> PMScheduleRepository:
+    return _pm_schedule_repository
+
+
 def get_cm_report_gateway() -> CMReportGateway:
     return _cm_report_gateway
 
 
+def get_cm_report_repository() -> CMReportRepository:
+    return _cm_report_repository
+
+
 def get_condition_monitoring_schedule_gateway() -> ConditionMonitoringScheduleGateway:
     return _condition_monitoring_schedule_gateway
+
+
+def get_condition_monitoring_schedule_repository() -> ConditionMonitoringScheduleRepository:
+    return _condition_monitoring_schedule_repository
 
 
 def get_condition_monitoring_reading_gateway() -> ConditionMonitoringReadingGateway:

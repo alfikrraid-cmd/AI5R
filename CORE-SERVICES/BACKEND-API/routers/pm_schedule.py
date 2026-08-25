@@ -3,8 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 
 from API.auth_service import AuthenticatedIdentity, resolve_area_scope
-from API.pump_area_scope import filter_records_by_asset_scope, is_asset_in_scope
-from dependencies import get_current_user, get_pm_schedule_gateway, get_pump_gateway, require_permission
+from dependencies import get_current_user, get_pm_schedule_repository, require_permission
 from models.responses import Payload
 
 # MWO-LTSA-AUTH-001
@@ -26,28 +25,19 @@ router = APIRouter(dependencies=[Depends(require_permission("maintenance.read"))
 
 @router.get("/api/ltsa/pm-schedules")
 def list_ltsa_pm_schedules(
-    pm_schedule_gateway=Depends(get_pm_schedule_gateway),
-    pump_gateway=Depends(get_pump_gateway),
+    pm_schedule_repository=Depends(get_pm_schedule_repository),
     current_user: AuthenticatedIdentity = Depends(get_current_user),
 ) -> Payload:
-    response = pm_schedule_gateway.list_pm_schedules()
-    scope = resolve_area_scope(current_user)
-    if scope is not None and isinstance(response, dict) and isinstance(response.get("data"), list):
-        filtered = filter_records_by_asset_scope(response["data"], scope, pump_gateway)
-        response = {**response, "data": filtered, "count": len(filtered)}
-    return response
+    return pm_schedule_repository.list_pm_schedules(scope=resolve_area_scope(current_user))
 
 
 @router.get("/api/ltsa/pm-schedules/{code}")
 def get_ltsa_pm_schedule(
     code: str,
-    pm_schedule_gateway=Depends(get_pm_schedule_gateway),
-    pump_gateway=Depends(get_pump_gateway),
+    pm_schedule_repository=Depends(get_pm_schedule_repository),
     current_user: AuthenticatedIdentity = Depends(get_current_user),
 ) -> Payload:
-    response = pm_schedule_gateway.get_pm_schedule(code)
-    scope = resolve_area_scope(current_user)
-    data = response.get("data") if isinstance(response, dict) else None
-    if scope is not None and isinstance(data, dict) and not is_asset_in_scope(data.get("asset_code"), scope, pump_gateway):
+    response = pm_schedule_repository.get_pm_schedule(code, scope=resolve_area_scope(current_user))
+    if response.get("data") is None:
         raise HTTPException(status_code=404, detail="PM schedule not found")
     return response
