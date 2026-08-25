@@ -90,6 +90,13 @@ class AuthRepository:
         )
         return rows[0]["id"] if rows else None
 
+    def find_organization_by_id(self, organization_id: str) -> str | None:
+        rows = _json_query(
+            f"SELECT id FROM organizations WHERE id = {_sql(organization_id)}",
+            self._runner,
+        )
+        return rows[0]["id"] if rows else None
+
     # --- MWO-LTSA-AUTH-003A-FINAL -- User Administration reads ------------
 
     def list_users(self) -> list[dict]:
@@ -174,6 +181,35 @@ class AuthRepository:
             f"({_sql(user_id)}, {_sql(organization_id)}, {_sql(role)}, {_sql(created_by)}, {_sql(created_by)}) "
             "ON CONFLICT (user_id, organization_id) DO NOTHING;"
         )
+
+    def create_user_with_membership(
+        self,
+        *,
+        username: str,
+        email: str | None,
+        password_hash: str,
+        organization_id: str,
+        role: str,
+        created_by: str | None = None,
+    ) -> str:
+        rows = json.loads(
+            self._runner.query_scalar(
+                "WITH ins_user AS ("
+                "INSERT INTO users (username, email, password_hash, created_by, updated_by) VALUES "
+                f"({_sql(normalize_username(username))}, {_sql(email.lower() if email else None)}, {_sql(password_hash)}, {_sql(created_by)}, {_sql(created_by)}) "
+                "RETURNING id"
+                "), ins_membership AS ("
+                "INSERT INTO organization_memberships (user_id, organization_id, role, created_by, updated_by) "
+                f"SELECT id, {_sql(organization_id)}, {_sql(role)}, {_sql(created_by)}, {_sql(created_by)} FROM ins_user "
+                "RETURNING user_id"
+                ") SELECT COALESCE(json_agg(row_to_json(t))::text, '[]') "
+                "FROM (SELECT u.id FROM ins_user u JOIN ins_membership m ON m.user_id = u.id) t;"
+            )
+            or "[]"
+        )
+        if not rows:
+            raise RuntimeError("User creation did not return an id")
+        return rows[0]["id"]
 
     def update_user_status(self, user_id: str, status: str, *, updated_by: str) -> None:
         """Enable/disable (Phase 7). Never DELETEs -- FK integrity and

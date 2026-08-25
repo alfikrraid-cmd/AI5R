@@ -236,3 +236,53 @@ def test_list_users_selects_username_for_admin_user_management():
     repo.list_users()
 
     assert "u.username" in runner.scalar_calls[0]
+# --- MWO-AUTH-USERNAME-003: atomic Admin Users create -------------------
+
+
+def test_create_user_with_membership_is_one_atomic_statement():
+    runner = FakeRunner(scalar_response=json.dumps([{"id": "u-5"}]))
+    repo = AuthRepository(runner)
+
+    repo.create_user_with_membership(
+        username="newuser",
+        email=None,
+        password_hash="scrypt$...",
+        organization_id="org-tap",
+        role="TAP_ENGINEER",
+        created_by="actor-uuid",
+    )
+
+    assert len(runner.scalar_calls) == 1
+    assert runner.script_calls == []
+    sql = runner.scalar_calls[0]
+    assert "WITH ins_user AS" in sql
+    assert "INSERT INTO users" in sql
+    assert "ins_membership AS" in sql
+    assert "INSERT INTO organization_memberships" in sql
+    assert "ON CONFLICT" not in sql
+
+
+def test_create_user_with_membership_returns_new_user_id():
+    runner = FakeRunner(scalar_response=json.dumps([{"id": "real-uuid-value"}]))
+    repo = AuthRepository(runner)
+
+    user_id = repo.create_user_with_membership(
+        username="newuser",
+        email="new@tap.internal",
+        password_hash="scrypt$...",
+        organization_id="org-tap",
+        role="TAP_ENGINEER",
+    )
+
+    assert user_id == "real-uuid-value"
+
+
+def test_find_organization_by_id_uses_plain_select():
+    runner = FakeRunner(scalar_response=json.dumps([{"id": "org-tap"}]))
+    repo = AuthRepository(runner)
+
+    organization_id = repo.find_organization_by_id("org-tap")
+
+    assert organization_id == "org-tap"
+    assert "FROM organizations" in runner.scalar_calls[0]
+    assert "WHERE id = 'org-tap'" in runner.scalar_calls[0]

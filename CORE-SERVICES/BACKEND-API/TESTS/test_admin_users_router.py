@@ -34,13 +34,15 @@ class FakeMembership:
 
 
 class FakeAuthRepository:
-    def __init__(self, *, memberships=None, active_superuser_count=1, superuser_ids=None):
+    def __init__(self, *, memberships=None, active_superuser_count=1, superuser_ids=None, organizations=None):
         # memberships: {(user_id, organization_id): FakeMembership}
         self.memberships = memberships or {}
         self._active_superuser_count = active_superuser_count
         self._superuser_ids = superuser_ids or set()
         self.created_users = []
         self.existing_usernames = set()
+        self.existing_emails = set()
+        self.organizations = set(organizations or {"org-tap"})
         self.created_memberships = []
         self.status_updates = []
         self.role_updates = []
@@ -60,6 +62,12 @@ class FakeAuthRepository:
     def find_user_by_username(self, username):
         return {"username": username} if normalize_username(username) in self.existing_usernames else None
 
+    def find_user_by_email(self, email):
+        return {"email": email} if email.strip().lower() in self.existing_emails else None
+
+    def find_organization_by_id(self, organization_id):
+        return organization_id if organization_id in self.organizations else None
+
     def create_user(self, *, username, email, password_hash, created_by=None):
         self.created_users.append({"username": username, "email": email, "password_hash": password_hash, "created_by": created_by})
         return "new-user-id"
@@ -68,6 +76,11 @@ class FakeAuthRepository:
         self.created_memberships.append(
             {"user_id": user_id, "organization_id": organization_id, "role": role, "created_by": created_by}
         )
+
+    def create_user_with_membership(self, *, username, email, password_hash, organization_id, role, created_by=None):
+        user_id = self.create_user(username=username, email=email, password_hash=password_hash, created_by=created_by)
+        self.create_membership(user_id=user_id, organization_id=organization_id, role=role, created_by=created_by)
+        return user_id
 
     def find_active_membership_for_user(self, user_id):
         for (uid, _org), membership in self.memberships.items():
@@ -101,6 +114,12 @@ def clear_dependency_overrides():
     app.dependency_overrides.clear()
     yield
     app.dependency_overrides.clear()
+
+
+class MembershipFailureRepository(FakeAuthRepository):
+    def create_user_with_membership(self, *, username, email, password_hash, organization_id, role, created_by=None):
+        self.user_insert_attempted = True
+        raise RuntimeError("membership insert failed")
 
 
 def _override(role="SUPERUSER", repo=None):
@@ -215,7 +234,7 @@ class TestCreateUser:
         assert repo.created_users == []
 
     def test_tap_admin_cannot_create_outside_own_organization(self):
-        repo = FakeAuthRepository()
+        repo = FakeAuthRepository(organizations={"org-tap", "org-other"})
         _override(role="TAP_ADMIN", repo=repo)
         response = client.post(
             "/api/admin/users",
@@ -223,6 +242,72 @@ class TestCreateUser:
         )
         assert response.status_code == 403
         assert repo.created_users == []
+
+    def test_create_user_success_persists_user_and_membership(self):
+        repo = FakeAuthRepository()
+        _override(role="SUPERUSER", repo=repo)
+        before_users = len(repo.created_users)
+        before_memberships = len(repo.created_memberships)
+
+        response = client.post(
+            "/api/admin/users",
+            json={"username": "newuser", "password": "s3cret-pw", "organization_id": "org-tap", "role": "TAP_ENGINEER"},
+        )
+
+        assert response.status_code == 200
+        assert len(repo.created_users) == before_users + 1
+        assert len(repo.created_memberships) == before_memberships + 1
+
+    def test_membership_failure_does_not_leave_partial_user(self):
+        repo = MembershipFailureRepository()
+        _override(role="SUPERUSER", repo=repo)
+        before_users = len(repo.created_users)
+        before_memberships = len(repo.created_memberships)
+
+        response = client.post(
+            "/api/admin/users",
+            json={"username": "newuser", "password": "s3cret-pw", "organization_id": "org-tap", "role": "TAP_ENGINEER"},
+        )
+
+        assert response.status_code == 500
+        assert repo.user_insert_attempted is True
+        assert len(repo.created_users) == before_users
+        assert len(repo.created_memberships) == before_memberships
+        assert repo.find_user_by_username("newuser") is None
+
+    def test_invalid_organization_does_not_create_user(self):
+        repo = FakeAuthRepository()
+        _override(role="SUPERUSER", repo=repo)
+        response = client.post(
+            "/api/admin/users",
+            json={"username": "newuser", "password": "s3cret-pw", "organization_id": "org-missing", "role": "TAP_ENGINEER"},
+        )
+        assert response.status_code == 404
+        assert repo.created_users == []
+        assert repo.created_memberships == []
+
+    def test_invalid_role_does_not_create_user(self):
+        repo = FakeAuthRepository()
+        _override(role="SUPERUSER", repo=repo)
+        response = client.post(
+            "/api/admin/users",
+            json={"username": "newuser", "password": "s3cret-pw", "organization_id": "org-tap", "role": "NOT_A_ROLE"},
+        )
+        assert response.status_code == 422
+        assert repo.created_users == []
+        assert repo.created_memberships == []
+
+    def test_duplicate_email_does_not_create_partial_user(self):
+        repo = FakeAuthRepository()
+        repo.existing_emails.add("new@tap.internal")
+        _override(role="SUPERUSER", repo=repo)
+        response = client.post(
+            "/api/admin/users",
+            json={"username": "newuser", "email": "NEW@TAP.INTERNAL", "password": "s3cret-pw", "organization_id": "org-tap", "role": "TAP_ENGINEER"},
+        )
+        assert response.status_code == 409
+        assert repo.created_users == []
+        assert repo.created_memberships == []
 
 class TestUpdateUserStatus:
     def test_disabling_an_ordinary_user_succeeds(self):
@@ -376,6 +461,7 @@ def test_create_user_duplicate_username_rejected():
 
     assert response.status_code == 409
     assert repo.created_users == []
+    assert repo.created_memberships == []
 
 
 def test_create_user_case_collision_rejected():
@@ -390,3 +476,4 @@ def test_create_user_case_collision_rejected():
 
     assert response.status_code == 409
     assert repo.created_users == []
+    assert repo.created_memberships == []

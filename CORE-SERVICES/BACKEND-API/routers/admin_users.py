@@ -9,7 +9,7 @@ from API.auth_admin_service import (
     guard_last_superuser,
 )
 from API.auth_password import hash_password
-from API.auth_service import can_delegate_role, normalize_username
+from API.auth_service import ROLE_PERMISSIONS, can_delegate_role, normalize_username
 from dependencies import get_auth_repository, get_current_user
 from models.requests import (
     AdminCreateUserRequest,
@@ -25,7 +25,7 @@ from models.responses import Payload
 # separate, per-request check (authorize_user_management, below) against
 # auth_service.DELEGATION_SCOPE -- admin.users alone is necessary but not
 # sufficient (a TAP_ADMIN request to manage a SUPERUSER or
-# JOHN_CRANE_ENGINEER account is rejected with 403 even though the route
+# TAP_ADMIN account is rejected with 403 even though the route
 # itself was reachable).
 #
 # No route ever returns password_hash: list_users()'s own SELECT never
@@ -59,6 +59,24 @@ def _is_same_organization(current_user, organization_id: str | None) -> bool:
 def _require_same_organization(current_user, organization_id: str | None) -> None:
     if not _is_same_organization(current_user, organization_id):
         raise HTTPException(status_code=403, detail="Cannot manage users outside your organization")
+
+
+def _normalize_email(email: str | None) -> str | None:
+    if not email:
+        return None
+    normalized = email.strip().lower()
+    if not normalized:
+        return None
+    if "@" not in normalized or normalized.startswith("@") or normalized.endswith("@"):
+        raise HTTPException(status_code=422, detail="Invalid email")
+    return normalized
+
+
+def _target_create_organization(current_user, requested_organization_id: str) -> str:
+    if current_user.role == "TAP_ADMIN":
+        _require_same_organization(current_user, requested_organization_id)
+        return current_user.organization_id
+    return requested_organization_id
 
 
 def _with_manage_flag(row: dict, current_user) -> dict:
@@ -96,11 +114,17 @@ def create_user(
     auth_repository=Depends(get_auth_repository),
 ) -> Payload:
     _require_admin_users(current_user)
+    if payload.role not in ROLE_PERMISSIONS:
+        raise HTTPException(status_code=422, detail="Unknown role")
+
     try:
         authorize_user_management(current_user.role, payload.role)
     except DelegationDeniedError as error:
         raise HTTPException(status_code=403, detail=str(error))
-    _require_same_organization(current_user, payload.organization_id)
+
+    target_organization_id = _target_create_organization(current_user, payload.organization_id)
+    if auth_repository.find_organization_by_id(target_organization_id) is None:
+        raise HTTPException(status_code=404, detail="Organization not found")
 
     try:
         username = normalize_username(payload.username)
@@ -109,20 +133,22 @@ def create_user(
     if auth_repository.find_user_by_username(username) is not None:
         raise HTTPException(status_code=409, detail="Username already exists")
 
-    email = payload.email.strip().lower() if payload.email else None
-    user_id = auth_repository.create_user(
-        username=username,
-        email=email,
-        password_hash=hash_password(payload.password),
-        created_by=current_user.user_id,
-    )
-    auth_repository.create_membership(
-        user_id=user_id,
-        organization_id=payload.organization_id,
-        role=payload.role,
-        created_by=current_user.user_id,
-    )
-    return {"id": user_id, "username": username, "email": email, "organization_id": payload.organization_id, "role": payload.role}
+    email = _normalize_email(payload.email)
+    if email and auth_repository.find_user_by_email(email) is not None:
+        raise HTTPException(status_code=409, detail="Email already exists")
+
+    try:
+        user_id = auth_repository.create_user_with_membership(
+            username=username,
+            email=email,
+            password_hash=hash_password(payload.password),
+            organization_id=target_organization_id,
+            role=payload.role,
+            created_by=current_user.user_id,
+        )
+    except Exception as error:
+        raise HTTPException(status_code=500, detail="User creation failed before persistence completed") from error
+    return {"id": user_id, "username": username, "email": email, "organization_id": target_organization_id, "role": payload.role}
 
 @router.patch("/api/admin/users/{user_id}/status")
 def update_user_status(
