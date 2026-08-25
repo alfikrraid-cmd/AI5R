@@ -1,27 +1,69 @@
-import { PageHeader } from "../../../design-system";
+﻿import { useEffect, useState } from "react";
+import { EmptyState, PageHeader, Panel } from "../../../design-system";
 import PrintButton from "../components/PrintButton";
 import ReportGeneratedOn from "../components/ReportGeneratedOn";
 import CMReportTable from "../components/CMReportTable";
-import sampleCMReports from "../data/sampleCMReports";
+import { getCMReports } from "../../../api/ai5rClient";
+import { mapCMReportRecord, withResolvedArea } from "../utils/cmMapping";
 
-/**
- * Manager-facing report: the full Corrective Maintenance registry,
- * reusing the exact same `CMReportTable` component from the Corrective
- * Maintenance workspace (MWO-LTSA-059), rendered read-only (no
- * selection) for print/PDF export.
- */
 export default function CorrectiveMaintenanceReport() {
+  const [cmReports, setCMReports] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+
+    getCMReports()
+      .then((records) => Promise.all(records.map(mapCMReportRecord).map(withResolvedArea)))
+      .then((resolved) => {
+        if (active) {
+          setCMReports(resolved);
+          setError(null);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setError("CM reports could not be loaded.");
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
   return (
     <div>
       <PageHeader
         title="Corrective Maintenance Report"
-        subtitle="LTSA Engineering — Manager Report"
+        subtitle="LTSA Engineering - Manager Report"
         actions={<PrintButton />}
       />
 
       <ReportGeneratedOn />
 
-      <CMReportTable cmReports={sampleCMReports} selectedId={null} onSelect={() => {}} />
+      {loading ? (
+        <Panel>
+          <p>Loading CM reports...</p>
+        </Panel>
+      ) : error ? (
+        <Panel>
+          <p role="alert">{error}</p>
+        </Panel>
+      ) : cmReports.length === 0 ? (
+        <EmptyState
+          title="No corrective maintenance reports available"
+          description="The runtime CM report registry currently has zero rows."
+        />
+      ) : (
+        <CMReportTable cmReports={cmReports} selectedId={null} onSelect={() => {}} />
+      )}
     </div>
   );
 }
