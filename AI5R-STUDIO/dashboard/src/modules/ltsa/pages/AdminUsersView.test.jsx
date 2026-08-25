@@ -125,6 +125,26 @@ describe("AdminUsersView actions", () => {
     expect(options).not.toContain("TAP_ADMIN");
   });
 
+  it("renders SUPERUSER and TAP_ADMIN rows read-only for TAP_ADMIN without page-level errors", async () => {
+    getAdminUsers.mockResolvedValueOnce([
+      ...SAMPLE_USERS,
+      {
+        id: "u-3", username: "tapadmin", email: "admin@tap.internal", status: "ACTIVE",
+        created_at: "2026-01-01T00:00:00", updated_at: "2026-01-01T00:00:00",
+        organization_id: "org-tap", organization_code: "TAP",
+        role: "TAP_ADMIN", membership_status: "ACTIVE", can_manage: false,
+      },
+    ]);
+    render(<AdminUsersView canManageUsers={true} session={TAP_ADMIN_SESSION} />);
+
+    await waitFor(() => expect(screen.getByText("tapadmin")).toBeTruthy());
+
+    expect(screen.queryByText(/TAP_ADMIN is not authorized/i)).toBeNull();
+    expect(screen.queryByLabelText("Change role for superuser")).toBeNull();
+    expect(screen.queryByLabelText("Change role for tapadmin")).toBeNull();
+    expect(screen.getAllByText("Read-only").length).toBe(2);
+  });
+
   it("TAP_ADMIN creates username-only users with the current organization id", async () => {
     render(<AdminUsersView canManageUsers={true} session={TAP_ADMIN_SESSION} />);
     await waitFor(() => expect(screen.getByText("tapeng")).toBeTruthy());

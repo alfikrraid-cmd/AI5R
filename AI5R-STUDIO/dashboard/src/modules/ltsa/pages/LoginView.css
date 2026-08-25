@@ -152,3 +152,10 @@
     padding: var(--space-6) var(--space-5);
   }
 }
+
+.login-logo {
+  width: 48px;
+  height: 46px;
+  object-fit: contain;
+  display: block;
+}

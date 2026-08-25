@@ -40,12 +40,15 @@ function IdentityBar({ session, onLogout, canManageUsers, isAdminUsersRoute, onN
     <div className="ltsa-open-design">
       <div className="chrome-bar auth-identity-bar">
         <div className="chrome-inner">
-          <div className="crumb">
-            <span className="eyebrow">AI5R</span>
-            <span className="sep">/</span>
-            <b>LTSA Engineering</b>
-            <span className="sep">/</span>
-            <span>{session.organization.displayName}</span>
+          <div className="crumb auth-brand">
+            <button type="button" className="auth-brand-link" onClick={onNavigateWorkspace} aria-label="Open LTSA workspace">
+              <img className="auth-brand-logo" src="/favicon.svg" alt="AI5R" width="28" height="27" />
+            </button>
+            <span className="sep">|</span>
+            <span className="auth-brand-copy">
+              <b>LTSA Engineering</b>
+              <span>{session.organization.displayName}</span>
+            </span>
           </div>
 
           <div className="auth-identity-menu">

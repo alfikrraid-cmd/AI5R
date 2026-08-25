@@ -109,8 +109,10 @@ vi.mock("../auth/authClient", () => ({
 }));
 
 beforeEach(() => {
+  window.history.pushState({}, "", "/ltsa");
   window.localStorage.clear();
-  mockLoginImpl = async ({ email, password }) => {
+  mockLoginImpl = async ({ identifier, email, password }) => {
+    email = identifier ?? email;
     if (email === "inactive@tap.co.id") {
       const error = new Error("inactive_account");
       error.code = "inactive_account";
@@ -132,7 +134,7 @@ afterEach(() => {
 });
 
 async function login(email, password = "demo123") {
-  fireEvent.change(screen.getByLabelText("Email"), { target: { value: email } });
+  fireEvent.change(screen.getByLabelText("Username or Email"), { target: { value: email } });
   fireEvent.change(screen.getByLabelText("Password"), { target: { value: password } });
   fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
 }
@@ -143,6 +145,21 @@ describe("LTSAAuthGate", () => {
     expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
   });
 
+
+  it("renders the official AI5R logo in the header and links it back to LTSA workspace", async () => {
+    window.history.pushState({}, "", "/ltsa/admin/users");
+    render(<LTSAAuthGate />);
+    await screen.findByRole("heading", { name: "Sign in" });
+    await login("admin@tap.co.id");
+    await screen.findByTestId("admin-users-view-stub");
+
+    const logo = screen.getAllByRole("img", { name: "AI5R" }).find((node) => node.getAttribute("width") === "28");
+    expect(logo).toHaveAttribute("src", "/favicon.svg");
+    expect(logo).toHaveAttribute("height", "27");
+
+    fireEvent.click(screen.getByRole("button", { name: "Open LTSA workspace" }));
+    expect(window.location.pathname).toBe("/ltsa");
+  });
   it("TAP_ADMIN sees import.execute-gated navigation after login", async () => {
     render(<LTSAAuthGate />);
     await screen.findByRole("heading", { name: "Sign in" });

@@ -18,4 +18,13 @@ describe("LoginView username/email identifier", () => {
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledWith("ravi", "secret"));
   });
+  it("renders the official AI5R logo on the login screen", () => {
+    const onSubmit = vi.fn().mockResolvedValue({});
+    render(<LoginView status="unauthenticated" error={null} onSubmit={onSubmit} />);
+
+    const logo = screen.getByRole("img", { name: "AI5R" });
+    expect(logo).toHaveAttribute("src", "/favicon.svg");
+    expect(logo).toHaveAttribute("width", "48");
+    expect(logo).toHaveAttribute("height", "46");
+  });
 });

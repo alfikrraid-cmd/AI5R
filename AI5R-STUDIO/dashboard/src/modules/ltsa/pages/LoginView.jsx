@@ -27,7 +27,7 @@ export default function LoginView({ status, error, onSubmit }) {
     <div className="ltsa-open-design login-screen">
       <div className="login-shell">
         <div className="login-brand">
-          <div className="eyebrow">AI5R</div>
+          <img className="login-logo" src="/favicon.svg" alt="AI5R" width="48" height="46" />
           <h1>LTSA Engineering</h1>
           <p className="login-tagline">
             Asset intelligence for rotating equipment — pumps, mechanical seals, and the
