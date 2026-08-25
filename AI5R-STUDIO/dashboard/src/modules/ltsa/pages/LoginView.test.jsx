@@ -23,7 +23,7 @@ describe("LoginView username/email identifier", () => {
     render(<LoginView status="unauthenticated" error={null} onSubmit={onSubmit} />);
 
     const logo = screen.getByRole("img", { name: "AI5R" });
-    expect(logo).toHaveAttribute("src", "/favicon.svg");
+    expect(logo).toHaveAttribute("src", "/branding/ai5r-logo.svg");
     expect(logo).toHaveAttribute("width", "48");
     expect(logo).toHaveAttribute("height", "46");
   });
