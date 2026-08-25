@@ -15,12 +15,15 @@ from API.condition_monitoring_reading_repository import ConditionMonitoringReadi
 
 
 class FakeRunner:
-    def __init__(self, scalar_response: str = "[]"):
+    def __init__(self, scalar_response: str = "[]", scalar_responses: list[str] | None = None):
         self.scalar_calls: list[str] = []
         self.scalar_response = scalar_response
+        self.scalar_responses = list(scalar_responses or [])
 
     def query_scalar(self, sql: str) -> str:
         self.scalar_calls.append(sql)
+        if self.scalar_responses:
+            return self.scalar_responses.pop(0)
         return self.scalar_response
 
 
@@ -121,3 +124,20 @@ def test_find_by_code_returns_none_when_missing():
     repo = ConditionMonitoringReadingRepository(runner)
 
     assert repo.find_by_code("CMONR-MISSING") is None
+
+
+def test_list_all_returns_bounded_page_and_total_metadata():
+    runner = FakeRunner(scalar_responses=[
+        json.dumps([{"condition_monitoring_reading_code": "CMONR-1"}]),
+        json.dumps([{"total": 51}]),
+    ])
+    repo = ConditionMonitoringReadingRepository(runner)
+
+    result = repo.list_all(limit=25, offset=50)
+
+    assert result["items"] == [{"condition_monitoring_reading_code": "CMONR-1"}]
+    assert result["total"] == 51
+    assert result["limit"] == 25
+    assert result["offset"] == 50
+    assert "LIMIT 25 OFFSET 50" in runner.scalar_calls[0]
+    assert "COUNT(*) AS total" in runner.scalar_calls[1]

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from API.auth_service import AuthenticatedIdentity, resolve_area_scope
 from API.pump_area_scope import filter_records_by_asset_scope, is_asset_in_scope
@@ -67,9 +67,13 @@ def get_ltsa_condition_monitoring_schedule(
 @router.get("/api/ltsa/condition-monitoring-readings")
 def list_ltsa_condition_monitoring_readings(
     condition_monitoring_reading_repository=Depends(get_condition_monitoring_reading_repository),
+    limit: int = Query(25, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     current_user: AuthenticatedIdentity = Depends(get_current_user),
 ) -> Payload:
-    return condition_monitoring_reading_repository.list_all(scope=resolve_area_scope(current_user))
+    return condition_monitoring_reading_repository.list_all(
+        scope=resolve_area_scope(current_user), limit=limit, offset=offset
+    )
 
 
 @router.get("/api/ltsa/condition-monitoring-readings/{code}")

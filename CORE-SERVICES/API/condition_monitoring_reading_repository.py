@@ -94,7 +94,7 @@ class ConditionMonitoringReadingRepository:
         )
         return rows[0] if rows else None
 
-    def list_all(self, *, scope: frozenset[str] | None = None) -> dict:
+    def list_all(self, *, scope: frozenset[str] | None = None, limit: int = 25, offset: int = 0) -> dict:
         scope_clause = ""
         if scope is not None:
             if scope:
@@ -107,15 +107,27 @@ class ConditionMonitoringReadingRepository:
             "FROM condition_monitoring_reading r "
             "LEFT JOIN ltsa_pumps pump ON pump.tag_number = r.asset_code "
             f"{scope_clause} "
-            "ORDER BY r.reading_date DESC NULLS LAST, r.created_at DESC",
+            "ORDER BY r.reading_date DESC NULLS LAST, r.created_at DESC "
+            f"LIMIT {int(limit)} OFFSET {int(offset)}",
             self._runner,
         )
+        total_rows = _json_query(
+            "SELECT COUNT(*) AS total "
+            "FROM condition_monitoring_reading r "
+            "LEFT JOIN ltsa_pumps pump ON pump.tag_number = r.asset_code "
+            f"{scope_clause}",
+            self._runner,
+        )
+        total = int(total_rows[0]["total"]) if total_rows else 0
         return {
             "success": True,
             "message": "Condition Monitoring reading list retrieved",
             "count": len(rows),
             "data": rows,
             "items": rows,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
         }
     def list_by_asset(self, asset_code: str) -> list[dict]:
         return _json_query(

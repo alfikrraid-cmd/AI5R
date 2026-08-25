@@ -385,6 +385,34 @@ export async function getConditionMonitoringReadings() {
     throw new Error("Condition Monitoring readings API returned an invalid list");
 }
 
+export async function getConditionMonitoringReadingsPage({ limit = 25, offset = 0 } = {}) {
+    const response = await apiFetch(
+        `${API_URL}/api/ltsa/condition-monitoring-readings?limit=${limit}&offset=${offset}`
+    );
+
+    if (!response.ok) {
+        throw new Error("Condition Monitoring readings API unavailable");
+    }
+
+    const payload = await response.json();
+
+    if (payload?.success === false) {
+        throw new Error(payload?.message || "Condition Monitoring readings API returned a failure");
+    }
+
+    const items = Array.isArray(payload) ? payload : payload?.items ?? payload?.data;
+    if (!Array.isArray(items)) {
+        throw new Error("Condition Monitoring readings API returned an invalid page");
+    }
+
+    return {
+        items,
+        total: Number.isFinite(payload?.total) ? payload.total : items.length,
+        limit: payload?.limit ?? limit,
+        offset: payload?.offset ?? offset,
+    };
+}
+
 // APP-ASSET360-001: fills a second gap found only at implementation time --
 // GET /api/ltsa/condition-monitoring-schedules has existed since
 // WO-CMON-002, but no client function ever called it. Required for the
