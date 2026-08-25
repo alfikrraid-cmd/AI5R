@@ -44,6 +44,7 @@ function matchesSearch(pump, search) {
 export default function Pump({ onNavigate, navContext }) {
   const [pumps, setPumps] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [coreReady, setCoreReady] = useState(false);
   const [listError, setListError] = useState(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
@@ -64,6 +65,7 @@ export default function Pump({ onNavigate, navContext }) {
             resolved.forEach((pump) => byCode.set(pump.code, pump));
             return [...byCode.values()];
           });
+          setCoreReady(true);
           setListError(null);
         }
       })
@@ -102,6 +104,7 @@ export default function Pump({ onNavigate, navContext }) {
           return [...withoutExisting, pump];
         });
         setSelectedCode(pump.code);
+        setCoreReady(true);
         setLoading(false);
         setListError(null);
       })
@@ -188,6 +191,8 @@ export default function Pump({ onNavigate, navContext }) {
   const [compatibilityRecords, setCompatibilityRecords] = useState([]);
 
   useEffect(() => {
+    if (!coreReady) return undefined;
+
     let active = true;
     Promise.all([getSeals().catch(() => []), getSealCompatibility().catch(() => [])]).then(
       ([sealRecords, compatibility]) => {
@@ -198,7 +203,7 @@ export default function Pump({ onNavigate, navContext }) {
       }
     );
     return () => { active = false; };
-  }, []);
+  }, [coreReady]);
 
   // Enriches lifecycle.relatedEngineering.inventory (seal_code/quantity_on_
   // hand/location only, MWO-LTSA-065) with each seal's real Type/Size and

@@ -153,7 +153,7 @@ describe("Pump workspace page", () => {
   it("renders a tagged Asset 360 pump from the core endpoint before the registry resolves", async () => {
     getPumps.mockReturnValue(new Promise(() => {}));
     getPump.mockResolvedValue(PUMPS[0]);
-    getPumpLifecycle.mockResolvedValue({ success: true, tag_number: PUMPS[0].tag_number, data: EMPTY_LIFECYCLE_DATA });
+    getPumpLifecycle.mockReturnValue(new Promise(() => {}));
     getSeals.mockResolvedValue([]);
     getSealCompatibility.mockResolvedValue([]);
     postEngineeringAI.mockResolvedValue({ summary: "", findings: [], confidence: null, evidence: [], recommendations: [], risk: null, remaining_life: null, provider: "UNKNOWN", model: "UNKNOWN", latency: 0, token_usage: {}, trace_id: "trace-test", execution_status: "SUCCESS", source_references: [], error: null });
@@ -163,6 +163,20 @@ describe("Pump workspace page", () => {
     expect((await screen.findAllByText(PUMPS[0].tag_number)).length).toBeGreaterThan(0);
     expect(screen.queryByText("Loading pumps...")).toBeNull();
     expect(getPump).toHaveBeenCalledWith(PUMPS[0].tag_number);
+  });
+
+  it("keeps the core pump visible when secondary lifecycle loading fails", async () => {
+    getPumps.mockReturnValue(new Promise(() => {}));
+    getPump.mockResolvedValue(PUMPS[0]);
+    getPumpLifecycle.mockRejectedValue(new Error("secondary unavailable"));
+    getSeals.mockResolvedValue([]);
+    getSealCompatibility.mockResolvedValue([]);
+    postEngineeringAI.mockResolvedValue({ summary: "", findings: [], confidence: null, evidence: [], recommendations: [], risk: null, remaining_life: null, provider: "UNKNOWN", model: "UNKNOWN", latency: 0, token_usage: {}, trace_id: "trace-test", execution_status: "SUCCESS", source_references: [], error: null });
+
+    render(<Pump navContext={{ selectId: PUMPS[0].tag_number }} />);
+
+    expect((await screen.findAllByText(PUMPS[0].tag_number)).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(PUMPS[0].name).length).toBeGreaterThan(0);
   });
 
   it("renders list API errors without fallback mock data", async () => {
