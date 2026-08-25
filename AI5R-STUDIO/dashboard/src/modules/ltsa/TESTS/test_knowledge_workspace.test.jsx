@@ -341,11 +341,22 @@ describe("Responsive layout", () => {
     ["seal", "compat-seals", "inventory", "drawings"].forEach((id) => {
       expect(inspectorRail.querySelector(`[data-testid="knowledge-section-${id}"]`)).toBeInTheDocument();
     });
-    ["summary", "active-plans", "timeline", "pm-history", "cm-history", "breakdown-history", "recommendation", "ai-insights"].forEach(
-      (id) => {
-        expect(objectColumn.querySelector(`[data-testid="knowledge-section-${id}"]`)).toBeInTheDocument();
-      }
-    );
+    [
+      "summary",
+      "active-plans",
+      "timeline",
+      "condition",
+      "maintenance",
+      "pm-history",
+      "cm-history",
+      "breakdown-history",
+      "recommendation",
+      "ai-insights",
+      "work-orders",
+      "ai-copilot",
+    ].forEach((id) => {
+      expect(objectColumn.querySelector(`[data-testid="knowledge-section-${id}"]`)).toBeInTheDocument();
+    });
   });
 });
 
@@ -366,7 +377,12 @@ describe("AI placeholder", () => {
     render(<KnowledgeWorkspace tag={TAG} />);
 
     await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());
-    const aiHeader = screen.getByRole("button", { name: /AI Insights/i });
+    // MWO-LTSA-ASSET360-CONSOLIDATION-001 -- relabeled "AI Insights" ->
+    // "AI Engineering Summary" (Section B), distinct from the new
+    // interactive "AI Engineering Copilot" (Section J) below it; the
+    // section id ("ai-insights") and its underlying deterministic engine
+    // are unchanged.
+    const aiHeader = screen.getByRole("button", { name: /AI Engineering Summary/i });
     expect(aiHeader).toHaveAttribute("aria-expanded", "false");
   });
 });
@@ -442,7 +458,7 @@ describe("Refresh -- MWO-LTSA-032A-R1", () => {
     await waitFor(() => expect(getPumpKnowledge).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());
 
-    expect(screen.getAllByTestId("knowledge-card")).toHaveLength(10);
+    expect(screen.getAllByTestId("knowledge-card")).toHaveLength(9);
   });
 
   it("exposes Refresh as an accessible, named button (role + accessible name)", async () => {
@@ -573,15 +589,21 @@ describe("Reuse verification", () => {
     render(<KnowledgeWorkspace tag={TAG} />);
 
     await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());
-    // 10 KnowledgeCard-bodied sections: summary, seal, compat-seals,
-    // inventory, pm, cm, breakdown, drawings, recommendation, ai-insights.
+    // 9 KnowledgeCard-bodied sections: summary, seal, compat-seals,
+    // inventory, cm, breakdown, drawings, recommendation, ai-insights.
     // Timeline is intentionally excluded (its own component). Active Plans
     // (MWO-LTSA-036F) is also intentionally excluded -- ActivePlansPanel
     // renders its own Card, so it is not double-wrapped in a KnowledgeCard.
-    expect(screen.getAllByTestId("knowledge-card")).toHaveLength(10);
+    // MWO-LTSA-ASSET360-CONSOLIDATION-001 -- pm-history was reduced from
+    // 10 to 9: it now renders KnowledgePmHistorySection directly (its own
+    // per-row expand/collapse, reusing PMOccurrenceDetailPanel) rather
+    // than a single KnowledgeCard-wrapped RefRows list.
+    expect(screen.getAllByTestId("knowledge-card")).toHaveLength(9);
   });
 
-  it("renders exactly 12 KnowledgeSection instances (no duplicated sections)", async () => {
+  // MWO-LTSA-ASSET360-CONSOLIDATION-001 -- 4 new sections added: condition
+  // (C), maintenance (D, Unified History), work-orders (H), ai-copilot (J).
+  it("renders exactly 16 KnowledgeSection instances (no duplicated sections)", async () => {
     getPumpKnowledge.mockResolvedValue(backendResponse());
 
     render(<KnowledgeWorkspace tag={TAG} />);
@@ -591,6 +613,8 @@ describe("Reuse verification", () => {
       "summary",
       "active-plans",
       "timeline",
+      "condition",
+      "maintenance",
       "seal",
       "compat-seals",
       "inventory",
@@ -600,8 +624,11 @@ describe("Reuse verification", () => {
       "drawings",
       "recommendation",
       "ai-insights",
+      "work-orders",
+      "ai-copilot",
     ];
     sections.forEach((id) => expect(screen.getByTestId(`knowledge-section-${id}`)).toBeInTheDocument());
+    expect(screen.getAllByTestId(/^knowledge-section-/)).toHaveLength(sections.length);
   });
 });
 
@@ -834,7 +861,7 @@ describe("Mechanical Seal (MWO-LTSA-ASSET360-MECHANICAL-SEAL-WIRING-001) -- curr
     render(<KnowledgeWorkspace tag={TAG} />);
 
     await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());
-    expect(screen.getAllByTestId("knowledge-card")).toHaveLength(10);
+    expect(screen.getAllByTestId("knowledge-card")).toHaveLength(9);
   });
 });
 
@@ -928,7 +955,7 @@ describe("Configured vs Current Seal (MWO-LTSA-ASSET360-SEAL-SEMANTICS-001) -- c
 
     await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());
     expect(getPumpKnowledge).toHaveBeenCalledTimes(1);
-    expect(screen.getAllByTestId("knowledge-card")).toHaveLength(10);
+    expect(screen.getAllByTestId("knowledge-card")).toHaveLength(9);
   });
 });
 
@@ -1174,6 +1201,6 @@ describe("Application chrome via WorkspaceShell (MWO-LTSA-036I)", () => {
     render(<KnowledgeWorkspace tag={TAG} />);
 
     await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());
-    expect(screen.getAllByTestId("knowledge-card")).toHaveLength(10);
+    expect(screen.getAllByTestId("knowledge-card")).toHaveLength(9);
   });
 });

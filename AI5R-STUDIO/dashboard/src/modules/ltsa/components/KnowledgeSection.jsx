@@ -12,7 +12,7 @@ export default function KnowledgeSection({ id, title, badge, defaultOpen = true,
   const bodyId = `kn-section-body-${id}`;
 
   return (
-    <section className="rail-section" data-testid={`knowledge-section-${id}`}>
+    <section className="rail-section" id={`kn-section-${id}`} data-testid={`knowledge-section-${id}`}>
       <button
         type="button"
         className="kn-section-head"

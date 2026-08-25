@@ -266,6 +266,53 @@ def test_breakdown_history_is_empty_when_no_maintenance_history():
     assert knowledge.breakdown_history == []
 
 
+# -- work_orders (MWO-LTSA-ASSET360-CONSOLIDATION-001) -----------------------
+# Same "filter by asset_code" technique as pm_history/cm_history/
+# condition_monitoring_readings above -- no new business rule, reuses the
+# already-injected work_order_gateway (already relied on by
+# _build_breakdown_history).
+
+
+def test_work_orders_filters_by_asset_code():
+    service = _service(
+        work_orders=[
+            {"work_order_code": "WO-301", "asset_code": TAG, "status": "OPEN"},
+            {"work_order_code": "WO-302", "asset_code": "OTHER-PUMP", "status": "OPEN"},
+        ]
+    )
+
+    knowledge = service.build(TAG)
+
+    assert [r["work_order_code"] for r in knowledge.work_orders] == ["WO-301"]
+
+
+def test_work_orders_is_empty_when_no_work_orders_exist():
+    service = _service(work_orders=[])
+
+    knowledge = service.build(TAG)
+
+    assert knowledge.work_orders == []
+
+
+def test_work_orders_defaults_to_empty_list_when_ltsaknowledge_constructed_without_it():
+    knowledge = LTSAKnowledge(
+        tag_number=TAG,
+        pump=None,
+        seal=[],
+        inventory=[],
+        pm_history=[],
+        cm_history=[],
+        breakdown_history=[],
+        drawings=[],
+        recommendation=(),
+        pm_schedules=[],
+        condition_monitoring_schedules=[],
+        condition_monitoring_readings=[],
+    )
+
+    assert knowledge.work_orders == []
+
+
 # -- drawings (MWO-LTSA-033) -------------------------------------------------
 
 

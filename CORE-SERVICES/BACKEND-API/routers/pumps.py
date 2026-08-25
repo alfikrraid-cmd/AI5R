@@ -323,6 +323,15 @@ def get_ltsa_pump_knowledge(
             # response, no new endpoint, no second fetch.
             "pm_schedules": knowledge.pm_schedules,
             "condition_monitoring_schedules": knowledge.condition_monitoring_schedules,
+            # MWO-LTSA-ASSET360-CONSOLIDATION-001 -- additive keys on the
+            # same response (no new endpoint, no second fetch), same
+            # precedent as MWO-LTSA-036E above. condition_monitoring_readings
+            # was already assembled by LTSAKnowledgeService (MWO-LTSA-031A)
+            # but never previously serialized here; work_orders is a new
+            # field on the same LTSAKnowledge aggregate (see
+            # ltsa_knowledge_service.py's own header note on this MWO).
+            "condition_monitoring_readings": knowledge.condition_monitoring_readings,
+            "work_orders": knowledge.work_orders,
             # MWO-LTSA-036O -- Executive Metrics: pure field derivation over
             # the already-built LTSAKnowledge (compute_executive_metrics,
             # MWO-LTSA-036N), same pass-through pattern as ai_insight above --

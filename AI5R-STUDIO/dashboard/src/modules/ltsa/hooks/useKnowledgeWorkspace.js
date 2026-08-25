@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createKnowledgeWorkspaceController } from "../controllers/KnowledgeWorkspaceController";
-import { mapPMScheduleRecord } from "../utils/pmMapping";
+import { mapPMScheduleRecord, mapPMOccurrenceRecord } from "../utils/pmMapping";
+import { mapConditionMonitoringReadingRecord } from "../utils/conditionMonitoringMapping";
+import { mapWorkOrderRecord } from "../utils/workOrderMapping";
 
 // MWO-LTSA-032A -- useKnowledgeWorkspace: maps the Knowledge API's raw
 // response into the EquipmentKnowledge shape the approved Open Design
@@ -300,19 +302,39 @@ function mapActivePlans(pmSchedules, conditionMonitoringSchedules) {
   };
 }
 
+function hasMatchingAssetCode(record, tag) {
+  if (!tag) return true;
+  return record?.asset_code === tag || record?.tag_number === tag || record?.pump_tag_number === tag;
+}
+
+function filterForAsset(records, tag) {
+  return (records ?? []).filter((record) => hasMatchingAssetCode(record, tag));
+}
+
 function mapEquipmentKnowledge(knowledgeData) {
+  const equipment = mapEquipment(knowledgeData);
+  const tag = equipment.tag ?? knowledgeData?.tag_number;
+  const pmRecords = filterForAsset(knowledgeData?.pm, tag);
+  const cmRecords = filterForAsset(knowledgeData?.cm, tag);
+  const breakdownRecords = filterForAsset(knowledgeData?.breakdown, tag);
+  const conditionMonitoringRecords = filterForAsset(knowledgeData?.condition_monitoring_readings, tag);
+  const workOrderRecords = filterForAsset(knowledgeData?.work_orders, tag);
+
   return {
-    equipment: mapEquipment(knowledgeData),
-    activePlans: mapActivePlans(knowledgeData?.pm_schedules, knowledgeData?.condition_monitoring_schedules),
+    equipment,
+    activePlans: mapActivePlans(
+      filterForAsset(knowledgeData?.pm_schedules, tag),
+      filterForAsset(knowledgeData?.condition_monitoring_schedules, tag)
+    ),
     timeline: mapTimeline(knowledgeData?.timeline),
     mechanicalSeal: mapMechanicalSeal(knowledgeData?.current_seal),
     configuredSeal: mapConfiguredSeal(knowledgeData?.configured_seal),
     compatibleSeals: mapCompatibleSeals(knowledgeData?.seal),
     inventory: mapInventory(knowledgeData?.inventory, knowledgeData?.seal),
-    pmHistory: (knowledgeData?.pm ?? []).map((record) =>
+    pmHistory: pmRecords.map((record) =>
       mapRefItem(record, { idField: "pm_occurrence_code", nameLabel: "PM Occurrence", metaField: "occurrence_date" })
     ),
-    cmHistory: (knowledgeData?.cm ?? []).map((record) =>
+    cmHistory: cmRecords.map((record) =>
       mapRefItem(record, {
         idField: "cm_report_code",
         nameLabel: "CM Report",
@@ -320,7 +342,7 @@ function mapEquipmentKnowledge(knowledgeData) {
         descriptionField: "failure_description",
       })
     ),
-    breakdownHistory: (knowledgeData?.breakdown ?? []).map((record) =>
+    breakdownHistory: breakdownRecords.map((record) =>
       mapRefItem(record, {
         idField: "maintenance_record_code",
         nameLabel: "Breakdown",
@@ -331,9 +353,22 @@ function mapEquipmentKnowledge(knowledgeData) {
     drawings: mapDrawings(knowledgeData?.drawings),
     recommendations: mapRecommendations(knowledgeData?.recommendation),
     aiInsights: mapAiInsight(knowledgeData?.ai_insight),
+    // MWO-LTSA-ASSET360-CONSOLIDATION-001 -- full-fidelity records (every
+    // real column, via the exact same mappers PM.jsx/ConditionMonitoring.jsx
+    // already use), NOT the lossy id/name/meta mapRefItem shape above --
+    // Asset 360's Condition Monitoring/PM History/Work Orders sections and
+    // the Unified History reuse PMOccurrenceDetailPanel/
+    // ConditionMonitoringReadingDetailPanel, both of which need the full
+    // record (activities, temperatures DE/NDE, leak, finding, source
+    // traceability). pmHistory/cmHistory/breakdownHistory above are left
+    // untouched for any other existing consumer of this hook. The filtering
+    // here is display integrity only; backend authorization remains the
+    // canonical scope control.
+    pmOccurrences: pmRecords.map(mapPMOccurrenceRecord),
+    conditionMonitoringReadings: conditionMonitoringRecords.map(mapConditionMonitoringReadingRecord),
+    workOrders: workOrderRecords.map(mapWorkOrderRecord),
   };
 }
-
 export function useKnowledgeWorkspace(tag) {
   const controllerRef = useRef(null);
   if (!controllerRef.current) {

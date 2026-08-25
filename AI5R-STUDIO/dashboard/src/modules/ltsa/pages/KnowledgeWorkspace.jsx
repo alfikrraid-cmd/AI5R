@@ -8,6 +8,13 @@ import KnowledgeSeal from "../components/KnowledgeSeal";
 import KnowledgeAIInsight from "../components/KnowledgeAIInsight";
 import KnowledgeDrawingSection from "../components/KnowledgeDrawingSection";
 import KnowledgeRecommendation from "../components/KnowledgeRecommendation";
+import AssetHeaderKpis from "../components/AssetHeaderKpis";
+import AssetSectionNav from "../components/AssetSectionNav";
+import KnowledgeConditionMonitoringSection from "../components/KnowledgeConditionMonitoringSection";
+import KnowledgeUnifiedHistory from "../components/KnowledgeUnifiedHistory";
+import KnowledgePmHistorySection from "../components/KnowledgePmHistorySection";
+import KnowledgeWorkOrdersSection from "../components/KnowledgeWorkOrdersSection";
+import CopilotPanel from "../components/CopilotPanel";
 import { useKnowledgeWorkspace } from "../hooks/useKnowledgeWorkspace";
 import WorkspaceShell from "../workspace/WorkspaceShell";
 import { useWorkspaceTheme } from "../workspace/WorkspaceTheme";
@@ -148,6 +155,10 @@ export default function KnowledgeWorkspace({ tag }) {
                 </button>
               </div>
 
+              {/* MWO-LTSA-ASSET360-CONSOLIDATION-001 -- Section navigator:
+                  page anchors only (scrollIntoView), never a route change. */}
+              <AssetSectionNav />
+
               <KnowledgeSection
                 id="summary"
                 title="Equipment Summary"
@@ -155,6 +166,15 @@ export default function KnowledgeWorkspace({ tag }) {
                 footer={`Data dihasilkan ${data.equipment.lastUpdated ?? "-"}`}
               >
                 <KnowledgeCard variant="grid">
+                  {/* Section A -- Asset Header/Health KPI cards, derived
+                      entirely from data already fetched on this page. */}
+                  <AssetHeaderKpis
+                    equipment={data.equipment}
+                    mechanicalSeal={data.mechanicalSeal}
+                    pmOccurrences={data.pmOccurrences}
+                    conditionMonitoringReadings={data.conditionMonitoringReadings}
+                    workOrders={data.workOrders}
+                  />
                   <KnowledgeSummary equipment={data.equipment} />
                 </KnowledgeCard>
               </KnowledgeSection>
@@ -174,10 +194,38 @@ export default function KnowledgeWorkspace({ tag }) {
                 <KnowledgeTimeline items={data.timeline} />
               </KnowledgeSection>
 
-              <KnowledgeSection id="pm-history" title="PM History" badge={String(data.pmHistory.length)}>
-                <KnowledgeCard variant="row-list">
-                  <RefRows items={data.pmHistory} emptyTitle="Belum ada riwayat PM" />
-                </KnowledgeCard>
+              {/* Section C -- Condition Monitoring: latest snapshot, ALL
+                  temperature points (DE/NDE), trend chart (3M/6M/1Y/3Y/4Y/
+                  All), and browsable reading history without leaving
+                  Asset 360. */}
+              <KnowledgeSection
+                id="condition"
+                title="Condition Monitoring"
+                badge={String(data.conditionMonitoringReadings.length)}
+              >
+                <KnowledgeConditionMonitoringSection readings={data.conditionMonitoringReadings} />
+              </KnowledgeSection>
+
+              {/* Section D -- Unified Maintenance History: one chronological
+                  DISPLAY combining PM/CMON/CM/WO/Breakdown, "Same Visit"
+                  presentation logic only when a real PM and real CMON share
+                  a calendar date. Underlying records are never merged. */}
+              <KnowledgeSection id="maintenance" title="Unified Maintenance History">
+                <KnowledgeUnifiedHistory
+                  pmOccurrences={data.pmOccurrences}
+                  conditionMonitoringReadings={data.conditionMonitoringReadings}
+                  workOrders={data.workOrders}
+                  cmHistory={data.cmHistory}
+                  breakdownHistory={data.breakdownHistory}
+                />
+              </KnowledgeSection>
+
+              {/* Section E -- Preventive Maintenance History: full PM
+                  occurrence detail (activities/checklist, source
+                  traceability, UNSCHEDULED::* visibly identified), never
+                  used to derive a schedule/frequency. */}
+              <KnowledgeSection id="pm-history" title="PM History" badge={String(data.pmOccurrences.length)}>
+                <KnowledgePmHistorySection pmOccurrences={data.pmOccurrences} />
               </KnowledgeSection>
 
               <KnowledgeSection id="cm-history" title="CM History" badge={String(data.cmHistory.length)}>
@@ -202,15 +250,35 @@ export default function KnowledgeWorkspace({ tag }) {
                 </KnowledgeCard>
               </KnowledgeSection>
 
+              {/* Section B -- AI Engineering Summary: the existing
+                  deterministic (non-LLM) insight engine, kept unchanged --
+                  compact, pump-scoped-only, always was. Distinct from
+                  Section J's interactive Copilot below. */}
               <KnowledgeSection
                 id="ai-insights"
-                title="AI Insights"
+                title="AI Engineering Summary"
                 badge={data.aiInsights ? "Deterministic" : "Segera Hadir"}
                 defaultOpen={false}
               >
                 <KnowledgeCard variant="prose" locked={!data.aiInsights}>
                   <KnowledgeAIInsight insight={data.aiInsights} />
                 </KnowledgeCard>
+              </KnowledgeSection>
+
+              {/* Section H -- Work Orders: this pump's own open/in-progress/
+                  historical work orders only, never fleet-wide. */}
+              <KnowledgeSection id="work-orders" title="Work Orders" badge={String(data.workOrders.length)}>
+                <KnowledgeWorkOrdersSection workOrders={data.workOrders} />
+              </KnowledgeSection>
+
+              {/* Section J -- AI Engineering Copilot: the same CopilotPanel/
+                  useCopilot already used unchanged by ExecutiveDashboard.jsx
+                  (fleet-wide, no assetContext there), reused here with this
+                  page's own tag as assetContext -- exactly the reuse its own
+                  header comment already anticipated. Never calls OpenRouter
+                  except on a real user-submitted question. */}
+              <KnowledgeSection id="ai-copilot" title="AI Engineering Copilot">
+                <CopilotPanel assetContext={tag} />
               </KnowledgeSection>
             </main>
 

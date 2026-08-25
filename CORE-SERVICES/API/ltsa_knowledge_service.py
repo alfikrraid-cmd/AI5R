@@ -59,7 +59,7 @@ explicit "One Aggregate -> One API -> One Fetch" directive.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from . import maintenance_intelligence_service as mis
@@ -95,6 +95,14 @@ class LTSAKnowledge:
     pm_schedules: list[dict[str, Any]]
     condition_monitoring_schedules: list[dict[str, Any]]
     condition_monitoring_readings: list[dict[str, Any]]
+    # MWO-LTSA-ASSET360-CONSOLIDATION-001 -- additive key on the same
+    # aggregate (Chief Architect's "One Aggregate -> One API -> One Fetch"
+    # directive, MWO-LTSA-036E's own precedent). Default empty list so
+    # every existing direct LTSAKnowledge(...) construction (real code and
+    # tests) that does not pass work_orders keeps working unchanged.
+    # Reuses self.work_order_gateway, already injected and already used
+    # by _build_breakdown_history -- no new gateway.
+    work_orders: list[dict[str, Any]] = field(default_factory=list)
 
 
 class LTSAKnowledgeService:
@@ -171,6 +179,7 @@ class LTSAKnowledgeService:
             pm_schedules=self._build_pm_schedules(tag_number),
             condition_monitoring_schedules=self._build_condition_monitoring_schedules(tag_number),
             condition_monitoring_readings=self._build_condition_monitoring_readings(tag_number),
+            work_orders=self._build_work_orders(tag_number),
         )
 
         return replace(knowledge, recommendation=self.recommendation_engine.recommend(knowledge))
@@ -228,6 +237,14 @@ class LTSAKnowledgeService:
             return self.condition_monitoring_reading_repository.list_by_asset(tag_number)
 
         response = self.condition_monitoring_reading_gateway.list_condition_monitoring_readings()
+        return [
+            record
+            for record in (response.get("data") or [])
+            if record.get("asset_code") == tag_number
+        ]
+
+    def _build_work_orders(self, tag_number: str) -> list[dict[str, Any]]:
+        response = self.work_order_gateway.list_work_orders()
         return [
             record
             for record in (response.get("data") or [])

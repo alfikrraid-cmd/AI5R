@@ -33,6 +33,12 @@ export function mapWorkOrderRecord(record) {
     createdDate: formatDateOnly(record.created_at),
     description: record.description,
     timeline: [],
+    // MWO-LTSA-ASSET360-CONSOLIDATION-001 -- additive: the canonical "is
+    // this work order open" rule (maintenance_intelligence_service.py's
+    // own get_active_work_orders: `not wo.get("closed_at")`), reused as-is
+    // by Asset 360's KPI card rather than inventing a second definition
+    // from the free-text `status` column.
+    closedAt: record.closed_at ?? null,
   };
 }
 
