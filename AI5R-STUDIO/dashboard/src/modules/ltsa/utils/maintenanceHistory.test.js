@@ -67,7 +67,7 @@ describe("eventStatusBadgeVariant / eventStatusLabel", () => {
 describe("filterStatusLabel", () => {
   it("humanizes statuses and falls back to raw unknowns", () => {
     expect(filterStatusLabel("ON_HOLD")).toBe("On Hold");
-    expect(filterStatusLabel("DUE_SOON")).toBe("Due Soon");
+    expect(filterStatusLabel("PLANNED")).toBe("Planned");
     expect(filterStatusLabel("RESOLVED")).toBe("Resolved");
     expect(filterStatusLabel("COMPLETED")).toBe("Completed");
     expect(filterStatusLabel("UNKNOWN")).toBe("UNKNOWN");

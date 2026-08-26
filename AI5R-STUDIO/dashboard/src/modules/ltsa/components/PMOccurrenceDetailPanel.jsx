@@ -4,6 +4,7 @@ import colors from "../../../design-system/theme/colors";
 import spacing from "../../../design-system/theme/spacing";
 import EvidenceAttachments, { EVIDENCE_RECORD_TYPES } from "./EvidenceAttachments";
 import { TechnicalOutcomeBadge, WorkflowStatusBadge } from "./WorkflowStatusBadge";
+import { isUnscheduledPlaceholder } from "../utils/pmMapping";
 
 // MWO-LTSA-PM-CM-REVIEW-UI-001 -- displays/edits a real pm_occurrence
 // record (a field visit, distinct from the pm_schedule PMOpenDesignView.jsx
@@ -233,7 +234,16 @@ export default function PMOccurrenceDetailPanel({
 
       <Card title="Occurrence Summary">
         <Field label="Equipment" value={occurrence.equipmentTag} />
-        <Field label="PM Schedule" value={occurrence.pmScheduleCode} />
+        {/* MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016 -- "UNSCHEDULED::<workbook>"
+            is source-workbook provenance (ltsa_hoc_pm_cm_upsert.py's own
+            build_unscheduled_reference()), never a real operational
+            schedule -- never presented under the "PM Schedule" label. The
+            workbook name itself is already shown, unmodified, in the
+            Source card below. */}
+        <Field
+          label="PM Schedule"
+          value={isUnscheduledPlaceholder(occurrence.pmScheduleCode) ? "— (No linked schedule / historical import)" : occurrence.pmScheduleCode}
+        />
         <Field label="Occurrence Date" value={occurrence.occurrenceDate ?? "—"} />
       </Card>
 

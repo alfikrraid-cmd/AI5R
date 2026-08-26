@@ -170,9 +170,19 @@ def apply_plan(plan: dict[str, Any], runner: DatabaseRunner) -> dict[str, Any]:
             for column in columns
         )
         finding_text = attachments.get(reading["condition_monitoring_reading_code"])
+        # MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016 -- root cause of imported
+        # historical PM/CMON displaying workflow_status=DRAFT: this INSERT
+        # never set the column, so it silently took the table's own DEFAULT
+        # 'DRAFT' -- semantically wrong for proven-complete historical
+        # actual work (DRAFT means "not yet even submitted"). FINALIZED
+        # already exists in pm_cm_workflow_service.py's own vocabulary as
+        # "fully processed" -- reused verbatim, no new enum invented.
+        # Governs NEW imports only; already-imported production rows are
+        # a separate, explicit correction this MWO does not apply (see
+        # this MWO's own "Do NOT mass-update production history" rule).
         statements.append(
-            f"INSERT INTO condition_monitoring_reading ({', '.join(columns)}, finding) "
-            f"VALUES ({values}, {_sql(finding_text)});"
+            f"INSERT INTO condition_monitoring_reading ({', '.join(columns)}, finding, workflow_status) "
+            f"VALUES ({values}, {_sql(finding_text)}, {_sql('FINALIZED')});"
         )
 
     for occurrence in plan["pm_occurrences"]["insert"]:
@@ -184,9 +194,12 @@ def apply_plan(plan: dict[str, Any], runner: DatabaseRunner) -> dict[str, Any]:
             _sql_date(occurrence["occurrence_date"]) if column == "occurrence_date" else _sql(occurrence[column])
             for column in columns
         )
+        # See the condition_monitoring_reading INSERT above for why
+        # workflow_status is explicitly set to FINALIZED here too.
         statements.append(
             "INSERT INTO pm_occurrence "
-            f"({', '.join(columns)}, checklist_completion) VALUES ({values}, {_sql_jsonb(occurrence['checklist_completion'])});"
+            f"({', '.join(columns)}, checklist_completion, workflow_status) "
+            f"VALUES ({values}, {_sql_jsonb(occurrence['checklist_completion'])}, {_sql('FINALIZED')});"
         )
 
     # Findings are attached to their matched condition_monitoring_reading

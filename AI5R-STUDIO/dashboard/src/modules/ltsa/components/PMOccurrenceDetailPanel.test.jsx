@@ -282,4 +282,29 @@ describe("PMOccurrenceDetailPanel", () => {
     const naValues = screen.getAllByText("N/A");
     expect(naValues.length).toBe(3);
   });
+
+  // MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016 -- "UNSCHEDULED::<workbook>" is
+  // source-workbook provenance, never a real operational schedule; must
+  // never be presented under the "PM Schedule" label.
+  it("never presents UNSCHEDULED::<workbook> as the PM Schedule for a historical import with no real schedule", () => {
+    render(
+      <PMOccurrenceDetailPanel
+        occurrence={baseOccurrence({
+          pmScheduleCode: "UNSCHEDULED::Laporan PM, CM & Pemasangan Seal HCC JANUARI 2026.xlsx",
+          sourceWorkbookName: "Laporan PM, CM & Pemasangan Seal HCC JANUARI 2026.xlsx",
+        })}
+      />
+    );
+
+    expect(screen.queryByText(/UNSCHEDULED::/)).toBeNull();
+    expect(screen.getByText(/no linked schedule/i)).toBeTruthy();
+    // Provenance is preserved, unmodified, in the Source card.
+    expect(screen.getByText("Laporan PM, CM & Pemasangan Seal HCC JANUARI 2026.xlsx")).toBeTruthy();
+  });
+
+  it("still presents a real pm_schedule_code as the PM Schedule value", () => {
+    render(<PMOccurrenceDetailPanel occurrence={baseOccurrence({ pmScheduleCode: "PM-2001" })} />);
+
+    expect(screen.getByText("PM-2001")).toBeTruthy();
+  });
 });

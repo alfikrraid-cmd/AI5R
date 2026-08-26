@@ -11,6 +11,7 @@ import {
   buildMeasurementsPayload as buildManagedMeasurementsPayload,
   measurementFormValuesFromReading,
 } from "../utils/conditionMonitoringMeasurementFields";
+import { isUnscheduledPlaceholder } from "../utils/conditionMonitoringMapping";
 
 function Field({ label, value }) {
   return (
@@ -587,11 +588,22 @@ export default function ConditionMonitoringReadingDetailPanel({
       )}
       {canDelete && <Card title="Danger Zone"><Button onClick={handleDelete}>Soft Delete</Button></Card>}
 
+      {/* MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016 -- "UNSCHEDULED::<workbook>"
+          is source-workbook provenance (ltsa_hoc_pm_cm_upsert.py's own
+          build_unscheduled_reference()), never a real operational
+          schedule -- never rendered as a clickable "open schedule" link
+          (which would navigate to a schedule that does not exist). The
+          workbook name itself is preserved, unmodified, in the Source
+          card elsewhere on this panel. */}
       <Card title="Related Schedule">
-        {reading.scheduleCode ? (
+        {reading.scheduleCode && !isUnscheduledPlaceholder(reading.scheduleCode) ? (
           <Button onClick={() => onViewSchedule?.(reading.scheduleCode)}>{reading.scheduleCode}</Button>
         ) : (
-          <div style={{ color: colors.textMuted }}>No owning schedule recorded.</div>
+          <div style={{ color: colors.textMuted }}>
+            {isUnscheduledPlaceholder(reading.scheduleCode)
+              ? "— (No linked schedule / historical import)"
+              : "No owning schedule recorded."}
+          </div>
         )}
       </Card>
 

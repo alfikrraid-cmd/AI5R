@@ -15,7 +15,7 @@ const PM = {
   assignedTechnician: "Sari Wulandari",
   estimatedDurationHours: 1.5,
   relatedWorkOrders: ["WO-1002"],
-  status: "DUE_SOON",
+  status: "PLANNED",
   timeline: [
     { date: "2026-06-02", event: "PM performed — no anomalies found" },
     { date: "2026-06-02", event: "Next cycle scheduled for 2026-07-24" },
@@ -41,7 +41,7 @@ describe("PMDetailPanel", () => {
     expect(screen.getByText("Sari Wulandari")).toBeTruthy();
     expect(screen.getByText("1.5 hrs")).toBeTruthy();
     expect(screen.getByText("Monthly")).toBeTruthy();
-    expect(screen.getByText("Due Soon")).toBeTruthy();
+    expect(screen.getByText("Planned")).toBeTruthy();
   });
 
   it("renders a fallback when the PM has not yet been performed", () => {

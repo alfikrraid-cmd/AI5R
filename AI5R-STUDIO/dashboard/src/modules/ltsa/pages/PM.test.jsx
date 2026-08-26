@@ -167,7 +167,16 @@ describe("Preventive Maintenance workspace page", () => {
     expect(screen.queryByText("PM-2001")).toBeNull();
   });
 
-  it("computes DUE_SOON/OVERDUE display status from next_due, never stores it", async () => {
+  // MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016 -- DUE_SOON is superseded by
+  // the owner-approved PLANNED/ACTIVE/OVERDUE/COMPLETED/CANCELLED
+  // lifecycle (pmMapping.js's own computeDisplayStatus); this test now
+  // covers OVERDUE (robust: PM-2002's next_due is always 5 days in the
+  // past, so always overdue regardless of the current month) and ON_HOLD
+  // (a literal stored value, no date math -- always deterministic).
+  // Month-boundary-sensitive PLANNED/ACTIVE classification has its own
+  // dedicated, explicitly-dated coverage in
+  // pmMapping.scheduleLifecycle.test.js and PM.scheduleLifecycle.test.jsx.
+  it("computes OVERDUE display status from next_due, never stores it", async () => {
     loadPMSchedules();
     render(<PM />);
     await screen.findByText("PM-2001");
@@ -175,10 +184,6 @@ describe("Preventive Maintenance workspace page", () => {
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "OVERDUE" } });
     expect(screen.getByText("PM-2002")).toBeTruthy();
     expect(screen.queryByText("PM-2001")).toBeNull();
-
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "DUE_SOON" } });
-    expect(screen.getByText("PM-2001")).toBeTruthy();
-    expect(screen.queryByText("PM-2002")).toBeNull();
 
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "ON_HOLD" } });
     expect(screen.getByText("PM-2007")).toBeTruthy();
@@ -425,9 +430,13 @@ describe("PM Open Design (MWO-LTSA-053)", () => {
     // No pm_schedule row exists for this UNSCHEDULED::* code -- disclosed
     // honestly, never a fabricated schedule view.
     expect(screen.getByText(/no pm schedule for this occurrence/i)).toBeTruthy();
-    // The shared, non-unique placeholder is visible (self-disclosing, per
-    // ltsa_hoc_pm_cm_upsert.py's own build_unscheduled_reference), never
-    // used as if it were this record's own identity.
-    expect(screen.getByText("UNSCHEDULED::CM & PM Summary HOC JUNI.xlsx")).toBeTruthy();
+    // MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016 -- the raw UNSCHEDULED::*
+    // placeholder is no longer presented under the "PM Schedule" label in
+    // PMOccurrenceDetailPanel.jsx (it is provenance, not a real schedule
+    // identity) -- superseded by an honest "no linked schedule" message.
+    // Provenance itself is still preserved, unmodified, in the Source card.
+    expect(screen.queryByText("UNSCHEDULED::CM & PM Summary HOC JUNI.xlsx")).toBeNull();
+    expect(screen.getByText(/no linked schedule/i)).toBeTruthy();
+    expect(screen.getByText("CM & PM Summary HOC JUNI.xlsx")).toBeTruthy();
   });
 });

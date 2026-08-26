@@ -4,6 +4,7 @@ import colors from "../../../design-system/theme/colors";
 import spacing from "../../../design-system/theme/spacing";
 import { EmptySection } from "./KnowledgeCard";
 import PMOccurrenceDetailPanel from "./PMOccurrenceDetailPanel";
+import { isUnscheduledPlaceholder } from "../utils/pmMapping";
 
 // MWO-LTSA-ASSET360-CONSOLIDATION-001 -- Section E, "PREVENTIVE
 // MAINTENANCE HISTORY". A pm_schedule_code that starts with "UNSCHEDULED::"
@@ -11,10 +12,11 @@ import PMOccurrenceDetailPanel from "./PMOccurrenceDetailPanel";
 // build_unscheduled_reference()), never a real schedule -- shown as its own
 // visibly-labeled badge, never presented as if a real PM Schedule exists.
 // This section never derives a schedule/frequency from these occurrences
-// (Hard Rule: "Historical performed activity != PM plan").
-function isUnscheduled(pmScheduleCode) {
-  return typeof pmScheduleCode === "string" && pmScheduleCode.startsWith("UNSCHEDULED::");
-}
+// (Hard Rule: "Historical performed activity != PM plan"). MWO-LTSA-PM-
+// CMON-SCHEDULE-LIFECYCLE-016 -- isUnscheduled is now the shared
+// isUnscheduledPlaceholder (pmMapping.js), reused by
+// PMOccurrenceDetailPanel.jsx's own identical guard, not redefined here.
+const isUnscheduled = isUnscheduledPlaceholder;
 
 function sortNewestFirst(occurrences) {
   return [...(occurrences ?? [])].sort((a, b) =>

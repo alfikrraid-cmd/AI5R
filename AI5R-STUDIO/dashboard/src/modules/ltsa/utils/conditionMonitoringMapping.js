@@ -21,6 +21,17 @@ function formatDateOnly(value) {
   return String(value).slice(0, 10);
 }
 
+// MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016 -- "UNSCHEDULED::<workbook>" is
+// source-workbook provenance (ltsa_hoc_pm_cm_upsert.py's own
+// build_unscheduled_reference()), never a real operational schedule.
+// Deliberately duplicated from pmMapping.js's own identical function
+// rather than a shared cross-domain import -- this file's own header
+// already establishes PM and Condition Monitoring as intentionally
+// separate mapping domains with no forced shared mapper.
+export function isUnscheduledPlaceholder(code) {
+  return typeof code === "string" && code.startsWith("UNSCHEDULED::");
+}
+
 export function mapConditionMonitoringScheduleRecord(record) {
   return {
     id: record.condition_monitoring_schedule_code,

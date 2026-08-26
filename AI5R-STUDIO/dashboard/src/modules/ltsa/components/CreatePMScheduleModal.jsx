@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Button, Modal } from "../../../design-system";
 import colors from "../../../design-system/theme/colors";
 import spacing from "../../../design-system/theme/spacing";
+import { nextMonthFirstDay } from "../utils/pmMapping";
 
 const FREQUENCY_OPTIONS = [
   { value: "DAILY", label: "Daily" },
@@ -40,17 +41,24 @@ const CHECKLIST_TEMPLATES = {
 
 const CHECKLIST_TEMPLATE_NAMES = Object.keys(CHECKLIST_TEMPLATES);
 
-const EMPTY_FORM = {
-  scheduleCode: "",
-  procedure: "",
-  equipmentTag: "",
-  frequency: "MONTHLY",
-  triggerType: "CALENDAR",
-  assignedTechnician: "",
-  startDate: "",
-  estimatedDurationHours: "",
-  checklistTemplate: CHECKLIST_TEMPLATE_NAMES[0],
-};
+// MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016 -- "Normal operational UI should
+// create schedules for NEXT MONTH... Derive next calendar month from
+// current operational date." A function, not a static value, so the
+// default is computed fresh each time the modal opens (see
+// initialFormFor's own useEffect below) rather than frozen at module load.
+function emptyForm() {
+  return {
+    scheduleCode: "",
+    procedure: "",
+    equipmentTag: "",
+    frequency: "MONTHLY",
+    triggerType: "CALENDAR",
+    assignedTechnician: "",
+    startDate: nextMonthFirstDay(),
+    estimatedDurationHours: "",
+    checklistTemplate: CHECKLIST_TEMPLATE_NAMES[0],
+  };
+}
 
 const fieldStyle = {
   width: "100%",
@@ -81,7 +89,7 @@ function Field({ id, label, children }) {
 // Schedule is available for this pump" flow to prefill the pump that was
 // already being viewed, rather than requiring it to be retyped.
 function initialFormFor(initialEquipmentTag) {
-  return initialEquipmentTag ? { ...EMPTY_FORM, equipmentTag: initialEquipmentTag } : EMPTY_FORM;
+  return initialEquipmentTag ? { ...emptyForm(), equipmentTag: initialEquipmentTag } : emptyForm();
 }
 
 export default function CreatePMScheduleModal({ isOpen, onClose, onCreate, initialEquipmentTag = "" }) {
@@ -115,11 +123,11 @@ export default function CreatePMScheduleModal({ isOpen, onClose, onCreate, initi
       checklistTemplate: form.checklistTemplate,
       checklist: CHECKLIST_TEMPLATES[form.checklistTemplate],
     });
-    setForm(EMPTY_FORM);
+    setForm(emptyForm());
   }
 
   function handleClose() {
-    setForm(EMPTY_FORM);
+    setForm(emptyForm());
     onClose();
   }
 

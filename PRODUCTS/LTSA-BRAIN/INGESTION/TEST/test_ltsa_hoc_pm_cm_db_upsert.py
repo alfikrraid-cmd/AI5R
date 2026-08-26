@@ -277,6 +277,57 @@ def test_apply_plan_preserves_pm_occurrence_insert_shape_with_no_temperature_fie
     assert result["pm_occurrences"]["inserted"] == 1
 
 
+# MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016 -- "HISTORICAL PM STATUS AUDIT":
+# imported historical PM/CMON previously took the table's own DEFAULT
+# workflow_status='DRAFT' (never set by this INSERT), semantically wrong
+# for proven-complete historical actual work. Governs NEW imports only --
+# no existing production row is touched by this fix (see this MWO's own
+# "Do NOT mass-update production history" rule).
+
+
+def test_apply_plan_marks_imported_pm_occurrence_finalized_not_draft():
+    plan = {
+        "condition_monitoring_readings": {"insert": []},
+        "pm_occurrences": {"insert": [
+            {"pm_occurrence_code": "LTSA-PMO2-A", "pm_schedule_code": "UNSCHEDULED::test.xlsx",
+             "asset_code": "140-P-21B", "asset_type": "PUMP", "occurrence_date": "2026-06-15",
+             "status": "DONE", "checklist_completion": {},
+             "source_workbook_name": "test.xlsx", "source_sheet_name": " PM Mech Seal", "source_row_number": 11},
+        ]},
+        "findings": {"insert": []},
+    }
+    runner = FakeRunner()
+
+    apply_plan(plan, runner)
+
+    pm_occurrence_line = next(line for line in runner.scripts[0].splitlines() if line.startswith("INSERT INTO pm_occurrence"))
+    assert "workflow_status" in pm_occurrence_line
+    assert "'FINALIZED'" in pm_occurrence_line
+    assert "'DRAFT'" not in pm_occurrence_line
+
+
+def test_apply_plan_marks_imported_condition_monitoring_reading_finalized_not_draft():
+    plan = {
+        "condition_monitoring_readings": {"insert": [
+            {**{field: None for field in _TEMPERATURE_FIELDS},
+             "condition_monitoring_reading_code": "LTSA-CMONR2-A", "condition_monitoring_schedule_code": "UNSCHEDULED::test.xlsx",
+             "asset_code": "140-P-3A", "asset_type": "PUMP", "reading_date": "2026-06-15",
+             "mechanical_seal_leak_de": None, "mechanical_seal_leak_nde": None, "pump_operating_state": "Running",
+             "source_workbook_name": "test.xlsx", "source_sheet_name": "CM Measuring Report", "source_row_number": 10},
+        ]},
+        "pm_occurrences": {"insert": []},
+        "findings": {"insert": []},
+    }
+    runner = FakeRunner()
+
+    apply_plan(plan, runner)
+
+    reading_line = next(line for line in runner.scripts[0].splitlines() if line.startswith("INSERT INTO condition_monitoring_reading"))
+    assert "workflow_status" in reading_line
+    assert "'FINALIZED'" in reading_line
+    assert "'DRAFT'" not in reading_line
+
+
 # 4. End-to-end against the real workbook -- exact mission gate + idempotency.
 # Skips gracefully if the workbook isn't present in this checkout rather
 # than failing the whole suite on an environment difference.

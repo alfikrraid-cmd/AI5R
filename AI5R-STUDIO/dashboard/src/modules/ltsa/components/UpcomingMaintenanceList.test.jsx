@@ -17,7 +17,7 @@ const SCHEDULES = [
     procedure: "Lubrication & Vibration Check",
     nextDue: "2026-07-24",
     assignedTechnician: "Sari Wulandari",
-    status: "DUE_SOON",
+    status: "ACTIVE",
   },
 ];
 
@@ -29,7 +29,7 @@ describe("UpcomingMaintenanceList", () => {
     expect(screen.getByText("Bearing Housing Inspection")).toBeTruthy();
     expect(screen.getByText(/PM-2002/)).toBeTruthy();
     expect(screen.getByText("Overdue")).toBeTruthy();
-    expect(screen.getByText("Due Soon")).toBeTruthy();
+    expect(screen.getByText("Active")).toBeTruthy();
   });
 
   it("renders an empty state when nothing is due", () => {

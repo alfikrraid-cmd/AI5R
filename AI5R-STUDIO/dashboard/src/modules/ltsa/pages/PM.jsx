@@ -180,10 +180,26 @@ export default function PM({ onNavigate, navContext }) {
     [pmSchedules]
   );
 
+  // MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016 -- "Completed items should NOT
+  // remain in default active schedule view... may remain accessible
+  // separately." A deny-list (exclude only the two terminal statuses),
+  // not an allow-list of the 5-state lifecycle's own 3 non-terminal
+  // names -- a pre-existing stored status outside that list (e.g.
+  // ON_HOLD) is still legitimately open work and must stay visible by
+  // default, never silently hidden just for not matching the new
+  // vocabulary. COMPLETED/CANCELLED schedules stay reachable via the SAME
+  // filter dropdown (statusOptions above already lists every status
+  // actually present) by explicitly selecting them -- the existing
+  // "completed schedule catalog" the mission allows to remain a separate,
+  // deliberate view rather than a new page.
+  const TERMINAL_SCHEDULE_STATUSES = new Set(["COMPLETED", "CANCELLED"]);
+
   const filteredPMSchedules = useMemo(
     () =>
       pmSchedules.filter(
-        (pm) => matchesSearch(pm, search) && (statusFilter === "ALL" || pm.status === statusFilter)
+        (pm) =>
+          matchesSearch(pm, search) &&
+          (statusFilter === "ALL" ? !TERMINAL_SCHEDULE_STATUSES.has(pm.status) : pm.status === statusFilter)
       ),
     [pmSchedules, search, statusFilter]
   );

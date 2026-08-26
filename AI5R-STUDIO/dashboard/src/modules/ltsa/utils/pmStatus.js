@@ -1,14 +1,24 @@
+// MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016 -- owner-approved 5-state
+// lifecycle (PLANNED/ACTIVE/OVERDUE/COMPLETED/CANCELLED), computed by
+// pmMapping.js's own computeDisplayStatus. DUE_SOON is removed (superseded,
+// not renamed -- it was never part of the owner's approved vocabulary).
+// ON_HOLD remains supported: a pre-existing stored value outside this
+// MWO's own 5 states, never invented over, never silently dropped.
 const STATUS_VARIANT = {
+  PLANNED: "info",
   ACTIVE: "success",
-  DUE_SOON: "warning",
   OVERDUE: "danger",
+  COMPLETED: "purple",
+  CANCELLED: "warning",
   ON_HOLD: "purple",
 };
 
 const STATUS_LABEL = {
+  PLANNED: "Planned",
   ACTIVE: "Active",
-  DUE_SOON: "Due Soon",
   OVERDUE: "Overdue",
+  COMPLETED: "Completed",
+  CANCELLED: "Cancelled",
   ON_HOLD: "On Hold",
 };
 

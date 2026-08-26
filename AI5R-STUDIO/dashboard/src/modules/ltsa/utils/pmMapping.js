@@ -29,13 +29,34 @@ function formatDateOnly(value) {
   return String(value).slice(0, 10);
 }
 
-// ADR-PM-001: status ACTIVE/ON_HOLD are stored; DUE_SOON/OVERDUE are
-// computed from next_due vs. the current date, never stored. The ADR did
-// not pin an exact "due soon" window -- 7 days is this migration's
-// disclosed, adjustable assumption, not a fabricated business fact.
-const DUE_SOON_WINDOW_DAYS = 7;
-
+// MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016 -- owner-approved authoritative
+// lifecycle: PLANNED / ACTIVE / OVERDUE / COMPLETED / CANCELLED.
+// COMPLETED/CANCELLED are real, application-set stored values (via the
+// existing PATCH pm-schedules/{code} endpoint, or the new atomic
+// schedule-completion in pm_occurrence_repository.create_draft()) and
+// pass through unchanged -- never recomputed, never silently overwritten
+// by a date comparison. PLANNED/ACTIVE/OVERDUE are computed from the
+// stored status=ACTIVE + next_due vs. the current date, exactly the same
+// "computed, never stored" precedent ADR-PM-001 already established for
+// the old DUE_SOON/OVERDUE pair -- OVERDUE here supersedes that pair
+// (superseded, not added to): expired-but-incomplete work is OVERDUE
+// only, no separate "coming due soon" state was in the owner's approved
+// vocabulary. ON_HOLD (a pre-existing stored value outside this MWO's own
+// 5-state list) still passes through unchanged -- never invented over,
+// never silently migrated.
+//
+// Month comparison, not a day-count window: a schedule is PLANNED while
+// its next_due falls in a calendar month strictly after the current
+// operational month (created this month, for next month, per the
+// owner's own worked example), and becomes ACTIVE the moment the current
+// month reaches that target month -- matching "September begins -> the
+// September schedule becomes active" precisely, not an arbitrary N-day
+// lookahead.
 function computeDisplayStatus(status, nextDue) {
+  if (status === "COMPLETED" || status === "CANCELLED") {
+    return status;
+  }
+
   if (status !== "ACTIVE" || !nextDue) {
     return status;
   }
@@ -50,17 +71,51 @@ function computeDisplayStatus(status, nextDue) {
   today.setHours(0, 0, 0, 0);
   dueDate.setHours(0, 0, 0, 0);
 
-  const daysUntilDue = Math.round((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-
-  if (daysUntilDue < 0) {
+  if (dueDate.getTime() < today.getTime()) {
     return "OVERDUE";
   }
 
-  if (daysUntilDue <= DUE_SOON_WINDOW_DAYS) {
-    return "DUE_SOON";
+  const currentMonthKey = today.getFullYear() * 12 + today.getMonth();
+  const dueMonthKey = dueDate.getFullYear() * 12 + dueDate.getMonth();
+
+  if (dueMonthKey > currentMonthKey) {
+    return "PLANNED";
   }
 
   return "ACTIVE";
+}
+
+// MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016 -- "Normal operational UI should
+// create schedules for NEXT MONTH... Derive next calendar month from
+// current operational date... Do not silently create schedules for past
+// months." Never hard-codes a month/year; always relative to `reference`
+// (defaults to the real current date, overridable only for tests).
+// Returns the 1st of next month as an ISO yyyy-mm-dd date-input value --
+// a starting default the owner may still move to another future month via
+// the same date input this already was (never a locked value).
+export function nextMonthFirstDay(reference = new Date()) {
+  const nextMonth = new Date(reference.getFullYear(), reference.getMonth() + 1, 1);
+  // Never .toISOString() a local Date here: it converts through UTC, which
+  // silently shifts the calendar day (sometimes back a full day) in any
+  // timezone west of UTC -- exactly the "silently create a schedule for
+  // the wrong month" bug this MWO's own "never past months" rule forbids.
+  // Built from local Y/M components instead; the day is always "01".
+  const year = nextMonth.getFullYear();
+  const month = String(nextMonth.getMonth() + 1).padStart(2, "0");
+  return `${year}-${month}-01`;
+}
+
+// MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016 -- "The source workbook identity
+// is provenance, not schedule identity" -- ltsa_hoc_pm_cm_upsert.py's own
+// build_unscheduled_reference() writes this exact "UNSCHEDULED::<workbook>"
+// placeholder into pm_schedule_code/condition_monitoring_schedule_code for
+// every historically-imported row with no real owning schedule (there is
+// no separate "has a schedule" boolean to check instead). Shared by both
+// pmMapping.js and conditionMonitoringMapping.js consumers that render a
+// schedule-code field, so neither one ever presents this placeholder as if
+// it were an operational schedule.
+export function isUnscheduledPlaceholder(code) {
+  return typeof code === "string" && code.startsWith("UNSCHEDULED::");
 }
 
 export function mapPMScheduleRecord(record) {

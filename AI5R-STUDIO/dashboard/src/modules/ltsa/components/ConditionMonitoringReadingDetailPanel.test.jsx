@@ -427,4 +427,38 @@ describe("ConditionMonitoringReadingDetailPanel (MWO-LTSA-PM-CM-REVIEW-UI-001 ex
       expect(naValues.length).toBe(3);
     });
   });
+
+  // MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016 -- "UNSCHEDULED::<workbook>" is
+  // source-workbook provenance, never a real operational schedule; must
+  // never be presented as a clickable "open schedule" link.
+  describe("Related Schedule presentation", () => {
+    it("never presents UNSCHEDULED::<workbook> as a real, clickable schedule", () => {
+      render(
+        <ConditionMonitoringReadingDetailPanel
+          reading={baseReading({
+            scheduleCode: "UNSCHEDULED::Laporan PM, CM & Pemasangan Seal HCC JANUARI 2026.xlsx",
+            sourceWorkbookName: "Laporan PM, CM & Pemasangan Seal HCC JANUARI 2026.xlsx",
+          })}
+        />
+      );
+
+      expect(screen.queryByText(/UNSCHEDULED::/)).toBeNull();
+      expect(screen.queryByRole("button", { name: /UNSCHEDULED::/ })).toBeNull();
+      expect(screen.getByText(/no linked schedule/i)).toBeTruthy();
+    });
+
+    it("still presents a real schedule code as a clickable button", () => {
+      const onViewSchedule = vi.fn();
+      render(
+        <ConditionMonitoringReadingDetailPanel
+          reading={baseReading({ scheduleCode: "CMON-SCHED-001" })}
+          onViewSchedule={onViewSchedule}
+        />
+      );
+
+      const button = screen.getByRole("button", { name: "CMON-SCHED-001" });
+      fireEvent.click(button);
+      expect(onViewSchedule).toHaveBeenCalledWith("CMON-SCHED-001");
+    });
+  });
 });

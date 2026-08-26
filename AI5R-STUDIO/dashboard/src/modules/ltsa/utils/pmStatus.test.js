@@ -7,11 +7,18 @@ import {
   triggerTypeLabel,
 } from "./pmStatus";
 
+// MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016 -- owner-approved
+// PLANNED/ACTIVE/OVERDUE/COMPLETED/CANCELLED lifecycle. DUE_SOON is
+// removed (superseded, not renamed -- never part of the owner's approved
+// vocabulary). ON_HOLD remains supported: a pre-existing stored value
+// outside this MWO's own 5 states.
 describe("statusBadgeVariant", () => {
   it("maps every closed-set status to a badge variant", () => {
+    expect(statusBadgeVariant("PLANNED")).toBe("info");
     expect(statusBadgeVariant("ACTIVE")).toBe("success");
-    expect(statusBadgeVariant("DUE_SOON")).toBe("warning");
     expect(statusBadgeVariant("OVERDUE")).toBe("danger");
+    expect(statusBadgeVariant("COMPLETED")).toBe("purple");
+    expect(statusBadgeVariant("CANCELLED")).toBe("warning");
     expect(statusBadgeVariant("ON_HOLD")).toBe("purple");
   });
 
@@ -22,9 +29,11 @@ describe("statusBadgeVariant", () => {
 
 describe("statusLabel", () => {
   it("maps every closed-set status to a human-readable label", () => {
+    expect(statusLabel("PLANNED")).toBe("Planned");
     expect(statusLabel("ACTIVE")).toBe("Active");
-    expect(statusLabel("DUE_SOON")).toBe("Due Soon");
     expect(statusLabel("OVERDUE")).toBe("Overdue");
+    expect(statusLabel("COMPLETED")).toBe("Completed");
+    expect(statusLabel("CANCELLED")).toBe("Cancelled");
     expect(statusLabel("ON_HOLD")).toBe("On Hold");
   });
 

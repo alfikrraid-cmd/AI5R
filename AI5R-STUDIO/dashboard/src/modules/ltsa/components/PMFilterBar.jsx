@@ -30,7 +30,11 @@ export default function PMFilterBar({
           padding: `${spacing.xs}px ${spacing.sm}px`,
         }}
       >
-        <option value="ALL">All Statuses</option>
+        {/* MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016 -- "ALL" is the default
+            active work queue (every status except Completed/Cancelled),
+            not literally every row; Completed/Cancelled stay reachable by
+            selecting them explicitly from statusOptions below. */}
+        <option value="ALL">Active Queue (excludes Completed / Cancelled)</option>
 
         {statusOptions.map((status) => (
           <option key={status} value={status}>

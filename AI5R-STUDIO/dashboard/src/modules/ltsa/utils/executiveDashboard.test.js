@@ -20,7 +20,7 @@ const source = {
   ],
   pmSchedules: [
     { id: "PM-REAL-1", status: "OVERDUE", nextDue: "2026-07-21" },
-    { id: "PM-REAL-2", status: "DUE_SOON", nextDue: "2026-07-25" },
+    { id: "PM-REAL-2", status: "ACTIVE", nextDue: "2026-07-25" },
   ],
   cmReports: [
     { cm_report_code: "CM-REAL-1", asset_code: "220-P-4A", status: "OPEN", severity: "CRITICAL", created_at: "2026-07-19T00:00:00Z" },

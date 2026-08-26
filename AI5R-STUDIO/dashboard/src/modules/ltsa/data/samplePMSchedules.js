@@ -23,7 +23,7 @@ const samplePMSchedules = [
     assignedTechnician: "Sari Wulandari",
     estimatedDurationHours: 1.5,
     relatedWorkOrders: ["WO-1002"],
-    status: "DUE_SOON",
+    status: "ACTIVE",
     timeline: [
       { date: "2026-06-02", event: "PM performed — no anomalies found" },
       { date: "2026-06-02", event: "Next cycle scheduled for 2026-07-24" },
@@ -130,7 +130,7 @@ const samplePMSchedules = [
     assignedTechnician: "Sari Wulandari",
     estimatedDurationHours: 0.25,
     relatedWorkOrders: [],
-    status: "DUE_SOON",
+    status: "ACTIVE",
     timeline: [{ date: "2026-07-19", event: "PM performed — no issues" }],
   },
   {

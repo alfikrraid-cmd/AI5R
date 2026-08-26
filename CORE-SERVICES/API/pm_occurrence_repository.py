@@ -114,10 +114,35 @@ class PMOccurrenceRepository:
                 f"AND EXISTS (SELECT 1 FROM pm_schedule WHERE pm_schedule_code = {_sql(pm_schedule_code)}) "
                 ") "
                 f"RETURNING {_SELECT_COLUMNS}"
+                # MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016 -- "Actual PM
+                # record is created -> Schedule becomes COMPLETED -> Schedule
+                # disappears from active queue", atomically: one INSERT into
+                # pm_occurrence and one UPDATE on its owning pm_schedule in
+                # the SAME statement/transaction, never two separate round
+                # trips that could leave one written without the other. The
+                # subquery reads pm_schedule_code from `ins` itself (never
+                # the raw pm_schedule_code parameter) so this UPDATE only
+                # ever runs when the INSERT above actually matched a row
+                # (WHERE pm_schedule_code = NULL matches nothing if `ins`
+                # produced zero rows -- pump/schedule not found). The
+                # status-guard (NOT IN CANCELLED/COMPLETED) makes recording
+                # a second occurrence against an already-completed schedule
+                # a safe no-op here rather than an error or a silently
+                # re-fired completion.
+                "), schedule_completion AS ("
+                "UPDATE pm_schedule SET status = 'COMPLETED', updated_by = "
+                f"{_sql(created_by)}, updated_at = NOW() "
+                "WHERE pm_schedule_code = (SELECT pm_schedule_code FROM ins) "
+                "AND status NOT IN ('CANCELLED', 'COMPLETED') "
+                "RETURNING pm_schedule_code"
                 "), audit AS (INSERT INTO record_change_history "
                 "(entity_type, entity_id, field_name, old_value, new_value, changed_by, reason) "
                 "SELECT 'PM_OCCURRENCE', pm_occurrence_code, '__record__', NULL, "
-                "row_to_json(ins)::text, created_by, 'CREATE' FROM ins) "
+                "row_to_json(ins)::text, created_by, 'CREATE' FROM ins"
+                "), schedule_audit AS (INSERT INTO record_change_history "
+                "(entity_type, entity_id, field_name, old_value, new_value, changed_by, reason) "
+                "SELECT 'PM_SCHEDULE', pm_schedule_code, 'status', NULL, 'COMPLETED', "
+                f"{_sql(created_by)}, 'AUTO_COMPLETE_ON_OCCURRENCE' FROM schedule_completion) "
                 "SELECT COALESCE(json_agg(row_to_json(t))::text, '[]') FROM ins t;"
             )
             or "[]"

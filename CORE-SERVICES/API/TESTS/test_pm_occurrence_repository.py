@@ -49,7 +49,11 @@ def test_create_draft_sets_created_by_and_updated_by_to_the_same_actor():
     )
 
     sql = runner.scalar_calls[0]
-    assert sql.count("'actor-1'") == 2  # created_by and updated_by
+    # MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016 -- 4, not 2: the occurrence's
+    # own created_by/updated_by, plus the atomic schedule_completion
+    # UPDATE's updated_by and the schedule_audit INSERT's changed_by (the
+    # same actor performs and is attributed to the whole atomic action).
+    assert sql.count("'actor-1'") == 4
 
 
 def test_create_draft_starts_in_draft_workflow_status():
@@ -174,6 +178,61 @@ def test_find_by_code_returns_none_when_missing():
     repo = PMOccurrenceRepository(runner)
 
     assert repo.find_by_code("PMOCC-MISSING") is None
+
+
+# MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016 -- atomic schedule->actual
+# completion linking: "Actual PM record is created -> Schedule becomes
+# COMPLETED -> Schedule disappears from active queue", one statement, one
+# transaction (never a separate round trip that could complete the
+# schedule while the occurrence insert failed, or vice versa).
+
+
+def test_create_draft_atomically_marks_its_owning_schedule_completed():
+    runner = FakeRunner(scalar_response=json.dumps([{"pm_occurrence_code": "PMOCC-1", "pm_schedule_code": "PMS-1"}]))
+    repo = PMOccurrenceRepository(runner)
+
+    repo.create_draft(
+        pm_schedule_code="PMS-1", asset_code="211-P-18A", asset_type=None,
+        occurrence_date=None, activities=None, remarks=None, created_by="actor-1",
+    )
+
+    sql = runner.scalar_calls[0]
+    assert sql.strip().upper().startswith("WITH")  # single statement, single transaction
+    assert "UPDATE pm_schedule SET status = 'COMPLETED'" in sql
+    assert "WHERE pm_schedule_code = (SELECT pm_schedule_code FROM ins)" in sql
+    assert "AND status NOT IN ('CANCELLED', 'COMPLETED')" in sql
+
+
+def test_create_draft_never_completes_an_already_cancelled_or_completed_schedule():
+    # The guard clause itself (status NOT IN (...)) is what actually
+    # prevents this at the database level; this test only proves the
+    # guard is present in every generated statement, not conditionally
+    # omitted for some code path.
+    runner = FakeRunner(scalar_response=json.dumps([{"pm_occurrence_code": "PMOCC-1"}]))
+    repo = PMOccurrenceRepository(runner)
+
+    repo.create_draft(
+        pm_schedule_code="PMS-1", asset_code="211-P-18A", asset_type=None,
+        occurrence_date="2026-09-01", activities=None, remarks=None, created_by="actor-1",
+    )
+
+    sql = runner.scalar_calls[0]
+    assert "'CANCELLED', 'COMPLETED'" in sql
+
+
+def test_create_draft_audits_the_schedule_completion_separately_from_the_occurrence_creation():
+    runner = FakeRunner(scalar_response=json.dumps([{"pm_occurrence_code": "PMOCC-1"}]))
+    repo = PMOccurrenceRepository(runner)
+
+    repo.create_draft(
+        pm_schedule_code="PMS-1", asset_code="211-P-18A", asset_type=None,
+        occurrence_date=None, activities=None, remarks=None, created_by="actor-1",
+    )
+
+    sql = runner.scalar_calls[0]
+    assert "'PM_OCCURRENCE', pm_occurrence_code, '__record__'" in sql
+    assert "'PM_SCHEDULE', pm_schedule_code, 'status'" in sql
+    assert "'AUTO_COMPLETE_ON_OCCURRENCE'" in sql
 
 
 def test_soft_delete_is_audited_and_preserves_the_record():

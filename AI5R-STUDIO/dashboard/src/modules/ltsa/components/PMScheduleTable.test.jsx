@@ -12,7 +12,7 @@ const PM_SCHEDULES = [
     nextDue: "2026-07-24",
     lastPerformed: "2026-06-02",
     assignedTechnician: "Sari Wulandari",
-    status: "DUE_SOON",
+    status: "PLANNED",
   },
   {
     id: "PM-2002",
@@ -78,7 +78,7 @@ describe("PMScheduleTable", () => {
   it("renders a status badge for each PM schedule", () => {
     render(<PMScheduleTable pmSchedules={PM_SCHEDULES} selectedId={null} onSelect={() => {}} />);
 
-    expect(screen.getByText("Due Soon")).toBeTruthy();
+    expect(screen.getByText("Planned")).toBeTruthy();
     expect(screen.getByText("Overdue")).toBeTruthy();
   });
 

@@ -41,13 +41,13 @@ describe("PMFilterBar", () => {
         onSearchChange={() => {}}
         statusFilter="ALL"
         onStatusFilterChange={() => {}}
-        statusOptions={["ACTIVE", "DUE_SOON", "OVERDUE"]}
+        statusOptions={["ACTIVE", "PLANNED", "OVERDUE"]}
       />
     );
 
-    expect(screen.getByRole("option", { name: "All Statuses" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: /active queue/i })).toBeTruthy();
     expect(screen.getByRole("option", { name: "Active" })).toBeTruthy();
-    expect(screen.getByRole("option", { name: "Due Soon" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "Planned" })).toBeTruthy();
     expect(screen.getByRole("option", { name: "Overdue" })).toBeTruthy();
   });
 

@@ -19,7 +19,15 @@ function isRecent(dateString) {
 export function buildKpiSummary({ pumps = [], workOrders = [], pmSchedules = [], cmReports = [], maintenanceHistory = [], pmOccurrences = [], conditionMonitoringReadings = [] } = {}) {
   const openWorkOrders = workOrders.filter((wo) => isOpenWorkOrderStatus(wo.status)).length;
   const overduePM = pmSchedules.filter((pm) => pm.status === "OVERDUE").length;
-  const upcomingPM = pmSchedules.filter((pm) => pm.status === "DUE_SOON").length;
+  // MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016 -- DUE_SOON is superseded by
+  // the owner-approved lifecycle: ACTIVE now IS "due within the current
+  // operational month, not yet overdue" (pmMapping.js's own
+  // computeDisplayStatus), the direct equivalent of the old DUE_SOON
+  // signal for this "needs attention soon" KPI. PLANNED (next month,
+  // not yet begun) deliberately does not count here -- not yet relevant
+  // work, per the owner's own "never treat a future-month schedule as
+  // due" rule.
+  const upcomingPM = pmSchedules.filter((pm) => pm.status === "ACTIVE").length;
   const openCorrectiveMaintenance = cmReports.filter((cm) => OPEN_CM_STATUSES.has(cm.status)).length;
   const openWorkOrderTags = new Set(workOrders.filter((wo) => isOpenWorkOrderStatus(wo.status)).map((wo) => wo.equipmentTag ?? wo.asset_code).filter(Boolean));
   const criticalAssets = pumps.filter((pump) => pump.criticality === "HIGH" && (ATTENTION_PUMP_STATUSES.has(pump.status) || openWorkOrderTags.has(pump.tag ?? pump.tag_number))).length;
@@ -76,7 +84,9 @@ export function buildAttentionAssets({ pumps = [], workOrders = [], cmReports = 
 }
 
 export function buildUpcomingMaintenance({ pmSchedules = [] } = {}) {
-  return pmSchedules.filter((pm) => pm.status === "DUE_SOON" || pm.status === "OVERDUE").sort((a, b) => String(a.nextDue ?? "9999").localeCompare(String(b.nextDue ?? "9999")));
+  // MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016 -- see buildKpiSummary's own
+  // identical note: ACTIVE replaces DUE_SOON as "needs doing soon".
+  return pmSchedules.filter((pm) => pm.status === "ACTIVE" || pm.status === "OVERDUE").sort((a, b) => String(a.nextDue ?? "9999").localeCompare(String(b.nextDue ?? "9999")));
 }
 
 export function buildRecentActivities({ workOrders = [], cmReports = [], maintenanceHistory = [], pmOccurrences = [], conditionMonitoringReadings = [] } = {}, limit = 8) {

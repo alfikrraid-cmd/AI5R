@@ -25,12 +25,18 @@ const TRIGGER_TYPE_OPTIONS = [
   { value: "METER", label: "Runtime Meter" },
 ];
 
-// ADR-PM-001 / pmMapping.js's own comment: ACTIVE/ON_HOLD are the only
-// two real STORED status values -- DUE_SOON/OVERDUE are computed display
-// values, never legitimate to write back.
+// MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016 -- PLANNED/ACTIVE/OVERDUE are
+// computed display values (pmMapping.js's own computeDisplayStatus), never
+// legitimate to write back. ACTIVE/ON_HOLD/COMPLETED/CANCELLED are the
+// real STORED values a user may set here -- COMPLETED/CANCELLED added so
+// "authorized cancellation" (the mission's own alternative lifecycle
+// branch) and a manual completion correction both have a real UI path
+// through this same existing PATCH endpoint, no new endpoint required.
 const STATUS_OPTIONS = [
   { value: "ACTIVE", label: "Active" },
   { value: "ON_HOLD", label: "On Hold" },
+  { value: "COMPLETED", label: "Completed" },
+  { value: "CANCELLED", label: "Cancelled" },
 ];
 
 const fieldStyle = {

@@ -72,10 +72,17 @@ import { Section, InfoRow, StatusSignal, RailSection, ActionBar, RefGroup } from
  * or an honest empty state.
  */
 
+// MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016 -- owner-approved
+// PLANNED/ACTIVE/OVERDUE/COMPLETED/CANCELLED lifecycle (pmMapping.js's own
+// computeDisplayStatus). DUE_SOON is removed (superseded, not renamed --
+// never part of the owner's approved vocabulary). ON_HOLD remains
+// supported: a pre-existing stored value outside this MWO's own 5 states.
 const STATUS_META = {
+  PLANNED: { tier: "neutral", label: "Planned" },
   ACTIVE: { tier: "normal", label: "Active" },
-  DUE_SOON: { tier: "attention", label: "Due Soon" },
   OVERDUE: { tier: "critical", label: "Overdue" },
+  COMPLETED: { tier: "neutral", label: "Completed" },
+  CANCELLED: { tier: "neutral", label: "Cancelled" },
   ON_HOLD: { tier: "neutral", label: "On Hold" },
 };
 

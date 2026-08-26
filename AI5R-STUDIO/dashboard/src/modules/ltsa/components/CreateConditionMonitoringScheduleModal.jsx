@@ -1,15 +1,22 @@
 import { useState } from "react";
 import { Button, Modal } from "../../../design-system";
+import { nextMonthFirstDay } from "../utils/pmMapping";
 
-const EMPTY = { code: "", equipmentTag: "", monitoringType: "", measurementPoint: "", frequency: "", intervalUnit: "", effectiveDate: "" };
+// MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016 -- a function, not a static
+// object, so the next-month default is computed fresh each time (see
+// CreatePMScheduleModal.jsx's own identical convention), not frozen at
+// module load.
+function emptyForm() {
+  return { code: "", equipmentTag: "", monitoringType: "", measurementPoint: "", frequency: "", intervalUnit: "", effectiveDate: nextMonthFirstDay() };
+}
 
 export default function CreateConditionMonitoringScheduleModal({ isOpen, onClose, onCreate }) {
-  const [form, setForm] = useState(EMPTY);
+  const [form, setForm] = useState(emptyForm);
   const set = (field) => (event) => setForm((current) => ({ ...current, [field]: event.target.value }));
   function submit(event) {
     event.preventDefault();
     onCreate(form);
-    setForm(EMPTY);
+    setForm(emptyForm());
   }
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Create Condition Monitoring Schedule">
