@@ -1169,6 +1169,27 @@ export async function technicalReviewPMOccurrence(code, { action, comment, recom
     });
 }
 
+// MWO-LTSA-PM-CMON-HISTORICAL-BATCH-REVIEW-019 -- thin batch wrappers
+// around the same submit/technical-review endpoints above; the backend
+// loops `codes` through the exact same individual repository methods.
+export async function batchSubmitPMOccurrences(codes) {
+    const payload = await _adminUsersRequest(`${API_URL}/api/ltsa/pm-occurrences/batch-submit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ codes }),
+    });
+    return payload?.data ?? { succeeded: [], skipped: [], failed: [] };
+}
+
+export async function batchTechnicalReviewPMOccurrences(codes, { action, comment, recommendation }) {
+    const payload = await _adminUsersRequest(`${API_URL}/api/ltsa/pm-occurrences/batch-technical-review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ codes, action, comment, recommendation }),
+    });
+    return payload?.data ?? { succeeded: [], skipped: [], failed: [] };
+}
+
 export async function deletePMOccurrence(code, reason) {
     return _adminUsersRequest(`${API_URL}/api/ltsa/pm-occurrences/${encodeURIComponent(code)}`, {
         method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reason }),
@@ -1222,6 +1243,29 @@ export async function technicalReviewConditionMonitoringReading(code, { action, 
             body: JSON.stringify({ action, comment, recommendation }),
         }
     );
+}
+
+// MWO-LTSA-PM-CMON-HISTORICAL-BATCH-REVIEW-019 -- see the PM batch
+// wrappers above for the full reasoning.
+export async function batchSubmitConditionMonitoringReadings(codes) {
+    const payload = await _adminUsersRequest(`${API_URL}/api/ltsa/condition-monitoring-readings/batch-submit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ codes }),
+    });
+    return payload?.data ?? { succeeded: [], skipped: [], failed: [] };
+}
+
+export async function batchTechnicalReviewConditionMonitoringReadings(codes, { action, comment, recommendation }) {
+    const payload = await _adminUsersRequest(
+        `${API_URL}/api/ltsa/condition-monitoring-readings/batch-technical-review`,
+        {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ codes, action, comment, recommendation }),
+        }
+    );
+    return payload?.data ?? { succeeded: [], skipped: [], failed: [] };
 }
 
 export async function deleteConditionMonitoringReading(code, reason) {

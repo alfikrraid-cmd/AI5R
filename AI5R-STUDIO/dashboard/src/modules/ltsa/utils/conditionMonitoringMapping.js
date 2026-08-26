@@ -176,6 +176,9 @@ export function mapConditionMonitoringReadingRecord(record) {
     sourceWorkbookName: record.source_workbook_name,
     sourceSheetName: record.source_sheet_name,
     sourceRowNumber: record.source_row_number,
+    // MWO-LTSA-PM-CMON-HISTORICAL-BATCH-REVIEW-019 -- see pmMapping.js's
+    // own identical addition for the full reasoning.
+    sourceReference: record.source_reference,
   };
 }
 

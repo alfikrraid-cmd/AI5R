@@ -170,6 +170,11 @@ export function mapPMOccurrenceRecord(record) {
     equipmentTag: record.asset_code,
     assetType: record.asset_type,
     occurrenceDate: formatDateOnly(record.occurrence_date),
+    // MWO-LTSA-PM-CMON-HISTORICAL-BATCH-REVIEW-019 -- the real stored
+    // completion signal (DB default 'DONE', distinct from workflow_status)
+    // needed by historicalBatchReviewClassification.js's READY_FOR_REVIEW
+    // evidence check. Never previously mapped -- additive only.
+    status: record.status,
     activities: Array.isArray(record.activities) ? record.activities : [],
     finding: record.finding,
     // Phase 14 (this MWO): preliminaryRecommendation (TAP Engineer, set at
@@ -201,6 +206,11 @@ export function mapPMOccurrenceRecord(record) {
     sourceWorkbookName: record.source_workbook_name,
     sourceSheetName: record.source_sheet_name,
     sourceRowNumber: record.source_row_number,
+    // MWO-LTSA-PM-CMON-HISTORICAL-BATCH-REVIEW-019 -- the July
+    // document-extraction batch's own provenance pointer (e.g.
+    // "document_field_extraction:DFE-..."), distinct from source_workbook_
+    // name (June/January direct workbook imports never set this column).
+    sourceReference: record.source_reference,
   };
 }
 

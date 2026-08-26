@@ -14,6 +14,8 @@ from dependencies import (
 )
 from models.requests import (
     AdminReturnForCorrectionRequest,
+    BatchCodesRequest,
+    BatchTechnicalReviewRequest,
     ConditionMonitoringReadingCreateRequest,
     ConditionMonitoringReadingUpdateRequest,
     TechnicalReviewRequest,
@@ -254,3 +256,71 @@ def technical_review_ltsa_condition_monitoring_reading(
     if result is None:
         raise HTTPException(status_code=409, detail="Condition Monitoring reading not found or not in SUBMITTED state")
     return {"data": result}
+
+
+# MWO-LTSA-PM-CMON-HISTORICAL-BATCH-REVIEW-019 -- see pm_occurrence.py's
+# own identical batch routes for the full reasoning: thin per-record
+# orchestration around the SAME condition_monitoring_reading_repository
+# methods the individual routes above already call.
+@router.post(
+    "/api/ltsa/condition-monitoring-readings/batch-submit",
+    dependencies=[Depends(require_permission("maintenance.write"))],
+)
+def batch_submit_ltsa_condition_monitoring_readings(
+    payload: BatchCodesRequest,
+    current_user=Depends(require_permission("maintenance.write")),
+    condition_monitoring_reading_repository=Depends(get_condition_monitoring_reading_repository),
+) -> Payload:
+    actor = _actor_id(current_user)
+    succeeded: list[str] = []
+    skipped: list[dict] = []
+    failed: list[dict] = []
+    for code in payload.codes:
+        try:
+            result = condition_monitoring_reading_repository.submit(code, submitted_by=actor)
+        except Exception as exc:  # noqa: BLE001
+            failed.append({"code": code, "reason": str(exc)})
+            continue
+        if result is None:
+            skipped.append({"code": code, "reason": "not found or not in a submittable state"})
+        else:
+            succeeded.append(code)
+    return {"data": {"succeeded": succeeded, "skipped": skipped, "failed": failed}}
+
+
+@router.post(
+    "/api/ltsa/condition-monitoring-readings/batch-technical-review",
+    dependencies=[Depends(require_permission("maintenance.technical_review"))],
+)
+def batch_technical_review_ltsa_condition_monitoring_readings(
+    payload: BatchTechnicalReviewRequest,
+    current_user=Depends(require_permission("maintenance.technical_review")),
+    condition_monitoring_reading_repository=Depends(get_condition_monitoring_reading_repository),
+) -> Payload:
+    actor = _actor_id(current_user)
+    succeeded: list[str] = []
+    skipped: list[dict] = []
+    failed: list[dict] = []
+    for code in payload.codes:
+        try:
+            if payload.action == "RETURN":
+                result = condition_monitoring_reading_repository.technical_return_for_correction(
+                    code, technical_reviewed_by=actor, technical_comment=payload.comment
+                )
+            else:
+                outcome = "ACKNOWLEDGED" if payload.action == "ACKNOWLEDGE" else "TECHNICALLY_APPROVED"
+                result = condition_monitoring_reading_repository.technical_finalize(
+                    code,
+                    technical_reviewed_by=actor,
+                    technical_outcome=outcome,
+                    technical_comment=payload.comment,
+                    technical_recommendation=payload.recommendation,
+                )
+        except Exception as exc:  # noqa: BLE001
+            failed.append({"code": code, "reason": str(exc)})
+            continue
+        if result is None:
+            skipped.append({"code": code, "reason": "not found or not in SUBMITTED state"})
+        else:
+            succeeded.append(code)
+    return {"data": {"succeeded": succeeded, "skipped": skipped, "failed": failed}}

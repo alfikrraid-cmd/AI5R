@@ -13,6 +13,8 @@ from dependencies import (
 )
 from models.requests import (
     AdminReturnForCorrectionRequest,
+    BatchCodesRequest,
+    BatchTechnicalReviewRequest,
     PMOccurrenceCreateRequest,
     PMOccurrenceUpdateRequest,
     TechnicalReviewRequest,
@@ -193,3 +195,74 @@ def technical_review_ltsa_pm_occurrence(
     if result is None:
         raise HTTPException(status_code=409, detail="PM occurrence not found or not in SUBMITTED state")
     return {"data": result}
+
+
+# MWO-LTSA-PM-CMON-HISTORICAL-BATCH-REVIEW-019 -- thin orchestration only:
+# each code below runs through the SAME pm_occurrence_repository.submit()/
+# technical_finalize()/technical_return_for_correction() the individual
+# routes above already call, one record at a time, in its own independent
+# call -- no parallel INSERT/UPDATE path, no new workflow rule, no
+# multi-record transaction (matching every other write in this codebase,
+# which is already per-record). A record that does not transition is
+# never reported as succeeded.
+@router.post(
+    "/api/ltsa/pm-occurrences/batch-submit", dependencies=[Depends(require_permission("maintenance.write"))]
+)
+def batch_submit_ltsa_pm_occurrences(
+    payload: BatchCodesRequest,
+    current_user=Depends(require_permission("maintenance.write")),
+    pm_occurrence_repository=Depends(get_pm_occurrence_repository),
+) -> Payload:
+    actor = _actor_id(current_user)
+    succeeded: list[str] = []
+    skipped: list[dict] = []
+    failed: list[dict] = []
+    for code in payload.codes:
+        try:
+            result = pm_occurrence_repository.submit(code, submitted_by=actor)
+        except Exception as exc:  # noqa: BLE001 -- reported per-record, never silently swallowed
+            failed.append({"code": code, "reason": str(exc)})
+            continue
+        if result is None:
+            skipped.append({"code": code, "reason": "not found or not in a submittable state"})
+        else:
+            succeeded.append(code)
+    return {"data": {"succeeded": succeeded, "skipped": skipped, "failed": failed}}
+
+
+@router.post(
+    "/api/ltsa/pm-occurrences/batch-technical-review",
+    dependencies=[Depends(require_permission("maintenance.technical_review"))],
+)
+def batch_technical_review_ltsa_pm_occurrences(
+    payload: BatchTechnicalReviewRequest,
+    current_user=Depends(require_permission("maintenance.technical_review")),
+    pm_occurrence_repository=Depends(get_pm_occurrence_repository),
+) -> Payload:
+    actor = _actor_id(current_user)
+    succeeded: list[str] = []
+    skipped: list[dict] = []
+    failed: list[dict] = []
+    for code in payload.codes:
+        try:
+            if payload.action == "RETURN":
+                result = pm_occurrence_repository.technical_return_for_correction(
+                    code, technical_reviewed_by=actor, technical_comment=payload.comment
+                )
+            else:
+                outcome = "ACKNOWLEDGED" if payload.action == "ACKNOWLEDGE" else "TECHNICALLY_APPROVED"
+                result = pm_occurrence_repository.technical_finalize(
+                    code,
+                    technical_reviewed_by=actor,
+                    technical_outcome=outcome,
+                    technical_comment=payload.comment,
+                    technical_recommendation=payload.recommendation,
+                )
+        except Exception as exc:  # noqa: BLE001
+            failed.append({"code": code, "reason": str(exc)})
+            continue
+        if result is None:
+            skipped.append({"code": code, "reason": "not found or not in SUBMITTED state"})
+        else:
+            succeeded.append(code)
+    return {"data": {"succeeded": succeeded, "skipped": skipped, "failed": failed}}

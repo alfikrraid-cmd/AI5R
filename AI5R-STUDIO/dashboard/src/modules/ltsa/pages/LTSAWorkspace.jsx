@@ -24,6 +24,7 @@ import KnowledgeWorkspace from "./KnowledgeWorkspace";
 import MechanicalSealStock from "./MechanicalSealStock";
 import ImportWorkspace from "./ImportWorkspace";
 import HistoricalReview from "./HistoricalReview";
+import HistoricalBatchReview from "./HistoricalBatchReview";
 import { WorkspaceProvider } from "../workspace/WorkspaceContext";
 import { parseWorkspaceLocation, workspaceLocation } from "../workspace/WorkspaceRegistry";
 import "./LTSAWorkspace.css";
@@ -75,6 +76,7 @@ const TABS = [
   { key: "reports", label: "Reports" },
   { key: "analytics", label: "Analytics" },
   { key: "historical-review", label: "Historical Data Review" },
+  { key: "historical-batch-review", label: "Historical Batch Review" },
 ];
 
 // "pm-workspace" (PM Work Order Workspace) is deep-link-only, not a TABS
@@ -210,6 +212,7 @@ const PAGES = {
   reports: ReportsWorkspace,
   analytics: AnalyticsWorkspace,
   "historical-review": HistoricalReview,
+  "historical-batch-review": HistoricalBatchReview,
 };
 
 // `capabilities` is optional (MWO-LTSA-AUTH-OPEN-DESIGN-001) -- when

@@ -354,6 +354,25 @@ class TechnicalReviewRequest(BaseModel):
     recommendation: str | None = None
 
 
+# MWO-LTSA-PM-CMON-HISTORICAL-BATCH-REVIEW-019 -- batch orchestration
+# only, never a parallel workflow: the router loops these `codes` through
+# the exact same submit()/technical_finalize()/technical_return_for_
+# correction() repository methods TechnicalReviewRequest's own individual
+# route already calls, one record at a time. max_length=100 is a
+# deliberate cap -- "do not make Select All 665 + Finalize a dangerous
+# one-click path" -- forcing any larger sweep into multiple explicit
+# batches rather than one unbounded call.
+class BatchCodesRequest(BaseModel):
+    codes: list[str] = Field(min_length=1, max_length=100)
+
+
+class BatchTechnicalReviewRequest(BaseModel):
+    codes: list[str] = Field(min_length=1, max_length=100)
+    action: str = Field(pattern="^(RETURN|ACKNOWLEDGE|APPROVE)$")
+    comment: str | None = None
+    recommendation: str | None = None
+
+
 # Every Check Points field the golden "Mechanical Seal Condition
 # Monitoring" report's DE/NDE table exposes (this MWO's Phase 1 audit),
 # matching condition_monitoring_reading_repository.py's own
