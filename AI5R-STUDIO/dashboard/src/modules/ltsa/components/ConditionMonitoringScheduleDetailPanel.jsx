@@ -11,7 +11,7 @@ function Field({ label, value }) {
   );
 }
 
-export default function ConditionMonitoringScheduleDetailPanel({ schedule, onViewAsset360 }) {
+export default function ConditionMonitoringScheduleDetailPanel({ schedule, onViewAsset360, canDelete = false, onDelete }) {
   if (!schedule) {
     return (
       <EmptyState
@@ -47,6 +47,7 @@ export default function ConditionMonitoringScheduleDetailPanel({ schedule, onVie
 
       <Card title="Quick Actions">
         <Button onClick={() => onViewAsset360?.(schedule.equipmentTag)}>View Asset 360</Button>
+        {canDelete && <Button onClick={() => { const reason = window.prompt(`Deactivate ${schedule.id}:`); if (reason?.trim() && window.confirm(`Deactivate ${schedule.id}?`)) onDelete?.(schedule.id, reason.trim()); }}>Deactivate Schedule</Button>}
       </Card>
     </div>
   );

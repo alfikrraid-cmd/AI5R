@@ -69,6 +69,8 @@ export default function PMOccurrenceDetailPanel({
   onSubmit,
   onAdminReturn,
   onTechnicalReview,
+  canDelete = false,
+  onDelete,
   onOpenPump,
 }) {
   const [activities, setActivities] = useState({});
@@ -119,6 +121,13 @@ export default function PMOccurrenceDetailPanel({
 
   const editable = Boolean(canWrite) && EDITABLE_STATUSES.has(occurrence.workflowStatus);
   const reviewable = occurrence.workflowStatus === "SUBMITTED";
+
+  async function handleDelete() {
+    const reason = window.prompt(`Deletion reason for ${occurrence.id}:`);
+    if (!reason?.trim()) return;
+    if (!window.confirm(`Soft-delete PM Occurrence ${occurrence.id}?`)) return;
+    await onDelete?.(occurrence.id, reason.trim());
+  }
 
   function toggleActivity(code) {
     setActivities((current) => ({ ...current, [code]: !current[code] }));
@@ -426,6 +435,7 @@ export default function PMOccurrenceDetailPanel({
           <Button onClick={() => onOpenPump?.(occurrence.equipmentTag)}>Open Pump</Button>
         </Card>
       )}
+      {canDelete && <Card title="Danger Zone"><Button onClick={handleDelete}>Soft Delete</Button></Card>}
     </div>
   );
 }

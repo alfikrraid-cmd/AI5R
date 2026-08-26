@@ -11,6 +11,8 @@ import {
   getPMSchedules, getCMReports, getPMOccurrences, createPMOccurrence,
   createPMSchedule,
   updatePMOccurrenceDraft, submitPMOccurrence, adminReviewPMOccurrence, technicalReviewPMOccurrence,
+  deletePMOccurrence,
+  deletePMSchedule,
 } from "../../../api/ai5rClient";
 import { mapPMScheduleRecord, mapPMOccurrenceRecord, withResolvedArea } from "../utils/pmMapping";
 import { mapCMReportRecord } from "../utils/cmMapping";
@@ -88,6 +90,7 @@ export default function PM({ onNavigate, navContext }) {
   const canWriteMaintenance = can(authContext?.session, PERMISSIONS.MAINTENANCE_WRITE);
   const canAdminReviewMaintenance = can(authContext?.session, PERMISSIONS.MAINTENANCE_ADMIN_REVIEW);
   const canTechnicalReviewMaintenance = can(authContext?.session, PERMISSIONS.MAINTENANCE_TECHNICAL_REVIEW);
+  const canDeleteRecords = authContext?.session?.role === "SUPERUSER";
 
   function upsertOccurrence(rawRecord) {
     const mapped = mapPMOccurrenceRecord(rawRecord);
@@ -302,6 +305,20 @@ export default function PM({ onNavigate, navContext }) {
     setSuccessMessage(`PM Occurrence ${code} technical review recorded.`);
   }
 
+  async function handleDeleteOccurrence(code, reason) {
+    await deletePMOccurrence(code, reason);
+    setPmOccurrences((current) => current.filter((occurrence) => occurrence.id !== code));
+    setSelectedOccurrenceId(null);
+    setSuccessMessage(`PM Occurrence ${code} soft-deleted.`);
+  }
+
+  async function handleDeleteSchedule(code, reason) {
+    await deletePMSchedule(code, reason);
+    setPmSchedules((current) => current.filter((schedule) => schedule.id !== code));
+    setSelectedId(null);
+    setSuccessMessage(`PM Schedule ${code} deactivated.`);
+  }
+
   return (
     <div>
       <PageHeader
@@ -361,6 +378,8 @@ export default function PM({ onNavigate, navContext }) {
                     onOpenPump={handleOpenPump}
                     onOpenDrawing={handleOpenDrawing}
                     onCreatePM={() => setIsCreateModalOpen(true)}
+                    canDelete={canDeleteRecords}
+                    onDelete={handleDeleteSchedule}
                   />
                 ) : (
                   // MWO-LTSA-ASSET360-PM-CMON-TRACEABILITY-001 -- a
@@ -401,6 +420,8 @@ export default function PM({ onNavigate, navContext }) {
                       canWrite={canWriteMaintenance}
                       canAdminReview={canAdminReviewMaintenance}
                       canTechnicalReview={canTechnicalReviewMaintenance}
+                      canDelete={canDeleteRecords}
+                      onDelete={handleDeleteOccurrence}
                       onSaveDraft={handleSaveOccurrenceDraft}
                       onSubmit={handleSubmitOccurrence}
                       onAdminReturn={handleAdminReturnOccurrence}

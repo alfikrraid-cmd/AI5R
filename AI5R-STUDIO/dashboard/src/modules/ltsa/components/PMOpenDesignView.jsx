@@ -90,6 +90,8 @@ export default function PMOpenDesignView({
   onOpenPump,
   onOpenDrawing,
   onCreatePM,
+  canDelete = false,
+  onDelete,
 }) {
   const [drawer, setDrawer] = useState(null); // null | "drawing"
 
@@ -226,6 +228,7 @@ export default function PMOpenDesignView({
               <InfoRow label="Coverage" value={coverageMeta.label} />
             </div>
           </Section>
+          {canDelete && <Section id="schedule-actions" title="Schedule Actions"><button type="button" onClick={() => { const reason = window.prompt(`Deactivate ${pm.id}:`); if (reason?.trim() && window.confirm(`Deactivate ${pm.id}?`)) onDelete?.(pm.id, reason.trim()); }}>Deactivate Schedule</button></Section>}
 
           <Section id="coverage-section" title="LTSA Coverage">
             <div className="identity-status" style={{ marginTop: "var(--space-3)" }}>

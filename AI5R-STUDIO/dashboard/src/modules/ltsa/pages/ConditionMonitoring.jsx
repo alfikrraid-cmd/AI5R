@@ -13,6 +13,8 @@ import {
   getConditionMonitoringReadings, getConditionMonitoringSchedules, createConditionMonitoringReading,
   updateConditionMonitoringReadingDraft, submitConditionMonitoringReading,
   adminReviewConditionMonitoringReading, technicalReviewConditionMonitoringReading,
+  deleteConditionMonitoringReading,
+  deleteConditionMonitoringSchedule,
   createConditionMonitoringSchedule,
 } from "../../../api/ai5rClient";
 import {
@@ -98,6 +100,7 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
   const canWriteMaintenance = can(authContext?.session, PERMISSIONS.MAINTENANCE_WRITE);
   const canAdminReviewMaintenance = can(authContext?.session, PERMISSIONS.MAINTENANCE_ADMIN_REVIEW);
   const canTechnicalReviewMaintenance = can(authContext?.session, PERMISSIONS.MAINTENANCE_TECHNICAL_REVIEW);
+  const canDeleteRecords = authContext?.session?.role === "SUPERUSER";
 
   useEffect(() => {
     let active = true;
@@ -309,6 +312,20 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
     setSuccessMessage(`Condition Monitoring reading ${code} technical review recorded.`);
   }
 
+  async function handleDeleteReading(code, reason) {
+    await deleteConditionMonitoringReading(code, reason);
+    setReadings((current) => current.filter((reading) => reading.id !== code));
+    setSelectedReadingId(null);
+    setSuccessMessage(`Condition Monitoring reading ${code} soft-deleted.`);
+  }
+
+  async function handleDeleteSchedule(code, reason) {
+    await deleteConditionMonitoringSchedule(code, reason);
+    setSchedules((current) => current.filter((schedule) => schedule.id !== code));
+    setSelectedScheduleId(null);
+    setSuccessMessage(`Condition Monitoring Schedule ${code} deactivated.`);
+  }
+
   return (
     <div>
       <PageHeader
@@ -369,6 +386,8 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
                 <ConditionMonitoringScheduleDetailPanel
                   schedule={selectedSchedule}
                   onViewAsset360={handleViewAsset360}
+                  canDelete={canDeleteRecords}
+                  onDelete={handleDeleteSchedule}
                 />
               </div>
             </div>
@@ -409,6 +428,8 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
                   canWrite={canWriteMaintenance}
                   canAdminReview={canAdminReviewMaintenance}
                   canTechnicalReview={canTechnicalReviewMaintenance}
+                      canDelete={canDeleteRecords}
+                      onDelete={handleDeleteReading}
                   onSaveDraft={handleSaveReadingDraft}
                   onSubmit={handleSubmitReading}
                   onAdminReturn={handleAdminReturnReading}

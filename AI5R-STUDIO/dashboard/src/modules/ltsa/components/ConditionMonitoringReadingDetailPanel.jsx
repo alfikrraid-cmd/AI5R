@@ -151,6 +151,8 @@ export default function ConditionMonitoringReadingDetailPanel({
   onSubmit,
   onAdminReturn,
   onTechnicalReview,
+  canDelete = false,
+  onDelete,
 }) {
   const [finding, setFinding] = useState("");
   const [measurementForm, setMeasurementForm] = useState({});
@@ -193,6 +195,13 @@ export default function ConditionMonitoringReadingDetailPanel({
   const leakDetected = reading.leakDe || reading.leakNde;
   const editable = Boolean(canWrite) && EDITABLE_STATUSES.has(reading.workflowStatus);
   const reviewable = reading.workflowStatus === "SUBMITTED";
+
+  async function handleDelete() {
+    const reason = window.prompt(`Deletion reason for ${reading.id}:`);
+    if (!reason?.trim()) return;
+    if (!window.confirm(`Soft-delete Condition Monitoring reading ${reading.id}?`)) return;
+    await onDelete?.(reading.id, reason.trim());
+  }
 
   function setMeasurementField(key, value) {
     setMeasurementForm((current) => ({ ...current, [key]: value }));
@@ -576,6 +585,7 @@ export default function ConditionMonitoringReadingDetailPanel({
           </p>
         </Card>
       )}
+      {canDelete && <Card title="Danger Zone"><Button onClick={handleDelete}>Soft Delete</Button></Card>}
 
       <Card title="Related Schedule">
         {reading.scheduleCode ? (

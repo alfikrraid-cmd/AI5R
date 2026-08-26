@@ -320,19 +320,13 @@ export async function getPMSchedules() {
 }
 
 export async function createPMSchedule(payload) {
-    return _adminUsersRequest(`${API_URL}/api/ltsa/pm-schedules`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
-    });
+    return _adminUsersRequest(`${API_URL}/api/ltsa/pm-schedules`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
 }
-
 export async function updatePMSchedule(code, payload) {
-    return _adminUsersRequest(`${API_URL}/api/ltsa/pm-schedules/${encodeURIComponent(code)}`, {
-        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
-    });
+    return _adminUsersRequest(`${API_URL}/api/ltsa/pm-schedules/${encodeURIComponent(code)}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
 }
-
-export async function deletePMSchedule(code) {
-    return _adminUsersRequest(`${API_URL}/api/ltsa/pm-schedules/${encodeURIComponent(code)}`, { method: "DELETE" });
+export async function deletePMSchedule(code, reason) {
+    return _adminUsersRequest(`${API_URL}/api/ltsa/pm-schedules/${encodeURIComponent(code)}`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reason }) });
 }
 
 export async function getCMReports(options = {}) {
@@ -402,19 +396,13 @@ export async function getConditionMonitoringReadings() {
 }
 
 export async function createConditionMonitoringSchedule(payload) {
-    return _adminUsersRequest(`${API_URL}/api/ltsa/condition-monitoring-schedules`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
-    });
+    return _adminUsersRequest(`${API_URL}/api/ltsa/condition-monitoring-schedules`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
 }
-
 export async function updateConditionMonitoringSchedule(code, payload) {
-    return _adminUsersRequest(`${API_URL}/api/ltsa/condition-monitoring-schedules/${encodeURIComponent(code)}`, {
-        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
-    });
+    return _adminUsersRequest(`${API_URL}/api/ltsa/condition-monitoring-schedules/${encodeURIComponent(code)}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
 }
-
-export async function deleteConditionMonitoringSchedule(code) {
-    return _adminUsersRequest(`${API_URL}/api/ltsa/condition-monitoring-schedules/${encodeURIComponent(code)}`, { method: "DELETE" });
+export async function deleteConditionMonitoringSchedule(code, reason) {
+    return _adminUsersRequest(`${API_URL}/api/ltsa/condition-monitoring-schedules/${encodeURIComponent(code)}`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reason }) });
 }
 
 export async function getConditionMonitoringReadingsPage({ limit = 25, offset = 0 } = {}) {
@@ -1181,6 +1169,12 @@ export async function technicalReviewPMOccurrence(code, { action, comment, recom
     });
 }
 
+export async function deletePMOccurrence(code, reason) {
+    return _adminUsersRequest(`${API_URL}/api/ltsa/pm-occurrences/${encodeURIComponent(code)}`, {
+        method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reason }),
+    });
+}
+
 export async function createConditionMonitoringReading({
     conditionMonitoringScheduleCode, assetCode, assetType, readingDate, measurements,
 }) {
@@ -1228,6 +1222,12 @@ export async function technicalReviewConditionMonitoringReading(code, { action, 
             body: JSON.stringify({ action, comment, recommendation }),
         }
     );
+}
+
+export async function deleteConditionMonitoringReading(code, reason) {
+    return _adminUsersRequest(`${API_URL}/api/ltsa/condition-monitoring-readings/${encodeURIComponent(code)}`, {
+        method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reason }),
+    });
 }
 
 // Evidence upload is multipart, not JSON -- FormData, no Content-Type
