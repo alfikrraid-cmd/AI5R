@@ -312,7 +312,7 @@ def test_zero_inventory_recommendation_fields():
     assert rec.id == f"REC_NO_STOCK:{TAG}"
     assert rec.category == "SPARE_PART"
     assert rec.priority == 90
-    assert rec.evidence == (Evidence(source="SealStock", reference="SC-001", field="quantity_on_hand", value="0"),)
+    assert rec.evidence == (Evidence(source="MechanicalSealStockV1", reference="SC-001", field="quantity_on_hand", value="0"),)
 
 
 # -- Mechanical seal leakage -------------------------------------------------------

@@ -123,7 +123,7 @@ def test_seal_field_lists_compatible_seals():
     assert knowledge.seal == [{"seal_code": "SC-001", "part_name": "John Crane Type 21"}]
 
 
-def test_inventory_field_carries_stock_for_same_seals():
+def test_inventory_ignores_legacy_stock_for_same_seals():
     service = _service(
         seal_compatibility=[{"seal_code": "SC-001", "pump_tag_number": TAG}],
         seals=[{"seal_code": "SC-001", "seal_name": "John Crane Type 21"}],
@@ -132,12 +132,10 @@ def test_inventory_field_carries_stock_for_same_seals():
 
     knowledge = service.build(TAG)
 
-    assert knowledge.inventory == [
-        {"seal_code": "SC-001", "quantity_on_hand": 4, "reorder_point": 2, "location": "Warehouse A"}
-    ]
+    assert knowledge.inventory == []
 
 
-def test_inventory_leaves_stock_null_when_no_stock_row_exists():
+def test_inventory_has_no_fallback_when_no_stock_v1_application_exists():
     service = _service(
         seal_compatibility=[{"seal_code": "SC-009", "pump_tag_number": TAG}],
         seals=[{"seal_code": "SC-009", "seal_name": "Chesterton 155"}],
@@ -146,9 +144,7 @@ def test_inventory_leaves_stock_null_when_no_stock_row_exists():
 
     knowledge = service.build(TAG)
 
-    assert knowledge.inventory == [
-        {"seal_code": "SC-009", "quantity_on_hand": None, "reorder_point": None, "location": None}
-    ]
+    assert knowledge.inventory == []
 
 
 def test_seal_and_inventory_are_empty_when_no_compatible_seals():

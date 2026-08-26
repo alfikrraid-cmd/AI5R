@@ -130,6 +130,7 @@ class LTSAKnowledgeService:
         pm_schedule_repository: Any | None = None,
         cm_report_repository: Any | None = None,
         condition_monitoring_schedule_repository: Any | None = None,
+        mechanical_seal_stock_repository: Any | None = None,
     ) -> None:
         self.pump_gateway = pump_gateway or PumpGateway()
         self.maintenance_history_gateway = maintenance_history_gateway or MaintenanceHistoryGateway()
@@ -157,30 +158,21 @@ class LTSAKnowledgeService:
         self.pm_schedule_repository = pm_schedule_repository
         self.cm_report_repository = cm_report_repository
         self.condition_monitoring_schedule_repository = condition_monitoring_schedule_repository
+        self.mechanical_seal_stock_repository = mechanical_seal_stock_repository
 
     def build(self, tag_number: str) -> LTSAKnowledge:
-        spare_parts = self._build_spare_parts(tag_number)
+        compatible_seals = self._build_compatible_seals(tag_number)
+        inventory = self._build_stock_inventory(tag_number)
 
         knowledge = LTSAKnowledge(
             tag_number=tag_number,
             pump=self._build_pump(tag_number),
-            seal=[
-                {"seal_code": part["seal_code"], "part_name": part["part_name"]}
-                for part in spare_parts
-            ],
-            inventory=[
-                {
-                    "seal_code": part["seal_code"],
-                    "quantity_on_hand": part["quantity_on_hand"],
-                    "reorder_point": part["reorder_point"],
-                    "location": part["location"],
-                }
-                for part in spare_parts
-            ],
+            seal=compatible_seals,
+            inventory=inventory,
             pm_history=self._build_pm_history(tag_number),
             cm_history=self._build_cm_history(tag_number),
             breakdown_history=self._build_breakdown_history(tag_number),
-            drawings=self._build_drawings(spare_parts),
+            drawings=self._build_drawings(compatible_seals),
             recommendation=(),
             pm_schedules=self._build_pm_schedules(tag_number),
             condition_monitoring_schedules=self._build_condition_monitoring_schedules(tag_number),
@@ -194,14 +186,24 @@ class LTSAKnowledgeService:
         response = mis.get_pump_status(tag_number, pump_gateway=self.pump_gateway)
         return response.get("data") if response.get("success") else None
 
-    def _build_spare_parts(self, tag_number: str) -> list[dict[str, Any]]:
-        result = mis.get_pump_spare_parts(
-            tag_number,
-            seal_pump_compatibility_gateway=self.seal_pump_compatibility_gateway,
-            seal_stock_gateway=self.seal_stock_gateway,
-            seal_gateway=self.seal_gateway,
-        )
-        return result.get("spare_parts") or []
+    def _build_compatible_seals(self, tag_number: str) -> list[dict[str, Any]]:
+        compatibility = self.seal_pump_compatibility_gateway.list_seal_pump_compatibilities()
+        seal_codes = [
+            record.get("seal_code")
+            for record in (compatibility.get("data") or [])
+            if record.get("pump_tag_number") == tag_number
+        ]
+        seals = self.seal_gateway.list_seals()
+        seal_by_code = {record.get("seal_code"): record for record in (seals.get("data") or [])}
+        return [
+            {"seal_code": code, "part_name": (seal_by_code.get(code) or {}).get("seal_name")}
+            for code in seal_codes
+        ]
+
+    def _build_stock_inventory(self, tag_number: str) -> list[dict[str, Any]]:
+        if self.mechanical_seal_stock_repository is None:
+            return []
+        return self.mechanical_seal_stock_repository.list_for_equipment(tag_number)
 
     def _build_drawings(self, spare_parts: list[dict[str, Any]]) -> list[dict[str, Any]]:
         compatible_seal_codes = {part["seal_code"] for part in spare_parts}

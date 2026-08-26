@@ -90,6 +90,7 @@ class EngineeringContextEngine:
         seal_stock_gateway: SealStockGateway | None = None,
         seal_pump_compatibility_gateway: SealPumpCompatibilityGateway | None = None,
         work_order_gateway: WorkOrderGateway | None = None,
+        mechanical_seal_stock_repository: Any | None = None,
     ):
         self.pump_gateway = pump_gateway or PumpGateway()
         self.maintenance_history_gateway = maintenance_history_gateway or MaintenanceHistoryGateway()
@@ -105,6 +106,7 @@ class EngineeringContextEngine:
             seal_pump_compatibility_gateway or SealPumpCompatibilityGateway()
         )
         self.work_order_gateway = work_order_gateway or WorkOrderGateway()
+        self.mechanical_seal_stock_repository = mechanical_seal_stock_repository
 
     def build(self, tag_number: str, today: date | None = None) -> dict[str, Any]:
         today = today or date.today()
@@ -319,13 +321,35 @@ class EngineeringContextEngine:
     # -- Seal / Inventory ----------------------------------------------------
 
     def _build_seal_summary(self, tag_number: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-        result = mis.get_pump_spare_parts(
-            tag_number,
-            seal_pump_compatibility_gateway=self.seal_pump_compatibility_gateway,
-            seal_stock_gateway=self.seal_stock_gateway,
-            seal_gateway=self.seal_gateway,
+        compatibility = self.seal_pump_compatibility_gateway.list_seal_pump_compatibilities()
+        seal_codes = [
+            record.get("seal_code")
+            for record in (compatibility.get("data") or [])
+            if record.get("pump_tag_number") == tag_number
+        ]
+        seals = self.seal_gateway.list_seals()
+        seal_by_code = {record.get("seal_code"): record for record in (seals.get("data") or [])}
+        stock_rows = (
+            self.mechanical_seal_stock_repository.list_for_equipment(tag_number)
+            if self.mechanical_seal_stock_repository is not None
+            else []
         )
-        spare_parts = result.get("spare_parts") or []
+        spare_parts = [
+            {
+                "seal_code": row.get("seal_code") or row.get("stock_pool_id"),
+                "part_name": row.get("seal_type") or (seal_by_code.get(row.get("seal_code")) or {}).get("seal_name"),
+                "quantity_on_hand": row.get("quantity_on_hand"),
+                "reorder_point": None,
+                "location": row.get("stock_location"),
+            }
+            for row in stock_rows
+        ]
+        if not spare_parts:
+            spare_parts = [
+                {"seal_code": code, "part_name": (seal_by_code.get(code) or {}).get("seal_name"),
+                 "quantity_on_hand": None, "reorder_point": None, "location": None}
+                for code in seal_codes
+            ]
 
         compatibility = [
             {"seal_code": part.get("seal_code"), "part_name": part.get("part_name")} for part in spare_parts

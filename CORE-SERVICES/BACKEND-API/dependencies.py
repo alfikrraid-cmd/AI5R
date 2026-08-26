@@ -223,6 +223,7 @@ _ltsa_knowledge_service = LTSAKnowledgeService(
     pm_schedule_repository=_pm_schedule_repository,
     cm_report_repository=_cm_report_repository,
     condition_monitoring_schedule_repository=_condition_monitoring_schedule_repository,
+    mechanical_seal_stock_repository=_mechanical_seal_stock_repository,
 )
 
 # MWO-LTSA-SEAL-EQUIPMENT-HISTORY-INTEGRATION-001 -- same singleton
@@ -275,6 +276,7 @@ _engineering_context_engine = EngineeringContextEngine(
     seal_stock_gateway=_seal_stock_gateway,
     seal_pump_compatibility_gateway=_seal_pump_compatibility_gateway,
     work_order_gateway=_work_order_gateway,
+    mechanical_seal_stock_repository=_mechanical_seal_stock_repository,
 )
 
 

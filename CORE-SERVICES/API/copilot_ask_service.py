@@ -272,7 +272,7 @@ def _handle_inventory(tag: str, *, ltsa_knowledge_service, **_: Any) -> CopilotA
         return CopilotAnswer(f"No spare-part stock records are registered for {tag}'s compatible seals.", FACT, ())
     lines = [f"- {i.get('seal_code')}: qty on hand {i.get('quantity_on_hand') if i.get('quantity_on_hand') is not None else 'N/A'} ({i.get('location') or 'N/A'})" for i in inventory]
     answer = f"Spare-part stock for {tag}:\n" + "\n".join(lines)
-    evidence = tuple(_evidence("SealStock", i.get("seal_code") or tag, "quantity_on_hand", i.get("quantity_on_hand")) for i in inventory)
+    evidence = tuple(_evidence("MechanicalSealStockV1", i.get("stock_pool_id") or tag, "quantity_on_hand", i.get("quantity_on_hand")) for i in inventory)
     return CopilotAnswer(answer, FACT, evidence)
 
 

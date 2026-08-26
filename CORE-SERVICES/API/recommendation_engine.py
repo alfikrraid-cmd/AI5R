@@ -193,8 +193,8 @@ class RecommendationEngine:
     def _check_zero_inventory(self, knowledge: LTSAKnowledge) -> Recommendation | None:
         evidence = tuple(
             Evidence(
-                source="SealStock",
-                reference=record["seal_code"],
+                source="MechanicalSealStockV1",
+                reference=record.get("stock_pool_id") or record.get("seal_code") or knowledge.tag_number,
                 field="quantity_on_hand",
                 value=str(record.get("quantity_on_hand")),
             )
