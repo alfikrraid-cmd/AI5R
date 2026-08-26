@@ -3,7 +3,6 @@ import KnowledgeCard, { EmptySection } from "../components/KnowledgeCard";
 import ActivePlansPanel from "../components/ActivePlansPanel";
 import KnowledgeTimeline from "../components/KnowledgeTimeline";
 import KnowledgeSummary from "../components/KnowledgeSummary";
-import KnowledgeInventory from "../components/KnowledgeInventory";
 import KnowledgeSeal from "../components/KnowledgeSeal";
 import KnowledgeAIInsight from "../components/KnowledgeAIInsight";
 import KnowledgeDrawingSection from "../components/KnowledgeDrawingSection";
@@ -289,19 +288,27 @@ export default function KnowledgeWorkspace({ tag }) {
                 </KnowledgeCard>
               </KnowledgeSection>
 
-              <KnowledgeSection id="compat-seals" title="Compatible Seals" badge={String(data.compatibleSeals.length)}>
+              <KnowledgeSection id="stock-v1" title="Seal Stock Available" badge={String(data.inventory.length)}>
                 <KnowledgeCard variant="row-list">
-                  <RefRows items={data.compatibleSeals} emptyTitle="Belum ada seal kompatibel" />
-                </KnowledgeCard>
-              </KnowledgeSection>
-
-              <KnowledgeSection
-                id="inventory"
-                title="Inventory"
-                badge={`${data.inventory.filter((item) => item.level === "low" || item.level === "out").length} Rendah`}
-              >
-                <KnowledgeCard variant="row-list">
-                  <KnowledgeInventory items={data.inventory} />
+                  {data.inventory.length === 0 ? (
+                    <EmptySection title="No Stock V1 record for this pump" />
+                  ) : (
+                    data.inventory.map((item) => (
+                      <div className="part-item" key={item.stockPoolId}>
+                        <div className="part-row">
+                          <span className="part-name">{item.name}{item.size ? ` · ${item.size}` : ""}</span>
+                          <span className={`stock-flag ${item.available == null ? "pending" : item.available > 0 ? "ok" : "low"}`}>
+                            {item.available == null ? "Stock quantity unknown" : item.available > 0 ? `${item.available} sets available` : "Out of Stock"}
+                          </span>
+                        </div>
+                        <div className="part-meta">
+                          {item.physicalSize ? `Physical ${item.physicalSize}` : "Physical size unknown"}
+                          {item.reference ? ` · ${item.reference}` : ""}
+                        </div>
+                        <div className="part-meta">Verification: {item.status} · Stock Pool: {item.stockPoolId}</div>
+                      </div>
+                    ))
+                  )}
                 </KnowledgeCard>
               </KnowledgeSection>
 

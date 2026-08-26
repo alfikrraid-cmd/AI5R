@@ -50,7 +50,7 @@ function backendResponse(overrides = {}) {
         },
       ],
       seal: [{ seal_code: "SC-001", part_name: "John Crane Type 21" }],
-      inventory: [{ seal_code: "SC-001", quantity_on_hand: 4, reorder_point: 2, location: "Warehouse A" }],
+      inventory: [{ stock_pool_id: "MSSP-001", seal_type: "T48MP", application_size: '3-1/2"', quantity_on_hand: 4, quantity_available: 4, verification_status: "CONFIRMED", stock_location: "Warehouse A" }],
       pm: [{ pm_occurrence_code: "PM-1", asset_code: TAG, occurrence_date: "2026-06-01" }],
       cm: [{ cm_report_code: "CM-1", asset_code: TAG, created_at: "2026-06-05", severity: "MINOR" }],
       breakdown: [{ maintenance_record_code: "MH-1", asset_code: TAG, performed_at: "2026-06-03", action_taken: "Replaced bearing" }],
@@ -229,22 +229,39 @@ describe("Timeline render", () => {
 });
 
 describe("API success -- data flows from the single Knowledge API into every section", () => {
-  it("populates Compatible Seals, Inventory, PM/CM/Breakdown History from one response", async () => {
+  it("populates Stock V1 availability and PM/CM/Breakdown History from one response", async () => {
     getPumpKnowledge.mockResolvedValue(backendResponse());
 
     render(<KnowledgeWorkspace tag={TAG} />);
 
     await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());
 
-    // "John Crane Type 21" legitimately renders twice: Compatible Seals'
-    // .part-name AND Inventory's .inv-name, both joined from the same
-    // seal_code by useKnowledgeWorkspace's mapInventory().
-    expect(screen.getAllByText("John Crane Type 21").length).toBeGreaterThan(0);
+    expect(screen.getByText(/T48MP · 3-1\/2"/)).toBeInTheDocument();
+    expect(screen.getByText("4 sets available")).toBeInTheDocument();
+    expect(screen.getByText("Seal Stock Available")).toBeInTheDocument();
+    expect(screen.queryByText("Compatible Seals")).not.toBeInTheDocument();
+    expect(screen.queryByText("Inventory")).not.toBeInTheDocument();
+    expect(screen.queryByText("Belum ada data inventaris")).not.toBeInTheDocument();
     expect(screen.getAllByText(/PM-1/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/CM-1/).length).toBeGreaterThan(0);
     // action_taken is appended to the performed_at meta line, not its own
     // text node -- match by substring.
     expect(screen.getByText((text) => text.includes("Replaced bearing"))).toBeInTheDocument();
+  });
+
+  it("renders unknown and zero Stock V1 quantities without converting between them", async () => {
+    const response = backendResponse();
+    response.data.inventory = [
+      { stock_pool_id: "MSSP-UNKNOWN", seal_type: "T48MP", application_size: '3-1/2"', quantity_on_hand: null, quantity_available: null, verification_status: "UNKNOWN" },
+      { stock_pool_id: "MSSP-ZERO", seal_type: "T6014DP", application_size: "60 mm", quantity_on_hand: 0, quantity_available: 0, verification_status: "CONFIRMED" },
+    ];
+    getPumpKnowledge.mockResolvedValue(response);
+
+    render(<KnowledgeWorkspace tag={TAG} />);
+
+    await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());
+    expect(screen.getByText("Stock quantity unknown")).toBeInTheDocument();
+    expect(screen.getByText("Out of Stock")).toBeInTheDocument();
   });
 });
 
@@ -329,7 +346,7 @@ describe("Responsive layout", () => {
     expect(screen.getByTestId("knowledge-workspace-success")).toHaveClass("workspace-grid");
   });
 
-  it("keeps Mechanical Seal, Compatible Seals, Inventory, and Drawings in the sidebar rail; everything else in the main column", async () => {
+  it("keeps Mechanical Seal, Stock V1, and Drawings in the sidebar rail; everything else in the main column", async () => {
     getPumpKnowledge.mockResolvedValue(backendResponse());
 
     const { container } = render(<KnowledgeWorkspace tag={TAG} />);
@@ -338,7 +355,7 @@ describe("Responsive layout", () => {
     const inspectorRail = container.querySelector(".inspector-rail");
     const objectColumn = container.querySelector(".object-column");
 
-    ["seal", "compat-seals", "inventory", "drawings"].forEach((id) => {
+    ["seal", "stock-v1", "drawings"].forEach((id) => {
       expect(inspectorRail.querySelector(`[data-testid="knowledge-section-${id}"]`)).toBeInTheDocument();
     });
     [
@@ -458,7 +475,7 @@ describe("Refresh -- MWO-LTSA-032A-R1", () => {
     await waitFor(() => expect(getPumpKnowledge).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());
 
-    expect(screen.getAllByTestId("knowledge-card")).toHaveLength(9);
+    expect(screen.getAllByTestId("knowledge-card")).toHaveLength(8);
   });
 
   it("exposes Refresh as an accessible, named button (role + accessible name)", async () => {
@@ -598,7 +615,7 @@ describe("Reuse verification", () => {
     // 10 to 9: it now renders KnowledgePmHistorySection directly (its own
     // per-row expand/collapse, reusing PMOccurrenceDetailPanel) rather
     // than a single KnowledgeCard-wrapped RefRows list.
-    expect(screen.getAllByTestId("knowledge-card")).toHaveLength(9);
+    expect(screen.getAllByTestId("knowledge-card")).toHaveLength(8);
   });
 
   // MWO-LTSA-ASSET360-CONSOLIDATION-001 -- 4 new sections added: condition
@@ -617,7 +634,7 @@ describe("Reuse verification", () => {
       "maintenance",
       "seal",
       "compat-seals",
-      "inventory",
+      "stock-v1",
       "pm-history",
       "cm-history",
       "breakdown-history",
@@ -861,7 +878,7 @@ describe("Mechanical Seal (MWO-LTSA-ASSET360-MECHANICAL-SEAL-WIRING-001) -- curr
     render(<KnowledgeWorkspace tag={TAG} />);
 
     await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());
-    expect(screen.getAllByTestId("knowledge-card")).toHaveLength(9);
+    expect(screen.getAllByTestId("knowledge-card")).toHaveLength(8);
   });
 });
 
@@ -955,7 +972,7 @@ describe("Configured vs Current Seal (MWO-LTSA-ASSET360-SEAL-SEMANTICS-001) -- c
 
     await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());
     expect(getPumpKnowledge).toHaveBeenCalledTimes(1);
-    expect(screen.getAllByTestId("knowledge-card")).toHaveLength(9);
+    expect(screen.getAllByTestId("knowledge-card")).toHaveLength(8);
   });
 });
 
@@ -1201,6 +1218,6 @@ describe("Application chrome via WorkspaceShell (MWO-LTSA-036I)", () => {
     render(<KnowledgeWorkspace tag={TAG} />);
 
     await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());
-    expect(screen.getAllByTestId("knowledge-card")).toHaveLength(9);
+    expect(screen.getAllByTestId("knowledge-card")).toHaveLength(8);
   });
 });

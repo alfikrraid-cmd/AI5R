@@ -206,25 +206,22 @@ function mapCompatibleSeals(seal) {
   }));
 }
 
-function mapInventory(inventory, seal) {
-  const nameByCode = new Map((seal ?? []).map((item) => [item.seal_code, item.part_name]));
-
+function mapInventory(inventory) {
   return (inventory ?? []).map((item) => {
     const quantity = item.quantity_on_hand;
-    const known = quantity !== null && quantity !== undefined;
-    let level = "low";
-    if (known) {
-      if (quantity <= 0) level = "out";
-      else if (item.reorder_point != null && quantity <= item.reorder_point) level = "low";
-      else level = "ok";
-    }
+    const known = quantity != null;
 
     return {
-      id: item.seal_code,
-      name: nameByCode.get(item.seal_code) ?? item.seal_code,
-      meta: item.location ?? "",
-      qty: known ? String(quantity) : "Unknown",
-      level,
+      id: item.stock_pool_id,
+      stockPoolId: item.stock_pool_id,
+      name: item.seal_type ?? "Seal type unknown",
+      size: item.application_size ?? item.nominal_size ?? null,
+      physicalSize: item.physical_stock_size ?? null,
+      reference: item.drawing_reference ?? null,
+      available: item.quantity_available ?? null,
+      qty: known ? String(item.quantity_available ?? quantity) : "Stock quantity unknown",
+      status: item.verification_status ?? "UNKNOWN",
+      meta: item.stock_location ?? item.drawing_reference ?? "",
     };
   });
 }
@@ -330,7 +327,7 @@ function mapEquipmentKnowledge(knowledgeData) {
     mechanicalSeal: mapMechanicalSeal(knowledgeData?.current_seal),
     configuredSeal: mapConfiguredSeal(knowledgeData?.configured_seal),
     compatibleSeals: mapCompatibleSeals(knowledgeData?.seal),
-    inventory: mapInventory(knowledgeData?.inventory, knowledgeData?.seal),
+    inventory: mapInventory(knowledgeData?.inventory),
     pmHistory: pmRecords.map((record) =>
       mapRefItem(record, { idField: "pm_occurrence_code", nameLabel: "PM Occurrence", metaField: "occurrence_date" })
     ),
