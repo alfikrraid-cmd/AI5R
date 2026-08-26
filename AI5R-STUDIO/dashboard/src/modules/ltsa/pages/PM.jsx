@@ -5,11 +5,13 @@ import PMScheduleTable from "../components/PMScheduleTable";
 import PMOpenDesignView from "../components/PMOpenDesignView";
 import PMOccurrenceDetailPanel from "../components/PMOccurrenceDetailPanel";
 import CreatePMScheduleModal from "../components/CreatePMScheduleModal";
+import EditPMScheduleModal from "../components/EditPMScheduleModal";
 import CreatePMOccurrenceModal from "../components/CreatePMOccurrenceModal";
 import SuccessToast from "../components/SuccessToast";
 import {
   getPMSchedules, getCMReports, getPMOccurrences, createPMOccurrence,
   createPMSchedule,
+  updatePMSchedule,
   updatePMOccurrenceDraft, submitPMOccurrence, adminReviewPMOccurrence, technicalReviewPMOccurrence,
   deletePMOccurrence,
   deletePMSchedule,
@@ -60,6 +62,10 @@ export default function PM({ onNavigate, navContext }) {
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [selectedId, setSelectedId] = useState(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  // MWO-LTSA-PM-CMON-OPERATIONAL-UI-014C -- editingSchedule holds the real
+  // schedule record being edited (not just an id), so the modal can
+  // prefill from it directly without a second lookup.
+  const [editingSchedule, setEditingSchedule] = useState(null);
   // MWO-LTSA-PM-CM-INTAKE-001 -- a real PM Occurrence (an actual field
   // visit: activities/finding/preliminary recommendation), distinct from
   // pm_schedule above (the recurring plan/template this page's own
@@ -183,6 +189,19 @@ export default function PM({ onNavigate, navContext }) {
   );
 
   const selectedPM = filteredPMSchedules.find((pm) => pm.id === selectedId) ?? null;
+
+  // MWO-LTSA-PM-CMON-OPERATIONAL-UI-014C -- distinguishes "arrived scoped
+  // to a specific pump (navContext.assetTag) and that pump genuinely has
+  // no active PM Schedule" from the generic "nothing picked yet" empty
+  // state. AUTO_CREATE_PM_SCHEDULE=NO: this never creates a schedule --
+  // it only offers the explicit, separate Create PM Schedule action for
+  // an authorized user, prefilled with the pump already being viewed.
+  const noScheduleForAssetTag =
+    Boolean(navContext?.assetTag) &&
+    !loading &&
+    !selectedPM &&
+    !selectedOccurrenceId &&
+    !pmSchedules.some((pm) => pm.equipmentTag === navContext.assetTag);
 
   // MWO-LTSA-053 -- Related PM: other schedules sharing this one's
   // equipmentTag, excluding itself. Derived from the already-fetched
@@ -319,6 +338,18 @@ export default function PM({ onNavigate, navContext }) {
     setSuccessMessage(`PM Schedule ${code} deactivated.`);
   }
 
+  // MWO-LTSA-PM-CMON-OPERATIONAL-UI-014C -- uses the already-real PATCH
+  // endpoint (updatePMSchedule); reconciles local state from the
+  // RETURNING response, never from a locally-fabricated guess -- the same
+  // "server response is truth" convention every other handler in this
+  // file already follows.
+  async function handleUpdateSchedule(code, payload) {
+    const result = await updatePMSchedule(code, payload);
+    const updated = mapPMScheduleRecord(result.data);
+    setPmSchedules((current) => current.map((schedule) => (schedule.id === code ? updated : schedule)));
+    setSuccessMessage(`PM Schedule ${code} updated.`);
+  }
+
   return (
     <div>
       <PageHeader
@@ -380,6 +411,8 @@ export default function PM({ onNavigate, navContext }) {
                     onCreatePM={() => setIsCreateModalOpen(true)}
                     canDelete={canDeleteRecords}
                     onDelete={handleDeleteSchedule}
+                    canEdit={canWriteMaintenance}
+                    onEdit={setEditingSchedule}
                   />
                 ) : (
                   // MWO-LTSA-ASSET360-PM-CMON-TRACEABILITY-001 -- a
@@ -431,6 +464,28 @@ export default function PM({ onNavigate, navContext }) {
                   )}
                 </div>
               </>
+            ) : noScheduleForAssetTag ? (
+              // MWO-LTSA-PM-CMON-OPERATIONAL-UI-014C -- exact required
+              // message, plus the explicit, separate Create action for an
+              // authorized user only. Never auto-creates a schedule --
+              // clicking this only opens the existing create form (a
+              // second, separate user action), it does not itself create
+              // anything.
+              <>
+                <EmptyState
+                  title="No active PM Schedule is available for this pump."
+                  description={
+                    canWriteMaintenance
+                      ? "Create a PM Schedule for this pump before recording a PM occurrence."
+                      : "Contact an authorized user to create a PM Schedule for this pump."
+                  }
+                />
+                {canWriteMaintenance && (
+                  <div style={{ marginTop: "var(--space-3)" }}>
+                    <Button onClick={() => setIsCreateModalOpen(true)}>Create PM Schedule</Button>
+                  </div>
+                )}
+              </>
             ) : (
               <EmptyState
                 title="No PM schedule selected"
@@ -445,6 +500,14 @@ export default function PM({ onNavigate, navContext }) {
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
         onCreate={handleCreate}
+        initialEquipmentTag={noScheduleForAssetTag ? navContext.assetTag : ""}
+      />
+
+      <EditPMScheduleModal
+        isOpen={Boolean(editingSchedule)}
+        onClose={() => setEditingSchedule(null)}
+        onSave={handleUpdateSchedule}
+        pm={editingSchedule}
       />
 
       {selectedPM && (

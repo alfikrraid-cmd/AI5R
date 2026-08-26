@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button, Modal } from "../../../design-system";
 import colors from "../../../design-system/theme/colors";
 import spacing from "../../../design-system/theme/spacing";
@@ -75,8 +75,24 @@ function Field({ id, label, children }) {
   );
 }
 
-export default function CreatePMScheduleModal({ isOpen, onClose, onCreate }) {
-  const [form, setForm] = useState(EMPTY_FORM);
+// MWO-LTSA-PM-CMON-OPERATIONAL-UI-014C -- initialEquipmentTag is optional
+// and additive: every existing caller that omits it keeps the exact same
+// blank-equipment behavior as before. Used by PM.jsx's "No active PM
+// Schedule is available for this pump" flow to prefill the pump that was
+// already being viewed, rather than requiring it to be retyped.
+function initialFormFor(initialEquipmentTag) {
+  return initialEquipmentTag ? { ...EMPTY_FORM, equipmentTag: initialEquipmentTag } : EMPTY_FORM;
+}
+
+export default function CreatePMScheduleModal({ isOpen, onClose, onCreate, initialEquipmentTag = "" }) {
+  const [form, setForm] = useState(() => initialFormFor(initialEquipmentTag));
+
+  useEffect(() => {
+    if (isOpen) {
+      setForm(initialFormFor(initialEquipmentTag));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, initialEquipmentTag]);
 
   function setField(name) {
     return (event) => setForm((current) => ({ ...current, [name]: event.target.value }));

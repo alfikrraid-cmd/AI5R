@@ -386,12 +386,18 @@ describe("PM Open Design (MWO-LTSA-053)", () => {
     expect(await screen.findByRole("heading", { name: "Wear-Plate Inspection" })).toBeTruthy();
   });
 
+  // MWO-LTSA-PM-CMON-OPERATIONAL-UI-014C -- this scenario (a real pump,
+  // deep-linked, with no matching PM Schedule) now shows the specific "No
+  // active PM Schedule is available for this pump." message instead of
+  // the generic "No PM schedule selected" -- see the "PM no-schedule flow"
+  // describe block below for full coverage. No fabricated selection
+  // either way.
   it("does not select any PM schedule when navContext.assetTag matches nothing, no fabricated selection", async () => {
     loadPMSchedules();
     render(<PM navContext={{ assetTag: "999-NO-MATCH" }} />);
     await screen.findByText("PM-2001");
 
-    expect(screen.getByText(/no pm schedule selected/i)).toBeTruthy();
+    expect(screen.getByText(/no active pm schedule is available for this pump/i)).toBeTruthy();
   });
 
   // MWO-LTSA-ASSET360-PM-CMON-TRACEABILITY-001

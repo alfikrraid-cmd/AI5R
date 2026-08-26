@@ -92,6 +92,8 @@ export default function PMOpenDesignView({
   onCreatePM,
   canDelete = false,
   onDelete,
+  canEdit = false,
+  onEdit,
 }) {
   const [drawer, setDrawer] = useState(null); // null | "drawing"
 
@@ -228,7 +230,32 @@ export default function PMOpenDesignView({
               <InfoRow label="Coverage" value={coverageMeta.label} />
             </div>
           </Section>
-          {canDelete && <Section id="schedule-actions" title="Schedule Actions"><button type="button" onClick={() => { const reason = window.prompt(`Deactivate ${pm.id}:`); if (reason?.trim() && window.confirm(`Deactivate ${pm.id}?`)) onDelete?.(pm.id, reason.trim()); }}>Deactivate Schedule</button></Section>}
+          {/* MWO-LTSA-PM-CMON-OPERATIONAL-UI-014C -- Edit gated on the same
+              MAINTENANCE_WRITE capability the backend PATCH endpoint
+              itself requires (PM.jsx's canWriteMaintenance), independent
+              of canDelete (SUPERUSER-only). */}
+          {(canEdit || canDelete) && (
+            <Section id="schedule-actions" title="Schedule Actions">
+              <div style={{ display: "flex", gap: "var(--space-2)" }}>
+                {canEdit && (
+                  <button type="button" className="btn-link" onClick={() => onEdit?.(pm)} data-od-id="edit-schedule">
+                    Edit Schedule
+                  </button>
+                )}
+                {canDelete && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const reason = window.prompt(`Deactivate ${pm.id}:`);
+                      if (reason?.trim() && window.confirm(`Deactivate ${pm.id}?`)) onDelete?.(pm.id, reason.trim());
+                    }}
+                  >
+                    Deactivate Schedule
+                  </button>
+                )}
+              </div>
+            </Section>
+          )}
 
           <Section id="coverage-section" title="LTSA Coverage">
             <div className="identity-status" style={{ marginTop: "var(--space-3)" }}>

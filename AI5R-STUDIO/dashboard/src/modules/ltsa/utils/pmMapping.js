@@ -80,6 +80,14 @@ export function mapPMScheduleRecord(record) {
     estimatedDurationHours: record.estimated_duration_hours,
     relatedWorkOrders: [],
     status: computeDisplayStatus(record.status, nextDue),
+    // MWO-LTSA-PM-CMON-OPERATIONAL-UI-014C -- Edit Schedule needs the REAL
+    // stored status (ACTIVE/ON_HOLD only, per this file's own comment
+    // above) to prefill/submit, never the computed DUE_SOON/OVERDUE
+    // display value `status` above already carries -- PATCHing a computed
+    // value back as if it were a real stored one would corrupt the row.
+    rawStatus: record.status,
+    intervalUnit: record.interval_unit,
+    effectiveDate: formatDateOnly(record.effective_date),
     timeline: [],
     // MWO-LTSA-053 -- structurally present, always null: pm_schedule has
     // no recommendation column (ADR-PM-001's real-column list above).

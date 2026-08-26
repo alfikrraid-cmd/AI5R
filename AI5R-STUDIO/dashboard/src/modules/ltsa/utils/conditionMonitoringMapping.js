@@ -28,6 +28,15 @@ export function mapConditionMonitoringScheduleRecord(record) {
     area: null,
     frequency: record.frequency,
     applicableParameters: Array.isArray(record.applicable_parameters) ? record.applicable_parameters : [],
+    // MWO-LTSA-PM-CMON-OPERATIONAL-UI-014C -- additive: Edit Schedule
+    // needs these real, already-stored values to prefill, mirroring
+    // pmMapping.js's own intervalUnit/effectiveDate addition. Column list
+    // matches ConditionMonitoringScheduleUpdateRequest exactly (this
+    // session's own re-read of models/requests.py, not assumed).
+    monitoringType: record.monitoring_type,
+    measurementPoint: record.measurement_point,
+    intervalUnit: record.interval_unit,
+    effectiveDate: formatDateOnly(record.effective_date),
   };
 }
 

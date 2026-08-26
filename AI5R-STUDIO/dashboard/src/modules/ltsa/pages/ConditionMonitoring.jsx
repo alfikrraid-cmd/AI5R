@@ -8,6 +8,7 @@ import ConditionMonitoringReadingTable from "../components/ConditionMonitoringRe
 import ConditionMonitoringReadingDetailPanel from "../components/ConditionMonitoringReadingDetailPanel";
 import CreateConditionMonitoringReadingModal from "../components/CreateConditionMonitoringReadingModal";
 import CreateConditionMonitoringScheduleModal from "../components/CreateConditionMonitoringScheduleModal";
+import EditConditionMonitoringScheduleModal from "../components/EditConditionMonitoringScheduleModal";
 import SuccessToast from "../components/SuccessToast";
 import {
   getConditionMonitoringReadings, getConditionMonitoringSchedules, createConditionMonitoringReading,
@@ -16,6 +17,7 @@ import {
   deleteConditionMonitoringReading,
   deleteConditionMonitoringSchedule,
   createConditionMonitoringSchedule,
+  updateConditionMonitoringSchedule,
 } from "../../../api/ai5rClient";
 import {
   mapConditionMonitoringReadingRecord,
@@ -89,6 +91,10 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isCreateScheduleModalOpen, setIsCreateScheduleModalOpen] = useState(false);
+  // MWO-LTSA-PM-CMON-OPERATIONAL-UI-014C -- editingSchedule holds the real
+  // schedule record being edited (not just an id), so the modal can
+  // prefill from it directly without a second lookup.
+  const [editingSchedule, setEditingSchedule] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
 
   // MWO-LTSA-PM-CM-REVIEW-UI-001, Phase 6/7/8 -- role-gated review action
@@ -326,6 +332,18 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
     setSuccessMessage(`Condition Monitoring Schedule ${code} deactivated.`);
   }
 
+  // MWO-LTSA-PM-CMON-OPERATIONAL-UI-014C -- uses the already-real PATCH
+  // endpoint (updateConditionMonitoringSchedule); reconciles local state
+  // from the RETURNING response, never from a locally-fabricated guess --
+  // the same "server response is truth" convention every other handler in
+  // this file already follows.
+  async function handleUpdateSchedule(code, payload) {
+    const result = await updateConditionMonitoringSchedule(code, payload);
+    const updated = mapConditionMonitoringScheduleRecord(result.data);
+    setSchedules((current) => current.map((schedule) => (schedule.id === code ? updated : schedule)));
+    setSuccessMessage(`Condition Monitoring Schedule ${code} updated.`);
+  }
+
   return (
     <div>
       <PageHeader
@@ -388,6 +406,8 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
                   onViewAsset360={handleViewAsset360}
                   canDelete={canDeleteRecords}
                   onDelete={handleDeleteSchedule}
+                  canEdit={canWriteMaintenance}
+                  onEdit={setEditingSchedule}
                 />
               </div>
             </div>
@@ -451,6 +471,12 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
         isOpen={isCreateScheduleModalOpen}
         onClose={() => setIsCreateScheduleModalOpen(false)}
         onCreate={handleCreateSchedule}
+      />
+      <EditConditionMonitoringScheduleModal
+        isOpen={Boolean(editingSchedule)}
+        onClose={() => setEditingSchedule(null)}
+        onSave={handleUpdateSchedule}
+        schedule={editingSchedule}
       />
     </div>
   );
