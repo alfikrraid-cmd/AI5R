@@ -41,6 +41,8 @@ const CHECKLIST_TEMPLATES = {
 const CHECKLIST_TEMPLATE_NAMES = Object.keys(CHECKLIST_TEMPLATES);
 
 const EMPTY_FORM = {
+  scheduleCode: "",
+  procedure: "",
   equipmentTag: "",
   frequency: "MONTHLY",
   triggerType: "CALENDAR",
@@ -108,6 +110,12 @@ export default function CreatePMScheduleModal({ isOpen, onClose, onCreate }) {
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title="Create PM Schedule">
       <form onSubmit={handleSubmit}>
+        <Field id="pm-schedule-code" label="Schedule Code">
+          <input id="pm-schedule-code" style={fieldStyle} value={form.scheduleCode} onChange={setField("scheduleCode")} required />
+        </Field>
+        <Field id="pm-procedure" label="Procedure">
+          <input id="pm-procedure" style={fieldStyle} value={form.procedure} onChange={setField("procedure")} required />
+        </Field>
         <Field id="pm-equipment" label="Equipment">
           <input
             id="pm-equipment"

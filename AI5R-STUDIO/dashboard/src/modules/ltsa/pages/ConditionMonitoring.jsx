@@ -7,11 +7,13 @@ import ConditionMonitoringReadingFilterBar from "../components/ConditionMonitori
 import ConditionMonitoringReadingTable from "../components/ConditionMonitoringReadingTable";
 import ConditionMonitoringReadingDetailPanel from "../components/ConditionMonitoringReadingDetailPanel";
 import CreateConditionMonitoringReadingModal from "../components/CreateConditionMonitoringReadingModal";
+import CreateConditionMonitoringScheduleModal from "../components/CreateConditionMonitoringScheduleModal";
 import SuccessToast from "../components/SuccessToast";
 import {
   getConditionMonitoringReadings, getConditionMonitoringSchedules, createConditionMonitoringReading,
   updateConditionMonitoringReadingDraft, submitConditionMonitoringReading,
   adminReviewConditionMonitoringReading, technicalReviewConditionMonitoringReading,
+  createConditionMonitoringSchedule,
 } from "../../../api/ai5rClient";
 import {
   mapConditionMonitoringReadingRecord,
@@ -84,6 +86,7 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
   const [selectedReadingId, setSelectedReadingId] = useState(null);
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isCreateScheduleModalOpen, setIsCreateScheduleModalOpen] = useState(false);
   const [successMessage, setSuccessMessage] = useState(null);
 
   // MWO-LTSA-PM-CM-REVIEW-UI-001, Phase 6/7/8 -- role-gated review action
@@ -208,6 +211,27 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
     setSelectedScheduleId(scheduleCode);
   }
 
+  async function handleCreateSchedule(formValues) {
+    try {
+      const result = await createConditionMonitoringSchedule({
+        condition_monitoring_schedule_code: formValues.code,
+        asset_code: formValues.equipmentTag,
+        monitoring_type: formValues.monitoringType,
+        measurement_point: formValues.measurementPoint || null,
+        frequency: formValues.frequency || null,
+        interval_unit: formValues.intervalUnit || null,
+        effective_date: formValues.effectiveDate || null,
+      });
+      const schedule = mapConditionMonitoringScheduleRecord(result.data);
+      setSchedules((current) => [...current, schedule]);
+      setIsCreateScheduleModalOpen(false);
+      setSelectedScheduleId(schedule.id);
+      setSuccessMessage(`Condition Monitoring Schedule ${schedule.id} created.`);
+    } catch (error) {
+      setSchedulesError(error.message);
+    }
+  }
+
   // MWO-LTSA-PM-CM-INTAKE-001 -- real persistence: POST /api/ltsa/
   // condition-monitoring-readings (condition_monitoring_reading_
   // repository.py, bypassing the deliberately append-only Reading
@@ -296,7 +320,10 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
           // modal); Pertamina must never see a write control. Gated on
           // the same MAINTENANCE_WRITE capability the resulting create
           // call requires server-side.
-          canWriteMaintenance && <Button onClick={() => setIsCreateModalOpen(true)}>+ Create Reading</Button>
+          <>
+            {canWriteMaintenance && view === "schedules" && <Button onClick={() => setIsCreateScheduleModalOpen(true)}>+ Create Schedule</Button>}
+            {canWriteMaintenance && schedules.length > 0 && <Button onClick={() => setIsCreateModalOpen(true)}>+ Create Reading</Button>}
+          </>
         }
       />
 
@@ -308,6 +335,10 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
       )}
 
       <Tabs items={VIEWS} activeKey={view} onChange={setView} />
+
+      {view === "readings" && schedules.length === 0 && !schedulesLoading && (
+        <Panel><p>No active Condition Monitoring Schedule is available for this pump.</p></Panel>
+      )}
 
       {view === "schedules" ? (
         <>
@@ -394,6 +425,11 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
         onClose={() => setIsCreateModalOpen(false)}
         onCreate={handleCreateReading}
         schedules={schedules}
+      />
+      <CreateConditionMonitoringScheduleModal
+        isOpen={isCreateScheduleModalOpen}
+        onClose={() => setIsCreateScheduleModalOpen(false)}
+        onCreate={handleCreateSchedule}
       />
     </div>
   );

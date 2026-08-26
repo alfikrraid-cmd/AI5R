@@ -319,6 +319,22 @@ export async function getPMSchedules() {
     throw new Error("PM schedules API returned an invalid list");
 }
 
+export async function createPMSchedule(payload) {
+    return _adminUsersRequest(`${API_URL}/api/ltsa/pm-schedules`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+    });
+}
+
+export async function updatePMSchedule(code, payload) {
+    return _adminUsersRequest(`${API_URL}/api/ltsa/pm-schedules/${encodeURIComponent(code)}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+    });
+}
+
+export async function deletePMSchedule(code) {
+    return _adminUsersRequest(`${API_URL}/api/ltsa/pm-schedules/${encodeURIComponent(code)}`, { method: "DELETE" });
+}
+
 export async function getCMReports(options = {}) {
     const response = await apiFetch(`${API_URL}/api/ltsa/cm-reports`, options);
 
@@ -383,6 +399,22 @@ export async function getConditionMonitoringReadings() {
     if (Array.isArray(payload?.items)) return payload.items;
 
     throw new Error("Condition Monitoring readings API returned an invalid list");
+}
+
+export async function createConditionMonitoringSchedule(payload) {
+    return _adminUsersRequest(`${API_URL}/api/ltsa/condition-monitoring-schedules`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+    });
+}
+
+export async function updateConditionMonitoringSchedule(code, payload) {
+    return _adminUsersRequest(`${API_URL}/api/ltsa/condition-monitoring-schedules/${encodeURIComponent(code)}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+    });
+}
+
+export async function deleteConditionMonitoringSchedule(code) {
+    return _adminUsersRequest(`${API_URL}/api/ltsa/condition-monitoring-schedules/${encodeURIComponent(code)}`, { method: "DELETE" });
 }
 
 export async function getConditionMonitoringReadingsPage({ limit = 25, offset = 0 } = {}) {

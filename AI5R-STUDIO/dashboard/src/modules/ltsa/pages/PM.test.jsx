@@ -1,7 +1,7 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import PM from "./PM";
-import { getPMSchedules, getPump, getCMReports, getPMOccurrences, getPMCMEvidence } from "../../../api/ai5rClient";
+import { getPMSchedules, getPump, getCMReports, getPMOccurrences, getPMCMEvidence, createPMSchedule } from "../../../api/ai5rClient";
 
 // MWO-LTSA-053 -- getCMReports added: PM.jsx now fetches Related CM
 // Reports (mirroring Pump.jsx/Seal.jsx's own Related Engineering pattern)
@@ -25,6 +25,7 @@ vi.mock("../../../api/ai5rClient", () => ({
   getCMReports: vi.fn(),
   getPMOccurrences: vi.fn(),
   getPMCMEvidence: vi.fn(),
+  createPMSchedule: vi.fn(),
 }));
 
 function daysFromToday(offset) {
@@ -204,17 +205,23 @@ describe("Preventive Maintenance workspace page", () => {
     expect(screen.getByRole("heading", { name: "Create PM Schedule" })).toBeTruthy();
   });
 
-  it("creates a new PM schedule via the modal (client-state-only, no backend create route yet), closes it, and selects the new entry", async () => {
+  it("creates a new PM schedule through the canonical API, closes it, and selects the new entry", async () => {
     loadPMSchedules();
+    createPMSchedule.mockResolvedValue({ data: {
+      pm_schedule_code: "PM-2008", asset_code: "533-P-1", procedure: "Standard Lubrication",
+      frequency: "MONTHLY", trigger_type: "CALENDAR", status: "ACTIVE", checklist: [],
+    } });
     render(<PM />);
     await screen.findByText("PM-2007");
 
     fireEvent.click(screen.getByRole("button", { name: "+ Create PM Schedule" }));
+    fireEvent.change(screen.getByLabelText("Schedule Code"), { target: { value: "PM-2008" } });
+    fireEvent.change(screen.getByLabelText("Procedure"), { target: { value: "Standard Lubrication" } });
     fireEvent.change(screen.getByLabelText("Equipment"), { target: { value: "533-P-1" } });
 
     fireEvent.click(screen.getByRole("button", { name: "Create PM Schedule" }));
 
-    expect(screen.queryByRole("heading", { name: "Create PM Schedule" })).toBeNull();
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "Create PM Schedule" })).toBeNull());
     expect(screen.getByRole("heading", { name: "Standard Lubrication" })).toBeTruthy();
     // MWO-LTSA-053 -- the new entry is now auto-selected into
     // PMOpenDesignView, so "PM-2008" legitimately appears in both the

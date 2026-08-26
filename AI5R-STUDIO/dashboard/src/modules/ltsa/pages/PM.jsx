@@ -9,6 +9,7 @@ import CreatePMOccurrenceModal from "../components/CreatePMOccurrenceModal";
 import SuccessToast from "../components/SuccessToast";
 import {
   getPMSchedules, getCMReports, getPMOccurrences, createPMOccurrence,
+  createPMSchedule,
   updatePMOccurrenceDraft, submitPMOccurrence, adminReviewPMOccurrence, technicalReviewPMOccurrence,
 } from "../../../api/ai5rClient";
 import { mapPMScheduleRecord, mapPMOccurrenceRecord, withResolvedArea } from "../utils/pmMapping";
@@ -225,29 +226,27 @@ export default function PM({ onNavigate, navContext }) {
   // WO-PM-001/WO-PM-002 (list/detail only) -- handleCreate remains
   // client-state-only, the same as it was before this migration and the
   // same as Pump's own Create PM/Create CM stubs.
-  function handleCreate(formValues) {
-    const createdDate = todayIsoDate();
-
-    const newPM = {
-      id: nextPMId(pmSchedules),
-      equipmentTag: formValues.equipmentTag,
-      procedure: procedureFromChecklistTemplate(formValues.checklistTemplate),
-      frequency: formValues.frequency,
-      triggerType: formValues.triggerType,
-      checklist: formValues.checklist,
-      lastPerformed: null,
-      nextDue: formValues.startDate || createdDate,
-      assignedTechnician: formValues.assignedTechnician,
-      estimatedDurationHours: formValues.estimatedDurationHours,
-      relatedWorkOrders: [],
-      status: "ACTIVE",
-      timeline: [{ date: createdDate, event: "PM schedule created" }],
-    };
-
-    setPmSchedules((current) => [...current, newPM]);
-    setIsCreateModalOpen(false);
-    setSelectedId(newPM.id);
-    setSuccessMessage(`PM Schedule ${newPM.id} created.`);
+  async function handleCreate(formValues) {
+    try {
+      const result = await createPMSchedule({
+        pm_schedule_code: formValues.scheduleCode,
+        asset_code: formValues.equipmentTag,
+        procedure: formValues.procedure,
+        frequency: formValues.frequency,
+        trigger_type: formValues.triggerType,
+        interval_unit: formValues.intervalUnit,
+        effective_date: formValues.startDate || null,
+        next_due: formValues.startDate || null,
+        assigned_to: formValues.assignedTechnician || null,
+      });
+      const created = mapPMScheduleRecord(result.data);
+      setPmSchedules((current) => [...current, created]);
+      setIsCreateModalOpen(false);
+      setSelectedId(created.id);
+      setSuccessMessage(`PM Schedule ${created.id} created.`);
+    } catch (error) {
+      setListError(error.message);
+    }
   }
 
   // MWO-LTSA-PM-CM-INTAKE-001 -- real persistence: POST /api/ltsa/
