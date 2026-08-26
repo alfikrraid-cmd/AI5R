@@ -74,7 +74,7 @@ _SELECT_COLUMNS = (
     + ", ".join(_MEASUREMENT_COLUMNS)
     + ", "
     + ", ".join(_WORKFLOW_COLUMNS)
-    + ", created_at, updated_at, source_reference"
+    + ", created_at, updated_at, source_reference, deleted_at, deleted_by"
 )
 
 
@@ -89,7 +89,7 @@ class ConditionMonitoringReadingRepository:
     def find_by_code(self, reading_code: str) -> dict | None:
         rows = _json_query(
             f"SELECT {_SELECT_COLUMNS} FROM condition_monitoring_reading "
-            f"WHERE condition_monitoring_reading_code = {_sql(reading_code)}",
+            f"WHERE condition_monitoring_reading_code = {_sql(reading_code)} AND deleted_at IS NULL",
             self._runner,
         )
         return rows[0] if rows else None
@@ -132,7 +132,7 @@ class ConditionMonitoringReadingRepository:
     def list_by_asset(self, asset_code: str) -> list[dict]:
         return _json_query(
             f"SELECT {_SELECT_COLUMNS} FROM condition_monitoring_reading "
-            f"WHERE asset_code = {_sql(asset_code)} "
+            f"WHERE asset_code = {_sql(asset_code)} AND deleted_at IS NULL "
             "ORDER BY reading_date DESC NULLS LAST, created_at DESC",
             self._runner,
         )
@@ -169,12 +169,18 @@ class ConditionMonitoringReadingRepository:
                 "(condition_monitoring_reading_code, condition_monitoring_schedule_code, "
                 f"asset_code, asset_type, reading_date, {measurement_cols}, "
                 "workflow_status, provenance, created_by, updated_by, source_reference, finding) VALUES "
-                f"({_sql(code)}, {_sql(condition_monitoring_schedule_code)}, {_sql(asset_code)}, "
+                f"SELECT {_sql(code)}, {_sql(condition_monitoring_schedule_code)}, {_sql(asset_code)}, "
                 f"{_sql(asset_type)}, {_sql(reading_date)}, {measurement_vals}, "
                 f"{_sql(DRAFT)}, {_sql(provenance)}, {_sql(created_by)}, {_sql(created_by)}, "
-                f"{_sql(source_reference)}, {_sql(finding)}) "
+                f"{_sql(source_reference)}, {_sql(finding)} WHERE EXISTS (SELECT 1 FROM ltsa_pumps WHERE tag_number = {_sql(asset_code)}) "
+                f"AND EXISTS (SELECT 1 FROM condition_monitoring_schedule WHERE condition_monitoring_schedule_code = {_sql(condition_monitoring_schedule_code)}) "
+                ") "
                 f"RETURNING {_SELECT_COLUMNS}"
-                ") SELECT COALESCE(json_agg(row_to_json(t))::text, '[]') FROM ins t;"
+                    "), audit AS (INSERT INTO record_change_history "
+                    "(entity_type, entity_id, field_name, old_value, new_value, changed_by, reason) "
+                    "SELECT 'CONDITION_MONITORING_READING', condition_monitoring_reading_code, '__record__', NULL, "
+                    "row_to_json(ins)::text, created_by, 'CREATE' FROM ins) "
+                    "SELECT COALESCE(json_agg(row_to_json(t))::text, '[]') FROM ins t;"
             )
             or "[]"
         )
@@ -192,16 +198,21 @@ class ConditionMonitoringReadingRepository:
         measurement_sets = ", ".join(f"{col} = {_sql(measurements.get(col))}" for col in _MEASUREMENT_COLUMNS)
         rows = json.loads(
             self._runner.query_scalar(
-                "WITH upd AS ("
+                "WITH old AS (SELECT row_to_json(r)::text AS snapshot FROM condition_monitoring_reading r "
+                f"WHERE condition_monitoring_reading_code = {_sql(reading_code)} AND deleted_at IS NULL), upd AS ("
                 "UPDATE condition_monitoring_reading SET "
                 f"reading_date = {_sql(reading_date)}, "
                 f"{measurement_sets}, "
                 f"finding = {_sql(finding)}, "
                 f"updated_by = {_sql(updated_by)}, updated_at = NOW() "
-                f"WHERE condition_monitoring_reading_code = {_sql(reading_code)} "
+                f"WHERE condition_monitoring_reading_code = {_sql(reading_code)} AND deleted_at IS NULL "
                 f"AND workflow_status IN {_EDITABLE_STATUSES_SQL} "
                 f"RETURNING {_SELECT_COLUMNS}"
-                ") SELECT COALESCE(json_agg(row_to_json(t))::text, '[]') FROM upd t;"
+                "), audit AS (INSERT INTO record_change_history "
+                "(entity_type, entity_id, field_name, old_value, new_value, changed_by, reason) "
+                "SELECT 'CONDITION_MONITORING_READING', condition_monitoring_reading_code, '__record__', old.snapshot, "
+                "row_to_json(upd)::text, updated_by, 'UPDATE' FROM upd CROSS JOIN old) "
+                "SELECT COALESCE(json_agg(row_to_json(t))::text, '[]') FROM upd t;"
             )
             or "[]"
         )
@@ -233,12 +244,25 @@ class ConditionMonitoringReadingRepository:
                 f"reviewed_by = {_sql(reviewed_by)}, reviewed_at = NOW(), "
                 f"return_reason = {_sql(return_reason)}, "
                 f"updated_by = {_sql(reviewed_by)}, updated_at = NOW() "
-                f"WHERE condition_monitoring_reading_code = {_sql(reading_code)} AND workflow_status = 'SUBMITTED' "
+                f"WHERE condition_monitoring_reading_code = {_sql(reading_code)} AND deleted_at IS NULL AND workflow_status = 'SUBMITTED' "
                 f"RETURNING {_SELECT_COLUMNS}"
                 ") SELECT COALESCE(json_agg(row_to_json(t))::text, '[]') FROM upd t;"
             )
             or "[]"
         )
+        return rows[0] if rows else None
+
+    def soft_delete(self, reading_code: str, *, deleted_by: str) -> dict | None:
+        rows = json.loads(self._runner.query_scalar(
+            "WITH old AS (SELECT row_to_json(r)::text AS snapshot FROM condition_monitoring_reading r "
+            f"WHERE condition_monitoring_reading_code = {_sql(reading_code)} AND deleted_at IS NULL), upd AS (UPDATE condition_monitoring_reading SET deleted_at = NOW(), deleted_by = "
+            f"{_sql(deleted_by)}, updated_by = {_sql(deleted_by)}, updated_at = NOW() "
+            f"WHERE condition_monitoring_reading_code = {_sql(reading_code)} AND deleted_at IS NULL "
+            f"RETURNING {_SELECT_COLUMNS}), audit AS (INSERT INTO record_change_history "
+            "(entity_type, entity_id, field_name, old_value, new_value, changed_by, reason) "
+            "SELECT 'CONDITION_MONITORING_READING', condition_monitoring_reading_code, '__record__', old.snapshot, NULL, "
+            f"{_sql(deleted_by)}, 'DELETE' FROM upd CROSS JOIN old) SELECT COALESCE(json_agg(row_to_json(t))::text, '[]') FROM upd t;"
+        ) or "[]")
         return rows[0] if rows else None
 
     def technical_return_for_correction(

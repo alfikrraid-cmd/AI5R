@@ -122,6 +122,8 @@ def create_ltsa_condition_monitoring_reading(
         measurements=payload.measurements.model_dump(),
         created_by=_actor_id(current_user),
     )
+    if created is None:
+        raise HTTPException(status_code=404, detail="Canonical pump or Condition Monitoring schedule not found")
     return {"data": created}
 
 
@@ -147,6 +149,21 @@ def update_ltsa_condition_monitoring_reading_draft(
             status_code=409, detail="Condition Monitoring reading not found or not editable in its current state"
         )
     return {"data": updated}
+
+
+@router.delete(
+    "/api/ltsa/condition-monitoring-readings/{code}",
+    dependencies=[Depends(require_permission("admin.superuser"))],
+)
+def delete_ltsa_condition_monitoring_reading(
+    code: str,
+    current_user=Depends(require_permission("admin.superuser")),
+    condition_monitoring_reading_repository=Depends(get_condition_monitoring_reading_repository),
+) -> Payload:
+    deleted = condition_monitoring_reading_repository.soft_delete(code, deleted_by=_actor_id(current_user))
+    if deleted is None:
+        raise HTTPException(status_code=404, detail="Condition Monitoring reading not found")
+    return {"data": deleted}
 
 
 @router.post(

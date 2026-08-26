@@ -92,6 +92,8 @@ def create_ltsa_pm_occurrence(
         remarks=payload.remarks,
         created_by=_actor_id(current_user),
     )
+    if created is None:
+        raise HTTPException(status_code=404, detail="Canonical pump or PM schedule not found")
     return {"data": created}
 
 
@@ -114,6 +116,18 @@ def update_ltsa_pm_occurrence_draft(
     if updated is None:
         raise HTTPException(status_code=409, detail="PM occurrence not found or not editable in its current state")
     return {"data": updated}
+
+
+@router.delete("/api/ltsa/pm-occurrences/{code}", dependencies=[Depends(require_permission("admin.superuser"))])
+def delete_ltsa_pm_occurrence(
+    code: str,
+    current_user=Depends(require_permission("admin.superuser")),
+    pm_occurrence_repository=Depends(get_pm_occurrence_repository),
+) -> Payload:
+    deleted = pm_occurrence_repository.soft_delete(code, deleted_by=_actor_id(current_user))
+    if deleted is None:
+        raise HTTPException(status_code=404, detail="PM occurrence not found")
+    return {"data": deleted}
 
 
 @router.post(

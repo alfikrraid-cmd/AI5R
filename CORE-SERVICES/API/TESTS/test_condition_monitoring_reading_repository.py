@@ -77,6 +77,7 @@ def test_create_draft_missing_measurement_is_null_never_zero():
     # NULL, never a fabricated 0 -- Hard Rule 11.
     assert "NULL" in sql
     assert ", 0," not in sql
+    assert "record_change_history" in sql
 
 
 def test_update_draft_only_matches_editable_workflow_states():
@@ -141,3 +142,13 @@ def test_list_all_returns_bounded_page_and_total_metadata():
     assert result["offset"] == 50
     assert "LIMIT 25 OFFSET 50" in runner.scalar_calls[0]
     assert "COUNT(*) AS total" in runner.scalar_calls[1]
+
+
+def test_soft_delete_is_audited_and_preserves_the_record():
+    runner = FakeRunner(scalar_response=json.dumps([{"condition_monitoring_reading_code": "CMONR-1", "deleted_by": "actor-1"}]))
+    result = ConditionMonitoringReadingRepository(runner).soft_delete("CMONR-1", deleted_by="actor-1")
+
+    assert result["deleted_by"] == "actor-1"
+    assert "deleted_at = NOW()" in runner.scalar_calls[0]
+    assert "record_change_history" in runner.scalar_calls[0]
+    assert "'DELETE'" in runner.scalar_calls[0]

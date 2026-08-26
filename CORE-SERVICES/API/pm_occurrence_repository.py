@@ -47,7 +47,7 @@ _SELECT_COLUMNS = (
     "submitted_by, submitted_at, reviewed_by, reviewed_at, return_reason, "
     "technical_reviewed_by, technical_reviewed_at, technical_outcome, "
     "technical_comment, technical_recommendation, created_by, updated_by, "
-    "created_at, updated_at, source_reference"
+    "created_at, updated_at, source_reference, deleted_at, deleted_by"
 )
 
 
@@ -61,14 +61,14 @@ class PMOccurrenceRepository:
 
     def find_by_code(self, pm_occurrence_code: str) -> dict | None:
         rows = _json_query(
-            f"SELECT {_SELECT_COLUMNS} FROM pm_occurrence WHERE pm_occurrence_code = {_sql(pm_occurrence_code)}",
+            f"SELECT {_SELECT_COLUMNS} FROM pm_occurrence WHERE pm_occurrence_code = {_sql(pm_occurrence_code)} AND deleted_at IS NULL",
             self._runner,
         )
         return rows[0] if rows else None
 
     def list_by_asset(self, asset_code: str) -> list[dict]:
         return _json_query(
-            f"SELECT {_SELECT_COLUMNS} FROM pm_occurrence WHERE asset_code = {_sql(asset_code)} "
+            f"SELECT {_SELECT_COLUMNS} FROM pm_occurrence WHERE asset_code = {_sql(asset_code)} AND deleted_at IS NULL "
             "ORDER BY occurrence_date DESC NULLS LAST, created_at DESC",
             self._runner,
         )
@@ -107,12 +107,18 @@ class PMOccurrenceRepository:
                 "INSERT INTO pm_occurrence "
                 "(pm_occurrence_code, pm_schedule_code, asset_code, asset_type, occurrence_date, "
                 "activities, remarks, workflow_status, provenance, created_by, updated_by, source_reference) VALUES "
-                f"({_sql(code)}, {_sql(pm_schedule_code)}, {_sql(asset_code)}, {_sql(asset_type)}, "
+                f"SELECT {_sql(code)}, {_sql(pm_schedule_code)}, {_sql(asset_code)}, {_sql(asset_type)}, "
                 f"{_sql(occurrence_date)}, {_sql(json.dumps(activities) if activities is not None else None)}::jsonb, "
                 f"{_sql(remarks)}, {_sql(DRAFT)}, {_sql(provenance)}, {_sql(created_by)}, {_sql(created_by)}, "
-                f"{_sql(source_reference)}) "
+                f"{_sql(source_reference)} WHERE EXISTS (SELECT 1 FROM ltsa_pumps WHERE tag_number = {_sql(asset_code)}) "
+                f"AND EXISTS (SELECT 1 FROM pm_schedule WHERE pm_schedule_code = {_sql(pm_schedule_code)}) "
+                ") "
                 f"RETURNING {_SELECT_COLUMNS}"
-                f") SELECT COALESCE(json_agg(row_to_json(t))::text, '[]') FROM ins t;"
+                "), audit AS (INSERT INTO record_change_history "
+                "(entity_type, entity_id, field_name, old_value, new_value, changed_by, reason) "
+                "SELECT 'PM_OCCURRENCE', pm_occurrence_code, '__record__', NULL, "
+                "row_to_json(ins)::text, created_by, 'CREATE' FROM ins) "
+                "SELECT COALESCE(json_agg(row_to_json(t))::text, '[]') FROM ins t;"
             )
             or "[]"
         )
@@ -131,7 +137,8 @@ class PMOccurrenceRepository:
     ) -> dict | None:
         rows = json.loads(
             self._runner.query_scalar(
-                "WITH upd AS ("
+                "WITH old AS (SELECT row_to_json(p)::text AS snapshot FROM pm_occurrence p "
+                f"WHERE pm_occurrence_code = {_sql(pm_occurrence_code)} AND deleted_at IS NULL), upd AS ("
                 "UPDATE pm_occurrence SET "
                 f"occurrence_date = {_sql(occurrence_date)}, "
                 f"activities = {_sql(json.dumps(activities) if activities is not None else None)}::jsonb, "
@@ -139,10 +146,14 @@ class PMOccurrenceRepository:
                 f"preliminary_recommendation = {_sql(preliminary_recommendation)}, "
                 f"remarks = {_sql(remarks)}, "
                 f"updated_by = {_sql(updated_by)}, updated_at = NOW() "
-                f"WHERE pm_occurrence_code = {_sql(pm_occurrence_code)} "
+                f"WHERE pm_occurrence_code = {_sql(pm_occurrence_code)} AND deleted_at IS NULL "
                 f"AND workflow_status IN {_EDITABLE_STATUSES_SQL} "
                 f"RETURNING {_SELECT_COLUMNS}"
-                ") SELECT COALESCE(json_agg(row_to_json(t))::text, '[]') FROM upd t;"
+                "), audit AS (INSERT INTO record_change_history "
+                "(entity_type, entity_id, field_name, old_value, new_value, changed_by, reason) "
+                "SELECT 'PM_OCCURRENCE', pm_occurrence_code, '__record__', old.snapshot, "
+                "row_to_json(upd)::text, updated_by, 'UPDATE' FROM upd CROSS JOIN old) "
+                "SELECT COALESCE(json_agg(row_to_json(t))::text, '[]') FROM upd t;"
             )
             or "[]"
         )
@@ -176,12 +187,25 @@ class PMOccurrenceRepository:
                 f"reviewed_by = {_sql(reviewed_by)}, reviewed_at = NOW(), "
                 f"return_reason = {_sql(return_reason)}, "
                 f"updated_by = {_sql(reviewed_by)}, updated_at = NOW() "
-                f"WHERE pm_occurrence_code = {_sql(pm_occurrence_code)} AND workflow_status = 'SUBMITTED' "
+                f"WHERE pm_occurrence_code = {_sql(pm_occurrence_code)} AND deleted_at IS NULL AND workflow_status = 'SUBMITTED' "
                 f"RETURNING {_SELECT_COLUMNS}"
                 ") SELECT COALESCE(json_agg(row_to_json(t))::text, '[]') FROM upd t;"
             )
             or "[]"
         )
+        return rows[0] if rows else None
+
+    def soft_delete(self, pm_occurrence_code: str, *, deleted_by: str) -> dict | None:
+        rows = json.loads(self._runner.query_scalar(
+            "WITH old AS (SELECT row_to_json(p)::text AS snapshot FROM pm_occurrence p "
+            f"WHERE pm_occurrence_code = {_sql(pm_occurrence_code)} AND deleted_at IS NULL), upd AS (UPDATE pm_occurrence SET deleted_at = NOW(), deleted_by = "
+            f"{_sql(deleted_by)}, updated_by = {_sql(deleted_by)}, updated_at = NOW() "
+            f"WHERE pm_occurrence_code = {_sql(pm_occurrence_code)} AND deleted_at IS NULL "
+            f"RETURNING {_SELECT_COLUMNS}), audit AS (INSERT INTO record_change_history "
+            "(entity_type, entity_id, field_name, old_value, new_value, changed_by, reason) "
+            "SELECT 'PM_OCCURRENCE', pm_occurrence_code, '__record__', old.snapshot, NULL, "
+            f"{_sql(deleted_by)}, 'DELETE' FROM upd CROSS JOIN old) SELECT COALESCE(json_agg(row_to_json(t))::text, '[]') FROM upd t;"
+        ) or "[]")
         return rows[0] if rows else None
 
     def technical_return_for_correction(

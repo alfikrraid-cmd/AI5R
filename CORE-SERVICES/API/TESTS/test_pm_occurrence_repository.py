@@ -62,6 +62,7 @@ def test_create_draft_starts_in_draft_workflow_status():
     )
 
     assert "'DRAFT'" in runner.scalar_calls[0]
+    assert "record_change_history" in runner.scalar_calls[0]
 
 
 def test_update_draft_never_references_created_by():
@@ -89,6 +90,7 @@ def test_update_draft_only_matches_editable_workflow_states():
 
     sql = runner.scalar_calls[0]
     assert "workflow_status IN ('DRAFT', 'RETURNED_FOR_CORRECTION')" in sql
+    assert "record_change_history" in sql
 
 
 def test_update_draft_returns_none_when_no_row_matched():
@@ -172,3 +174,13 @@ def test_find_by_code_returns_none_when_missing():
     repo = PMOccurrenceRepository(runner)
 
     assert repo.find_by_code("PMOCC-MISSING") is None
+
+
+def test_soft_delete_is_audited_and_preserves_the_record():
+    runner = FakeRunner(scalar_response=json.dumps([{"pm_occurrence_code": "PMOCC-1", "deleted_by": "actor-1"}]))
+    result = PMOccurrenceRepository(runner).soft_delete("PMOCC-1", deleted_by="actor-1")
+
+    assert result["deleted_by"] == "actor-1"
+    assert "deleted_at = NOW()" in runner.scalar_calls[0]
+    assert "record_change_history" in runner.scalar_calls[0]
+    assert "'DELETE'" in runner.scalar_calls[0]

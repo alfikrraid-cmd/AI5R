@@ -66,6 +66,12 @@ class FakePMOccurrenceRepository:
             return None
         return {"pm_occurrence_code": code, "workflow_status": "FINALIZED", **kwargs}
 
+    def soft_delete(self, code, **kwargs):
+        self.calls.append(("soft_delete", code, kwargs))
+        if code not in self.existing_codes:
+            return None
+        return {"pm_occurrence_code": code, "deleted_by": kwargs["deleted_by"]}
+
 
 @pytest.fixture(autouse=True)
 def clear_dependency_overrides():
@@ -100,6 +106,19 @@ def test_pertamina_engineer_cannot_create_a_pm_occurrence():
         "/api/ltsa/pm-occurrences",
         json={"pm_schedule_code": "PMS-1", "asset_code": "211-P-18A"},
     )
+    assert response.status_code == 403
+
+
+def test_only_superuser_can_delete_a_pm_occurrence():
+    fake = _override("SUPERUSER")
+    response = client.delete("/api/ltsa/pm-occurrences/PMOCC-1")
+    assert response.status_code == 200
+    assert fake.calls[0][0] == "soft_delete"
+
+
+def test_tap_admin_cannot_delete_a_pm_occurrence():
+    _override("TAP_ADMIN")
+    response = client.delete("/api/ltsa/pm-occurrences/PMOCC-1")
     assert response.status_code == 403
 
 
