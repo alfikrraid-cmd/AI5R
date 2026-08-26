@@ -13,11 +13,12 @@ from dependencies import (
     get_current_user,
     get_equipment_timeline_service,
     get_installation_gateway,
+    get_installation_report_repository,
     get_ltsa_knowledge_service,
     get_maintenance_history_gateway,
+    get_mechanical_seal_stock_repository,
     get_product_name,
     get_pump_gateway,
-    get_seal_stock_gateway,
     get_work_order_gateway,
     require_permission,
 )
@@ -83,8 +84,9 @@ def ask_copilot_endpoint(
     installation_gateway=Depends(get_installation_gateway),
     ltsa_knowledge_service=Depends(get_ltsa_knowledge_service),
     equipment_timeline_service=Depends(get_equipment_timeline_service),
-    seal_stock_gateway=Depends(get_seal_stock_gateway),
     condition_monitoring_reading_gateway=Depends(get_condition_monitoring_reading_gateway),
+    installation_report_repository=Depends(get_installation_report_repository),
+    mechanical_seal_stock_repository=Depends(get_mechanical_seal_stock_repository),
     ai_client=Depends(get_copilot_ai_client),
     current_user: AuthenticatedIdentity = Depends(get_current_user),
 ) -> Payload:
@@ -117,8 +119,9 @@ def ask_copilot_endpoint(
         installation_gateway=installation_gateway,
         ltsa_knowledge_service=ltsa_knowledge_service,
         equipment_timeline_service=equipment_timeline_service,
-        seal_stock_gateway=seal_stock_gateway,
         condition_monitoring_reading_gateway=condition_monitoring_reading_gateway,
+        installation_report_repository=installation_report_repository,
+        mechanical_seal_stock_repository=mechanical_seal_stock_repository,
     )
 
     # tools_used is additive/optional -- existing frontend (CopilotPanel/

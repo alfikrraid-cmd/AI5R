@@ -22,10 +22,11 @@ from dependencies import (  # noqa: E402
     get_current_user,
     get_equipment_timeline_service,
     get_installation_gateway,
+    get_installation_report_repository,
     get_ltsa_knowledge_service,
     get_maintenance_history_gateway,
+    get_mechanical_seal_stock_repository,
     get_pump_gateway,
-    get_seal_stock_gateway,
     get_work_order_gateway,
 )
 from API.auth_service import ROLE_PERMISSIONS, AuthenticatedIdentity  # noqa: E402
@@ -96,12 +97,20 @@ class FakeInstallationGateway:
         return {"success": True, "data": self._records}
 
 
-class FakeSealStockGateway:
+class FakeInstallationReportRepository:
     def __init__(self, records=None):
         self._records = records if records is not None else []
 
-    def list_seal_stocks(self):
+    def list_installations(self):
         return {"success": True, "data": self._records}
+
+
+class FakeMechanicalSealStockRepository:
+    def __init__(self, records=None):
+        self._records = records if records is not None else []
+
+    def list_pools(self, **_kwargs):
+        return {"success": True, "items": self._records, "data": self._records}
 
 
 class FakeConditionMonitoringReadingGateway:
@@ -162,7 +171,8 @@ def _as(identity: AuthenticatedIdentity):
     app.dependency_overrides[get_installation_gateway] = lambda: FakeInstallationGateway()
     app.dependency_overrides[get_ltsa_knowledge_service] = lambda: FakeLTSAKnowledgeService()
     app.dependency_overrides[get_equipment_timeline_service] = lambda: FakeEquipmentTimelineService()
-    app.dependency_overrides[get_seal_stock_gateway] = lambda: FakeSealStockGateway()
+    app.dependency_overrides[get_installation_report_repository] = lambda: FakeInstallationReportRepository()
+    app.dependency_overrides[get_mechanical_seal_stock_repository] = lambda: FakeMechanicalSealStockRepository()
     app.dependency_overrides[get_condition_monitoring_reading_gateway] = lambda: FakeConditionMonitoringReadingGateway()
 
 
@@ -170,7 +180,8 @@ def _clear():
     for dep in (
         get_current_user, get_copilot_ai_client, get_pump_gateway, get_maintenance_history_gateway,
         get_work_order_gateway, get_installation_gateway, get_ltsa_knowledge_service,
-        get_equipment_timeline_service, get_seal_stock_gateway, get_condition_monitoring_reading_gateway,
+        get_equipment_timeline_service, get_condition_monitoring_reading_gateway,
+        get_installation_report_repository, get_mechanical_seal_stock_repository,
     ):
         app.dependency_overrides.pop(dep, None)
 

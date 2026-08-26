@@ -51,12 +51,14 @@ def _deps(**overrides):
         installation_gateway=None,
         ltsa_knowledge_service=None,
         equipment_timeline_service=None,
-        # MWO-LTSA-AI-COPILOT-NATURAL-LANGUAGE-ROUTING-017 -- two new
+        # MWO-LTSA-AI-COPILOT-NATURAL-LANGUAGE-ROUTING-017/017A -- three
         # tag-optional fleet intents (installation/latest,
-        # condition_monitoring/leak-frequency) need these; every existing
-        # test below exercises a tagged intent that never reads them.
-        seal_stock_gateway=None,
+        # condition_monitoring/leak-frequency, inventory/stock-v1) need
+        # these; every existing test below exercises a tagged intent that
+        # never reads them.
         condition_monitoring_reading_gateway=None,
+        installation_report_repository=None,
+        mechanical_seal_stock_repository=None,
     )
     base.update(overrides)
     return base

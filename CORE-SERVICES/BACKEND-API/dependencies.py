@@ -29,6 +29,7 @@ from API.basic_fleet_overview_service import BasicFleetOverviewService
 from API.fleet_executive_summary import FleetExecutiveSummaryService
 from API.fleet_reliability_service import FleetReliabilityService
 from API.import_session_repository import ImportSessionRepository
+from API.installation_report_repository import InstallationReportRepository
 from API.mechanical_seal_stock_repository import MechanicalSealStockRepository
 from API.installation_gateway import InstallationGateway
 from API.ltsa_knowledge_service import LTSAKnowledgeService
@@ -133,6 +134,13 @@ def _resolve_import_database_config() -> DatabaseConfig:
 # dependency to any test that never exercises POST .../execute.
 _import_database_runner = DatabaseRunner(_resolve_import_database_config())
 _mechanical_seal_stock_repository = MechanicalSealStockRepository(_import_database_runner)
+
+# MWO-LTSA-AI-COPILOT-NATURAL-LANGUAGE-ROUTING-017A -- same singleton
+# DatabaseRunner as above, not a second connection. Copilot's fleet-wide
+# "latest installation" query only (see installation_report_repository.py's
+# own header for the full root-cause/scope disclosure); the pre-existing
+# InstallationGateway/n8n path is untouched for every other caller.
+_installation_report_repository = InstallationReportRepository(_import_database_runner)
 
 # MWO-LTSA-DATA-IMPORT-UI-001C-DURABLE -- runner=_import_database_runner
 # (constructed just above, same singleton) makes this repository durable
@@ -338,6 +346,10 @@ def get_seal_stock_gateway() -> SealStockGateway:
 
 def get_mechanical_seal_stock_repository() -> MechanicalSealStockRepository:
     return _mechanical_seal_stock_repository
+
+
+def get_installation_report_repository() -> InstallationReportRepository:
+    return _installation_report_repository
 
 
 def get_seal_pump_compatibility_gateway() -> SealPumpCompatibilityGateway:

@@ -451,13 +451,23 @@ def select_most_frequent_leak_pump(readings: list[dict[str, Any]]) -> tuple[str,
     return top_asset_code, counts[top_asset_code]
 
 
-def select_seal_stock(records: list[dict[str, Any]], seal_code: str) -> dict[str, Any] | None:
-    """Given already-fetched seal_stock records, returns the one matching
-    seal_code exactly, or None. seal_stock is not Area/MA-scoped in this
-    codebase's model (the same, already-established behavior
-    _handle_inventory's own per-tag stock lookup relies on), so no scope
-    filter applies here."""
-    for record in records:
-        if record.get("seal_code") == seal_code:
-            return record
-    return None
+# MWO-LTSA-AI-COPILOT-NATURAL-LANGUAGE-ROUTING-017A -- select_seal_stock
+# (legacy seal_stock-table lookup) removed, not left dead: "legacy
+# seal_stock MUST NOT contribute quantity" is enforced structurally by
+# deleting the one function that read it for Copilot, not merely by no
+# longer calling it. select_stock_v1_pools_by_seal_code below is its
+# Stock V1 replacement.
+
+
+def select_stock_v1_pools_by_seal_code(
+    pools: list[dict[str, Any]], seal_code: str
+) -> tuple[dict[str, Any], ...]:
+    """Given already-fetched mechanical_seal_stock_pool records (Stock V1,
+    MechanicalSealStockRepository.list_pools()'s own "items"/"data" list,
+    reused unmodified -- no new SQL), returns every pool matching seal_code
+    exactly, in the order given. Deliberately returns ALL matches rather
+    than picking one or summing them: no existing Stock V1 contract
+    declares multiple pools for one seal_code as additive, so this
+    function never invents that semantic -- the caller reports each pool
+    separately when there is more than one."""
+    return tuple(pool for pool in pools if pool.get("seal_code") == seal_code)

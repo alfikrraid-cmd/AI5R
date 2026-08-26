@@ -128,16 +128,22 @@ def _detect_intent(question: str) -> str | None:
     return None
 
 
-# Entity extraction for a seal code mentioned near "seal"/"segel" --
-# requires at least one digit in the captured token so a following word
-# like "terakhir"/"compatibility"/"cocok" (no digit) is never mistaken for
-# a code ("kapan seal terakhir diganti?" must NOT extract "terakhir" as a
-# seal code) -- every real seal_code in this codebase's own registry
-# (e.g. "SC-001", "T48MP") contains at least one digit. Case preserved
-# exactly as written (seal codes are case-sensitive identifiers) -- never
-# normalized or guessed, the same "never invent" discipline
-# routers/copilot.py's own pump-tag extraction already establishes.
-_SEAL_CODE_PATTERN = re.compile(r"(?:seal|segel)\s+([A-Za-z0-9-]*\d[A-Za-z0-9-]*)", re.IGNORECASE)
+# Entity extraction for a seal code mentioned near "seal"/"segel" OR
+# "stock"/"stok" -- MWO-LTSA-AI-COPILOT-NATURAL-LANGUAGE-ROUTING-017A adds
+# the stock/stok anchor: "berapa stock T6014DP?" names no "seal" word at
+# all. re.search() tries each anchor left-to-right and only accepts a
+# position whose very next token has a digit, so "stock mechanical seal
+# T48MP" correctly skips the digit-less "mechanical" after "stock" and
+# still matches at "seal T48MP". Requires at least one digit in the
+# captured token so a following word like "terakhir"/"compatibility"/
+# "cocok" (no digit) is never mistaken for a code ("kapan seal terakhir
+# diganti?" must NOT extract "terakhir" as a seal code) -- every real
+# seal_code in this codebase's own registry (e.g. "SC-001", "T48MP",
+# "T6014DP") contains at least one digit. Case preserved exactly as
+# written (seal codes are case-sensitive identifiers) -- never normalized
+# or guessed, the same "never invent" discipline routers/copilot.py's own
+# pump-tag extraction already establishes.
+_SEAL_CODE_PATTERN = re.compile(r"(?:seal|segel|stock|stok)\s+([A-Za-z0-9-]*\d[A-Za-z0-9-]*)", re.IGNORECASE)
 
 
 def _extract_seal_code(question: str) -> str | None:
@@ -156,8 +162,9 @@ def ask_copilot(
     installation_gateway,
     ltsa_knowledge_service,
     equipment_timeline_service,
-    seal_stock_gateway,
     condition_monitoring_reading_gateway,
+    installation_report_repository,
+    mechanical_seal_stock_repository,
 ) -> CopilotAnswer:
     intent = _detect_intent(question)
 
@@ -173,8 +180,15 @@ def ask_copilot(
         return _handle_global_work_orders(scope, pump_gateway=pump_gateway, work_order_gateway=work_order_gateway)
 
     if intent == "installation" and tag is None:
+        # MWO-LTSA-AI-COPILOT-NATURAL-LANGUAGE-ROUTING-017A -- reads via
+        # installation_report_repository (direct-DB, always working), NOT
+        # the broken n8n-backed installation_gateway the tag-scoped
+        # `installation` handler below still uses -- see
+        # installation_report_repository.py's own header for the full
+        # root-cause disclosure and why only THIS fleet-wide path was
+        # repointed.
         return _handle_latest_installation_fleet(
-            scope, installation_gateway=installation_gateway, pump_gateway=pump_gateway
+            scope, installation_report_repository=installation_report_repository, pump_gateway=pump_gateway
         )
 
     if intent == "condition_monitoring" and tag is None:
@@ -185,7 +199,12 @@ def ask_copilot(
     if intent == "inventory" and tag is None:
         seal_code = _extract_seal_code(question)
         if seal_code is not None:
-            return _handle_stock_by_seal_code(seal_code, seal_stock_gateway=seal_stock_gateway)
+            # MWO-LTSA-AI-COPILOT-NATURAL-LANGUAGE-ROUTING-017A -- Stock V1
+            # (mechanical_seal_stock_repository) is the ONLY stock
+            # authority Copilot reads from; legacy seal_stock is not
+            # wired into this module at all anymore (removed, not just
+            # unused), so it structurally cannot contribute a quantity.
+            return _handle_stock_by_seal_code(seal_code, mechanical_seal_stock_repository=mechanical_seal_stock_repository)
         return CopilotAnswer(_NO_ASSET_MESSAGE, DATA_GAP, ())
 
     if tag is None:
@@ -200,8 +219,9 @@ def ask_copilot(
         installation_gateway=installation_gateway,
         ltsa_knowledge_service=ltsa_knowledge_service,
         equipment_timeline_service=equipment_timeline_service,
-        seal_stock_gateway=seal_stock_gateway,
         condition_monitoring_reading_gateway=condition_monitoring_reading_gateway,
+        installation_report_repository=installation_report_repository,
+        mechanical_seal_stock_repository=mechanical_seal_stock_repository,
     )
 
 
@@ -365,16 +385,18 @@ def _handle_installation(tag: str, *, installation_gateway, **_: Any) -> Copilot
 
 
 def _handle_latest_installation_fleet(
-    scope: frozenset[str] | None, *, installation_gateway, pump_gateway, **_: Any
+    scope: frozenset[str] | None, *, installation_report_repository, pump_gateway, **_: Any
 ) -> CopilotAnswer:
     """Fleet-wide (no tag): "pompa mana yang terakhir dipasang?" and its
-    semantic variants. Fetches the full installation list, applies the
-    caller's own Area/MA scope BEFORE selection (never after -- see
-    maintenance_intelligence_service.select_latest_installation's own
-    header), then defers to that pure, already-tested selector. Never
-    invents an installation: an empty/undated result is a truthful
-    DATA_GAP, never a fabricated pump/date."""
-    response = installation_gateway.list_installations()
+    semantic variants. Reads via installation_report_repository (direct-DB,
+    MWO-LTSA-AI-COPILOT-NATURAL-LANGUAGE-ROUTING-017A -- see that module's
+    own header for why the n8n-backed InstallationGateway could not be used
+    here), applies the caller's own Area/MA scope BEFORE selection (never
+    after -- see maintenance_intelligence_service.select_latest_
+    installation's own header), then defers to that pure, already-tested
+    selector. Never invents an installation: an empty/undated result is a
+    truthful DATA_GAP, never a fabricated pump/date."""
+    response = installation_report_repository.list_installations()
     if not response.get("success"):
         return CopilotAnswer("Installation data is currently unavailable.", DATA_GAP, ())
 
@@ -392,14 +414,18 @@ def _handle_latest_installation_fleet(
 
     tag = latest.get("plant_equip_no") or "N/A"
     seal_code = latest.get("seal_code")
-    seal_clause = f", seal {seal_code}" if seal_code else ", seal not recorded"
+    seal_type = latest.get("seal_type")
+    if seal_code:
+        seal_clause = f", seal {seal_code}" + (f" ({seal_type})" if seal_type else "")
+    else:
+        seal_clause = ", seal not recorded"
     answer = (
         f"The most recently installed pump is {tag} (installation report "
         f"{latest.get('installation_code') or 'N/A'}, dated {latest.get('report_date') or 'N/A'}"
         f"{seal_clause})."
     )
     evidence = (
-        _evidence("InstallationGateway", latest.get("installation_code") or tag, "report_date", latest.get("report_date")),
+        _evidence("InstallationReportRepository", latest.get("installation_code") or tag, "report_date", latest.get("report_date")),
     )
     return CopilotAnswer(answer, FACT, evidence)
 
@@ -433,23 +459,58 @@ def _handle_leak_frequency_fleet(
     return CopilotAnswer(answer, FACT, evidence)
 
 
-def _handle_stock_by_seal_code(seal_code: str, *, seal_stock_gateway, **_: Any) -> CopilotAnswer:
-    """Seal-code-keyed stock lookup, no pump tag needed ("stok seal T48MP
-    berapa?") -- seal_stock records are keyed by seal_code directly, the
-    same identity _handle_inventory's own per-tag lookup already reads,
-    just resolved without going through a pump first."""
-    response = seal_stock_gateway.list_seal_stocks()
+# Stock V1's own null/0/positive quantity_available contract (MWO-LTSA-
+# AI-COPILOT-NATURAL-LANGUAGE-ROUTING-017A's explicit rule) -- rendered
+# once here so both the single-pool and multi-pool answers below phrase it
+# identically, never two different wordings for the same underlying state.
+def _quantity_available_phrase(quantity: Any) -> str:
+    if quantity is None:
+        return "stock quantity unknown"
+    if quantity == 0:
+        return "out of stock (0 available)"
+    return f"{quantity} unit(s) available"
+
+
+def _handle_stock_by_seal_code(seal_code: str, *, mechanical_seal_stock_repository, **_: Any) -> CopilotAnswer:
+    """Seal-code-keyed Stock V1 lookup, no pump tag needed ("stok seal
+    T48MP ada berapa?"). Reads ONLY mechanical_seal_stock_pool (via the
+    already-existing, unmodified MechanicalSealStockRepository.list_pools()
+    -- no new SQL) -- legacy seal_stock is not wired into this handler at
+    all (MWO-LTSA-AI-COPILOT-NATURAL-LANGUAGE-ROUTING-017A). quantity_available
+    is the authoritative field (the same one the Mechanical Seal Stock /
+    Asset 360 "Seal Stock Available" UI already surfaces as "Available" --
+    never quantity_on_hand, which does not net out reservations).
+    list_pools()'s own `search` filter does not match on seal_code, so
+    every pool is fetched (44 real pools today, comfortably under the 200
+    cap) and filtered here -- reuse of the existing method, not a
+    duplicated query."""
+    response = mechanical_seal_stock_repository.list_pools(limit=200)
     if not response.get("success"):
         return CopilotAnswer(f"Stock data for seal {seal_code} is currently unavailable.", DATA_GAP, ())
 
-    record = mis.select_seal_stock(response.get("data") or [], seal_code)
-    if record is None:
-        return CopilotAnswer(f"No stock record found for seal {seal_code}.", DATA_GAP, ())
+    pools = mis.select_stock_v1_pools_by_seal_code(response.get("data") or [], seal_code)
+    if not pools:
+        return CopilotAnswer(f"No Stock V1 record found for seal {seal_code}.", DATA_GAP, ())
 
-    quantity = record.get("quantity_on_hand")
-    location_clause = f" at {record.get('location')}" if record.get("location") else ""
-    answer = f"Seal {seal_code} has {quantity if quantity is not None else 'N/A'} unit(s) on hand{location_clause}."
-    evidence = (_evidence("SealStockGateway", seal_code, "quantity_on_hand", quantity),)
+    if len(pools) == 1:
+        pool = pools[0]
+        quantity = pool.get("quantity_available")
+        answer = f"Seal {seal_code} (stock pool {pool.get('stock_pool_id') or 'N/A'}): {_quantity_available_phrase(quantity)}."
+        evidence = (_evidence("MechanicalSealStockV1", pool.get("stock_pool_id") or seal_code, "quantity_available", quantity),)
+        return CopilotAnswer(answer, FACT, evidence)
+
+    # Multiple Stock V1 pools for one seal_code -- reported separately,
+    # never summed (no existing Stock V1 contract declares this additive).
+    lines = [
+        f"- pool {pool.get('stock_pool_id') or 'N/A'}: {_quantity_available_phrase(pool.get('quantity_available'))} "
+        f"({pool.get('stock_location') or 'location not recorded'})"
+        for pool in pools
+    ]
+    answer = f"Seal {seal_code} has {len(pools)} separate Stock V1 pools:\n" + "\n".join(lines)
+    evidence = tuple(
+        _evidence("MechanicalSealStockV1", pool.get("stock_pool_id") or seal_code, "quantity_available", pool.get("quantity_available"))
+        for pool in pools
+    )
     return CopilotAnswer(answer, FACT, evidence)
 
 
