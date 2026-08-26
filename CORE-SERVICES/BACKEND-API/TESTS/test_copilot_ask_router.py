@@ -17,6 +17,7 @@ for _path in (BACKEND_API_DIR, CORE_SERVICES_DIR):
 
 from main import app  # noqa: E402
 from dependencies import (  # noqa: E402
+    get_condition_monitoring_reading_gateway,
     get_copilot_ai_client,
     get_current_user,
     get_equipment_timeline_service,
@@ -24,6 +25,7 @@ from dependencies import (  # noqa: E402
     get_ltsa_knowledge_service,
     get_maintenance_history_gateway,
     get_pump_gateway,
+    get_seal_stock_gateway,
     get_work_order_gateway,
 )
 from API.auth_service import ROLE_PERMISSIONS, AuthenticatedIdentity  # noqa: E402
@@ -83,8 +85,31 @@ class FakeWorkOrderGateway:
 
 
 class FakeInstallationGateway:
+    # MWO-LTSA-AI-COPILOT-NATURAL-LANGUAGE-ROUTING-017 -- optional `records`
+    # (default [], byte-for-byte the pre-existing behavior every prior test
+    # already relies on) lets the new fleet-installation tests supply real
+    # records without touching any existing call site.
+    def __init__(self, records=None):
+        self._records = records if records is not None else []
+
     def list_installations(self):
-        return {"success": True, "data": []}
+        return {"success": True, "data": self._records}
+
+
+class FakeSealStockGateway:
+    def __init__(self, records=None):
+        self._records = records if records is not None else []
+
+    def list_seal_stocks(self):
+        return {"success": True, "data": self._records}
+
+
+class FakeConditionMonitoringReadingGateway:
+    def __init__(self, records=None):
+        self._records = records if records is not None else []
+
+    def list_condition_monitoring_readings(self):
+        return {"success": True, "data": self._records}
 
 
 class FakeLTSAKnowledgeService:
@@ -137,13 +162,15 @@ def _as(identity: AuthenticatedIdentity):
     app.dependency_overrides[get_installation_gateway] = lambda: FakeInstallationGateway()
     app.dependency_overrides[get_ltsa_knowledge_service] = lambda: FakeLTSAKnowledgeService()
     app.dependency_overrides[get_equipment_timeline_service] = lambda: FakeEquipmentTimelineService()
+    app.dependency_overrides[get_seal_stock_gateway] = lambda: FakeSealStockGateway()
+    app.dependency_overrides[get_condition_monitoring_reading_gateway] = lambda: FakeConditionMonitoringReadingGateway()
 
 
 def _clear():
     for dep in (
         get_current_user, get_copilot_ai_client, get_pump_gateway, get_maintenance_history_gateway,
         get_work_order_gateway, get_installation_gateway, get_ltsa_knowledge_service,
-        get_equipment_timeline_service,
+        get_equipment_timeline_service, get_seal_stock_gateway, get_condition_monitoring_reading_gateway,
     ):
         app.dependency_overrides.pop(dep, None)
 

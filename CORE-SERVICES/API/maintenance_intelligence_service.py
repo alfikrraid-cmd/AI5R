@@ -386,3 +386,78 @@ def summarize_situation(
         maintenance_history_gateway=maintenance_history_gateway,
         scope=scope,
     )
+
+
+# MWO-LTSA-AI-COPILOT-NATURAL-LANGUAGE-ROUTING-017 -- three pure selection
+# functions (list-of-records in, one selected record/aggregate out; no
+# gateway call, no I/O of their own) backing the new fleet-wide Copilot
+# intents (installation-history/latest, condition-monitoring/leak
+# frequency, seal-code stock lookup). Kept pure and gateway-free, unlike
+# this file's other functions, specifically so the caller
+# (copilot_ask_service.py) can fetch once and apply its own Area/MA scope
+# filter (pump_area_scope.filter_records_by_asset_scope, reused unmodified)
+# to the raw records BEFORE selection -- filtering after selecting the
+# "latest"/"most frequent" would risk silently discarding the correct
+# in-scope answer in favor of an out-of-scope one nobody should see.
+
+
+def select_latest_installation(records: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Given already-fetched (and, if applicable, already scope-filtered)
+    installation_report records, returns the one with the most recent
+    PARSEABLE report_date, or None if no record has one. Never guesses an
+    order among undated records -- an undated record is simply excluded
+    from "latest" consideration, not assumed oldest or newest."""
+
+    def _parse_date(record: dict[str, Any]) -> date | None:
+        raw = record.get("report_date")
+        if not raw:
+            return None
+        try:
+            return date.fromisoformat(str(raw)[:10])
+        except ValueError:
+            return None
+
+    dated = [(record, parsed) for record in records if (parsed := _parse_date(record)) is not None]
+    if not dated:
+        return None
+    dated.sort(key=lambda item: item[1], reverse=True)
+    return dated[0][0]
+
+
+def select_most_frequent_leak_pump(readings: list[dict[str, Any]]) -> tuple[str, int] | None:
+    """Given already-fetched (and, if applicable, already scope-filtered)
+    condition_monitoring_reading records, returns (asset_code, leak_count)
+    for the pump with the most mechanical-seal-leak-flagged readings (DE or
+    NDE side, the same flags get_pump_condition_monitoring_flag already
+    reads), or None if none are flagged anywhere. Ties keep the
+    first-encountered pump -- a real, disclosed, deterministic
+    tie-break, never an arbitrary one."""
+    counts: dict[str, int] = {}
+    order: list[str] = []
+    for reading in readings:
+        if reading.get("mechanical_seal_leak_de") is not True and reading.get("mechanical_seal_leak_nde") is not True:
+            continue
+        asset_code = reading.get("asset_code")
+        if not asset_code:
+            continue
+        if asset_code not in counts:
+            counts[asset_code] = 0
+            order.append(asset_code)
+        counts[asset_code] += 1
+
+    if not counts:
+        return None
+    top_asset_code = max(order, key=lambda asset_code: counts[asset_code])
+    return top_asset_code, counts[top_asset_code]
+
+
+def select_seal_stock(records: list[dict[str, Any]], seal_code: str) -> dict[str, Any] | None:
+    """Given already-fetched seal_stock records, returns the one matching
+    seal_code exactly, or None. seal_stock is not Area/MA-scoped in this
+    codebase's model (the same, already-established behavior
+    _handle_inventory's own per-tag stock lookup relies on), so no scope
+    filter applies here."""
+    for record in records:
+        if record.get("seal_code") == seal_code:
+            return record
+    return None

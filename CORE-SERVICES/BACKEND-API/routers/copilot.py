@@ -8,6 +8,7 @@ from API.auth_service import AuthenticatedIdentity, resolve_area_scope
 from API.pump_area_scope import is_area_in_scope
 from API.copilot_orchestrator import orchestrate_copilot
 from dependencies import (
+    get_condition_monitoring_reading_gateway,
     get_copilot_ai_client,
     get_current_user,
     get_equipment_timeline_service,
@@ -16,6 +17,7 @@ from dependencies import (
     get_maintenance_history_gateway,
     get_product_name,
     get_pump_gateway,
+    get_seal_stock_gateway,
     get_work_order_gateway,
     require_permission,
 )
@@ -81,6 +83,8 @@ def ask_copilot_endpoint(
     installation_gateway=Depends(get_installation_gateway),
     ltsa_knowledge_service=Depends(get_ltsa_knowledge_service),
     equipment_timeline_service=Depends(get_equipment_timeline_service),
+    seal_stock_gateway=Depends(get_seal_stock_gateway),
+    condition_monitoring_reading_gateway=Depends(get_condition_monitoring_reading_gateway),
     ai_client=Depends(get_copilot_ai_client),
     current_user: AuthenticatedIdentity = Depends(get_current_user),
 ) -> Payload:
@@ -113,6 +117,8 @@ def ask_copilot_endpoint(
         installation_gateway=installation_gateway,
         ltsa_knowledge_service=ltsa_knowledge_service,
         equipment_timeline_service=equipment_timeline_service,
+        seal_stock_gateway=seal_stock_gateway,
+        condition_monitoring_reading_gateway=condition_monitoring_reading_gateway,
     )
 
     # tools_used is additive/optional -- existing frontend (CopilotPanel/

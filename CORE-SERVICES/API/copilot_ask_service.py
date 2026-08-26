@@ -74,27 +74,49 @@ def _evidence(source: str, reference: str, field: str, value: Any) -> dict[str, 
 # Ordered, most-specific-first -- first match wins. `current seal` is
 # checked before the generic `seal` intent so "seal terakhir apa?" /
 # "what's the current seal?" routes to the identity-safe single-record
-# lookup instead of the broader compatibility list.
+# lookup instead of the broader compatibility list. `condition_monitoring`
+# (bocor/leak) is checked before `cm` (corrective maintenance/kerusakan/
+# breakdown) so a leak-symptom question never gets misrouted to the
+# reactive-repair CM Report path -- ADR-CONDITION-MONITORING-001's own
+# "CM Is a Terminology Collision" finding, reused, not re-litigated.
+# `inventory` (stock/stok) is checked before `seal_compat` so a
+# seal-stock question ("stok seal T48MP berapa?") is never misrouted to
+# the compatibility-list intent just because it also mentions "seal".
+#
+# MWO-LTSA-AI-COPILOT-NATURAL-LANGUAGE-ROUTING-017 -- GENERIC synonym
+# coverage (Indonesian/English), never one hardcoded sentence: every
+# addition below is a real, common wording variant of a domain this
+# router already had a handler for (or, for `condition_monitoring`, a
+# domain this MWO adds) -- semantic routing, not a literal-string match.
 def _detect_intent(question: str) -> str | None:
     q = (question or "").lower()
 
     def has(*words: str) -> bool:
         return any(re.search(word, q) for word in words)
 
-    if has(r"\bseal\b", r"\bsegel\b") and has("current", "terakhir", "latest", "sekarang", r"\bnow\b"):
+    is_current_or_latest = has("current", "terakhir", "latest", "terbaru", "most recent", "sekarang", r"\bnow\b")
+    is_install_or_replace_wording = has(
+        "install", "pasang", "dipasang", "pemasangan", "ganti", "diganti", "replace", "replacement"
+    )
+
+    if has(r"\bseal\b", r"\bsegel\b") and is_current_or_latest and not is_install_or_replace_wording:
         return "current_seal"
-    if has("install"):
+    if has("install", "pasang", "dipasang", "pemasangan") or (
+        has(r"\bseal\b", r"\bsegel\b") and has("ganti", "diganti", "replace", "replacement")
+    ):
         return "installation"
+    if has("bocor", r"\bleak", r"\bcmon\b", "condition monitoring"):
+        return "condition_monitoring"
     if has(r"\bpm\b", "preventive"):
         return "pm"
-    if has(r"\bcm\b", "corrective", "breakdown", "kerusakan"):
+    if has(r"\bcm\b", "corrective", "breakdown", "kerusakan", r"\brusak"):
         return "cm"
     if has("work order", "workorder", r"\bwo\b", "kerja"):
         return "work_orders"
+    if has("stock", "stok", "inventory", "inventaris", "spare part", "sparepart", "suku cadang", "tersedia"):
+        return "inventory"
     if has(r"\bseal\b", r"\bsegel\b", "compatib", "cocok"):
         return "seal_compat"
-    if has("stock", "stok", "inventory", "inventaris", "spare part", "sparepart", "suku cadang"):
-        return "inventory"
     if has("drawing", "gambar", "document", "dokumen"):
         return "drawing_document"
     if has("recommend", "rekomendasi", "saran"):
@@ -104,6 +126,23 @@ def _detect_intent(question: str) -> str | None:
     if has("status", "kondisi"):
         return "pump_status"
     return None
+
+
+# Entity extraction for a seal code mentioned near "seal"/"segel" --
+# requires at least one digit in the captured token so a following word
+# like "terakhir"/"compatibility"/"cocok" (no digit) is never mistaken for
+# a code ("kapan seal terakhir diganti?" must NOT extract "terakhir" as a
+# seal code) -- every real seal_code in this codebase's own registry
+# (e.g. "SC-001", "T48MP") contains at least one digit. Case preserved
+# exactly as written (seal codes are case-sensitive identifiers) -- never
+# normalized or guessed, the same "never invent" discipline
+# routers/copilot.py's own pump-tag extraction already establishes.
+_SEAL_CODE_PATTERN = re.compile(r"(?:seal|segel)\s+([A-Za-z0-9-]*\d[A-Za-z0-9-]*)", re.IGNORECASE)
+
+
+def _extract_seal_code(question: str) -> str | None:
+    match = _SEAL_CODE_PATTERN.search(question or "")
+    return match.group(1) if match else None
 
 
 def ask_copilot(
@@ -117,14 +156,37 @@ def ask_copilot(
     installation_gateway,
     ltsa_knowledge_service,
     equipment_timeline_service,
+    seal_stock_gateway,
+    condition_monitoring_reading_gateway,
 ) -> CopilotAnswer:
     intent = _detect_intent(question)
 
     if intent is None:
         return CopilotAnswer(_NO_INTENT_MESSAGE, DATA_GAP, ())
 
+    # Tag-optional intents (MWO-LTSA-AI-COPILOT-NATURAL-LANGUAGE-ROUTING-017
+    # adds the three below, matching `work_orders`' own pre-existing
+    # tag-optional pattern): a fleet-wide question has no single asset for
+    # the router to have extracted a tag from, and must not be rejected as
+    # "needs a specific pump/asset" just because none was found.
     if intent == "work_orders" and tag is None:
         return _handle_global_work_orders(scope, pump_gateway=pump_gateway, work_order_gateway=work_order_gateway)
+
+    if intent == "installation" and tag is None:
+        return _handle_latest_installation_fleet(
+            scope, installation_gateway=installation_gateway, pump_gateway=pump_gateway
+        )
+
+    if intent == "condition_monitoring" and tag is None:
+        return _handle_leak_frequency_fleet(
+            scope, condition_monitoring_reading_gateway=condition_monitoring_reading_gateway, pump_gateway=pump_gateway
+        )
+
+    if intent == "inventory" and tag is None:
+        seal_code = _extract_seal_code(question)
+        if seal_code is not None:
+            return _handle_stock_by_seal_code(seal_code, seal_stock_gateway=seal_stock_gateway)
+        return CopilotAnswer(_NO_ASSET_MESSAGE, DATA_GAP, ())
 
     if tag is None:
         return CopilotAnswer(_NO_ASSET_MESSAGE, DATA_GAP, ())
@@ -138,6 +200,8 @@ def ask_copilot(
         installation_gateway=installation_gateway,
         ltsa_knowledge_service=ltsa_knowledge_service,
         equipment_timeline_service=equipment_timeline_service,
+        seal_stock_gateway=seal_stock_gateway,
+        condition_monitoring_reading_gateway=condition_monitoring_reading_gateway,
     )
 
 
@@ -297,6 +361,95 @@ def _handle_installation(tag: str, *, installation_gateway, **_: Any) -> Copilot
     latest = records[-1]
     answer = f"{tag} has {len(records)} installation report(s); most recent: {latest.get('installation_code') or 'N/A'} dated {latest.get('report_date') or 'N/A'}."
     evidence = (_evidence("InstallationGateway", latest.get("installation_code") or tag, "report_date", latest.get("report_date")),)
+    return CopilotAnswer(answer, FACT, evidence)
+
+
+def _handle_latest_installation_fleet(
+    scope: frozenset[str] | None, *, installation_gateway, pump_gateway, **_: Any
+) -> CopilotAnswer:
+    """Fleet-wide (no tag): "pompa mana yang terakhir dipasang?" and its
+    semantic variants. Fetches the full installation list, applies the
+    caller's own Area/MA scope BEFORE selection (never after -- see
+    maintenance_intelligence_service.select_latest_installation's own
+    header), then defers to that pure, already-tested selector. Never
+    invents an installation: an empty/undated result is a truthful
+    DATA_GAP, never a fabricated pump/date."""
+    response = installation_gateway.list_installations()
+    if not response.get("success"):
+        return CopilotAnswer("Installation data is currently unavailable.", DATA_GAP, ())
+
+    records = response.get("data") or []
+    if scope is not None:
+        records = filter_records_by_asset_scope(records, scope, pump_gateway, asset_field="plant_equip_no")
+
+    latest = mis.select_latest_installation(records)
+    if latest is None:
+        return CopilotAnswer(
+            "No installation history with a recorded date is available -- installation history is absent.",
+            DATA_GAP,
+            (),
+        )
+
+    tag = latest.get("plant_equip_no") or "N/A"
+    seal_code = latest.get("seal_code")
+    seal_clause = f", seal {seal_code}" if seal_code else ", seal not recorded"
+    answer = (
+        f"The most recently installed pump is {tag} (installation report "
+        f"{latest.get('installation_code') or 'N/A'}, dated {latest.get('report_date') or 'N/A'}"
+        f"{seal_clause})."
+    )
+    evidence = (
+        _evidence("InstallationGateway", latest.get("installation_code") or tag, "report_date", latest.get("report_date")),
+    )
+    return CopilotAnswer(answer, FACT, evidence)
+
+
+def _handle_leak_frequency_fleet(
+    scope: frozenset[str] | None, *, condition_monitoring_reading_gateway, pump_gateway, **_: Any
+) -> CopilotAnswer:
+    """Fleet-wide (no tag): "pompa mana yang paling sering bocor?" --
+    aggregates mechanical-seal-leak-flagged condition_monitoring_reading
+    records (the same DE/NDE flags get_pump_condition_monitoring_flag
+    already reads for a single tag), never Corrective Maintenance (CM)
+    records -- see this module's own "CM Is a Terminology Collision" note
+    in _detect_intent's header."""
+    response = condition_monitoring_reading_gateway.list_condition_monitoring_readings()
+    if not response.get("success"):
+        return CopilotAnswer("Condition monitoring data is currently unavailable.", DATA_GAP, ())
+
+    records = response.get("data") or []
+    if scope is not None:
+        records = filter_records_by_asset_scope(records, scope, pump_gateway)
+
+    result = mis.select_most_frequent_leak_pump(records)
+    if result is None:
+        return CopilotAnswer(
+            "No mechanical seal leak has been recorded in condition monitoring readings.", DATA_GAP, ()
+        )
+
+    tag, leak_count = result
+    answer = f"{tag} has the most recorded mechanical seal leak readings ({leak_count})."
+    evidence = (_evidence("ConditionMonitoringReadingGateway", tag, "mechanical_seal_leak_count", leak_count),)
+    return CopilotAnswer(answer, FACT, evidence)
+
+
+def _handle_stock_by_seal_code(seal_code: str, *, seal_stock_gateway, **_: Any) -> CopilotAnswer:
+    """Seal-code-keyed stock lookup, no pump tag needed ("stok seal T48MP
+    berapa?") -- seal_stock records are keyed by seal_code directly, the
+    same identity _handle_inventory's own per-tag lookup already reads,
+    just resolved without going through a pump first."""
+    response = seal_stock_gateway.list_seal_stocks()
+    if not response.get("success"):
+        return CopilotAnswer(f"Stock data for seal {seal_code} is currently unavailable.", DATA_GAP, ())
+
+    record = mis.select_seal_stock(response.get("data") or [], seal_code)
+    if record is None:
+        return CopilotAnswer(f"No stock record found for seal {seal_code}.", DATA_GAP, ())
+
+    quantity = record.get("quantity_on_hand")
+    location_clause = f" at {record.get('location')}" if record.get("location") else ""
+    answer = f"Seal {seal_code} has {quantity if quantity is not None else 'N/A'} unit(s) on hand{location_clause}."
+    evidence = (_evidence("SealStockGateway", seal_code, "quantity_on_hand", quantity),)
     return CopilotAnswer(answer, FACT, evidence)
 
 
