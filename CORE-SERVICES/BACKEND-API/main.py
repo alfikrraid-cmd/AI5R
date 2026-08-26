@@ -28,6 +28,7 @@ from routers import (
     import_router,
     installation,
     maintenance,
+    mechanical_seal_stock,
     organization,
     pm_cm_evidence,
     pm_occurrence,
@@ -75,6 +76,7 @@ app.include_router(work_orders.router)
 app.include_router(maintenance.router)
 app.include_router(copilot.router)
 app.include_router(import_router.router)
+app.include_router(mechanical_seal_stock.router)
 
 # MWO-LTSA-AUTH-001A -- these 7 routers were fully implemented, tested, and
 # already permission-gated (require_permission), but never registered here

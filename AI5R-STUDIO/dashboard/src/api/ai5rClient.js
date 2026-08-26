@@ -791,6 +791,18 @@ export async function getSealStock() {
     throw new Error("Seal Stock API returned an invalid list");
 }
 
+export async function getMechanicalSealStock({ limit = 25, offset = 0, search = "", verificationStatus = "" } = {}) {
+    const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+    if (search.trim()) params.set("search", search.trim());
+    if (verificationStatus) params.set("verification_status", verificationStatus);
+    const response = await apiFetch(`${API_URL}/api/ltsa/mechanical-seal-stock?${params.toString()}`);
+    if (!response.ok) throw new Error("Mechanical seal stock API unavailable");
+    const payload = await response.json();
+    if (payload?.success === false) throw new Error(payload?.message || "Mechanical seal stock API returned a failure");
+    if (!Array.isArray(payload?.items) && !Array.isArray(payload?.data)) throw new Error("Mechanical seal stock API returned an invalid list");
+    return { items: payload.items ?? payload.data, total: payload.total ?? 0, limit: payload.limit ?? limit, offset: payload.offset ?? offset };
+}
+
 export async function getSealCompatibility() {
     const response = await apiFetch(`${API_URL}/api/ltsa/seal-compatibility`);
 

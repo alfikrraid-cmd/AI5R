@@ -21,6 +21,7 @@ import DocumentWorkspace from "./DocumentWorkspace";
 import InstallationWorkspace from "./InstallationWorkspace";
 import KnowledgeReviewWorkspace from "./KnowledgeReviewWorkspace";
 import KnowledgeWorkspace from "./KnowledgeWorkspace";
+import MechanicalSealStock from "./MechanicalSealStock";
 import ImportWorkspace from "./ImportWorkspace";
 import HistoricalReview from "./HistoricalReview";
 import { WorkspaceProvider } from "../workspace/WorkspaceContext";
@@ -60,6 +61,7 @@ const TABS = [
   { key: "dashboard", label: "Executive Dashboard" },
   { key: "pump", label: "Pump" },
   { key: "seal", label: "Mechanical Seal" },
+  { key: "inventory", label: "Mechanical Seal Stock" },
   { key: "drawing", label: "Drawing" },
   { key: "document", label: "Document" },
   { key: "installation", label: "Installation" },
@@ -189,6 +191,7 @@ const PAGES = {
   dashboard: ExecutiveDashboard,
   pump: Pump,
   seal: Seal,
+  inventory: MechanicalSealStock,
   drawing: DrawingWorkspace,
   document: DocumentWorkspace,
   installation: InstallationWorkspace,

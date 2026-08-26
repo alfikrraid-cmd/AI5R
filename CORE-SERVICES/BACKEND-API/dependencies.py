@@ -29,6 +29,7 @@ from API.basic_fleet_overview_service import BasicFleetOverviewService
 from API.fleet_executive_summary import FleetExecutiveSummaryService
 from API.fleet_reliability_service import FleetReliabilityService
 from API.import_session_repository import ImportSessionRepository
+from API.mechanical_seal_stock_repository import MechanicalSealStockRepository
 from API.installation_gateway import InstallationGateway
 from API.ltsa_knowledge_service import LTSAKnowledgeService
 from API.maintenance_history_gateway import MaintenanceHistoryGateway
@@ -131,6 +132,7 @@ def _resolve_import_database_config() -> DatabaseConfig:
 # safe as every other singleton on this page, and adds no Docker/Postgres
 # dependency to any test that never exercises POST .../execute.
 _import_database_runner = DatabaseRunner(_resolve_import_database_config())
+_mechanical_seal_stock_repository = MechanicalSealStockRepository(_import_database_runner)
 
 # MWO-LTSA-DATA-IMPORT-UI-001C-DURABLE -- runner=_import_database_runner
 # (constructed just above, same singleton) makes this repository durable
@@ -329,6 +331,10 @@ def get_seal_gateway() -> SealGateway:
 
 def get_seal_stock_gateway() -> SealStockGateway:
     return _seal_stock_gateway
+
+
+def get_mechanical_seal_stock_repository() -> MechanicalSealStockRepository:
+    return _mechanical_seal_stock_repository
 
 
 def get_seal_pump_compatibility_gateway() -> SealPumpCompatibilityGateway:
