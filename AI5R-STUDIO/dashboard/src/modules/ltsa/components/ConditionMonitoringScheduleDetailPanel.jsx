@@ -1,6 +1,7 @@
-import { Button, Card, EmptyState } from "../../../design-system";
+import { Badge, Button, Card, EmptyState } from "../../../design-system";
 import colors from "../../../design-system/theme/colors";
 import spacing from "../../../design-system/theme/spacing";
+import { cmonScheduleStatusBadgeVariant, cmonScheduleStatusLabel } from "../utils/cmonScheduleStatus";
 
 function Field({ label, value }) {
   return (
@@ -30,7 +31,14 @@ export default function ConditionMonitoringScheduleDetailPanel({
 
   return (
     <div>
-      <h2 style={{ marginTop: 0 }}>{schedule.id}</h2>
+      <div style={{ display: "flex", alignItems: "center", gap: spacing.sm, marginBottom: spacing.sm }}>
+        <h2 style={{ margin: 0 }}>{schedule.id}</h2>
+        {/* MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016A -- migration 029's
+            PLANNED/ACTIVE/OVERDUE/COMPLETED/CANCELLED lifecycle, same
+            computed-display convention PMOpenDesignView.jsx's own
+            STATUS_META badge already uses for PM. */}
+        <Badge variant={cmonScheduleStatusBadgeVariant(schedule.status)}>{cmonScheduleStatusLabel(schedule.status)}</Badge>
+      </div>
 
       <Card title="Schedule Summary">
         <Field
@@ -38,6 +46,7 @@ export default function ConditionMonitoringScheduleDetailPanel({
           value={schedule.area ? `${schedule.equipmentTag} — ${schedule.area}` : schedule.equipmentTag}
         />
         <Field label="Frequency" value={schedule.frequency ?? "Not recorded"} />
+        <Field label="Next Due" value={schedule.nextDue ?? "Not set"} />
       </Card>
 
       <Card title="Applicable Parameters">

@@ -176,10 +176,30 @@ class ConditionMonitoringReadingRepository:
                 f"AND EXISTS (SELECT 1 FROM condition_monitoring_schedule WHERE condition_monitoring_schedule_code = {_sql(condition_monitoring_schedule_code)}) "
                 ") "
                 f"RETURNING {_SELECT_COLUMNS}"
+                # MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016A -- atomic
+                # schedule->actual completion linking, mirroring
+                # pm_occurrence_repository.py's own create_draft() exactly
+                # (see that file's own comment for the full reasoning): one
+                # INSERT into condition_monitoring_reading and one UPDATE on
+                # its owning condition_monitoring_schedule in the SAME
+                # statement/transaction. The subquery reads
+                # condition_monitoring_schedule_code from `ins` itself
+                # (never the raw parameter), so this UPDATE only runs when
+                # the INSERT actually matched a row.
+                "), schedule_completion AS ("
+                "UPDATE condition_monitoring_schedule SET status = 'COMPLETED', updated_by = "
+                f"{_sql(created_by)}, updated_at = NOW() "
+                "WHERE condition_monitoring_schedule_code = (SELECT condition_monitoring_schedule_code FROM ins) "
+                "AND status NOT IN ('CANCELLED', 'COMPLETED') "
+                "RETURNING condition_monitoring_schedule_code"
                     "), audit AS (INSERT INTO record_change_history "
                     "(entity_type, entity_id, field_name, old_value, new_value, changed_by, reason) "
                     "SELECT 'CONDITION_MONITORING_READING', condition_monitoring_reading_code, '__record__', NULL, "
-                    "row_to_json(ins)::text, created_by, 'CREATE' FROM ins) "
+                    "row_to_json(ins)::text, created_by, 'CREATE' FROM ins"
+                    "), schedule_audit AS (INSERT INTO record_change_history "
+                    "(entity_type, entity_id, field_name, old_value, new_value, changed_by, reason) "
+                    "SELECT 'CONDITION_MONITORING_SCHEDULE', condition_monitoring_schedule_code, 'status', NULL, 'COMPLETED', "
+                    f"{_sql(created_by)}, 'AUTO_COMPLETE_ON_READING' FROM schedule_completion) "
                     "SELECT COALESCE(json_agg(row_to_json(t))::text, '[]') FROM ins t;"
             )
             or "[]"

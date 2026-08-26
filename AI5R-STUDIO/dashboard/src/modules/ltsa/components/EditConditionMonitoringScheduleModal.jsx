@@ -11,6 +11,22 @@ import spacing from "../../../design-system/theme/spacing";
 // measurement_point, frequency, interval_unit, effective_date). Schedule
 // Code and Equipment are immutable identity -- shown read-only, never sent
 // in the PATCH body (the backend model has no field for either).
+//
+// MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016A -- nextDue/status added
+// (migration 029), mirroring EditPMScheduleModal.jsx's own next_due/
+// status fields exactly. PLANNED/ACTIVE/OVERDUE are computed display
+// values (conditionMonitoringMapping.js's own computeDisplayStatus),
+// never legitimate to write back -- only the real stored values
+// (PLANNED/ACTIVE/COMPLETED/CANCELLED) are offered here, giving
+// "authorized cancellation" a real UI path through this same PATCH
+// endpoint.
+
+const STATUS_OPTIONS = [
+  { value: "PLANNED", label: "Planned" },
+  { value: "ACTIVE", label: "Active" },
+  { value: "COMPLETED", label: "Completed" },
+  { value: "CANCELLED", label: "Cancelled" },
+];
 
 const fieldStyle = {
   width: "100%",
@@ -42,6 +58,8 @@ function formFromSchedule(schedule) {
     frequency: schedule?.frequency ?? "",
     intervalUnit: schedule?.intervalUnit ?? "",
     effectiveDate: schedule?.effectiveDate ?? "",
+    nextDue: schedule?.nextDue ?? "",
+    status: schedule?.rawStatus ?? "PLANNED",
   };
 }
 
@@ -72,6 +90,8 @@ export default function EditConditionMonitoringScheduleModal({ isOpen, onClose, 
         frequency: form.frequency || null,
         interval_unit: form.intervalUnit || null,
         effective_date: form.effectiveDate || null,
+        next_due: form.nextDue || null,
+        status: form.status,
       });
       onClose();
     } catch (err) {
@@ -128,6 +148,26 @@ export default function EditConditionMonitoringScheduleModal({ isOpen, onClose, 
             value={form.effectiveDate}
             onChange={setField("effectiveDate")}
           />
+        </Field>
+
+        <Field id="edit-cmon-next-due" label="Next Due">
+          <input
+            id="edit-cmon-next-due"
+            type="date"
+            style={fieldStyle}
+            value={form.nextDue}
+            onChange={setField("nextDue")}
+          />
+        </Field>
+
+        <Field id="edit-cmon-status" label="Status">
+          <select id="edit-cmon-status" style={fieldStyle} value={form.status} onChange={setField("status")}>
+            {STATUS_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
         </Field>
 
         {error && (

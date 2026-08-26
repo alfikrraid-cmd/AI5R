@@ -152,3 +152,70 @@ def test_soft_delete_is_audited_and_preserves_the_record():
     assert "deleted_at = NOW()" in runner.scalar_calls[0]
     assert "record_change_history" in runner.scalar_calls[0]
     assert "'DELETE'" in runner.scalar_calls[0]
+
+
+# MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016A -- atomic schedule->actual
+# completion linking, mirroring test_pm_occurrence_repository.py's own
+# identical tests exactly (same owner-approved lifecycle, same pattern).
+
+
+def test_create_draft_atomically_marks_its_owning_schedule_completed():
+    runner = FakeRunner(scalar_response=json.dumps([{"condition_monitoring_reading_code": "CMONR-1", "condition_monitoring_schedule_code": "CMS-1"}]))
+    repo = ConditionMonitoringReadingRepository(runner)
+
+    repo.create_draft(
+        condition_monitoring_schedule_code="CMS-1", asset_code="G-201-01A", asset_type="PUMP",
+        reading_date="2026-08-01", measurements=_SAMPLE_MEASUREMENTS, created_by="actor-1",
+    )
+
+    sql = runner.scalar_calls[0]
+    assert sql.strip().upper().startswith("WITH")  # single statement, single transaction
+    assert "UPDATE condition_monitoring_schedule SET status = 'COMPLETED'" in sql
+    assert "WHERE condition_monitoring_schedule_code = (SELECT condition_monitoring_schedule_code FROM ins)" in sql
+    assert "AND status NOT IN ('CANCELLED', 'COMPLETED')" in sql
+
+
+def test_create_draft_never_completes_an_already_cancelled_or_completed_schedule():
+    runner = FakeRunner(scalar_response=json.dumps([{"condition_monitoring_reading_code": "CMONR-1"}]))
+    repo = ConditionMonitoringReadingRepository(runner)
+
+    repo.create_draft(
+        condition_monitoring_schedule_code="CMS-1", asset_code="G-201-01A", asset_type="PUMP",
+        reading_date="2026-09-01", measurements=_SAMPLE_MEASUREMENTS, created_by="actor-1",
+    )
+
+    sql = runner.scalar_calls[0]
+    assert "'CANCELLED', 'COMPLETED'" in sql
+
+
+def test_create_draft_audits_the_schedule_completion_separately_from_the_reading_creation():
+    runner = FakeRunner(scalar_response=json.dumps([{"condition_monitoring_reading_code": "CMONR-1"}]))
+    repo = ConditionMonitoringReadingRepository(runner)
+
+    repo.create_draft(
+        condition_monitoring_schedule_code="CMS-1", asset_code="G-201-01A", asset_type="PUMP",
+        reading_date="2026-08-01", measurements=_SAMPLE_MEASUREMENTS, created_by="actor-1",
+    )
+
+    sql = runner.scalar_calls[0]
+    assert "'CONDITION_MONITORING_READING', condition_monitoring_reading_code, '__record__'" in sql
+    assert "'CONDITION_MONITORING_SCHEDULE', condition_monitoring_schedule_code, 'status'" in sql
+    assert "'AUTO_COMPLETE_ON_READING'" in sql
+
+
+def test_create_draft_completion_targets_only_the_referenced_schedule_code():
+    # Critical negative test: the UPDATE's WHERE clause binds to the
+    # SAME schedule code the reading itself references (via a subquery
+    # against `ins`, never a hard-coded literal), so completing one
+    # reading can never accidentally complete an unrelated schedule.
+    runner = FakeRunner(scalar_response=json.dumps([{"condition_monitoring_reading_code": "CMONR-1"}]))
+    repo = ConditionMonitoringReadingRepository(runner)
+
+    repo.create_draft(
+        condition_monitoring_schedule_code="CMS-ONLY-THIS-ONE", asset_code="G-201-01A", asset_type="PUMP",
+        reading_date="2026-08-01", measurements=_SAMPLE_MEASUREMENTS, created_by="actor-1",
+    )
+
+    sql = runner.scalar_calls[0]
+    assert "'CMS-ONLY-THIS-ONE'" in sql
+    assert "WHERE condition_monitoring_schedule_code = (SELECT condition_monitoring_schedule_code FROM ins)" in sql

@@ -131,12 +131,12 @@ class ConditionMonitoringScheduleRepository:
     def list_condition_monitoring_schedules(self, *, scope: frozenset[str] | None = None) -> dict:
         rows = _json_query(
             "SELECT s.condition_monitoring_schedule_code, s.asset_code, s.asset_type, s.frequency, "
-            "s.applicable_parameters, s.created_at, s.updated_at, pump.area, pump.name AS pump_name "
+            "s.applicable_parameters, s.status, s.next_due, s.created_at, s.updated_at, pump.area, pump.name AS pump_name "
             "FROM public.condition_monitoring_schedule s "
             "LEFT JOIN public.ltsa_pumps pump ON pump.tag_number = s.asset_code "
             "WHERE s.deleted_at IS NULL "
             f"AND {_scope_and('pump.area', scope)[4:] if _scope_and('pump.area', scope) else 'TRUE'} "
-            "ORDER BY s.condition_monitoring_schedule_code ASC",
+            "ORDER BY s.next_due ASC NULLS LAST, s.condition_monitoring_schedule_code ASC",
             self._runner,
         )
         return _response("Condition Monitoring schedule list retrieved", rows)
@@ -144,7 +144,7 @@ class ConditionMonitoringScheduleRepository:
     def get_condition_monitoring_schedule(self, code: str, *, scope: frozenset[str] | None = None) -> dict:
         rows = _json_query(
             "SELECT s.condition_monitoring_schedule_code, s.asset_code, s.asset_type, s.frequency, "
-            "s.applicable_parameters, s.created_at, s.updated_at, pump.area, pump.name AS pump_name "
+            "s.applicable_parameters, s.status, s.next_due, s.created_at, s.updated_at, pump.area, pump.name AS pump_name "
             "FROM public.condition_monitoring_schedule s "
             "LEFT JOIN public.ltsa_pumps pump ON pump.tag_number = s.asset_code "
             f"WHERE s.condition_monitoring_schedule_code = {_sql(code)} AND s.deleted_at IS NULL {_scope_and('pump.area', scope)}",
@@ -153,7 +153,14 @@ class ConditionMonitoringScheduleRepository:
         return _detail("Condition Monitoring schedule not found", rows[0] if rows else None)
 
     def create(self, *, values: dict, actor: str) -> dict | None:
-        fields = ("condition_monitoring_schedule_code", "asset_code", "asset_type", "monitoring_type", "measurement_point", "frequency", "interval_unit", "effective_date", "provenance", "source_reference")
+        # MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016A -- next_due added,
+        # mirroring pm_schedule's own create() field list exactly. status
+        # is deliberately NOT in this list: it always starts at the
+        # column's own DEFAULT 'PLANNED' (migration 029) on create, the
+        # same "never let a client dictate the starting lifecycle state"
+        # choice pm_schedule's own create() already makes (status isn't in
+        # its fields tuple either).
+        fields = ("condition_monitoring_schedule_code", "asset_code", "asset_type", "monitoring_type", "measurement_point", "frequency", "interval_unit", "effective_date", "next_due", "provenance", "source_reference")
         rows = _json_query(
             "WITH ins AS (INSERT INTO public.condition_monitoring_schedule (" + ",".join(fields) + ", created_by, updated_by) SELECT " + ", ".join(_sql(values.get(field)) for field in fields) + ", " + _sql(actor) + ", " + _sql(actor) + " WHERE EXISTS (SELECT 1 FROM public.ltsa_pumps WHERE tag_number = " + _sql(values.get("asset_code")) + ") RETURNING *), audit AS (INSERT INTO record_change_history (entity_type, entity_id, field_name, old_value, new_value, changed_by, reason) SELECT 'CONDITION_MONITORING_SCHEDULE', condition_monitoring_schedule_code, '__record__', NULL, row_to_json(ins)::text, " + _sql(actor) + ", 'CREATE' FROM ins) SELECT * FROM ins",
             self._runner,

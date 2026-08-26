@@ -1,8 +1,9 @@
-import { EmptyState } from "../../../design-system";
+import { Badge, EmptyState } from "../../../design-system";
 import colors from "../../../design-system/theme/colors";
 import spacing from "../../../design-system/theme/spacing";
+import { cmonScheduleStatusBadgeVariant, cmonScheduleStatusLabel } from "../utils/cmonScheduleStatus";
 
-const HEADERS = ["Schedule ID", "Equipment", "Frequency", "Applicable Parameters"];
+const HEADERS = ["Schedule ID", "Equipment", "Frequency", "Next Due", "Status", "Applicable Parameters"];
 
 const thStyle = {
   textAlign: "left",
@@ -13,9 +14,10 @@ const thStyle = {
 
 const tdStyle = { padding: spacing.xs, color: colors.text };
 
-// No status column: condition_monitoring_schedule has no status vocabulary
-// (ADR-CONDITION-MONITORING-001 Open Question 1, deliberately not
-// fabricated).
+// MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016A -- migration 029 adds status/
+// next_due (ADR-CONDITION-MONITORING-001's own Open Question 1, resolved
+// by the owner-approved PLANNED/ACTIVE/OVERDUE/COMPLETED/CANCELLED
+// lifecycle, mirroring pm_schedule's identical shape).
 export default function ConditionMonitoringScheduleTable({ schedules, selectedId, onSelect }) {
   if (schedules.length === 0) {
     return (
@@ -72,6 +74,10 @@ export default function ConditionMonitoringScheduleTable({ schedules, selectedId
                   ) : null}
                 </td>
                 <td style={tdStyle}>{schedule.frequency ?? "—"}</td>
+                <td style={tdStyle}>{schedule.nextDue ?? "—"}</td>
+                <td style={tdStyle}>
+                  <Badge variant={cmonScheduleStatusBadgeVariant(schedule.status)}>{cmonScheduleStatusLabel(schedule.status)}</Badge>
+                </td>
                 <td style={tdStyle}>{schedule.applicableParameters.length}</td>
               </tr>
             );

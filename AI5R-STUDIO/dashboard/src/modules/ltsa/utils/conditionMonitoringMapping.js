@@ -32,7 +32,47 @@ export function isUnscheduledPlaceholder(code) {
   return typeof code === "string" && code.startsWith("UNSCHEDULED::");
 }
 
+// MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016A -- mirrors pmMapping.js's own
+// computeDisplayStatus exactly (same owner-approved lifecycle, same
+// "computed, never stored" convention for PLANNED/ACTIVE/OVERDUE).
+// Deliberately duplicated rather than a shared cross-domain import, same
+// reasoning as isUnscheduledPlaceholder's own header note above.
+function computeDisplayStatus(status, nextDue) {
+  if (status === "COMPLETED" || status === "CANCELLED") {
+    return status;
+  }
+
+  if (status !== "ACTIVE" || !nextDue) {
+    return status;
+  }
+
+  const dueDate = new Date(nextDue);
+
+  if (Number.isNaN(dueDate.getTime())) {
+    return status;
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  dueDate.setHours(0, 0, 0, 0);
+
+  if (dueDate.getTime() < today.getTime()) {
+    return "OVERDUE";
+  }
+
+  const currentMonthKey = today.getFullYear() * 12 + today.getMonth();
+  const dueMonthKey = dueDate.getFullYear() * 12 + dueDate.getMonth();
+
+  if (dueMonthKey > currentMonthKey) {
+    return "PLANNED";
+  }
+
+  return "ACTIVE";
+}
+
 export function mapConditionMonitoringScheduleRecord(record) {
+  const nextDue = formatDateOnly(record.next_due);
+
   return {
     id: record.condition_monitoring_schedule_code,
     equipmentTag: record.asset_code,
@@ -48,6 +88,15 @@ export function mapConditionMonitoringScheduleRecord(record) {
     measurementPoint: record.measurement_point,
     intervalUnit: record.interval_unit,
     effectiveDate: formatDateOnly(record.effective_date),
+    // MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016A -- migration 029 adds
+    // status/next_due; status here is the COMPUTED display value
+    // (PLANNED/ACTIVE/OVERDUE/COMPLETED/CANCELLED), mirroring
+    // pmMapping.js's mapPMScheduleRecord.status exactly. rawStatus is the
+    // real stored value (PLANNED/ACTIVE/COMPLETED/CANCELLED only), needed
+    // by Edit Schedule to prefill/submit -- never the computed value.
+    status: computeDisplayStatus(record.status, nextDue),
+    rawStatus: record.status,
+    nextDue,
   };
 }
 

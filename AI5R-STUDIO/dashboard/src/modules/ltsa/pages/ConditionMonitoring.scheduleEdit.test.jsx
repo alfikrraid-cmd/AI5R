@@ -125,6 +125,11 @@ describe("Condition Monitoring Schedule Edit UI (MWO-014C Gap B)", () => {
       frequency: "WEEKLY",
       interval_unit: "WEEK",
       effective_date: "2026-01-01",
+      // MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016A -- next_due/status added
+      // (migration 029): SCHEDULE fixture below has no next_due/rawStatus,
+      // so these fall back to null/the default starting state "PLANNED".
+      next_due: null,
+      status: "PLANNED",
     });
     expect(payload).not.toHaveProperty("asset_code");
     expect(payload).not.toHaveProperty("condition_monitoring_schedule_code");

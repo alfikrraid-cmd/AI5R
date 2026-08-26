@@ -308,6 +308,11 @@ class ConditionMonitoringScheduleCreateRequest(BaseModel):
     frequency: str | None = None
     interval_unit: str | None = None
     effective_date: str | None = None
+    # MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016A -- mirrors
+    # PMScheduleCreateRequest's own next_due field exactly; drives the
+    # PLANNED/ACTIVE/OVERDUE computation the same way for Condition
+    # Monitoring as it already does for PM.
+    next_due: str | None = None
     provenance: str = "MANUAL"
     source_reference: str | None = None
 
@@ -318,6 +323,13 @@ class ConditionMonitoringScheduleUpdateRequest(BaseModel):
     frequency: str | None = None
     interval_unit: str | None = None
     effective_date: str | None = None
+    # MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016A -- mirrors
+    # PMScheduleUpdateRequest's own next_due/status fields exactly. status
+    # is the real stored value (PLANNED/ACTIVE/COMPLETED/CANCELLED) --
+    # OVERDUE is computed client-side, never legitimate to write back
+    # (same convention pmMapping.js's own rawStatus comment establishes).
+    next_due: str | None = None
+    status: str | None = None
 
 
 class PMOccurrenceUpdateRequest(BaseModel):

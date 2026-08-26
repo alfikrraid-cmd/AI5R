@@ -80,6 +80,9 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
   const [schedulesLoading, setSchedulesLoading] = useState(true);
   const [schedulesError, setSchedulesError] = useState(null);
   const [scheduleSearch, setScheduleSearch] = useState("");
+  // MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016A -- status filter, mirroring
+  // PM.jsx's own statusFilter state exactly.
+  const [scheduleStatusFilter, setScheduleStatusFilter] = useState("ALL");
   const [selectedScheduleId, setSelectedScheduleId] = useState(null);
 
   const [readings, setReadings] = useState([]);
@@ -182,9 +185,26 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
     }
   }, [navContext]);
 
+  // MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016A -- statusOptions/
+  // TERMINAL_SCHEDULE_STATUSES/filteredSchedules mirror PM.jsx's own
+  // identical logic exactly: "ALL" means the active work queue (every
+  // status except Completed/Cancelled), not literally every row.
+  const scheduleStatusOptions = useMemo(
+    () => [...new Set(schedules.map((schedule) => schedule.status))],
+    [schedules]
+  );
+  const TERMINAL_SCHEDULE_STATUSES = new Set(["COMPLETED", "CANCELLED"]);
+
   const filteredSchedules = useMemo(
-    () => schedules.filter((schedule) => matchesScheduleSearch(schedule, scheduleSearch)),
-    [schedules, scheduleSearch]
+    () =>
+      schedules.filter(
+        (schedule) =>
+          matchesScheduleSearch(schedule, scheduleSearch) &&
+          (scheduleStatusFilter === "ALL"
+            ? !TERMINAL_SCHEDULE_STATUSES.has(schedule.status)
+            : schedule.status === scheduleStatusFilter)
+      ),
+    [schedules, scheduleSearch, scheduleStatusFilter]
   );
   const selectedSchedule = filteredSchedules.find((schedule) => schedule.id === selectedScheduleId) ?? null;
 
@@ -230,6 +250,11 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
         frequency: formValues.frequency || null,
         interval_unit: formValues.intervalUnit || null,
         effective_date: formValues.effectiveDate || null,
+        // MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016A -- the single
+        // "Effective Date" field drives both columns, the exact same
+        // convention PM.jsx's own handleCreate already established
+        // (formValues.startDate -> both effective_date and next_due).
+        next_due: formValues.effectiveDate || null,
       });
       const schedule = mapConditionMonitoringScheduleRecord(result.data);
       setSchedules((current) => [...current, schedule]);
@@ -380,6 +405,9 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
           <ConditionMonitoringScheduleFilterBar
             searchValue={scheduleSearch}
             onSearchChange={setScheduleSearch}
+            statusFilter={scheduleStatusFilter}
+            onStatusFilterChange={setScheduleStatusFilter}
+            statusOptions={scheduleStatusOptions}
           />
 
           {schedulesLoading ? (
