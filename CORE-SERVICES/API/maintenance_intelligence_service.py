@@ -464,10 +464,23 @@ def select_stock_v1_pools_by_seal_code(
 ) -> tuple[dict[str, Any], ...]:
     """Given already-fetched mechanical_seal_stock_pool records (Stock V1,
     MechanicalSealStockRepository.list_pools()'s own "items"/"data" list,
-    reused unmodified -- no new SQL), returns every pool matching seal_code
-    exactly, in the order given. Deliberately returns ALL matches rather
-    than picking one or summing them: no existing Stock V1 contract
-    declares multiple pools for one seal_code as additive, so this
-    function never invents that semantic -- the caller reports each pool
+    reused unmodified -- no new SQL), returns every pool matching seal_code,
+    in the order given.
+
+    Matches against `seal_type`, not `seal_code` (disclosed, verified
+    against real production data before writing this function):
+    mechanical_seal_stock_pool.seal_code is NULL on every real production
+    row (44/44) -- what users mean by "seal code" in a question like
+    "stock seal T48MP" (T48MP, T6014DP, etc.) is this table's own
+    `seal_type` value, confirmed by inspecting real rows (three separate
+    pools genuinely carry seal_type='T48MP', each a different
+    nominal_size). Case-insensitive exact match (never substring/ILIKE) so
+    "t48mp" matches "T48MP" but "T48MP" never wrongly matches "T48LP".
+
+    Deliberately returns ALL matches rather than picking one or summing
+    them: no existing Stock V1 contract declares multiple pools for one
+    seal_type as additive (the three real T48MP pools above are physically
+    distinct stock, different sizes) -- the caller reports each pool
     separately when there is more than one."""
-    return tuple(pool for pool in pools if pool.get("seal_code") == seal_code)
+    target = seal_code.strip().upper()
+    return tuple(pool for pool in pools if str(pool.get("seal_type") or "").strip().upper() == target)

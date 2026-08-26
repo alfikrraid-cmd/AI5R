@@ -157,18 +157,33 @@ def test_select_most_frequent_leak_pump_no_leaks_returns_none():
 
 
 def test_select_stock_v1_pools_by_seal_code_matches_by_exact_code():
+    # Matches on seal_type, not seal_code -- seal_code is NULL on every
+    # real production mechanical_seal_stock_pool row (verified before
+    # writing this function); "T48MP" is the pool's own seal_type value.
     pools = [
-        {"stock_pool_id": "POOL-1", "seal_code": "T48MP", "quantity_available": 5},
-        {"stock_pool_id": "POOL-2", "seal_code": "SC-001", "quantity_available": 2},
+        {"stock_pool_id": "POOL-1", "seal_type": "T48MP", "quantity_available": 5},
+        {"stock_pool_id": "POOL-2", "seal_type": "SC-001", "quantity_available": 2},
     ]
     matches = select_stock_v1_pools_by_seal_code(pools, "T48MP")
-    assert matches == ({"stock_pool_id": "POOL-1", "seal_code": "T48MP", "quantity_available": 5},)
+    assert matches == ({"stock_pool_id": "POOL-1", "seal_type": "T48MP", "quantity_available": 5},)
+
+
+def test_select_stock_v1_pools_by_seal_code_is_case_insensitive_but_never_substring():
+    pools = [
+        {"stock_pool_id": "POOL-1", "seal_type": "T48MP", "quantity_available": 5},
+        {"stock_pool_id": "POOL-2", "seal_type": "T48LP", "quantity_available": 9},
+    ]
+    assert select_stock_v1_pools_by_seal_code(pools, "t48mp") == (pools[0],)
+    assert select_stock_v1_pools_by_seal_code(pools, "T48") == ()
 
 
 def test_select_stock_v1_pools_by_seal_code_returns_every_matching_pool_never_aggregated():
+    # Mirrors real production data: three distinct T48MP pools exist,
+    # each a different nominal_size -- genuinely separate stock, not
+    # duplicates of one record.
     pools = [
-        {"stock_pool_id": "POOL-1", "seal_code": "T48MP", "quantity_available": 5},
-        {"stock_pool_id": "POOL-2", "seal_code": "T48MP", "quantity_available": 3},
+        {"stock_pool_id": "POOL-1", "seal_type": "T48MP", "quantity_available": 5},
+        {"stock_pool_id": "POOL-2", "seal_type": "T48MP", "quantity_available": 3},
     ]
     matches = select_stock_v1_pools_by_seal_code(pools, "T48MP")
     assert len(matches) == 2
@@ -176,7 +191,7 @@ def test_select_stock_v1_pools_by_seal_code_returns_every_matching_pool_never_ag
 
 
 def test_select_stock_v1_pools_by_seal_code_unknown_code_returns_empty_tuple():
-    assert select_stock_v1_pools_by_seal_code([{"seal_code": "T48MP"}], "UNKNOWN") == ()
+    assert select_stock_v1_pools_by_seal_code([{"seal_type": "T48MP"}], "UNKNOWN") == ()
 
 
 # --- ask_copilot() end-to-end for the new fleet-wide intents -----------------------
@@ -273,7 +288,7 @@ def test_leak_frequency_query_end_to_end():
 def test_stock_query_end_to_end_reads_stock_v1_quantity_available():
     answer = _ask(
         "stok seal T48MP berapa?",
-        stock_pools=[{"stock_pool_id": "POOL-1", "seal_code": "T48MP", "quantity_available": 12, "stock_location": "Warehouse A"}],
+        stock_pools=[{"stock_pool_id": "POOL-1", "seal_type": "T48MP", "quantity_available": 12, "stock_location": "Warehouse A"}],
     )
     assert answer.kind == FACT
     assert "T48MP" in answer.answer
@@ -285,7 +300,7 @@ def test_stock_query_without_seal_keyword_still_extracts_code():
     # PHASE 4 acceptance #5: "berapa stock T6014DP?" -- no "seal" word at all.
     answer = _ask(
         "stock T6014DP ada berapa?",
-        stock_pools=[{"stock_pool_id": "POOL-9", "seal_code": "T6014DP", "quantity_available": 7}],
+        stock_pools=[{"stock_pool_id": "POOL-9", "seal_type": "T6014DP", "quantity_available": 7}],
     )
     assert answer.kind == FACT
     assert "T6014DP" in answer.answer
@@ -295,7 +310,7 @@ def test_stock_query_without_seal_keyword_still_extracts_code():
 def test_stock_query_null_quantity_reports_unknown_not_zero():
     answer = _ask(
         "stock seal T48MP ada berapa?",
-        stock_pools=[{"stock_pool_id": "POOL-1", "seal_code": "T48MP", "quantity_available": None}],
+        stock_pools=[{"stock_pool_id": "POOL-1", "seal_type": "T48MP", "quantity_available": None}],
     )
     assert answer.kind == FACT
     assert "unknown" in answer.answer.lower()
@@ -305,7 +320,7 @@ def test_stock_query_null_quantity_reports_unknown_not_zero():
 def test_stock_query_zero_quantity_reports_out_of_stock():
     answer = _ask(
         "stock seal T48MP ada berapa?",
-        stock_pools=[{"stock_pool_id": "POOL-1", "seal_code": "T48MP", "quantity_available": 0}],
+        stock_pools=[{"stock_pool_id": "POOL-1", "seal_type": "T48MP", "quantity_available": 0}],
     )
     assert answer.kind == FACT
     assert "out of stock" in answer.answer.lower()
@@ -315,8 +330,8 @@ def test_stock_query_multiple_pools_reported_separately_never_summed():
     answer = _ask(
         "stock seal T48MP ada berapa?",
         stock_pools=[
-            {"stock_pool_id": "POOL-1", "seal_code": "T48MP", "quantity_available": 5, "stock_location": "Warehouse A"},
-            {"stock_pool_id": "POOL-2", "seal_code": "T48MP", "quantity_available": 3, "stock_location": "Warehouse B"},
+            {"stock_pool_id": "POOL-1", "seal_type": "T48MP", "quantity_available": 5, "stock_location": "Warehouse A"},
+            {"stock_pool_id": "POOL-2", "seal_type": "T48MP", "quantity_available": 3, "stock_location": "Warehouse B"},
         ],
     )
     assert answer.kind == FACT
@@ -326,7 +341,7 @@ def test_stock_query_multiple_pools_reported_separately_never_summed():
 
 
 def test_stock_query_unknown_seal_code_is_truthful_data_gap():
-    answer = _ask("stock seal UNKNOWNCODE1 ada berapa?", stock_pools=[{"stock_pool_id": "POOL-1", "seal_code": "T48MP", "quantity_available": 5}])
+    answer = _ask("stock seal UNKNOWNCODE1 ada berapa?", stock_pools=[{"stock_pool_id": "POOL-1", "seal_type": "T48MP", "quantity_available": 5}])
     assert answer.kind == DATA_GAP
     assert "UNKNOWNCODE1" in answer.answer
 
