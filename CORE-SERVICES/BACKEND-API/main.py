@@ -22,6 +22,7 @@ from routers import (
     copilot,
     dashboard,
     document,
+    engineering_ai,
     fleet,
     health,
     historical_review,
@@ -77,15 +78,18 @@ app.include_router(maintenance.router)
 app.include_router(copilot.router)
 app.include_router(import_router.router)
 app.include_router(mechanical_seal_stock.router)
+# MWO-LTSA-ENGINEERING-AI-ASSET360-NOT-FOUND-020 -- closes the gap the
+# comment above this block used to describe: POST /api/ltsa/engineering-ai
+# had no router at all (404 on every request), not merely an unwired one.
+# See routers/engineering_ai.py's own header for the full root-cause/fix
+# disclosure.
+app.include_router(engineering_ai.router)
 
 # MWO-LTSA-AUTH-001A -- these 7 routers were fully implemented, tested, and
 # already permission-gated (require_permission), but never registered here
 # -- a pre-existing gap, not new work. Each depends only on already-
 # constructed, real gateway singletons in dependencies.py (no placeholder/
-# None pattern), unlike engineering_ai (see routers/engineering_ai.py --
-# its orchestrator is never configured outside its own test file, so it
-# stays unwired; wiring it now would expose a 500-on-every-request
-# endpoint, not close a gap).
+# None pattern).
 app.include_router(fleet.router)
 app.include_router(document.router)
 app.include_router(installation.router)

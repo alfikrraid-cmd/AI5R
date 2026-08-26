@@ -189,16 +189,11 @@ def test_me_response_never_contains_password_hash():
 # --- 6/15: anonymous protected endpoint -> 401, no anonymous fallback ------
 
 
-# NOTE: /api/ltsa/engineering-ai is intentionally excluded from these
-# sweeps -- confirmed (independent of this MWO, pre-existing) that
-# routers/engineering_ai.py is not yet included in main.py's app at all
-# (a separate, pre-existing gap, out of this MWO's scope) -- so it 404s
-# regardless of authorization and would be a misleading assertion here.
-# Its permission wiring (Depends(require_permission("engineering_ai.ask"))
-# on the router itself) is proven directly instead, in
-# test_engineering_ai_router.py-adjacent unit coverage is out of scope;
-# the router-level dependency is proven structurally via
-# test_engineering_ai_permission_dependency_is_wired below.
+# MWO-LTSA-ENGINEERING-AI-ASSET360-NOT-FOUND-020 -- engineering_ai is now
+# wired into main.py (see test_no_anonymous_fallback_exists_across_the_
+# whole_router_surface below for its anonymous-401 coverage); its own
+# behavior (SUCCESS/DATA_GAP/404/error) is covered in
+# test_engineering_ai_router.py, not duplicated here.
 
 
 @pytest.mark.parametrize(
@@ -247,16 +242,18 @@ def test_no_anonymous_fallback_exists_across_the_whole_router_surface():
         response = client.get(path)
         assert response.status_code == 401, f"GET {path} was not rejected anonymously"
 
-    for path, body in (("/work-orders", {"work_order_code": "x", "description": "x"}), ("/maintenance", {"maintenance_record_code": "x", "action_taken": "x"})):
+    for path, body in (
+        ("/work-orders", {"work_order_code": "x", "description": "x"}),
+        ("/maintenance", {"maintenance_record_code": "x", "action_taken": "x"}),
+        ("/api/ltsa/engineering-ai", {"asset_code": "x", "intent": "summary", "prompt_type": "summary", "trace_id": "t"}),
+    ):
         response = client.post(path, json=body)
         assert response.status_code == 401, f"POST {path} was not rejected anonymously"
 
 
 def test_engineering_ai_permission_dependency_is_wired():
-    # engineering_ai.router itself is not currently mounted on the app
-    # (pre-existing, unrelated gap), so its permission gate can't be
-    # proven via an HTTP round trip here -- proven structurally instead:
-    # the router's own `dependencies=` list carries the required check.
+    # engineering_ai.router is now mounted (see the anonymous-401 sweep
+    # above for its HTTP-level proof); this keeps the structural check too.
     from routers import engineering_ai as engineering_ai_router_module
 
     assert len(engineering_ai_router_module.router.dependencies) >= 1

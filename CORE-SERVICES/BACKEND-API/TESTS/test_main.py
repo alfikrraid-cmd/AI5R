@@ -1615,9 +1615,10 @@ def test_docs_and_openapi_are_available():
     ):
         assert path in paths
 
-    # MWO-LTSA-AUTH-001A -- engineering_ai is deliberately NOT wired: its
-    # orchestrator is never configured outside its own test file (see
-    # routers/engineering_ai.py), so wiring it would expose a 500-on-
-    # every-request endpoint rather than close a real gap. This asserts
-    # that omission is intentional and still true, not a silent gap.
-    assert "/api/ltsa/engineering-ai" not in paths
+    # MWO-LTSA-ENGINEERING-AI-ASSET360-NOT-FOUND-020 -- engineering_ai is
+    # now wired (previous exclusion was the bug: every request 404'd
+    # because no router existed at all, not because wiring it would have
+    # exposed a 500). Full behavior coverage lives in
+    # test_engineering_ai_router.py; this file only proves registration,
+    # matching every other endpoint asserted above.
+    assert "/api/ltsa/engineering-ai" in paths
