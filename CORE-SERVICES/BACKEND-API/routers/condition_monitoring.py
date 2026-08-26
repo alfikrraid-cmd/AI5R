@@ -17,11 +17,37 @@ from models.requests import (
     ConditionMonitoringReadingCreateRequest,
     ConditionMonitoringReadingUpdateRequest,
     TechnicalReviewRequest,
+    ConditionMonitoringScheduleCreateRequest,
+    ConditionMonitoringScheduleUpdateRequest,
 )
 from models.responses import Payload
 
 # MWO-LTSA-AUTH-001
 router = APIRouter(dependencies=[Depends(require_permission("condition.read"))])
+
+
+@router.post("/api/ltsa/condition-monitoring-schedules", dependencies=[Depends(require_permission("maintenance.write"))])
+def create_condition_monitoring_schedule(payload: ConditionMonitoringScheduleCreateRequest, current_user=Depends(require_permission("maintenance.write")), repository=Depends(get_condition_monitoring_schedule_repository)) -> Payload:
+    created = repository.create(values=payload.model_dump(), actor=current_user.user_id)
+    if created is None:
+        raise HTTPException(status_code=404, detail="Canonical pump not found")
+    return {"data": created}
+
+
+@router.patch("/api/ltsa/condition-monitoring-schedules/{code}", dependencies=[Depends(require_permission("maintenance.write"))])
+def update_condition_monitoring_schedule(code: str, payload: ConditionMonitoringScheduleUpdateRequest, current_user=Depends(require_permission("maintenance.write")), repository=Depends(get_condition_monitoring_schedule_repository)) -> Payload:
+    updated = repository.update(code, values=payload.model_dump(exclude_unset=True), actor=current_user.user_id)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Condition Monitoring schedule not found")
+    return {"data": updated}
+
+
+@router.delete("/api/ltsa/condition-monitoring-schedules/{code}", dependencies=[Depends(require_permission("admin.superuser"))])
+def delete_condition_monitoring_schedule(code: str, current_user=Depends(require_permission("admin.superuser")), repository=Depends(get_condition_monitoring_schedule_repository)) -> Payload:
+    deleted = repository.soft_delete(code, actor=current_user.user_id)
+    if deleted is None:
+        raise HTTPException(status_code=404, detail="Condition Monitoring schedule not found")
+    return {"data": deleted}
 
 # Condition Monitoring API (WO-CMON-002, per ADR-CONDITION-MONITORING-001)
 # -- same ConditionMonitoringScheduleGateway/ConditionMonitoringReadingGateway

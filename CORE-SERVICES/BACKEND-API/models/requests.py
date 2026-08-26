@@ -273,6 +273,53 @@ class PMOccurrenceCreateRequest(BaseModel):
     remarks: str | None = None
 
 
+class PMScheduleCreateRequest(BaseModel):
+    pm_schedule_code: str
+    asset_code: str
+    asset_type: str | None = None
+    procedure: str
+    frequency: str
+    trigger_type: str
+    interval_unit: str | None = None
+    effective_date: str | None = None
+    next_due: str | None = None
+    assigned_to: str | None = None
+    provenance: str = "MANUAL"
+    source_reference: str | None = None
+
+
+class PMScheduleUpdateRequest(BaseModel):
+    procedure: str | None = None
+    frequency: str | None = None
+    trigger_type: str | None = None
+    interval_unit: str | None = None
+    effective_date: str | None = None
+    next_due: str | None = None
+    assigned_to: str | None = None
+    status: str | None = None
+
+
+class ConditionMonitoringScheduleCreateRequest(BaseModel):
+    condition_monitoring_schedule_code: str
+    asset_code: str
+    asset_type: str | None = None
+    monitoring_type: str
+    measurement_point: str | None = None
+    frequency: str | None = None
+    interval_unit: str | None = None
+    effective_date: str | None = None
+    provenance: str = "MANUAL"
+    source_reference: str | None = None
+
+
+class ConditionMonitoringScheduleUpdateRequest(BaseModel):
+    monitoring_type: str | None = None
+    measurement_point: str | None = None
+    frequency: str | None = None
+    interval_unit: str | None = None
+    effective_date: str | None = None
+
+
 class PMOccurrenceUpdateRequest(BaseModel):
     occurrence_date: str | None = None
     activities: list[PMActivityEntry] | None = None

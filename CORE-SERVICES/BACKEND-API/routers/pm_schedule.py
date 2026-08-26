@@ -4,10 +4,39 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from API.auth_service import AuthenticatedIdentity, resolve_area_scope
 from dependencies import get_current_user, get_pm_schedule_repository, require_permission
+from models.requests import PMScheduleCreateRequest, PMScheduleUpdateRequest
 from models.responses import Payload
 
 # MWO-LTSA-AUTH-001
 router = APIRouter(dependencies=[Depends(require_permission("maintenance.read"))])
+
+
+def _actor_id(user: AuthenticatedIdentity) -> str:
+    return user.user_id
+
+
+@router.post("/api/ltsa/pm-schedules", dependencies=[Depends(require_permission("maintenance.write"))])
+def create_pm_schedule(payload: PMScheduleCreateRequest, current_user=Depends(require_permission("maintenance.write")), repository=Depends(get_pm_schedule_repository)) -> Payload:
+    created = repository.create(values=payload.model_dump(), actor=_actor_id(current_user))
+    if created is None:
+        raise HTTPException(status_code=404, detail="Canonical pump not found")
+    return {"data": created}
+
+
+@router.patch("/api/ltsa/pm-schedules/{code}", dependencies=[Depends(require_permission("maintenance.write"))])
+def update_pm_schedule(code: str, payload: PMScheduleUpdateRequest, current_user=Depends(require_permission("maintenance.write")), repository=Depends(get_pm_schedule_repository)) -> Payload:
+    updated = repository.update(code, values=payload.model_dump(exclude_unset=True), actor=_actor_id(current_user))
+    if updated is None:
+        raise HTTPException(status_code=404, detail="PM schedule not found")
+    return {"data": updated}
+
+
+@router.delete("/api/ltsa/pm-schedules/{code}", dependencies=[Depends(require_permission("admin.superuser"))])
+def delete_pm_schedule(code: str, current_user=Depends(require_permission("admin.superuser")), repository=Depends(get_pm_schedule_repository)) -> Payload:
+    deleted = repository.soft_delete(code, actor=_actor_id(current_user))
+    if deleted is None:
+        raise HTTPException(status_code=404, detail="PM schedule not found")
+    return {"data": deleted}
 
 # PM Schedule Registry API (WO-PM-002, per ADR-PM-001) -- same
 # PMScheduleGateway built under WO-PM-001, exposed under the /api/ltsa
