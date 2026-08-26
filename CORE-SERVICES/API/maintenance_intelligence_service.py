@@ -484,3 +484,69 @@ def select_stock_v1_pools_by_seal_code(
     separately when there is more than one."""
     target = seal_code.strip().upper()
     return tuple(pool for pool in pools if str(pool.get("seal_type") or "").strip().upper() == target)
+
+
+# MWO-LTSA-AI-COPILOT-FLEET-STOCK-V1-017B -- fleet-wide "which pumps have
+# X seal stock" support, no tag required. Two pure functions: flatten
+# (pools -> one row per real (equipment_tag, pool) application) then
+# select (rows -> the ones matching a predicate). Split so the caller
+# (copilot_ask_service.py) can apply Area/MA scope filtering on the
+# flattened rows BEFORE predicate selection, the same "filter before
+# select" discipline every other fleet handler here already follows.
+
+
+def flatten_stock_v1_fleet_rows(pools: list[dict[str, Any]]) -> tuple[dict[str, Any], ...]:
+    """One row per REAL (equipment_tag, pool) pairing the Stock V1
+    application mapping actually records -- each pool's own `applications`
+    list (MechanicalSealStockRepository.list_pools()'s own JOIN against
+    mechanical_seal_stock_application, reused unmodified: this function
+    performs no query of its own). Never infers a pump's stock from a pool
+    it has no real application row for, and never invents a tag."""
+    rows: list[dict[str, Any]] = []
+    for pool in pools:
+        for application in pool.get("applications") or []:
+            tag = application.get("equipment_tag")
+            if not tag:
+                continue
+            rows.append(
+                {
+                    "equipment_tag": tag,
+                    "seal_type": pool.get("seal_type"),
+                    "stock_pool_id": pool.get("stock_pool_id"),
+                    "quantity_available": pool.get("quantity_available"),
+                }
+            )
+    return tuple(rows)
+
+
+FLEET_STOCK_PREDICATES = ("OUT_OF_STOCK", "UNKNOWN_STOCK", "AVAILABLE_STOCK", "LOWEST_STOCK")
+
+
+def select_fleet_stock_by_predicate(
+    rows: tuple[dict[str, Any], ...], predicate: str
+) -> tuple[dict[str, Any], ...]:
+    """Given already-flattened (and, if applicable, already scope-filtered)
+    rows, returns the ones matching `predicate`. quantity_available == 0
+    is OUT_OF_STOCK; quantity_available is None is UNKNOWN_STOCK -- NULL
+    is never treated as zero, and 0 is never treated as unknown, per this
+    MWO's own explicit rule. LOWEST_STOCK is the real, deterministic
+    minimum among numeric (non-null) quantities -- never an invented
+    threshold -- and returns every row tied at that minimum, never an
+    arbitrary single pick."""
+    if predicate not in FLEET_STOCK_PREDICATES:
+        raise ValueError(f"predicate must be one of {FLEET_STOCK_PREDICATES}: got {predicate!r}")
+
+    if predicate == "OUT_OF_STOCK":
+        return tuple(row for row in rows if row["quantity_available"] == 0)
+    if predicate == "UNKNOWN_STOCK":
+        return tuple(row for row in rows if row["quantity_available"] is None)
+    if predicate == "AVAILABLE_STOCK":
+        return tuple(
+            row for row in rows if isinstance(row["quantity_available"], (int, float)) and row["quantity_available"] > 0
+        )
+
+    numeric_rows = [row for row in rows if isinstance(row["quantity_available"], (int, float))]
+    if not numeric_rows:
+        return ()
+    minimum = min(row["quantity_available"] for row in numeric_rows)
+    return tuple(row for row in numeric_rows if row["quantity_available"] == minimum)

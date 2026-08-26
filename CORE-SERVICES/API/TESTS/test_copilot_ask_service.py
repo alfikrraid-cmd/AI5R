@@ -18,9 +18,12 @@ from API.copilot_ask_service import (  # noqa: E402
     FACT,
     _detect_intent,
     _extract_seal_code,
+    _handle_fleet_stock_status,
     ask_copilot,
 )
 from API.maintenance_intelligence_service import (  # noqa: E402
+    flatten_stock_v1_fleet_rows,
+    select_fleet_stock_by_predicate,
     select_latest_installation,
     select_most_frequent_leak_pump,
     select_stock_v1_pools_by_seal_code,
@@ -361,3 +364,129 @@ def test_unsupported_topic_still_returns_couldnt_match_message():
     answer = _ask("siapa presiden pertama indonesia?")
     assert answer.kind == DATA_GAP
     assert "couldn't match" in answer.answer.lower()
+
+
+# --- MWO-LTSA-AI-COPILOT-FLEET-STOCK-V1-017B: fleet-wide stock status -------------
+
+_POOL_OUT = {"stock_pool_id": "POOL-OUT", "seal_type": "T48MP", "quantity_available": 0, "applications": [{"equipment_tag": "211-P-01A"}]}
+_POOL_UNKNOWN = {"stock_pool_id": "POOL-UNK", "seal_type": "T6014DP", "quantity_available": None, "applications": [{"equipment_tag": "211-P-02A"}]}
+_POOL_AVAILABLE = {"stock_pool_id": "POOL-OK", "seal_type": "SC-001", "quantity_available": 5, "applications": [{"equipment_tag": "211-P-03A"}]}
+_ALL_POOLS = (_POOL_OUT, _POOL_UNKNOWN, _POOL_AVAILABLE)
+
+
+# A. Indonesian fleet no-stock query routes without tag.
+def test_indonesian_fleet_out_of_stock_query_routes_without_tag():
+    assert _detect_intent("seal pompa mana yang ga ada stocknya?") == "inventory"
+    assert _extract_seal_code("seal pompa mana yang ga ada stocknya?") is None
+    answer = _ask("seal pompa mana yang ga ada stocknya?", stock_pools=_ALL_POOLS)
+    assert answer.kind == FACT
+    assert "211-P-01A" in answer.answer
+    assert "211-P-02A" not in answer.answer
+    assert "211-P-03A" not in answer.answer
+
+
+# B. English fleet no-stock query routes without tag.
+def test_english_fleet_out_of_stock_query_routes_without_tag():
+    for question in ("which pumps have no seal stock?", "show pumps with zero seal inventory"):
+        assert _detect_intent(question) == "inventory", question
+        answer = _ask(question, stock_pools=_ALL_POOLS)
+        assert answer.kind == FACT
+        assert "211-P-01A" in answer.answer
+
+
+# C. quantity=0 classified OUT_OF_STOCK.
+def test_zero_quantity_classified_out_of_stock():
+    rows = select_fleet_stock_by_predicate(flatten_stock_v1_fleet_rows(_ALL_POOLS), "OUT_OF_STOCK")
+    assert [r["equipment_tag"] for r in rows] == ["211-P-01A"]
+
+
+# D. quantity=NULL classified UNKNOWN_STOCK.
+def test_null_quantity_classified_unknown_stock():
+    rows = select_fleet_stock_by_predicate(flatten_stock_v1_fleet_rows(_ALL_POOLS), "UNKNOWN_STOCK")
+    assert [r["equipment_tag"] for r in rows] == ["211-P-02A"]
+
+
+# E. NULL never reported as zero.
+def test_null_quantity_never_reported_as_zero():
+    answer = _ask("pompa mana yang stock sealnya unknown?", stock_pools=_ALL_POOLS)
+    assert answer.kind == FACT
+    assert "211-P-02A" in answer.answer
+    assert "211-P-02A — T6014DP — unknown" in answer.answer
+    assert "211-P-02A — T6014DP — 0" not in answer.answer
+
+
+def test_out_of_stock_predicate_variants_and_more_examples():
+    for question in (
+        "pompa apa yang sealnya out of stock?",
+        "mana yang stok sealnya kosong?",
+        "berapa pompa yang sealnya tidak tersedia?",
+    ):
+        answer = _ask(question, stock_pools=_ALL_POOLS)
+        assert answer.kind == FACT, question
+        assert "211-P-01A" in answer.answer, question
+
+
+def test_lowest_stock_predicate():
+    pools = (
+        {"stock_pool_id": "P1", "seal_type": "T48MP", "quantity_available": 5, "applications": [{"equipment_tag": "TAG-A"}]},
+        {"stock_pool_id": "P2", "seal_type": "T48MP", "quantity_available": 1, "applications": [{"equipment_tag": "TAG-B"}]},
+    )
+    answer = _ask("seal apa yang stoknya paling sedikit?", stock_pools=pools)
+    assert answer.kind == FACT
+    assert "TAG-B" in answer.answer
+    assert "TAG-A" not in answer.answer
+
+
+# F. tag-specific Stock V1 query from 017A still works.
+def test_tag_specific_017a_stock_query_still_works():
+    answer = _ask(
+        "stock seal T48MP ada berapa?",
+        stock_pools=[{"stock_pool_id": "POOL-1", "seal_type": "T48MP", "quantity_available": 12, "stock_location": "Warehouse A"}],
+    )
+    assert answer.kind == FACT
+    assert "T48MP" in answer.answer
+    assert answer.evidence[0]["source"] == "MechanicalSealStockV1"
+
+
+# G. multi-pool behavior remains truthful (never aggregated).
+def test_multi_pool_fleet_rows_never_aggregated_across_pools():
+    pools = (
+        {"stock_pool_id": "P1", "seal_type": "T48MP", "quantity_available": 0, "applications": [{"equipment_tag": "TAG-A"}]},
+        {"stock_pool_id": "P2", "seal_type": "T48MP", "quantity_available": 3, "applications": [{"equipment_tag": "TAG-A"}]},
+    )
+    # Same pump, two distinct real pool applications -- both rows must
+    # survive independently; TAG-A must appear in OUT_OF_STOCK (pool P1)
+    # without inheriting pool P2's positive quantity.
+    out_of_stock = select_fleet_stock_by_predicate(flatten_stock_v1_fleet_rows(pools), "OUT_OF_STOCK")
+    assert len(out_of_stock) == 1
+    assert out_of_stock[0]["stock_pool_id"] == "P1"
+
+
+# H. no legacy seal_stock authority.
+def test_fleet_stock_handler_has_no_legacy_seal_stock_parameter():
+    import inspect
+
+    assert "seal_stock_gateway" not in inspect.signature(_handle_fleet_stock_status).parameters
+
+
+# I. unsupported question still fails honestly.
+def test_fleet_stock_no_matches_is_truthful_data_gap():
+    answer = _ask("pompa mana yang stock sealnya unknown?", stock_pools=[_POOL_OUT, _POOL_AVAILABLE])
+    assert answer.kind == DATA_GAP
+    assert "No pumps found" in answer.answer
+
+
+def test_fleet_stock_data_unavailable_is_data_gap_not_fabricated():
+    class _FailingRepo:
+        def list_pools(self, **_kwargs):
+            return {"success": False}
+
+    answer = ask_copilot(
+        "seal pompa mana yang ga ada stocknya?", None, None,
+        pump_gateway=None, maintenance_history_gateway=None, work_order_gateway=None,
+        installation_gateway=None, ltsa_knowledge_service=None, equipment_timeline_service=None,
+        condition_monitoring_reading_gateway=None, installation_report_repository=None,
+        mechanical_seal_stock_repository=_FailingRepo(),
+    )
+    assert answer.kind == DATA_GAP
+    assert "unavailable" in answer.answer.lower()

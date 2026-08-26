@@ -151,6 +151,37 @@ def _extract_seal_code(question: str) -> str | None:
     return match.group(1) if match else None
 
 
+# MWO-LTSA-AI-COPILOT-FLEET-STOCK-V1-017B -- fleet-wide stock predicate,
+# checked only when intent=inventory, tag is None, and no single seal code
+# was extracted (i.e. a genuinely fleet-scoped question, not a "stock for
+# seal X" lookup, which stays on the 017A path unchanged). Simple substring
+# checks, same style as _detect_intent's own `has()` -- never a hardcoded
+# whole sentence, and priority-ordered (UNKNOWN/LOWEST checked before the
+# broader OUT_OF_STOCK list) so "unknown"/"paling sedikit" are never
+# swallowed by a looser out-of-stock phrase.
+_UNKNOWN_STOCK_WORDS = ("unknown", "tidak diketahui", "belum diketahui")
+_LOWEST_STOCK_WORDS = ("paling sedikit", "paling rendah", "paling minim", "lowest", "least", "fewest")
+_OUT_OF_STOCK_WORDS = (
+    "kosong", "habis", "ga ada", "gak ada", "tidak ada", "out of stock", "no seal stock",
+    "no stock", "zero", "tidak tersedia", "ga tersedia", "gak tersedia", "not available",
+)
+
+
+def _detect_fleet_stock_predicate(question: str) -> str:
+    q = (question or "").lower()
+
+    def has(*words: str) -> bool:
+        return any(word in q for word in words)
+
+    if has(*_UNKNOWN_STOCK_WORDS):
+        return "UNKNOWN_STOCK"
+    if has(*_LOWEST_STOCK_WORDS):
+        return "LOWEST_STOCK"
+    if has(*_OUT_OF_STOCK_WORDS):
+        return "OUT_OF_STOCK"
+    return "AVAILABLE_STOCK"
+
+
 def ask_copilot(
     question: str,
     tag: str | None,
@@ -205,7 +236,12 @@ def ask_copilot(
             # wired into this module at all anymore (removed, not just
             # unused), so it structurally cannot contribute a quantity.
             return _handle_stock_by_seal_code(seal_code, mechanical_seal_stock_repository=mechanical_seal_stock_repository)
-        return CopilotAnswer(_NO_ASSET_MESSAGE, DATA_GAP, ())
+        # MWO-LTSA-AI-COPILOT-FLEET-STOCK-V1-017B -- a fleet-wide stock
+        # question (no seal code named either) must not be rejected as
+        # "needs a specific pump/asset" -- it IS the question.
+        return _handle_fleet_stock_status(
+            question, scope, mechanical_seal_stock_repository=mechanical_seal_stock_repository, pump_gateway=pump_gateway
+        )
 
     if tag is None:
         return CopilotAnswer(_NO_ASSET_MESSAGE, DATA_GAP, ())
@@ -510,6 +546,63 @@ def _handle_stock_by_seal_code(seal_code: str, *, mechanical_seal_stock_reposito
     evidence = tuple(
         _evidence("MechanicalSealStockV1", pool.get("stock_pool_id") or seal_code, "quantity_available", pool.get("quantity_available"))
         for pool in pools
+    )
+    return CopilotAnswer(answer, FACT, evidence)
+
+
+_FLEET_STOCK_PREDICATE_LABEL = {
+    "OUT_OF_STOCK": "have seal stock recorded as 0",
+    "UNKNOWN_STOCK": "have unknown seal stock quantity",
+    "AVAILABLE_STOCK": "have seal stock available",
+    "LOWEST_STOCK": "share the lowest recorded seal stock quantity",
+}
+
+
+def _handle_fleet_stock_status(
+    question: str,
+    scope: frozenset[str] | None,
+    *,
+    mechanical_seal_stock_repository,
+    pump_gateway,
+    **_: Any,
+) -> CopilotAnswer:
+    """Fleet-wide (no tag, no seal code): "seal pompa mana yang ga ada
+    stocknya?" and its semantic variants. Pump/seal/stock identity comes
+    ONLY from each pool's own real `applications` list (Stock V1's
+    authoritative application->pool mapping, reused unmodified via
+    mis.flatten_stock_v1_fleet_rows) -- never inferred from two pools
+    sharing a similar seal description. Area/MA scope is applied to the
+    flattened rows BEFORE predicate selection, never after."""
+    response = mechanical_seal_stock_repository.list_pools(limit=200)
+    if not response.get("success"):
+        return CopilotAnswer("Stock V1 data is currently unavailable.", DATA_GAP, ())
+
+    rows = mis.flatten_stock_v1_fleet_rows(response.get("data") or [])
+    if scope is not None:
+        rows = filter_records_by_asset_scope(rows, scope, pump_gateway, asset_field="equipment_tag")
+
+    predicate = _detect_fleet_stock_predicate(question)
+    matches = mis.select_fleet_stock_by_predicate(rows, predicate)
+
+    if not matches:
+        return CopilotAnswer(
+            f"No pumps found that {_FLEET_STOCK_PREDICATE_LABEL[predicate]}.", DATA_GAP, ()
+        )
+
+    lines = [
+        f"- {row['equipment_tag']} — {row['seal_type'] or 'N/A'} — "
+        f"{row['quantity_available'] if row['quantity_available'] is not None else 'unknown'}"
+        for row in matches
+    ]
+    answer = f"{len(matches)} pump(s) {_FLEET_STOCK_PREDICATE_LABEL[predicate]}:\n" + "\n".join(lines)
+    evidence = tuple(
+        _evidence(
+            "MechanicalSealStockV1",
+            row["stock_pool_id"] or row["equipment_tag"],
+            "quantity_available",
+            row["quantity_available"],
+        )
+        for row in matches
     )
     return CopilotAnswer(answer, FACT, evidence)
 
