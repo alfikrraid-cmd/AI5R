@@ -325,7 +325,7 @@ describe("Pump workspace page", () => {
     expect(screen.getByText(/2026-06-02/)).toBeTruthy();
   });
 
-  it("resolves Compatible Seals from lifecycle.related_engineering.inventory, lazily for the selected pump only", async () => {
+  it("resolves Seal Stock Available from lifecycle Stock V1 inventory, lazily for the selected pump only", async () => {
     loadPumps();
     getPumpLifecycle.mockResolvedValue({
       success: true,
@@ -336,7 +336,7 @@ describe("Pump workspace page", () => {
         related_engineering: {
           ...EMPTY_LIFECYCLE_DATA.related_engineering,
           inventory: [
-            { seal_code: "SC-011", quantity_on_hand: 4, reorder_point: 2, location: "Warehouse A" },
+            { stock_pool_id: "MSSP-011", seal_type: "T48MP", application_size: '3-1/2"', quantity_on_hand: 4, quantity_available: 4, verification_status: "CONFIRMED", stock_location: "Warehouse A" },
           ],
         },
       },
@@ -350,10 +350,10 @@ describe("Pump workspace page", () => {
     await screen.findByRole("heading", { name: "Cooling Water Circulation Pump" });
 
     expect(getPumpLifecycle).toHaveBeenCalledWith("305-P-2");
-    // MWO-LTSA-065 -- lifecycle's inventory shape has no part_name (only
-    // pumpMapping.js/withResolvedSpareParts's old shape did), so the
-    // Compatible Seals item name is the real seal_code.
-    expect(await screen.findAllByText(/SC-011/)).not.toHaveLength(0);
+    expect(await screen.findByText(/T48MP · 3-1\/2"/)).toBeTruthy();
+    expect(screen.getByText("Seal Stock Available")).toBeTruthy();
+    expect(screen.queryByText("Compatible Seals")).toBeNull();
+    expect(screen.getAllByText("4 sets available").length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Warehouse A/).length).toBeGreaterThan(0);
   });
 
@@ -376,7 +376,7 @@ describe("Pump workspace page", () => {
         related_engineering: {
           ...EMPTY_LIFECYCLE_DATA.related_engineering,
           inventory: [
-            { seal_code: "SC-011", quantity_on_hand: 4, reorder_point: 2, location: "Warehouse A" },
+            { stock_pool_id: "MSSP-011", seal_type: "T48MP", application_size: '3-1/2"', quantity_on_hand: 4, quantity_available: 4, verification_status: "CONFIRMED" },
           ],
         },
       },
@@ -388,7 +388,7 @@ describe("Pump workspace page", () => {
     await screen.findByRole("heading", { name: "Cooling Water Circulation Pump" });
 
     expect(await screen.findByText(/MH-101/)).toBeTruthy();
-    expect(screen.getAllByText(/SC-011/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("4 sets available").length).toBeGreaterThan(0);
   });
 });
 

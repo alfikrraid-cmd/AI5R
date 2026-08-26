@@ -494,15 +494,15 @@ export default function PumpOpenDesignView({
               Merged, not lost: nothing below reads pump.type/apiPlan/seal/
               location a second time. */}
 
-          <Section id="seal-inventory-section" title="Seal & Inventory">
+          <Section id="seal-stock-available-section" title="Seal Stock Available">
             <div style={{ marginTop: "var(--space-3)" }}>
               {sealInventoryGroups && sealInventoryGroups.length > 0 ? (
                 sealInventoryGroups.map((group) => (
-                  <div className="part-item" key={group.sealCode ?? group.sealName}>
+                  <div className="part-item" key={group.stockPoolId ?? group.sealCode ?? group.sealName}>
                     <div className="part-row">
                       <span className="part-name">
-                        {group.sealName ?? (group.sealCode ? `Seal ${group.sealCode}` : "Seal code unknown")}
-                        {group.shaftSize ? ` · ${group.shaftSize}` : ""}
+                        {group.sealName ?? "Seal type unknown"}
+                        {group.applicationSize ? ` · ${group.applicationSize}` : ""}
                       </span>
                       <span
                         className={`stock-flag ${
@@ -513,23 +513,14 @@ export default function PumpOpenDesignView({
                       </span>
                     </div>
                     <div className="part-meta">
-                      {group.sealCode ? `Code ${group.sealCode}` : null}
-                      {group.applicationSize ? ` · Application ${group.applicationSize}` : ""}
-                      {group.physicalStockSize ? ` · Physical ${group.physicalStockSize}` : ""}
+                      {group.physicalStockSize ? `Physical ${group.physicalStockSize}` : "Physical size unknown"}
                       {group.drawingReference ? ` · ${group.drawingReference}` : ""}
                       {group.location ? ` · ${group.location}` : ""}
                     </div>
                     <div style={{ marginTop: "var(--space-2)" }}>
-                      <InfoRow
-                        label="Compatible Pumps"
-                        value={group.compatiblePumps.length}
-                      />
+                      <InfoRow label="Available" value={group.availableLabel} />
                       <InfoRow label="Verification" value={group.verificationStatus || NOT_AVAILABLE} />
-                      {group.compatiblePumps.length > 0 && (
-                        <div className="confidence-label" style={{ marginTop: "var(--space-1)" }}>
-                          {group.compatiblePumps.join(", ")}
-                        </div>
-                      )}
+                      <InfoRow label="Stock Pool" value={group.stockPoolId || NOT_AVAILABLE} />
                     </div>
                   </div>
                 ))
@@ -540,7 +531,7 @@ export default function PumpOpenDesignView({
                 // pattern only repeats its title when used standalone
                 // (not already inside a titled Section).
                 <div className="info-row">
-                  <span className="v ref-group-empty">0 · {lifecycleEmptyReason}</span>
+                  <span className="v ref-group-empty">No verified stock pool linked</span>
                 </div>
               )}
             </div>

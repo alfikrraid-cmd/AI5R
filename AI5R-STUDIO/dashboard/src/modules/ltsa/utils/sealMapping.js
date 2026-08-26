@@ -131,6 +131,7 @@ export function buildSealInventoryGroups(inventoryItems, seals, compatibilityRec
     const quantity = item.quantity_on_hand ?? null;
 
     return {
+      stockPoolId: item.stock_pool_id ?? null,
       sealCode: item.seal_code ?? null,
       sealName: item.seal_type ?? seal?.seal_name ?? null,
       shaftSize: item.application_size ?? seal?.shaft_size ?? null,
@@ -141,7 +142,8 @@ export function buildSealInventoryGroups(inventoryItems, seals, compatibilityRec
       verificationStatus: item.application_verification_status ?? item.verification_status ?? null,
       location: item.stock_location ?? item.location ?? null,
       stockLabel:
-        quantity == null ? "Unknown" : quantity > 0 ? `Available · ${quantity}` : "Out of stock · 0",
+        quantity == null ? "Stock Unknown" : quantity > 0 ? `${quantity} sets available` : "Out of Stock",
+      availableLabel: quantity == null ? "Stock Unknown" : quantity > 0 ? `${quantity} sets available` : "Out of Stock",
       compatiblePumps: item.equipment_tag ? [item.equipment_tag] : item.seal_code ? resolveCompatiblePumps(item.seal_code, compatibilityRecords) : [],
     };
   });

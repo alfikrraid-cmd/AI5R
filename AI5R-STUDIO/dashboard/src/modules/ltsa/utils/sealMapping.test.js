@@ -273,7 +273,7 @@ describe("buildSealInventoryGroups", () => {
       SEALS,
       COMPATIBILITY
     );
-    expect(group.stockLabel).toBe("Available · 3");
+    expect(group.stockLabel).toBe("3 sets available");
   });
 
   it("preserves application and physical stock sizes as separate fields", () => {
@@ -293,7 +293,7 @@ describe("buildSealInventoryGroups", () => {
       SEALS,
       COMPATIBILITY
     );
-    expect(group.stockLabel).toBe("Out of stock · 0");
+    expect(group.stockLabel).toBe("Out of Stock");
   });
 
   it("labels a missing stock record (null quantity) as Unknown, never fabricated as zero", () => {
@@ -302,7 +302,7 @@ describe("buildSealInventoryGroups", () => {
       SEALS,
       COMPATIBILITY
     );
-    expect(group.stockLabel).toBe("Unknown");
+    expect(group.stockLabel).toBe("Stock Unknown");
   });
 
   it("preserves multiple seals on one pump as independent groups, never collapsed", () => {
