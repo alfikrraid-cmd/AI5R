@@ -24,12 +24,23 @@ from ltsa_pump_inventory_db_upsert import DatabaseConfig, DatabaseRunner, _json_
 
 
 def load_state(runner: DatabaseRunner) -> dict[str, list[dict[str, Any]]]:
+    # MWO-LTSA-PM-CMON-DETERMINISTIC-ID-FIX-015B1 -- widened to also select
+    # each existing row's own source provenance, so plan_import()'s V2
+    # duplicate check can compare by (workbook, sheet, row) -- not just by
+    # code equality. Additive column selection only; no schema change,
+    # no write, no behavior change for any caller that only reads the
+    # code column (dict access by key is unaffected by extra keys).
     return {
         "pumps": _json_query("SELECT tag_number FROM ltsa_pumps", runner),
         "condition_monitoring_readings": _json_query(
-            "SELECT condition_monitoring_reading_code FROM condition_monitoring_reading", runner
+            "SELECT condition_monitoring_reading_code, source_workbook_name, source_sheet_name, source_row_number "
+            "FROM condition_monitoring_reading",
+            runner,
         ),
-        "pm_occurrences": _json_query("SELECT pm_occurrence_code FROM pm_occurrence", runner),
+        "pm_occurrences": _json_query(
+            "SELECT pm_occurrence_code, source_workbook_name, source_sheet_name, source_row_number FROM pm_occurrence",
+            runner,
+        ),
         "cm_reports": _json_query("SELECT cm_report_code FROM cm_report", runner),
     }
 

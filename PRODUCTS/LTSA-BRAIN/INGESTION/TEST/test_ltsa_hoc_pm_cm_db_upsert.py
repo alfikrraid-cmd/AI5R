@@ -17,7 +17,14 @@ from ltsa_hoc_pm_cm_db_upsert import (  # noqa: E402
     plan_finding_attachments,
 )
 from ltsa_hoc_pm_cm_ingestion import ingest_workbook  # noqa: E402
-from ltsa_hoc_pm_cm_upsert import plan_import  # noqa: E402
+from ltsa_hoc_pm_cm_upsert import (  # noqa: E402
+    build_condition_monitoring_reading_code,
+    build_condition_monitoring_reading_code_v2,
+    build_pm_occurrence_code,
+    build_pm_occurrence_code_v2,
+    normalize_source_workbook_name,
+    plan_import,
+)
 
 _TEMPERATURE_FIELDS = [
     "flushing_temp_de", "flushing_temp_nde", "quench_temp_de", "quench_temp_nde",
@@ -384,3 +391,193 @@ def test_real_workbook_apply_then_reimport_is_idempotent_with_no_duplicate_ids()
     assert run_1_cmon_codes == set(plan_run_2["condition_monitoring_readings"]["unchanged"])
     run_1_pmo_codes = {r["pm_occurrence_code"] for r in plan_run_1["pm_occurrences"]["insert"]}
     assert run_1_pmo_codes == set(plan_run_2["pm_occurrences"]["unchanged"])
+
+
+# 5. V2 identity (MWO-LTSA-PM-CMON-DETERMINISTIC-ID-FIX-015B1) -- fixes the
+# production-evidenced collision where January " PM Mech Seal" row 11
+# hashed identically to June's already-imported row 11 (V1 ignored
+# workbook identity entirely). Section covers the 8 scenarios the MWO
+# explicitly required.
+
+
+def _cmon_projection_row(tag_number="140-P-3A", source_sheet_name="CM Measuring Report", source_row_number=10, reading_date="2026-06-15"):
+    row = {field: None for field in _TEMPERATURE_FIELDS}
+    row.update({
+        "tag_number": tag_number,
+        "source_sheet_name": source_sheet_name,
+        "source_row_number": source_row_number,
+        "reading_date": reading_date,
+        "mechanical_seal_leak_de": None,
+        "mechanical_seal_leak_nde": None,
+        "pump_operating_state": "Running",
+    })
+    return row
+
+
+def _pm_projection_row(tag_number="140-P-21B", source_sheet_name=" PM Mech Seal", source_row_number=11, occurrence_date="2026-06-15"):
+    return {
+        "tag_number": tag_number,
+        "source_sheet_name": source_sheet_name,
+        "source_row_number": source_row_number,
+        "occurrence_date": occurrence_date,
+        "status": "DONE",
+        "checklist_completion": {},
+    }
+
+
+def _minimal_projection(cmon_rows=(), pm_rows=(), source_workbook_name="wb.xlsx"):
+    return {
+        "metadata": {"source_workbook_name": source_workbook_name},
+        "condition_monitoring_readings": list(cmon_rows),
+        "pm_occurrences": list(pm_rows),
+        "findings": [],
+    }
+
+
+def test_v2_code_is_deterministic_for_the_same_workbook_sheet_row():
+    a = build_condition_monitoring_reading_code_v2("wb.xlsx", "CM Measuring Report", 10)
+    b = build_condition_monitoring_reading_code_v2("wb.xlsx", "CM Measuring Report", 10)
+    assert a == b
+
+
+def test_v2_code_differs_for_a_different_workbook_with_the_same_sheet_and_row():
+    june = build_condition_monitoring_reading_code_v2("CM & PM Summary HOC JUNI.xlsx", "CM Measuring Report", 10)
+    january = build_condition_monitoring_reading_code_v2("Laporan PM, CM & Pemasangan Seal HCC JANUARI 2026.xlsx", "CM Measuring Report", 10)
+    assert june != january
+
+
+def test_windows_path_and_linux_path_for_the_same_filename_normalize_and_hash_identically():
+    windows_path = r"D:\PROJECT\Source-documents\LTSA\PM_CM_HISTORY\2026\1. JANUARY\HCC\Laporan PM, CM & Pemasangan Seal HCC JANUARI 2026.xlsx"
+    linux_path = "/home/unikom666/AI5R-PROD/CORE-SERVICES/RUNTIME/import-artifacts/hcc-january-2026/Laporan PM, CM & Pemasangan Seal HCC JANUARI 2026.xlsx"
+
+    normalized_windows = normalize_source_workbook_name(windows_path)
+    normalized_linux = normalize_source_workbook_name(linux_path)
+
+    assert normalized_windows == normalized_linux == "Laporan PM, CM & Pemasangan Seal HCC JANUARI 2026.xlsx"
+    assert (
+        build_pm_occurrence_code_v2(normalized_windows, " PM Mech Seal", 11)
+        == build_pm_occurrence_code_v2(normalized_linux, " PM Mech Seal", 11)
+    )
+
+
+def test_both_pm_and_cmon_v2_builders_are_workbook_aware_with_distinct_prefixes():
+    pm_code = build_pm_occurrence_code_v2("wb.xlsx", "sheet", 1)
+    cmon_code = build_condition_monitoring_reading_code_v2("wb.xlsx", "sheet", 1)
+    assert pm_code.startswith("LTSA-PMO2-")
+    assert cmon_code.startswith("LTSA-CMONR2-")
+    assert pm_code != cmon_code
+    assert build_pm_occurrence_code_v2("a.xlsx", "sheet", 1) != build_pm_occurrence_code_v2("b.xlsx", "sheet", 1)
+
+
+def test_existing_legacy_v1_ids_are_never_rewritten_or_referenced_by_a_v2_plan():
+    legacy_v1_code = build_condition_monitoring_reading_code("CM Measuring Report", 15)
+    state = {
+        "pumps": [{"tag_number": "140-P-3A"}],
+        "condition_monitoring_readings": [{"condition_monitoring_reading_code": legacy_v1_code}],
+        "pm_occurrences": [],
+        "cm_reports": [],
+    }
+    projection = _minimal_projection(
+        cmon_rows=[_cmon_projection_row(tag_number="140-P-3A", source_sheet_name="CM Measuring Report", source_row_number=15)],
+        source_workbook_name="a-different-workbook.xlsx",
+    )
+
+    plan = plan_import(projection, state)
+
+    new_code = plan["condition_monitoring_readings"]["insert"][0]["condition_monitoring_reading_code"]
+    assert new_code != legacy_v1_code
+    assert legacy_v1_code not in plan["condition_monitoring_readings"]["unchanged"]
+    assert all(c["condition_monitoring_reading_code"] != legacy_v1_code for c in plan["collisions"]["condition_monitoring_readings"])
+
+
+def test_replay_of_the_same_v2_source_row_is_idempotent():
+    projection = _minimal_projection(
+        cmon_rows=[_cmon_projection_row(tag_number="140-P-3A", source_sheet_name="CM Measuring Report", source_row_number=20)],
+        source_workbook_name="wb.xlsx",
+    )
+    state_empty = {"pumps": [{"tag_number": "140-P-3A"}], "condition_monitoring_readings": [], "pm_occurrences": [], "cm_reports": []}
+
+    plan_run_1 = plan_import(projection, state_empty)
+    inserted = plan_run_1["condition_monitoring_readings"]["insert"][0]
+
+    state_after_run_1 = {
+        "pumps": state_empty["pumps"],
+        "condition_monitoring_readings": [{
+            "condition_monitoring_reading_code": inserted["condition_monitoring_reading_code"],
+            "source_workbook_name": inserted["source_workbook_name"],
+            "source_sheet_name": inserted["source_sheet_name"],
+            "source_row_number": inserted["source_row_number"],
+        }],
+        "pm_occurrences": [],
+        "cm_reports": [],
+    }
+
+    plan_run_2 = plan_import(projection, state_after_run_1)
+
+    assert plan_run_2["condition_monitoring_readings"]["insert"] == []
+    assert plan_run_2["condition_monitoring_readings"]["unchanged"] == [inserted["condition_monitoring_reading_code"]]
+    assert plan_run_2["collisions"]["condition_monitoring_readings"] == []
+
+
+def test_existing_code_with_different_recorded_provenance_is_reported_as_a_collision_not_a_duplicate():
+    workbook = "wb.xlsx"
+    sheet = "CM Measuring Report"
+    row_number = 99
+    code = build_condition_monitoring_reading_code_v2(workbook, sheet, row_number)
+
+    state = {
+        "pumps": [{"tag_number": "140-P-3A"}],
+        "condition_monitoring_readings": [{
+            "condition_monitoring_reading_code": code,
+            "source_workbook_name": "SOME OTHER WORKBOOK.xlsx",
+            "source_sheet_name": "SOME OTHER SHEET",
+            "source_row_number": 1,
+        }],
+        "pm_occurrences": [],
+        "cm_reports": [],
+    }
+    projection = _minimal_projection(
+        cmon_rows=[_cmon_projection_row(tag_number="140-P-3A", source_sheet_name=sheet, source_row_number=row_number)],
+        source_workbook_name=workbook,
+    )
+
+    plan = plan_import(projection, state)
+
+    assert plan["condition_monitoring_readings"]["insert"] == []
+    assert plan["condition_monitoring_readings"]["unchanged"] == []
+    assert len(plan["collisions"]["condition_monitoring_readings"]) == 1
+    assert plan["collisions"]["condition_monitoring_readings"][0]["condition_monitoring_reading_code"] == code
+
+
+def test_january_row_11_no_longer_collides_with_the_known_june_row_11_production_case():
+    # Reproduces the exact production evidence that triggered this MWO:
+    # January " PM Mech Seal" row 11 (211-P-19A, 2026-01-05) previously
+    # hashed (V1) to the identical code already held by June row 11
+    # (140-P-21B, 2026-06-15). state below mirrors production's real,
+    # narrower load_state() shape at the time of the bug -- no provenance
+    # columns recorded on the pre-existing June row.
+    june_v1_code = build_pm_occurrence_code(" PM Mech Seal", 11)
+    january_workbook = normalize_source_workbook_name(
+        r"D:\PROJECT\Source-documents\LTSA\PM_CM_HISTORY\2026\1. JANUARY\HCC\Laporan PM, CM & Pemasangan Seal HCC JANUARI 2026.xlsx"
+    )
+    january_v2_code = build_pm_occurrence_code_v2(january_workbook, " PM Mech Seal", 11)
+    assert january_v2_code != june_v1_code
+
+    state = {
+        "pumps": [{"tag_number": "140-P-21B"}, {"tag_number": "211-P-19A"}],
+        "condition_monitoring_readings": [],
+        "pm_occurrences": [{"pm_occurrence_code": june_v1_code}],
+        "cm_reports": [],
+    }
+    projection = _minimal_projection(
+        pm_rows=[_pm_projection_row(tag_number="211-P-19A", source_sheet_name=" PM Mech Seal", source_row_number=11, occurrence_date="2026-01-05")],
+        source_workbook_name=january_workbook,
+    )
+
+    plan = plan_import(projection, state)
+
+    assert len(plan["pm_occurrences"]["insert"]) == 1
+    assert plan["pm_occurrences"]["insert"][0]["pm_occurrence_code"] == january_v2_code
+    assert plan["pm_occurrences"]["insert"][0]["asset_code"] == "211-P-19A"
+    assert plan["pm_occurrences"]["unchanged"] == []
+    assert plan["collisions"]["pm_occurrences"] == []
