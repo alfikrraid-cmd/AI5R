@@ -72,7 +72,7 @@ def _knowledge(**overrides):
     return LTSAKnowledge(**defaults)
 
 
-def _service(knowledge=None, installations=None, work_orders=None, maintenance_history=None, pm_occurrences=None, seals=None, seal_engineering_documents=None):
+def _service(knowledge=None, installations=None, work_orders=None, maintenance_history=None, pm_occurrences=None, seals=None, seal_engineering_documents=None, mechanical_seal_stock_repository=None):
     knowledge = knowledge or _knowledge()
     return EquipmentTimelineService(
         knowledge_service=FakeKnowledgeService(knowledge, seal_engineering_documents=seal_engineering_documents),
@@ -81,6 +81,7 @@ def _service(knowledge=None, installations=None, work_orders=None, maintenance_h
         maintenance_history_gateway=FakeGateway("list_maintenance_history", maintenance_history or []),
         pm_occurrence_gateway=FakeGateway("list_pm_occurrences", pm_occurrences or knowledge.pm_history),
         seal_gateway=FakeGateway("list_seals", seals or []),
+        mechanical_seal_stock_repository=mechanical_seal_stock_repository,
     )
 
 
@@ -152,6 +153,28 @@ def test_build_lifecycle_returns_pump_lifecycle_with_current_state_and_analytics
     assert lifecycle.related_engineering.drawings == []
     assert lifecycle.related_engineering.documents == []
     assert lifecycle.related_engineering.inventory == []
+
+
+def test_build_lifecycle_uses_stock_v1_application_link_for_inventory():
+    stock = [{
+        "stock_pool_id": "MSSP-211-P-14B",
+        "equipment_tag": TAG,
+        "seal_type": "T15W/T609",
+        "application_size": '3-1/4"',
+        "physical_stock_size": '3-1/4"',
+        "quantity_on_hand": 2,
+        "quantity_available": 2,
+        "verification_status": "VERIFY",
+    }]
+
+    class StockRepository:
+        def list_for_equipment(self, equipment_tag):
+            assert equipment_tag == TAG
+            return stock
+
+    lifecycle = _service(mechanical_seal_stock_repository=StockRepository()).build_lifecycle(TAG)
+
+    assert lifecycle.related_engineering.inventory == stock
 
 
 def test_build_lifecycle_timeline_contains_installation_pm_cm_failure_work_order_and_replacement_events():

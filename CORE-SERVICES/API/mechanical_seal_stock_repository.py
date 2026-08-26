@@ -78,7 +78,7 @@ class MechanicalSealStockRepository:
             self._runner,
         )
         total_rows = _json_query(
-            "SELECT COUNT(*) AS total, COALESCE(SUM(p.quantity_available), 0) AS total_quantity "
+            "SELECT COUNT(*) AS total, SUM(p.quantity_on_hand) AS total_quantity "
             "FROM public.mechanical_seal_stock_pool p " + where,
             self._runner,
         )
@@ -91,6 +91,22 @@ class MechanicalSealStockRepository:
         result = self.list_pools(limit=1, offset=0, search=stock_pool_id, include_gpn=include_gpn)
         rows = [row for row in result["items"] if row.get("stock_pool_id") == stock_pool_id]
         return rows[0] if rows else None
+
+    def list_for_equipment(self, equipment_tag: str) -> list[dict]:
+        return _json_query(
+            "SELECT p.stock_pool_id, p.seal_code, p.seal_type, p.nominal_size, "
+            "p.size_unit, p.application_size, p.physical_stock_size, "
+            "p.drawing_reference, p.quantity_on_hand, p.quantity_reserved, "
+            "p.quantity_available, p.stock_location, p.verification_status, "
+            "p.compatibility_status, p.source_reference, p.notes, "
+            "a.equipment_tag, a.complete_seal_gpn AS application_complete_seal_gpn, "
+            "a.verification_status AS application_verification_status "
+            "FROM public.mechanical_seal_stock_application a "
+            "JOIN public.mechanical_seal_stock_pool p ON p.stock_pool_id = a.stock_pool_id "
+            "WHERE a.equipment_tag = " + _sql(equipment_tag) + " "
+            "ORDER BY p.seal_type, p.nominal_size, p.stock_pool_id",
+            self._runner,
+        )
 
 
 def can_view_gpn(role: str | None) -> bool:

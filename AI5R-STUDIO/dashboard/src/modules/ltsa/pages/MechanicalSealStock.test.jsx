@@ -22,7 +22,7 @@ const POOL = {
 };
 
 function load(items = [POOL], total = items.length) {
-  getMechanicalSealStock.mockResolvedValue({ items, total, limit: 25, offset: 0 });
+  getMechanicalSealStock.mockResolvedValue({ items, total, total_quantity: 107, limit: 25, offset: 0 });
 }
 
 describe("Mechanical Seal Stock", () => {
@@ -33,6 +33,7 @@ describe("Mechanical Seal Stock", () => {
     expect(screen.getByText("E12926")).toBeTruthy();
     expect(screen.getAllByText("3").length).toBeGreaterThan(0);
     expect(screen.getByText("2")).toBeTruthy();
+    expect(screen.getByText("107")).toBeTruthy();
   });
 
   it("renders an honest empty state", async () => {

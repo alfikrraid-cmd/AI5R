@@ -39,3 +39,23 @@ def test_internal_gpn_roles_are_explicit_and_no_parallel_role_is_created():
     assert can_view_gpn("JOHN_CRANE_ENGINEER") is True
     assert can_view_gpn("PERTAMINA_ENGINEER") is False
     assert can_view_gpn("PERTAMINA_VIEWER") is False
+
+
+def test_list_for_equipment_uses_explicit_stock_application_link():
+    runner = FakeRunner()
+    runner.responses = [json.dumps([{
+        "stock_pool_id": "MSSP-211-P-14B",
+        "equipment_tag": "211-P-14B",
+        "seal_type": "T15W/T609",
+        "application_size": '3-1/4"',
+        "physical_stock_size": '3-1/4"',
+        "quantity_on_hand": 2,
+        "quantity_available": 2,
+        "verification_status": "VERIFY",
+    }])]
+
+    result = MechanicalSealStockRepository(runner).list_for_equipment("211-P-14B")
+
+    assert result[0]["stock_pool_id"] == "MSSP-211-P-14B"
+    assert "mechanical_seal_stock_application" in runner.calls[0]
+    assert "a.equipment_tag = '211-P-14B'" in runner.calls[0]

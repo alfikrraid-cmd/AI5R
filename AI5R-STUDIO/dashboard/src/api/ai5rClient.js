@@ -800,7 +800,7 @@ export async function getMechanicalSealStock({ limit = 25, offset = 0, search = 
     const payload = await response.json();
     if (payload?.success === false) throw new Error(payload?.message || "Mechanical seal stock API returned a failure");
     if (!Array.isArray(payload?.items) && !Array.isArray(payload?.data)) throw new Error("Mechanical seal stock API returned an invalid list");
-    return { items: payload.items ?? payload.data, total: payload.total ?? 0, limit: payload.limit ?? limit, offset: payload.offset ?? offset };
+    return { items: payload.items ?? payload.data, total: payload.total ?? 0, total_quantity: payload.total_quantity ?? null, limit: payload.limit ?? limit, offset: payload.offset ?? offset };
 }
 
 export async function getSealCompatibility() {

@@ -237,6 +237,7 @@ _equipment_timeline_service = EquipmentTimelineService(
     seal_repair_repository=_seal_repair_repository,
     seal_warranty_assessment_repository=_seal_warranty_assessment_repository,
     installation_report_fitment_repository=_installation_report_fitment_repository,
+    mechanical_seal_stock_repository=_mechanical_seal_stock_repository,
 )
 
 # MWO-LTSA-037C -- built from the same singleton PumpGateway and

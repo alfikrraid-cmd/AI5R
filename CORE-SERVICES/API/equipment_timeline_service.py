@@ -90,6 +90,7 @@ class EquipmentTimelineService:
         seal_repair_repository: Any | None = None,
         seal_warranty_assessment_repository: Any | None = None,
         installation_report_fitment_repository: Any | None = None,
+        mechanical_seal_stock_repository: Any | None = None,
     ) -> None:
         self._knowledge_service = knowledge_service or LTSAKnowledgeService()
         self._installation_gateway = installation_gateway or InstallationGateway()
@@ -102,6 +103,7 @@ class EquipmentTimelineService:
         self._seal_repair_repository = seal_repair_repository
         self._seal_warranty_assessment_repository = seal_warranty_assessment_repository
         self._installation_report_fitment_repository = installation_report_fitment_repository
+        self._mechanical_seal_stock_repository = mechanical_seal_stock_repository
 
     @property
     def _seal_repos_available(self) -> bool:
@@ -268,6 +270,11 @@ class EquipmentTimelineService:
             availability=None,
             reliability=None,
         )
+        inventory = (
+            self._mechanical_seal_stock_repository.list_for_equipment(tag_number)
+            if self._mechanical_seal_stock_repository is not None
+            else knowledge.inventory
+        )
         related_engineering = PumpLifecycleRelatedEngineering(
             pm_schedules=knowledge.pm_schedules,
             cm_reports=knowledge.cm_history,
@@ -275,7 +282,7 @@ class EquipmentTimelineService:
             breakdown_history=knowledge.breakdown_history,
             drawings=knowledge.drawings,
             documents=self._list_documents(knowledge.inventory),
-            inventory=knowledge.inventory,
+            inventory=inventory,
             condition_monitoring_readings=knowledge.condition_monitoring_readings,
         )
 

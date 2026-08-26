@@ -514,6 +514,9 @@ export default function PumpOpenDesignView({
                     </div>
                     <div className="part-meta">
                       {group.sealCode ? `Code ${group.sealCode}` : null}
+                      {group.applicationSize ? ` · Application ${group.applicationSize}` : ""}
+                      {group.physicalStockSize ? ` · Physical ${group.physicalStockSize}` : ""}
+                      {group.drawingReference ? ` · ${group.drawingReference}` : ""}
                       {group.location ? ` · ${group.location}` : ""}
                     </div>
                     <div style={{ marginTop: "var(--space-2)" }}>
@@ -521,6 +524,7 @@ export default function PumpOpenDesignView({
                         label="Compatible Pumps"
                         value={group.compatiblePumps.length}
                       />
+                      <InfoRow label="Verification" value={group.verificationStatus || NOT_AVAILABLE} />
                       {group.compatiblePumps.length > 0 && (
                         <div className="confidence-label" style={{ marginTop: "var(--space-1)" }}>
                           {group.compatiblePumps.join(", ")}

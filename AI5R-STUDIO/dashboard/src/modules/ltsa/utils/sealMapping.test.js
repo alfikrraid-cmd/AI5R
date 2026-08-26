@@ -276,6 +276,17 @@ describe("buildSealInventoryGroups", () => {
     expect(group.stockLabel).toBe("Available · 3");
   });
 
+  it("preserves application and physical stock sizes as separate fields", () => {
+    const [group] = buildSealInventoryGroups(
+      [{ seal_type: "T48MP", application_size: '2.675"', physical_stock_size: '2.625"', quantity_on_hand: 1 }],
+      [],
+      []
+    );
+    expect(group.applicationSize).toBe('2.675"');
+    expect(group.physicalStockSize).toBe('2.625"');
+    expect(group.quantityOnHand).toBe(1);
+  });
+
   it("labels quantity === 0 as Out of stock · 0, distinct from unknown", () => {
     const [group] = buildSealInventoryGroups(
       [{ seal_code: "SC-T48MP", quantity_on_hand: 0, location: "Warehouse A" }],
@@ -285,13 +296,13 @@ describe("buildSealInventoryGroups", () => {
     expect(group.stockLabel).toBe("Out of stock · 0");
   });
 
-  it("labels a missing stock record (null quantity) as No stock record, never fabricated as zero", () => {
+  it("labels a missing stock record (null quantity) as Unknown, never fabricated as zero", () => {
     const [group] = buildSealInventoryGroups(
       [{ seal_code: "SC-TANDEM", quantity_on_hand: null, location: null }],
       SEALS,
       COMPATIBILITY
     );
-    expect(group.stockLabel).toBe("No stock record");
+    expect(group.stockLabel).toBe("Unknown");
   });
 
   it("preserves multiple seals on one pump as independent groups, never collapsed", () => {

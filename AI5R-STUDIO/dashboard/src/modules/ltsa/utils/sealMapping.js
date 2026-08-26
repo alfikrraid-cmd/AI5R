@@ -132,13 +132,17 @@ export function buildSealInventoryGroups(inventoryItems, seals, compatibilityRec
 
     return {
       sealCode: item.seal_code ?? null,
-      sealName: seal?.seal_name ?? null,
-      shaftSize: seal?.shaft_size ?? null,
+      sealName: item.seal_type ?? seal?.seal_name ?? null,
+      shaftSize: item.application_size ?? seal?.shaft_size ?? null,
       quantityOnHand: quantity,
-      location: item.location ?? null,
+      applicationSize: item.application_size ?? null,
+      physicalStockSize: item.physical_stock_size ?? null,
+      drawingReference: item.drawing_reference ?? null,
+      verificationStatus: item.application_verification_status ?? item.verification_status ?? null,
+      location: item.stock_location ?? item.location ?? null,
       stockLabel:
-        quantity == null ? "No stock record" : quantity > 0 ? `Available · ${quantity}` : "Out of stock · 0",
-      compatiblePumps: item.seal_code ? resolveCompatiblePumps(item.seal_code, compatibilityRecords) : [],
+        quantity == null ? "Unknown" : quantity > 0 ? `Available · ${quantity}` : "Out of stock · 0",
+      compatiblePumps: item.equipment_tag ? [item.equipment_tag] : item.seal_code ? resolveCompatiblePumps(item.seal_code, compatibilityRecords) : [],
     };
   });
 }
