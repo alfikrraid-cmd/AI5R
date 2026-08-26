@@ -75,7 +75,12 @@ const TABS = [
   { key: "history", label: "Asset 360" },
   { key: "reports", label: "Reports" },
   { key: "analytics", label: "Analytics" },
-  { key: "historical-review", label: "Historical Data Review" },
+  // MWO-LTSA-PM-CMON-HISTORICAL-BATCH-REVIEW-ROUTING-019A -- relabeled
+  // from "Historical Data Review" (ambiguous against the newer
+  // "Historical Batch Review" below -- the owner's own report). The
+  // route/key/page ("/ltsa/historical-review" -> HistoricalReview, the
+  // DFE candidate-extraction review) is unchanged; label only.
+  { key: "historical-review", label: "Historical Candidate Review" },
   { key: "historical-batch-review", label: "Historical Batch Review" },
 ];
 

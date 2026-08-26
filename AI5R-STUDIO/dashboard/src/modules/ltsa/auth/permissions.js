@@ -236,6 +236,17 @@ export const TAB_PERMISSIONS = Object.freeze({
   // visibility (this file's own header rule); the backend 403 is what
   // actually stops the other four roles.
   "historical-review": PERMISSIONS.RECORD_EDIT,
+  // MWO-LTSA-PM-CMON-HISTORICAL-BATCH-REVIEW-ROUTING-019A -- MWO-019's own
+  // "historical-batch-review" TABS/PAGES entry (LTSAWorkspace.jsx) was
+  // never given a TAB_PERMISSIONS entry, so visibleTabKeys() silently
+  // dropped it for every role and the page was unreachable through the
+  // nav menu despite being correctly registered. Gated on the same
+  // maintenance.read the "pm"/"cmon" tabs themselves already use -- this
+  // page reviews PM/CMON records, same read-visibility tier as those
+  // domains; the individual batch-submit/technical-review actions inside
+  // it remain separately gated on maintenance.write/maintenance.
+  // technical_review (unchanged, HistoricalBatchReview.jsx's own RBAC).
+  "historical-batch-review": PERMISSIONS.PM_READ,
 });
 
 export function visibleTabKeys(session) {

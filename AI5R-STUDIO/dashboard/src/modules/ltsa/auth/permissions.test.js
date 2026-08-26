@@ -18,6 +18,22 @@ describe("permissions", () => {
     expect(can(session, PERMISSIONS.IMPORT_EXECUTE)).toBe(false);
   });
 
+  // MWO-LTSA-PM-CMON-HISTORICAL-BATCH-REVIEW-ROUTING-019A -- proves the
+  // actual root cause fix: "historical-batch-review" was correctly
+  // registered in LTSAWorkspace.jsx's TABS/PAGES by MWO-019, but had no
+  // TAB_PERMISSIONS entry, so visibleTabKeys() silently dropped it from
+  // every role's navigation regardless of the page/route itself working.
+  it("TAP_ENGINEER can see the Historical Batch Review tab (maintenance.read, same as pm/cmon)", () => {
+    const session = { role: ROLES.TAP_ENGINEER };
+    expect(visibleTabKeys(session)).toContain("historical-batch-review");
+  });
+
+  it("distinguishes historical-batch-review (maintenance.read) from historical-review (record.edit, SUPERUSER/TAP_ADMIN only)", () => {
+    const tapEngineer = { role: ROLES.TAP_ENGINEER };
+    expect(visibleTabKeys(tapEngineer)).toContain("historical-batch-review");
+    expect(visibleTabKeys(tapEngineer)).not.toContain("historical-review");
+  });
+
   it("PERTAMINA_ENGINEER sees pump/seal/inventory/engineering AI but not import/admin/internal breakdown", () => {
     const session = { role: ROLES.PERTAMINA_ENGINEER };
     expect(can(session, PERMISSIONS.PUMP_READ)).toBe(true);

@@ -27,6 +27,7 @@ import {
   getFleetReliability,
   getFleetPowerBI,
   postEngineeringAI,
+  getHistoricalReviewCandidates,
 } from "../../../api/ai5rClient";
 import { WORKSPACE_KEYS, workspaceLocation } from "../workspace/WorkspaceRegistry";
 
@@ -62,6 +63,13 @@ vi.mock("../../../api/ai5rClient", () => ({
   getSeals: vi.fn(),
   getSealStock: vi.fn(),
   getSealCompatibility: vi.fn(),
+  // MWO-LTSA-PM-CMON-HISTORICAL-BATCH-REVIEW-ROUTING-019A -- both
+  // historical-review tabs' own real API calls (HistoricalReview.jsx /
+  // HistoricalBatchReview.jsx), needed now that both are click-tested here.
+  getHistoricalReviewCandidates: vi.fn(),
+  reviewHistoricalReviewCandidate: vi.fn(),
+  rejectHistoricalReviewCandidate: vi.fn(),
+  promoteHistoricalReviewCandidate: vi.fn(),
 }));
 
 const PUMPS = [
@@ -103,6 +111,7 @@ beforeEach(() => {
   getPMOccurrences.mockResolvedValue([]);
   getConditionMonitoringReadings.mockResolvedValue([]);
   getConditionMonitoringSchedules.mockResolvedValue([]);
+  getHistoricalReviewCandidates.mockResolvedValue([]);
   getPumpKnowledge.mockResolvedValue({
     success: true,
     tag_number: "305-P-2",
@@ -237,6 +246,37 @@ describe("LTSAWorkspace navigation shell", () => {
     expect(screen.getByRole("tab", { name: "Asset 360" })).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Reports" })).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Analytics" })).toBeTruthy();
+  });
+
+  // MWO-LTSA-PM-CMON-HISTORICAL-BATCH-REVIEW-ROUTING-019A
+  it("registers a distinct tab for Historical Batch Review, separate from Historical Candidate Review (no route collision)", () => {
+    render(<LTSAWorkspace />);
+
+    expect(screen.getByRole("tab", { name: "Historical Batch Review" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Historical Candidate Review" })).toBeTruthy();
+  });
+
+  it("opening the Historical Batch Review tab renders the canonical PM/CMON batch-review page, not the old candidate UI", async () => {
+    render(<LTSAWorkspace />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Historical Batch Review" }));
+
+    expect(await screen.findByRole("heading", { name: "Historical Batch Review" })).toBeTruthy();
+    expect(screen.getByLabelText("Domain")).toBeTruthy();
+    expect(screen.getByLabelText("Workflow status")).toBeTruthy();
+    expect(screen.getByLabelText("Evidence classification")).toBeTruthy();
+    // No batch-submit/technical-review call is ever made merely by
+    // opening the page (only getPMOccurrences/getConditionMonitoringReadings,
+    // both already read-only list fetches).
+    expect(getPMOccurrences).toHaveBeenCalled();
+  });
+
+  it("the old Historical Candidate Review route/page still renders its own DFE candidate UI, untouched", async () => {
+    render(<LTSAWorkspace />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Historical Candidate Review" }));
+
+    expect(await screen.findByRole("heading", { name: "Historical Data Review" })).toBeTruthy();
   });
 
   it("defaults to the Executive Dashboard", () => {
