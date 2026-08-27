@@ -13,6 +13,14 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class WhatsAppIntakeRequest(BaseModel):
+    provider: str = "whatsapp_cloud"
+    provider_message_id: str
+    sender_identifier: str
+    text: str
+    received_at: str | None = None
+    provider_payload: dict[str, Any] | None = None
+
 # MWO-AI5R-LTSA-COPILOT-001 -- asset_context is optional: global dashboard
 # questions omit it, an asset workspace sends the currently-selected pump
 # tag automatically (see CopilotPanel.jsx/useCopilot.js). Never trusted as

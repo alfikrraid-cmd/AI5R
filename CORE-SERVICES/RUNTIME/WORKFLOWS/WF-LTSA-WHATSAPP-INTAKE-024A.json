@@ -1,0 +1,111 @@
+{
+  "name": "WF-LTSA-WHATSAPP-INTAKE-024A",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "ltsa/whatsapp/intake",
+        "httpMethod": "POST",
+        "responseMode": "responseNode"
+      },
+      "id": "whatsapp-provider-webhook",
+      "name": "WhatsApp Provider Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.AI5R_API_BASE_URL}}/api/ltsa/whatsapp/intake",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-AI5R-WhatsApp-Ingress-Secret",
+              "value": "={{$env.AI5R_WHATSAPP_INGRESS_SECRET}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "provider",
+              "value": "whatsapp_cloud"
+            },
+            {
+              "name": "provider_message_id",
+              "value": "={{$json.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.id}}"
+            },
+            {
+              "name": "sender_identifier",
+              "value": "={{$json.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.from}}"
+            },
+            {
+              "name": "text",
+              "value": "={{$json.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.text?.body}}"
+            },
+            {
+              "name": "provider_payload",
+              "value": "={{JSON.stringify($json)}}"
+            }
+          ]
+        }
+      },
+      "id": "forward-to-ai5r",
+      "name": "Forward to AI5R Intake API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/{{$env.WHATSAPP_GRAPH_API_VERSION || 'v23.0'}}/{{$env.WHATSAPP_PHONE_NUMBER_ID}}/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.WHATSAPP_CLOUD_API_TOKEN}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "={\"messaging_product\":\"whatsapp\",\"to\":$json.data?.sender_identifier || $('WhatsApp Provider Webhook').item.json.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.from,\"type\":\"text\",\"text\":{\"body\":$json.reply || \"AI5R intake received.\"}}"
+      },
+      "id": "send-whatsapp-reply",
+      "name": "Send WhatsApp Reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [520, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{$json}}"
+      },
+      "id": "ack-provider",
+      "name": "Acknowledge Provider",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [780, 0]
+    }
+  ],
+  "connections": {
+    "WhatsApp Provider Webhook": {
+      "main": [[{"node": "Forward to AI5R Intake API", "type": "main", "index": 0}]]
+    },
+    "Forward to AI5R Intake API": {
+      "main": [[{"node": "Send WhatsApp Reply", "type": "main", "index": 0}]]
+    },
+    "Send WhatsApp Reply": {
+      "main": [[{"node": "Acknowledge Provider", "type": "main", "index": 0}]]
+    }
+  }
+}

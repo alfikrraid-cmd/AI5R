@@ -58,6 +58,7 @@ from API.seal_master_data_repository import SealMasterDataRepository
 from API.seal_pump_compatibility_gateway import SealPumpCompatibilityGateway
 from API.seal_stock_gateway import SealStockGateway
 from API.work_order_gateway import WorkOrderGateway
+from API.whatsapp_intake_repository import WhatsAppIntakeRepository
 from ltsa_pump_inventory_db_upsert import DatabaseConfig, DatabaseRunner
 
 PRODUCT_NAME = os.getenv("AI5R_PRODUCT_NAME", "LTSA-BRAIN")
@@ -157,6 +158,7 @@ _import_session_repository = ImportSessionRepository(runner=_import_database_run
 # canonical table (PRODUCTS/LTSA-BRAIN/DATABASE/MIGRATIONS/
 # 007_create_ltsa_auth_foundation.sql).
 _auth_repository = AuthRepository(_import_database_runner)
+_whatsapp_intake_repository = WhatsAppIntakeRepository(_import_database_runner)
 
 # MWO-LTSA-SEAL-INVENTORY-IDENTIFIERS-001 -- same singleton again, not a
 # third connection. seal_registry already lives in this database (it is
@@ -398,6 +400,9 @@ def get_engineering_context_engine() -> EngineeringContextEngine:
 
 def get_auth_repository() -> AuthRepository:
     return _auth_repository
+
+def get_whatsapp_intake_repository() -> WhatsAppIntakeRepository:
+    return _whatsapp_intake_repository
 
 
 def get_seal_master_data_repository() -> SealMasterDataRepository:

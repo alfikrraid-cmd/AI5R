@@ -38,6 +38,7 @@ from routers import (
     record_edit,
     seal,
     work_orders,
+    whatsapp_intake,
 )
 
 app = FastAPI(
@@ -64,6 +65,7 @@ signing_secret()
 
 app.include_router(health.router)
 app.include_router(auth.router)
+app.include_router(whatsapp_intake.router)
 # MWO-LTSA-AUTH-003A-FINAL -- User Administration. Every route requires
 # admin.users (get_current_user is the router's own module-level
 # dependency; per-route _require_admin_users()/authorize_user_management()
