@@ -33,6 +33,7 @@ from API.installation_report_repository import InstallationReportRepository
 from API.mechanical_seal_stock_repository import MechanicalSealStockRepository
 from API.installation_gateway import InstallationGateway
 from API.ltsa_knowledge_service import LTSAKnowledgeService
+from API.recommendation_engine import RecommendationEngine
 from API.maintenance_history_gateway import MaintenanceHistoryGateway
 from API.pm_cm_evidence_repository import PMCMEvidenceRepository
 from API.record_change_history_repository import RecordChangeHistoryRepository
@@ -236,6 +237,17 @@ _ltsa_knowledge_service = LTSAKnowledgeService(
     mechanical_seal_stock_repository=_mechanical_seal_stock_repository,
 )
 
+# MWO-LTSA-ENGINEERING-AI-CMON-REASONING-020B -- a SEPARATE
+# RecommendationEngine instance from the one LTSAKnowledgeService builds
+# internally for itself (that one is private to that class and stays
+# untouched -- every other LTSAKnowledge.recommendation consumer, e.g.
+# Copilot, keeps its exact pre-020B behavior). RecommendationEngine holds
+# no gateway/mutable state, so two instances behave identically; this one
+# is injected only into routers/engineering_ai.py, which is the one
+# caller that also has the EngineeringContextEngine `summary` the new
+# CMON/leak/PM-schedule-aware rules need.
+_recommendation_engine = RecommendationEngine()
+
 # MWO-LTSA-SEAL-EQUIPMENT-HISTORY-INTEGRATION-001 -- same singleton
 # repositories every other seal-domain route already reuses, not fresh
 # instances -- EquipmentTimelineService.build_lifecycle() now merges in
@@ -396,6 +408,10 @@ def get_basic_fleet_overview_service() -> BasicFleetOverviewService:
 
 def get_engineering_context_engine() -> EngineeringContextEngine:
     return _engineering_context_engine
+
+
+def get_recommendation_engine() -> RecommendationEngine:
+    return _recommendation_engine
 
 
 def get_auth_repository() -> AuthRepository:

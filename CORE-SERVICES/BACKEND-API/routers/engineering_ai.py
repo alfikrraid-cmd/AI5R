@@ -13,6 +13,7 @@ from dependencies import (
     get_engineering_context_engine,
     get_ltsa_knowledge_service,
     get_pump_gateway,
+    get_recommendation_engine,
     require_permission,
 )
 from models.responses import Payload
@@ -45,7 +46,7 @@ from routers.pumps import _guard_tag_in_scope
 # would be new architecture this MWO does not authorize.
 #
 # DATA_GAP, not 404: build_engineering_insight() already returns None
-# (never fabricates) when knowledge.recommendation is empty -- mapped here
+# (never fabricates) when there are no recommendations -- mapped here
 # to execution_status="DATA_GAP" with no `error` field set, so
 # statusVariant()/statusLabel() (engineeringAIRender.js) render an
 # "attention" badge reading "DATA_GAP", not the "critical" red "Error"
@@ -53,6 +54,24 @@ from routers.pumps import _guard_tag_in_scope
 # out of the caller's Area/MA scope) still 404s via the same
 # _guard_tag_in_scope() every other per-tag pump route already uses --
 # real NOT_FOUND stays allowed, per this MWO's own Phase 2 contract.
+#
+# MWO-LTSA-ENGINEERING-AI-CMON-REASONING-020B -- recommendations are now
+# recomputed here via recommendation_engine.recommend(knowledge, summary),
+# NOT read from knowledge.recommendation (which LTSAKnowledgeService
+# builds internally WITHOUT `summary`, for every other caller -- Copilot,
+# the /knowledge REST endpoint -- whose existing behavior this MWO's
+# scope explicitly excludes touching). This is the one, disclosed,
+# deliberate divergence: Engineering AI's own recommendation list can
+# differ from knowledge.recommendation's, because only this endpoint
+# supplies the EngineeringContextEngine summary the new CMON/leak- and
+# PM-schedule-aware rules need. findings/evidence/recommendations below
+# are built from EVERY returned Recommendation (not just the top one), so
+# a lower-priority historical-leak finding still surfaces in the response
+# even when a different rule wins the headline summary/risk/confidence
+# (still taken from build_engineering_insight()'s own top-priority pick,
+# unchanged) -- additive-only change to existing list fields, not a
+# contract change (frontend already iterates whatever length these
+# arrays are).
 
 # Permission name matches the already-committed, already-tested
 # ROLE_PERMISSIONS contract (test_auth_router.py's own
@@ -95,6 +114,7 @@ def post_engineering_ai(
     payload: EngineeringAIAskRequest,
     ltsa_knowledge_service=Depends(get_ltsa_knowledge_service),
     engineering_context_engine=Depends(get_engineering_context_engine),
+    recommendation_engine=Depends(get_recommendation_engine),
     pump_gateway=Depends(get_pump_gateway),
     current_user: AuthenticatedIdentity = Depends(get_current_user),
 ) -> Payload:
@@ -123,7 +143,8 @@ def post_engineering_ai(
         response["error"] = str(error) or "Engineering AI data is currently unavailable."
         return response
 
-    insight = build_engineering_insight(knowledge.recommendation or (), summary)
+    recommendations = recommendation_engine.recommend(knowledge, summary)
+    insight = build_engineering_insight(recommendations, summary)
     latency = time.monotonic() - started
 
     if insight is None:
@@ -134,10 +155,12 @@ def post_engineering_ai(
             "evidence (PM/CM/CMON/installation history) to generate a grounded recommendation.",
         )
 
-    top_recommendation = knowledge.recommendation[0]
+    findings = [rec.description for rec in recommendations]
+    recommendation_actions = [rec.action for rec in recommendations]
     evidence = [
         f"{item.source} {item.reference} -- {item.field}: {item.value}"
-        for item in (top_recommendation.evidence or ())
+        for rec in recommendations
+        for item in (rec.evidence or ())
     ]
 
     return {
@@ -146,9 +169,9 @@ def post_engineering_ai(
         "risk": insight.risk,
         "confidence": insight.confidence,
         "remaining_life": None,
-        "findings": [insight.root_cause],
+        "findings": findings,
         "evidence": evidence,
-        "recommendations": [insight.recommended_action],
+        "recommendations": recommendation_actions,
         "source_references": [],
         "provider": _PROVIDER_LABEL,
         "latency": latency,

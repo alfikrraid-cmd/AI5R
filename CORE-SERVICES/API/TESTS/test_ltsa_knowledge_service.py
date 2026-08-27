@@ -477,15 +477,34 @@ def test_drawings_field_maps_only_the_seven_required_metadata_fields():
 
 
 def test_recommendation_field_exists_and_is_populated_by_recommendation_engine():
-    # MWO-LTSA-032C: RecommendationEngine is now wired in -- no PM history
-    # deterministically fires its REC_PM_OVERDUE rule (recommendation_engine.py,
-    # reused unmodified), so recommendation is no longer always None.
-    service = _service(pm_occurrences=[])
+    # MWO-LTSA-ENGINEERING-AI-CMON-REASONING-020B: RecommendationEngine.
+    # recommend(knowledge) -- no `summary` argument, since
+    # LTSAKnowledgeService.build() never has one -- no longer fires
+    # REC_PM_OVERDUE on bare PM-history absence (that heuristic was
+    # confirmed to fabricate "overdue" and removed); it now requires real
+    # PM-schedule evidence this call path cannot supply. A real,
+    # summary-backed rule (REC_CRITICAL_CM) still fires and populates
+    # `recommendation` exactly as before.
+    service = _service(
+        pm_occurrences=[],
+        cm_reports=[{"cm_report_code": "CM-1", "asset_code": TAG, "severity": "CRITICAL", "status": "OPEN"}],
+    )
 
     knowledge = service.build(TAG)
 
     assert len(knowledge.recommendation) == 1
-    assert knowledge.recommendation[0].rule_code == "REC_PM_OVERDUE"
+    assert knowledge.recommendation[0].rule_code == "REC_CRITICAL_CM"
+
+
+def test_recommendation_no_longer_fires_pm_overdue_on_bare_history_absence():
+    # The confirmed-fixed defect (MWO-020A/020B): empty pm_history alone
+    # must never produce a "PM overdue" recommendation without real
+    # schedule evidence, which this call path (no `summary`) never has.
+    service = _service(pm_occurrences=[])
+
+    knowledge = service.build(TAG)
+
+    assert knowledge.recommendation == ()
 
 
 def test_recommendation_field_is_empty_tuple_when_no_rules_fire():

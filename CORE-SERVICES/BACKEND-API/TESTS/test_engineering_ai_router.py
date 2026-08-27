@@ -23,10 +23,11 @@ from dependencies import (  # noqa: E402
     get_engineering_context_engine,
     get_ltsa_knowledge_service,
     get_pump_gateway,
+    get_recommendation_engine,
 )
 from API.auth_service import ROLE_PERMISSIONS, AuthenticatedIdentity  # noqa: E402
 from API.ltsa_knowledge_service import LTSAKnowledge  # noqa: E402
-from API.recommendation_engine import Evidence, Recommendation  # noqa: E402
+from API.recommendation_engine import RecommendationEngine  # noqa: E402
 
 client = TestClient(app)
 
@@ -41,11 +42,15 @@ class FakePumpGateway:
         return {"success": True, "message": "ok", "data": match}
 
 
-def _knowledge(recommendation=()):
+def _knowledge(cm_history=None):
+    # MWO-020B: `recommendation` is no longer read by this router (it
+    # recomputes fresh via recommendation_engine.recommend(knowledge,
+    # summary)) -- cm_history/pm_history/etc. are what actually drive the
+    # response now, not a pre-seeded `recommendation` tuple.
     return LTSAKnowledge(
         tag_number="140-P-10B", pump=_PUMPS["140-P-10B"], seal=[], inventory=[],
-        pm_history=[], cm_history=[], breakdown_history=[], drawings=[],
-        recommendation=recommendation, pm_schedules=[], condition_monitoring_schedules=[],
+        pm_history=[], cm_history=cm_history or [], breakdown_history=[], drawings=[],
+        recommendation=(), pm_schedules=[], condition_monitoring_schedules=[],
         condition_monitoring_readings=[],
     )
 
@@ -84,10 +89,18 @@ def _as(identity, *, knowledge_service=None, context_engine=None):
     app.dependency_overrides[get_pump_gateway] = lambda: FakePumpGateway()
     app.dependency_overrides[get_ltsa_knowledge_service] = lambda: knowledge_service or FakeLTSAKnowledgeService(_knowledge())
     app.dependency_overrides[get_engineering_context_engine] = lambda: context_engine or FakeEngineeringContextEngine()
+    # MWO-020B: the router now recomputes recommendations itself via
+    # recommendation_engine.recommend(knowledge, summary) -- the real,
+    # stateless RecommendationEngine (no gateway/mutable state) is used
+    # here rather than a fake, so these tests exercise the actual rules.
+    app.dependency_overrides[get_recommendation_engine] = lambda: RecommendationEngine()
 
 
 def _clear():
-    for dep in (get_current_user, get_pump_gateway, get_ltsa_knowledge_service, get_engineering_context_engine):
+    for dep in (
+        get_current_user, get_pump_gateway, get_ltsa_knowledge_service,
+        get_engineering_context_engine, get_recommendation_engine,
+    ):
         app.dependency_overrides.pop(dep, None)
 
 
@@ -105,13 +118,10 @@ def test_route_is_registered():
 
 
 def test_valid_pump_with_engineering_data_returns_grounded_success():
-    rec = Recommendation(
-        id="REC_CRITICAL_CM:140-P-10B", rule_code="REC_CRITICAL_CM", priority=100, category="INSPECTION",
-        title="Immediate Inspection", description="Open critical CM report found.",
-        evidence=(Evidence(source="CMReport", reference="CM-1", field="severity", value="CRITICAL"),),
-        confidence=1.0, action="Dispatch a technician for immediate inspection.",
+    knowledge = _knowledge(
+        cm_history=[{"cm_report_code": "CM-1", "severity": "CRITICAL", "status": "OPEN", "failure_category": "MECHANICAL"}]
     )
-    _as(_identity(), knowledge_service=FakeLTSAKnowledgeService(_knowledge(recommendation=(rec,))))
+    _as(_identity(), knowledge_service=FakeLTSAKnowledgeService(knowledge))
     try:
         response = _ask()
     finally:
@@ -124,13 +134,13 @@ def test_valid_pump_with_engineering_data_returns_grounded_success():
     assert body["risk"] == "ABNORMAL"
     assert body["confidence"] == 1.0
     assert body["recommendations"] == ["Dispatch a technician for immediate inspection."]
-    assert body["findings"] == ["Open critical CM report found."]
+    assert body["findings"] == ["An open Corrective Maintenance report with critical or major severity was found."]
     assert "CMReport CM-1" in body["evidence"][0]
     assert body["trace_id"] == "trace-1"
 
 
 def test_valid_pump_without_recommendation_is_data_gap_not_error():
-    _as(_identity(), knowledge_service=FakeLTSAKnowledgeService(_knowledge(recommendation=())))
+    _as(_identity(), knowledge_service=FakeLTSAKnowledgeService(_knowledge()))
     try:
         response = _ask()
     finally:
@@ -143,6 +153,87 @@ def test_valid_pump_without_recommendation_is_data_gap_not_error():
     assert "No engineering recommendation available" in body["summary"]
     assert body["findings"] == []
     assert body["recommendations"] == []
+
+
+def test_active_leak_outranks_generic_pm_recommendation():
+    # MWO-020B acceptance criterion: an active/current leak must outrank
+    # a generic PM recommendation as the headline (summary/action).
+    knowledge = _knowledge()
+    summary = {
+        "pm_summary": {"status": "OVERDUE"},
+        "cm_summary": {"leak_flag": True, "latest_abnormal_values": {"reading_code": "CMON-1", "mechanical_seal_leak_de": True}, "overall_condition": "ABNORMAL"},
+        "evidence": [{"flag": "PM_OVERDUE", "source": "PMSchedule", "reference": "PMS-1"}],
+    }
+    _as(_identity(), knowledge_service=FakeLTSAKnowledgeService(knowledge), context_engine=FakeEngineeringContextEngine(summary))
+    try:
+        response = _ask()
+    finally:
+        _clear()
+
+    body = response.json()
+    assert body["execution_status"] == "SUCCESS"
+    assert body["recommendations"][0] == "Inspect the mechanical seal for active leakage."
+    # PM still surfaces (additive list), just not as the headline.
+    assert "Schedule a preventive maintenance visit." in body["recommendations"]
+
+
+def test_pm_recommendation_requires_real_schedule_evidence_not_bare_absence():
+    # MWO-020B acceptance criterion: pm_history=0 with NO schedule
+    # evidence must be DATA_GAP, never a fabricated "Schedule PM".
+    knowledge = _knowledge()  # pm_history=[] by construction
+    summary = {"pm_summary": {"status": "UNSCHEDULED"}, "cm_summary": {"leak_flag": False}, "evidence": []}
+    _as(_identity(), knowledge_service=FakeLTSAKnowledgeService(knowledge), context_engine=FakeEngineeringContextEngine(summary))
+    try:
+        response = _ask()
+    finally:
+        _clear()
+
+    body = response.json()
+    assert body["execution_status"] == "DATA_GAP"
+    assert "Schedule PM" not in " ".join(body["findings"])
+
+
+def test_historical_leak_remains_visible_even_when_not_the_headline():
+    knowledge = LTSAKnowledge(
+        tag_number="140-P-10B", pump=_PUMPS["140-P-10B"], seal=[], inventory=[],
+        pm_history=[], cm_history=[
+            {"cm_report_code": "CM-1", "severity": "CRITICAL", "status": "OPEN", "failure_category": "MECHANICAL"}
+        ],
+        breakdown_history=[], drawings=[], recommendation=(), pm_schedules=[],
+        condition_monitoring_schedules=[],
+        condition_monitoring_readings=[{"condition_monitoring_reading_code": "CMON-OLD", "mechanical_seal_leak_de": True}],
+    )
+    summary = {"pm_summary": {"status": None}, "cm_summary": {"leak_flag": False, "overall_condition": "NORMAL"}, "evidence": []}
+    _as(_identity(), knowledge_service=FakeLTSAKnowledgeService(knowledge), context_engine=FakeEngineeringContextEngine(summary))
+    try:
+        response = _ask()
+    finally:
+        _clear()
+
+    body = response.json()
+    assert body["execution_status"] == "SUCCESS"
+    assert body["summary"] == "An open Corrective Maintenance report with critical or major severity was found."
+    # Historical leak evidence is additive, not the headline, but not erased.
+    assert any("mechanical seal leak" in f.lower() for f in body["findings"])
+
+
+def test_stock_recommendation_uses_quantity_available_not_quantity_on_hand():
+    knowledge = LTSAKnowledge(
+        tag_number="140-P-10B", pump=_PUMPS["140-P-10B"], seal=[],
+        inventory=[{"seal_code": "SC-1", "quantity_on_hand": 5, "quantity_available": 0}],
+        pm_history=[], cm_history=[], breakdown_history=[], drawings=[], recommendation=(),
+        pm_schedules=[], condition_monitoring_schedules=[], condition_monitoring_readings=[],
+    )
+    summary = {"pm_summary": {"status": None}, "cm_summary": {"leak_flag": False}, "evidence": []}
+    _as(_identity(), knowledge_service=FakeLTSAKnowledgeService(knowledge), context_engine=FakeEngineeringContextEngine(summary))
+    try:
+        response = _ask()
+    finally:
+        _clear()
+
+    body = response.json()
+    assert body["execution_status"] == "SUCCESS"
+    assert "Initiate procurement" in body["recommendations"][0]
 
 
 def test_nonexistent_pump_is_true_404():
