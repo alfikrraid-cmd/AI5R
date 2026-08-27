@@ -47,20 +47,18 @@ of already-assembled data -- no gateway, no SQL, no LLM added anywhere:
    (below the new PM-due tier), per this MWO's own explicit rule
    ordering.
 
-Priority tiers (deviation from this MWO's own suggested ordering,
-disclosed): critical confirmed CM (100) > active leak (95) > other
+Priority tiers (matches this MWO's own suggested ordering exactly, no
+deviation): critical confirmed CM (100) > active leak (95) > other
 existing failure/breakdown rules -- REC_REPEATED_BREAKDOWN and
 REC_SEAL_FAILURE, both already-filed/human-confirmed CM-report-based
-signals (90) > PM due/overdue, now evidence-based (80) > stock
-constraint (60) > historical leak evidence, informational only (40) > no
-match -> DATA_GAP. REC_SEAL_FAILURE/REC_REPEATED_BREAKDOWN are kept ABOVE
-the new active-leak rule's raw sensor signal at the SAME 90 they already
-held -- a filed, human-reviewed CM report is a stronger, already-triaged
-signal than an untriaged CMON flag, so this MWO's own suggested "current
-leak > other failure/breakdown rules" ordering is intentionally not
-applied to these two specifically (they keep outranking a raw leak flag);
-active leak still outranks the (now much narrower) PM/stock/historical
-tiers, satisfying "active leak outranks generic PM" exactly as required.
+signals, kept at their pre-existing priority (90) > PM due/overdue, now
+evidence-based (80) > stock constraint (60) > historical leak evidence,
+informational only (40) > no match -> DATA_GAP. Active leak (95)
+numerically outranks REC_SEAL_FAILURE/REC_REPEATED_BREAKDOWN (90) --
+this is the mission's own requested "current leak > other
+failure/breakdown rules" ordering, applied as-is, not a deviation from
+it. Active leak also outranks the PM/stock/historical tiers, satisfying
+"active leak outranks generic PM" exactly as required.
 
 Reuse before create (unchanged from the original MWO): LTSAKnowledge is
 imported unchanged from ltsa_knowledge_service.py, not redefined. The CM
