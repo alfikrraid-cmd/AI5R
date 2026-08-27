@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -9,6 +10,8 @@ from typing import Any, Protocol
 
 from .auth_service import AuthenticatedIdentity, resolve_area_scope
 from .pump_area_scope import is_asset_in_scope
+
+logger = logging.getLogger(__name__)
 
 SUPPORTED_INTENTS = frozenset({"PM", "CONDITION_MONITORING"})
 PENDING_STATES = frozenset(
@@ -74,11 +77,57 @@ def process_inbound_message(
     received_at: str | None = None,
     provider_payload: dict[str, Any] | None = None,
 ) -> IntakeResult:
+    result = _process_inbound_message(
+        provider=provider,
+        provider_message_id=provider_message_id,
+        sender_identifier=sender_identifier,
+        text=text,
+        repository=repository,
+        pump_gateway=pump_gateway,
+        received_at=received_at,
+        provider_payload=provider_payload,
+    )
+    _log_intake_result(result)
+    return result
+
+
+def _log_intake_result(result: IntakeResult) -> None:
+    intake = result.intake or {}
+    structured_payload = intake.get("structured_payload") or {}
+    logger.info(
+        "event=whatsapp_intake_result classification=%s pump_tag=%s validation_result=%s "
+        "pending_state=%s result_code=%s",
+        intake.get("detected_domain") or "UNKNOWN",
+        structured_payload.get("asset_code"),
+        intake.get("validation_result"),
+        intake.get("state") or result.status,
+        result.message,
+    )
+
+
+def _process_inbound_message(
+    *,
+    provider: str,
+    provider_message_id: str,
+    sender_identifier: str,
+    text: str,
+    repository: WhatsAppIntakeRepositoryProtocol,
+    pump_gateway: PumpGatewayProtocol,
+    received_at: str | None = None,
+    provider_payload: dict[str, Any] | None = None,
+) -> IntakeResult:
     normalized_sender = normalize_sender_identifier(sender_identifier)
     sender_hash = hash_sender_identifier(normalized_sender)
     identity = repository.find_identity_by_sender_hash(sender_hash)
     if identity is None:
+        logger.info("event=whatsapp_identity_resolution resolution=UNKNOWN_SENDER")
         return IntakeResult(status="REJECTED", message="UNKNOWN_SENDER", reply="Nomor WhatsApp belum terdaftar.")
+    logger.info(
+        "event=whatsapp_identity_resolution resolution=RESOLVED user_id=%s org=%s role=%s",
+        identity.user_id,
+        identity.organization_code,
+        identity.role,
+    )
 
     stripped = (text or "").strip()
     existing_action = _handle_existing_pending_action(stripped, repository, identity)

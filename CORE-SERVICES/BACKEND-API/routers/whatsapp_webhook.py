@@ -2,14 +2,17 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
 import os
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
 
-from API.whatsapp_intake_service import process_inbound_message
-from dependencies import get_pump_gateway, get_whatsapp_intake_repository
+from API.whatsapp_intake_service import normalize_sender_identifier, process_inbound_message
+from dependencies import get_pump_gateway, get_whatsapp_intake_repository, get_whatsapp_outbound_client
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -44,7 +47,35 @@ def _signature_valid(raw_body: bytes, signature_header: str | None) -> bool:
     return hmac.compare_digest(supplied, expected)
 
 
-def _handle_inbound_message(message: dict[str, Any], repository, pump_gateway) -> dict[str, Any]:
+def _send_outbound_reply(outbound_client, recipient: str, text: str, provider_message_id: str | None) -> None:
+    # Safe-by-construction: only ever called with a reply the intake
+    # service already decided (never re-derived here), and never logs
+    # `recipient` or `text` -- only the provider-assigned message id and
+    # the transport result, matching MWO-025G's privacy-preserving
+    # observability contract.
+    try:
+        result = outbound_client.send_text(recipient, text)
+    except Exception:
+        logger.info(
+            "event=whatsapp_outbound_result provider_message_id=%s status=FAILED",
+            provider_message_id,
+        )
+        return
+    logger.info(
+        "event=whatsapp_outbound_result provider_message_id=%s status=%s http_status=%s",
+        provider_message_id,
+        result.status,
+        result.http_status,
+    )
+
+
+def _handle_inbound_message(
+    message: dict[str, Any],
+    repository,
+    pump_gateway,
+    outbound_client,
+    background_tasks: BackgroundTasks,
+) -> dict[str, Any]:
     provider_message_id = message.get("id")
     sender_identifier = message.get("from")
     if not provider_message_id or not sender_identifier:
@@ -59,18 +90,36 @@ def _handle_inbound_message(message: dict[str, Any], repository, pump_gateway) -
         pump_gateway=pump_gateway,
         provider_payload=message,
     )
+
+    # A duplicate webhook delivery of the same provider_message_id must not
+    # produce a duplicate WhatsApp reply (MWO-025G Phase 5) -- reuses the
+    # existing DUPLICATE_DELIVERY signal _persist() already produces
+    # (whatsapp_intake_service.py), not a new idempotency mechanism.
+    if result.reply and result.message != "DUPLICATE_DELIVERY":
+        try:
+            recipient = normalize_sender_identifier(sender_identifier)
+        except ValueError:
+            recipient = None
+        if recipient:
+            background_tasks.add_task(
+                _send_outbound_reply, outbound_client, recipient, result.reply, provider_message_id
+            )
+
     return {"status": result.status, "message": result.message}
 
 
 @router.post(_WEBHOOK_PATH)
 async def receive_whatsapp_webhook(
     request: Request,
+    background_tasks: BackgroundTasks,
     x_hub_signature_256: str | None = Header(default=None),
     repository=Depends(get_whatsapp_intake_repository),
     pump_gateway=Depends(get_pump_gateway),
+    outbound_client=Depends(get_whatsapp_outbound_client),
 ) -> dict[str, Any]:
     raw_body = await request.body()
     if not _signature_valid(raw_body, x_hub_signature_256):
+        logger.info("event=whatsapp_webhook_received event_type=unknown signature_valid=false")
         raise HTTPException(status_code=403, detail="Invalid WhatsApp webhook signature")
 
     try:
@@ -86,10 +135,18 @@ async def receive_whatsapp_webhook(
             statuses = value.get("statuses") or []
             if messages:
                 for message in messages:
-                    results.append(_handle_inbound_message(message, repository, pump_gateway))
+                    logger.info(
+                        "event=whatsapp_webhook_received event_type=messages provider_message_id=%s signature_valid=true",
+                        message.get("id"),
+                    )
+                    results.append(
+                        _handle_inbound_message(message, repository, pump_gateway, outbound_client, background_tasks)
+                    )
             elif statuses:
+                logger.info("event=whatsapp_webhook_received event_type=statuses signature_valid=true")
                 results.append({"status": "STATUS_ACKNOWLEDGED"})
             else:
+                logger.info("event=whatsapp_webhook_received event_type=unsupported signature_valid=true")
                 results.append({"status": "UNKNOWN_EVENT_ACKNOWLEDGED"})
 
     if not results:

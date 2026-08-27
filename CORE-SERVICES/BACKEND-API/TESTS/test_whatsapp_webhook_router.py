@@ -15,7 +15,8 @@ from fastapi.testclient import TestClient
 
 from API.auth_service import ROLE_PERMISSIONS, AuthenticatedIdentity
 from API.whatsapp_intake_service import hash_sender_identifier, normalize_sender_identifier
-from dependencies import get_pump_gateway, get_whatsapp_intake_repository
+from API.whatsapp_outbound_client import OutboundResult
+from dependencies import get_pump_gateway, get_whatsapp_intake_repository, get_whatsapp_outbound_client
 from main import app
 
 client = TestClient(app)
@@ -58,12 +59,29 @@ class FakeIntakeRepository:
         return None
 
     def create_pending(self, payload):
-        row = {"intake_id": f"wa-{len(self.rows) + 1}", "confirmation_id": f"CONF-{len(self.rows) + 1}", **payload}
+        row = {
+            "intake_id": f"wa-{len(self.rows) + 1}",
+            "confirmation_id": f"CONF-{len(self.rows) + 1}",
+            "reply_text": payload.get("reply"),
+            **payload,
+        }
         self.rows.append(row)
         return row
 
     def transition_pending(self, intake_id, *, state, confirmed_by=None, validation_result=None):
         raise AssertionError("not exercised by webhook tests")
+
+
+class FakeOutboundClient:
+    def __init__(self, *, raises: bool = False):
+        self.calls: list[tuple[str, str]] = []
+        self._raises = raises
+
+    def send_text(self, recipient, text):
+        self.calls.append((recipient, text))
+        if self._raises:
+            raise RuntimeError("simulated provider failure")
+        return OutboundResult(status="SUCCESS", http_status=200)
 
 
 def _identity():
@@ -244,8 +262,10 @@ def test_post_fails_closed_when_app_secret_not_configured():
 def test_post_inbound_message_reaches_existing_intake_path(monkeypatch):
     monkeypatch.setenv("META_APP_SECRET", "test-app-secret")
     repo = FakeIntakeRepository(_identity())
+    outbound = FakeOutboundClient()
     app.dependency_overrides[get_whatsapp_intake_repository] = lambda: repo
     app.dependency_overrides[get_pump_gateway] = lambda: FakePumpGateway()
+    app.dependency_overrides[get_whatsapp_outbound_client] = lambda: outbound
     body = json.dumps(_message_envelope(message_id="wamid.inbound1")).encode("utf-8")
     response = client.post(
         WEBHOOK_PATH, content=body, headers={"X-Hub-Signature-256": _sign(body, "test-app-secret")}
@@ -254,13 +274,65 @@ def test_post_inbound_message_reaches_existing_intake_path(monkeypatch):
     assert len(repo.rows) == 1
     assert repo.rows[0]["state"] == "READY_FOR_CONFIRMATION"
     assert repo.rows[0]["detected_domain"] == "CONDITION_MONITORING"
+    # READY_FOR_CONFIRMATION carries a reply (the confirmation preview) --
+    # it must reach the outbound adapter unchanged from the intake
+    # service's own text, not reconstructed.
+    assert len(outbound.calls) == 1
+    assert outbound.calls[0] == ("+15550000001", repo.rows[0]["reply_text"])
+
+
+def test_post_needs_information_reply_is_sent_outbound(monkeypatch):
+    # MWO-025F's own test text: no "hari ini"/"today" -> READING_DATE_
+    # REQUIRED -> NEEDS_INFORMATION, with the intake engine's existing
+    # follow-up question as the reply (never a new one authored here).
+    monkeypatch.setenv("META_APP_SECRET", "test-app-secret")
+    repo = FakeIntakeRepository(_identity())
+    outbound = FakeOutboundClient()
+    app.dependency_overrides[get_whatsapp_intake_repository] = lambda: repo
+    app.dependency_overrides[get_pump_gateway] = lambda: FakePumpGateway()
+    app.dependency_overrides[get_whatsapp_outbound_client] = lambda: outbound
+    body = json.dumps(
+        _message_envelope(
+            message_id="wamid.needsinfo1",
+            text="CMON 211-P-13AR: ditemukan kebocoran mechanical seal.",
+        )
+    ).encode("utf-8")
+    response = client.post(
+        WEBHOOK_PATH, content=body, headers={"X-Hub-Signature-256": _sign(body, "test-app-secret")}
+    )
+    assert response.status_code == 200
+    assert repo.rows[0]["state"] == "NEEDS_INFORMATION"
+    assert len(outbound.calls) == 1
+    assert outbound.calls[0] == ("+15550000001", "Reading date belum ada. Gunakan hari ini?")
+
+
+def test_post_unknown_sender_receives_the_existing_safe_reply_outbound(monkeypatch):
+    # No identity registered for this sender -> UNKNOWN_SENDER. The intake
+    # service already defines a safe reply for this case ("Nomor WhatsApp
+    # belum terdaftar.") -- MWO-025G Phase 4 requires sending it precisely
+    # because that existing safe response is defined, not withholding it.
+    monkeypatch.setenv("META_APP_SECRET", "test-app-secret")
+    repo = FakeIntakeRepository(identity=None)
+    outbound = FakeOutboundClient()
+    app.dependency_overrides[get_whatsapp_intake_repository] = lambda: repo
+    app.dependency_overrides[get_pump_gateway] = lambda: FakePumpGateway()
+    app.dependency_overrides[get_whatsapp_outbound_client] = lambda: outbound
+    body = json.dumps(_message_envelope(message_id="wamid.unknown1")).encode("utf-8")
+    response = client.post(
+        WEBHOOK_PATH, content=body, headers={"X-Hub-Signature-256": _sign(body, "test-app-secret")}
+    )
+    assert response.status_code == 200
+    assert repo.rows == []
+    assert outbound.calls == [("+15550000001", "Nomor WhatsApp belum terdaftar.")]
 
 
 def test_post_status_callback_causes_no_engineering_write(monkeypatch):
     monkeypatch.setenv("META_APP_SECRET", "test-app-secret")
     repo = FakeIntakeRepository(_identity())
+    outbound = FakeOutboundClient()
     app.dependency_overrides[get_whatsapp_intake_repository] = lambda: repo
     app.dependency_overrides[get_pump_gateway] = lambda: FakePumpGateway()
+    app.dependency_overrides[get_whatsapp_outbound_client] = lambda: outbound
     body = json.dumps(_status_envelope()).encode("utf-8")
     response = client.post(
         WEBHOOK_PATH, content=body, headers={"X-Hub-Signature-256": _sign(body, "test-app-secret")}
@@ -268,13 +340,16 @@ def test_post_status_callback_causes_no_engineering_write(monkeypatch):
     assert response.status_code == 200
     assert response.json()["results"] == [{"status": "STATUS_ACKNOWLEDGED"}]
     assert repo.rows == []
+    assert outbound.calls == []
 
 
 def test_post_duplicate_delivery_does_not_create_duplicate_pending_intake(monkeypatch):
     monkeypatch.setenv("META_APP_SECRET", "test-app-secret")
     repo = FakeIntakeRepository(_identity())
+    outbound = FakeOutboundClient()
     app.dependency_overrides[get_whatsapp_intake_repository] = lambda: repo
     app.dependency_overrides[get_pump_gateway] = lambda: FakePumpGateway()
+    app.dependency_overrides[get_whatsapp_outbound_client] = lambda: outbound
     body = json.dumps(_message_envelope(message_id="wamid.dup1")).encode("utf-8")
     signature = {"X-Hub-Signature-256": _sign(body, "test-app-secret")}
     first = client.post(WEBHOOK_PATH, content=body, headers=signature)
@@ -282,13 +357,18 @@ def test_post_duplicate_delivery_does_not_create_duplicate_pending_intake(monkey
     assert first.status_code == 200
     assert second.status_code == 200
     assert len(repo.rows) == 1
+    # MWO-025G Phase 5: a duplicate Meta delivery of the same
+    # provider_message_id must not produce a duplicate WhatsApp reply.
+    assert len(outbound.calls) == 1
 
 
 def test_post_unknown_event_safely_handled(monkeypatch):
     monkeypatch.setenv("META_APP_SECRET", "test-app-secret")
     repo = FakeIntakeRepository(_identity())
+    outbound = FakeOutboundClient()
     app.dependency_overrides[get_whatsapp_intake_repository] = lambda: repo
     app.dependency_overrides[get_pump_gateway] = lambda: FakePumpGateway()
+    app.dependency_overrides[get_whatsapp_outbound_client] = lambda: outbound
     body = json.dumps(_unknown_envelope()).encode("utf-8")
     response = client.post(
         WEBHOOK_PATH, content=body, headers={"X-Hub-Signature-256": _sign(body, "test-app-secret")}
@@ -296,3 +376,56 @@ def test_post_unknown_event_safely_handled(monkeypatch):
     assert response.status_code == 200
     assert response.json()["results"] == [{"status": "UNKNOWN_EVENT_ACKNOWLEDGED"}]
     assert repo.rows == []
+    assert outbound.calls == []
+
+
+def test_post_invalid_signature_never_reaches_outbound(monkeypatch):
+    monkeypatch.setenv("META_APP_SECRET", "test-app-secret")
+    outbound = FakeOutboundClient()
+    app.dependency_overrides[get_whatsapp_outbound_client] = lambda: outbound
+    body = json.dumps(_message_envelope()).encode("utf-8")
+    response = client.post(
+        WEBHOOK_PATH, content=body, headers={"X-Hub-Signature-256": _sign(body, "wrong-secret")}
+    )
+    assert response.status_code == 403
+    assert outbound.calls == []
+
+
+# --- outbound delivery safety --------------------------------------------
+
+
+def test_outbound_provider_failure_does_not_break_webhook_ack(monkeypatch):
+    # The HTTP acknowledgement to Meta must remain fast and deterministic
+    # even if the outbound provider call raises -- MWO-025G Phase 4/6.
+    monkeypatch.setenv("META_APP_SECRET", "test-app-secret")
+    repo = FakeIntakeRepository(_identity())
+    outbound = FakeOutboundClient(raises=True)
+    app.dependency_overrides[get_whatsapp_intake_repository] = lambda: repo
+    app.dependency_overrides[get_pump_gateway] = lambda: FakePumpGateway()
+    app.dependency_overrides[get_whatsapp_outbound_client] = lambda: outbound
+    body = json.dumps(_message_envelope(message_id="wamid.outboundfail1")).encode("utf-8")
+    response = client.post(
+        WEBHOOK_PATH, content=body, headers={"X-Hub-Signature-256": _sign(body, "test-app-secret")}
+    )
+    assert response.status_code == 200
+    assert len(repo.rows) == 1
+    assert len(outbound.calls) == 1
+
+
+def test_no_raw_phone_or_secret_in_logs(monkeypatch, caplog):
+    monkeypatch.setenv("META_APP_SECRET", "test-app-secret")
+    repo = FakeIntakeRepository(_identity())
+    outbound = FakeOutboundClient()
+    app.dependency_overrides[get_whatsapp_intake_repository] = lambda: repo
+    app.dependency_overrides[get_pump_gateway] = lambda: FakePumpGateway()
+    app.dependency_overrides[get_whatsapp_outbound_client] = lambda: outbound
+    body = json.dumps(_message_envelope(message_id="wamid.privacy1")).encode("utf-8")
+    with caplog.at_level("INFO"):
+        response = client.post(
+            WEBHOOK_PATH, content=body, headers={"X-Hub-Signature-256": _sign(body, "test-app-secret")}
+        )
+    assert response.status_code == 200
+    log_text = "\n".join(record.getMessage() for record in caplog.records)
+    assert "15550000001" not in log_text
+    assert "+15550000001" not in log_text
+    assert "test-app-secret" not in log_text

@@ -71,7 +71,15 @@ def main() -> int:
     for ok, message in (
         http_check("nginx", f"{nginx_base_url}/healthz", timeout),
         http_check("nginx->dashboard", nginx_base_url, timeout),
-        http_check("nginx->api", f"{nginx_base_url}/api/ltsa/pumps", timeout),
+        # MWO-AI5R-WHATSAPP-RUNTIME-OBSERVABILITY-OUTBOUND-025G -- was
+        # probing /api/ltsa/pumps, which requires require_permission(
+        # "pump.read") (pumps.py) and always returns 401 with no bearer
+        # token, producing a false UNHEALTHY. nginx already has a
+        # dedicated `location = /health` block (default.conf) whose own
+        # comment says it exists so unauthenticated infra checks like
+        # this one can reach the API's health JSON -- switching to it,
+        # not adding new nginx routing.
+        http_check("nginx->api", f"{nginx_base_url}/health", timeout),
         compose_exec(
             args.env_file,
             args.compose_file,

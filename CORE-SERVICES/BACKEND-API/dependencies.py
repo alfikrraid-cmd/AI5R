@@ -53,6 +53,7 @@ from API.operational_registry_repository import (
     PMScheduleRepository,
 )
 from API.pump_gateway import PumpGateway
+from API.whatsapp_outbound_client import WhatsAppOutboundClient
 from API.seal_engineering_document_gateway import SealEngineeringDocumentGateway
 from API.seal_gateway import SealGateway
 from API.seal_master_data_repository import SealMasterDataRepository
@@ -160,6 +161,18 @@ _import_session_repository = ImportSessionRepository(runner=_import_database_run
 # 007_create_ltsa_auth_foundation.sql).
 _auth_repository = AuthRepository(_import_database_runner)
 _whatsapp_intake_repository = WhatsAppIntakeRepository(_import_database_runner)
+
+# MWO-AI5R-WHATSAPP-RUNTIME-OBSERVABILITY-OUTBOUND-025G -- the one, real,
+# Meta-Graph-API-capable outbound client this backend process holds.
+# Config is read from env (WHATSAPP_CLOUD_API_TOKEN/WHATSAPP_PHONE_NUMBER_ID/
+# WHATSAPP_GRAPH_API_VERSION) -- the same names WF-LTSA-WHATSAPP-INTAKE-024A.
+# json's own outbound node already established, reused rather than
+# inventing a second contract. Safe to construct unconditionally: when
+# those env vars are unset, send_text() returns SKIPPED and never raises
+# (see whatsapp_outbound_client.py), so this singleton is harmless
+# wherever outbound isn't configured -- the same optionality precedent as
+# _copilot_ai_client below.
+_whatsapp_outbound_client = WhatsAppOutboundClient()
 
 # MWO-LTSA-SEAL-INVENTORY-IDENTIFIERS-001 -- same singleton again, not a
 # third connection. seal_registry already lives in this database (it is
@@ -419,6 +432,10 @@ def get_auth_repository() -> AuthRepository:
 
 def get_whatsapp_intake_repository() -> WhatsAppIntakeRepository:
     return _whatsapp_intake_repository
+
+
+def get_whatsapp_outbound_client() -> WhatsAppOutboundClient:
+    return _whatsapp_outbound_client
 
 
 def get_seal_master_data_repository() -> SealMasterDataRepository:
