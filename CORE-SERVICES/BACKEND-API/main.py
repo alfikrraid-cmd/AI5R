@@ -39,6 +39,7 @@ from routers import (
     seal,
     work_orders,
     whatsapp_intake,
+    whatsapp_webhook,
 )
 
 app = FastAPI(
@@ -66,6 +67,11 @@ signing_secret()
 app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(whatsapp_intake.router)
+# MWO-AI5R-WHATSAPP-META-WEBHOOK-002 -- official Meta Cloud API webhook
+# boundary (GET verification handshake + signature-validated POST),
+# separate from whatsapp_intake.router above (internal, ingress-secret-
+# gated) so neither boundary's authorization is repurposed for the other.
+app.include_router(whatsapp_webhook.router)
 # MWO-LTSA-AUTH-003A-FINAL -- User Administration. Every route requires
 # admin.users (get_current_user is the router's own module-level
 # dependency; per-route _require_admin_users()/authorize_user_management()
