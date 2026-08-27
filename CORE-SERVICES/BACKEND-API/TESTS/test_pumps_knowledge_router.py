@@ -398,6 +398,44 @@ def test_get_knowledge_new_schedule_fields_are_empty_lists_by_default():
     assert data["condition_monitoring_schedules"] == []
 
 
+# MWO-LTSA-ASSET360-CONSOLIDATION-001 -- condition_monitoring_readings was
+# already assembled by LTSAKnowledgeService but never serialized in this
+# response before; work_orders is a new additive field on the same
+# aggregate. Same "additive keys on the same response" precedent as the
+# pm_schedules/condition_monitoring_schedules tests above.
+def test_get_knowledge_response_includes_condition_monitoring_readings_field():
+    _override(
+        knowledge=_knowledge(
+            condition_monitoring_readings=[
+                {"condition_monitoring_reading_code": "CMONR-1", "asset_code": TAG}
+            ]
+        )
+    )
+
+    data = client.get(f"/api/ltsa/pumps/{TAG}/knowledge").json()["data"]
+
+    assert data["condition_monitoring_readings"] == [
+        {"condition_monitoring_reading_code": "CMONR-1", "asset_code": TAG}
+    ]
+
+
+def test_get_knowledge_response_includes_work_orders_field():
+    _override(knowledge=_knowledge(work_orders=[{"work_order_code": "WO-1", "asset_code": TAG}]))
+
+    data = client.get(f"/api/ltsa/pumps/{TAG}/knowledge").json()["data"]
+
+    assert data["work_orders"] == [{"work_order_code": "WO-1", "asset_code": TAG}]
+
+
+def test_get_knowledge_new_consolidation_fields_are_empty_lists_by_default():
+    _override()
+
+    data = client.get(f"/api/ltsa/pumps/{TAG}/knowledge").json()["data"]
+
+    assert data["condition_monitoring_readings"] == []
+    assert data["work_orders"] == []
+
+
 def test_get_knowledge_existing_fields_unchanged_by_this_extension():
     # Regression guard: adding two new keys must not disturb any existing
     # response field or the single-fetch shape (still exactly one "data"
