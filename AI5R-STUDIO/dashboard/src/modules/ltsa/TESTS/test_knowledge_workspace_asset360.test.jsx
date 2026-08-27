@@ -353,12 +353,48 @@ describe("AI Engineering Copilot section (J) -- existing Copilot behavior preser
   });
 });
 
-describe("Documents section (I) -- reused Drawings, source traceability where available", () => {
+describe("Drawings section (I)", () => {
   it("shows an honest empty state when no drawings exist for this pump", async () => {
     await renderAsset360();
 
     const section = screen.getByTestId("knowledge-section-drawings");
     expect(section.querySelector(".eng-empty")).toBeInTheDocument();
+  });
+});
+
+// MWO-LTSA-ASSET360-COMPLETENESS-FIX-021B (item B) -- Documents is now a
+// genuinely separate section/API key from Drawings above (previously the
+// AssetSectionNav "Documents" button pointed at this Drawings section;
+// see AssetSectionNav.jsx's own header comment on that fix).
+describe("Documents section (B) -- distinct from Drawings, never the same list", () => {
+  it("shows an honest empty state when no documents exist for this pump", async () => {
+    await renderAsset360();
+
+    const section = screen.getByTestId("knowledge-section-documents");
+    expect(section.querySelector(".eng-empty")).toBeInTheDocument();
+  });
+
+  it("renders documents from the Knowledge API's own `documents` key, distinct from `drawings`", async () => {
+    await renderAsset360({
+      drawings: [],
+      documents: [
+        {
+          document_code: "DOC-1",
+          title: "Seal Datasheet",
+          document_number: "DS-100",
+          revision: "A",
+          status: "APPROVED",
+          document_type: "DATASHEET",
+          created_at: "2026-06-01",
+        },
+      ],
+    });
+
+    const documentsSection = screen.getByTestId("knowledge-section-documents");
+    expect(within(documentsSection).getByText("Seal Datasheet")).toBeInTheDocument();
+
+    const drawingsSection = screen.getByTestId("knowledge-section-drawings");
+    expect(drawingsSection.querySelector(".eng-empty")).toBeInTheDocument();
   });
 });
 

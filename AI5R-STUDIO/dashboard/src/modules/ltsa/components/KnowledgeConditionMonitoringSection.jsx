@@ -5,6 +5,7 @@ import spacing from "../../../design-system/theme/spacing";
 import { EmptySection } from "./KnowledgeCard";
 import TemperatureTrendChart from "./TemperatureTrendChart";
 import ConditionMonitoringReadingDetailPanel from "./ConditionMonitoringReadingDetailPanel";
+import { WorkflowStatusBadge } from "./WorkflowStatusBadge";
 
 // MWO-LTSA-ASSET360-CONSOLIDATION-001 -- Section C, "CONDITION MONITORING".
 // All temperature points mapConditionMonitoringReadingRecord already
@@ -51,6 +52,7 @@ export default function KnowledgeConditionMonitoringSection({ readings, onOpenPu
       <div style={{ marginBottom: spacing.md }}>
         <div style={{ display: "flex", gap: spacing.sm, alignItems: "center", flexWrap: "wrap", marginBottom: spacing.xs }}>
           <strong>Latest: {latest.readingDate ?? "N/A"}</strong>
+          <WorkflowStatusBadge status={latest.workflowStatus} />
           <Badge variant="info">{latest.pumpOperatingState ?? "N/A"}</Badge>
           <Badge variant={latest.leakDe || latest.leakNde ? "danger" : "success"}>
             Leak DE: {leakLabel(latest.leakDe)} · NDE: {leakLabel(latest.leakNde)}
@@ -90,11 +92,12 @@ export default function KnowledgeConditionMonitoringSection({ readings, onOpenPu
         </div>
         {sorted.slice(0, historyVisibleCount).map((reading) => (
           <div key={reading.id} style={{ borderBottom: `1px solid ${colors.border}`, padding: `${spacing.xs}px 0` }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: spacing.xs }}>
               <span>
                 {reading.readingDate ?? "N/A"} · {reading.pumpOperatingState ?? "N/A"} ·{" "}
                 {reading.leakDe || reading.leakNde ? "Leak detected" : "No leak"}
               </span>
+              <WorkflowStatusBadge status={reading.workflowStatus} />
               <Button onClick={() => setExpandedId((current) => (current === reading.id ? null : reading.id))}>
                 {expandedId === reading.id ? "Hide" : "View Details"}
               </Button>
@@ -106,6 +109,9 @@ export default function KnowledgeConditionMonitoringSection({ readings, onOpenPu
             )}
           </div>
         ))}
+        <p style={{ color: colors.textMuted, fontSize: 12, margin: `${spacing.xs}px 0 0` }}>
+          Showing {Math.min(historyVisibleCount, sorted.length)} of {sorted.length}
+        </p>
         {historyVisibleCount < sorted.length && (
           <div style={{ marginTop: spacing.sm }}>
             <Button onClick={() => setHistoryVisibleCount((count) => count + 5)}>

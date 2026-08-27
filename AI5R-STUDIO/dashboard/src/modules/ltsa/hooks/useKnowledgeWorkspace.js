@@ -154,6 +154,12 @@ function mapMechanicalSeal(currentSeal) {
     material: currentSeal.material ?? undefined,
     status: currentSeal.status ?? undefined,
     installedDate: currentSeal.installed_at ?? undefined,
+    // MWO-LTSA-ASSET360-COMPLETENESS-FIX-021B (item G) -- same field
+    // PumpLifecycleCurrentInstallation.source_document_name already
+    // carries for /lifecycle; now also on current_seal (see
+    // equipment_timeline_service.py's _build_current_seal()). Undefined,
+    // never fabricated, when the underlying installation record has none.
+    sourceDocumentName: currentSeal.source_document_name ?? undefined,
   };
 }
 
@@ -198,6 +204,26 @@ function mapDrawings(drawings) {
   }));
 }
 
+// MWO-LTSA-ASSET360-COMPLETENESS-FIX-021B (item B) -- the Knowledge API's
+// `documents` key (router-side, EquipmentTimelineService._list_documents())
+// returns the SAME seal_engineering_document table shape as `drawings`
+// above, just not filtered to document_type == "DRAWING" -- reuses the raw
+// field names one-to-one (document_code/title/document_number/revision/
+// status/created_at), so this maps into the SAME shape KnowledgeDrawingSection
+// already renders (deliberately reused unmodified, no new component). This
+// is a genuinely distinct list from `drawings`, never merged: Drawings and
+// Documents are two separate Knowledge API keys and two separate sections.
+function mapDocuments(documents) {
+  return (documents ?? []).map((record) => ({
+    id: record.document_code,
+    title: record.title,
+    documentNumber: record.document_number,
+    revision: record.revision,
+    status: record.status,
+    uploadedAt: record.created_at,
+  }));
+}
+
 function mapCompatibleSeals(seal) {
   return (seal ?? []).map((item) => ({
     id: item.seal_code,
@@ -206,22 +232,25 @@ function mapCompatibleSeals(seal) {
   }));
 }
 
-function mapInventory(inventory) {
+function mapInventory(inventory, seal) {
+  const nameByCode = new Map((seal ?? []).map((item) => [item.seal_code, item.part_name]));
+
   return (inventory ?? []).map((item) => {
     const quantity = item.quantity_on_hand;
-    const known = quantity != null;
+    const known = quantity !== null && quantity !== undefined;
+    let level = "low";
+    if (known) {
+      if (quantity <= 0) level = "out";
+      else if (item.reorder_point != null && quantity <= item.reorder_point) level = "low";
+      else level = "ok";
+    }
 
     return {
-      id: item.stock_pool_id,
-      stockPoolId: item.stock_pool_id,
-      name: item.seal_type ?? "Seal type unknown",
-      size: item.application_size ?? item.nominal_size ?? null,
-      physicalSize: item.physical_stock_size ?? null,
-      reference: item.drawing_reference ?? null,
-      available: item.quantity_available ?? null,
-      qty: known ? String(item.quantity_available ?? quantity) : "Stock quantity unknown",
-      status: item.verification_status ?? "UNKNOWN",
-      meta: item.stock_location ?? item.drawing_reference ?? "",
+      id: item.seal_code,
+      name: nameByCode.get(item.seal_code) ?? item.seal_code,
+      meta: item.location ?? "",
+      qty: known ? String(quantity) : "Unknown",
+      level,
     };
   });
 }
@@ -324,10 +353,18 @@ function mapEquipmentKnowledge(knowledgeData) {
       filterForAsset(knowledgeData?.condition_monitoring_schedules, tag)
     ),
     timeline: mapTimeline(knowledgeData?.timeline),
+    // MWO-LTSA-ASSET360-COMPLETENESS-FIX-021B (items A/E/F) -- the
+    // Knowledge API's new `lifecycle_timeline` key (EquipmentTimelineService.
+    // build_lifecycle()'s own `timeline`, newest-first, real full-timestamp
+    // order, includes INSTALLATION and real SEAL_* events never synthesized)
+    // -- reuses the exact same mapTimeline() mapper as the pre-existing
+    // `timeline` key above (same TimelineEvent shape), additive, does not
+    // replace it.
+    lifecycleTimeline: mapTimeline(knowledgeData?.lifecycle_timeline),
     mechanicalSeal: mapMechanicalSeal(knowledgeData?.current_seal),
     configuredSeal: mapConfiguredSeal(knowledgeData?.configured_seal),
     compatibleSeals: mapCompatibleSeals(knowledgeData?.seal),
-    inventory: mapInventory(knowledgeData?.inventory),
+    inventory: mapInventory(knowledgeData?.inventory, knowledgeData?.seal),
     pmHistory: pmRecords.map((record) =>
       mapRefItem(record, { idField: "pm_occurrence_code", nameLabel: "PM Occurrence", metaField: "occurrence_date" })
     ),
@@ -348,6 +385,9 @@ function mapEquipmentKnowledge(knowledgeData) {
       })
     ),
     drawings: mapDrawings(knowledgeData?.drawings),
+    // MWO-LTSA-ASSET360-COMPLETENESS-FIX-021B (item B) -- a genuinely
+    // separate list from drawings, never the same array shown twice.
+    documents: mapDocuments(knowledgeData?.documents),
     recommendations: mapRecommendations(knowledgeData?.recommendation),
     aiInsights: mapAiInsight(knowledgeData?.ai_insight),
     // MWO-LTSA-ASSET360-CONSOLIDATION-001 -- full-fidelity records (every

@@ -13,7 +13,12 @@ const SECTIONS = [
   { id: "maintenance", label: "Maintenance" },
   { id: "seal", label: "Seal" },
   { id: "work-orders", label: "Work Orders" },
-  { id: "drawings", label: "Documents" },
+  // MWO-LTSA-ASSET360-COMPLETENESS-FIX-021B (item B) -- this button used
+  // to be labeled "Documents" while pointing at id "drawings" (the Drawings
+  // section), mislabeling the nav since no separate Documents section
+  // existed yet. Now two distinct entries for two distinct sections.
+  { id: "drawings", label: "Drawings" },
+  { id: "documents", label: "Documents" },
   { id: "ai-copilot", label: "AI" },
 ];
 

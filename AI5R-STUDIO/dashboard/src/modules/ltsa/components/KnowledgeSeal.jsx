@@ -46,6 +46,13 @@ export default function KnowledgeSeal({ configuredSeal, currentSeal }) {
         <Row label="Model" value={currentSeal?.model} fallback="Not recorded" />
         <Row label="Material" value={currentSeal?.material} fallback="Not recorded" />
         <Row label="Installed Date" value={currentSeal?.installedDate} fallback="Not recorded" />
+        {/* MWO-LTSA-ASSET360-COMPLETENESS-FIX-021B (item G) -- preserves
+            current_seal's source-document provenance instead of silently
+            losing it (the root cause the AUDIT-021 MWO found:
+            PumpLifecycleCurrentSeal had no source_document_name field at
+            all). Never fabricated: falls back to "Not recorded" exactly
+            like every other row here when the backend has no value. */}
+        <Row label="Source Document" value={currentSeal?.sourceDocumentName} fallback="Not recorded" />
       </div>
     </div>
   );

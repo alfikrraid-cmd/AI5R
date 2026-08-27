@@ -4,7 +4,7 @@ import colors from "../../../design-system/theme/colors";
 import spacing from "../../../design-system/theme/spacing";
 import { EmptySection } from "./KnowledgeCard";
 import PMOccurrenceDetailPanel from "./PMOccurrenceDetailPanel";
-import { isUnscheduledPlaceholder } from "../utils/pmMapping";
+import { WorkflowStatusBadge } from "./WorkflowStatusBadge";
 
 // MWO-LTSA-ASSET360-CONSOLIDATION-001 -- Section E, "PREVENTIVE
 // MAINTENANCE HISTORY". A pm_schedule_code that starts with "UNSCHEDULED::"
@@ -12,11 +12,10 @@ import { isUnscheduledPlaceholder } from "../utils/pmMapping";
 // build_unscheduled_reference()), never a real schedule -- shown as its own
 // visibly-labeled badge, never presented as if a real PM Schedule exists.
 // This section never derives a schedule/frequency from these occurrences
-// (Hard Rule: "Historical performed activity != PM plan"). MWO-LTSA-PM-
-// CMON-SCHEDULE-LIFECYCLE-016 -- isUnscheduled is now the shared
-// isUnscheduledPlaceholder (pmMapping.js), reused by
-// PMOccurrenceDetailPanel.jsx's own identical guard, not redefined here.
-const isUnscheduled = isUnscheduledPlaceholder;
+// (Hard Rule: "Historical performed activity != PM plan").
+function isUnscheduled(pmScheduleCode) {
+  return typeof pmScheduleCode === "string" && pmScheduleCode.startsWith("UNSCHEDULED::");
+}
 
 function sortNewestFirst(occurrences) {
   return [...(occurrences ?? [])].sort((a, b) =>
@@ -41,7 +40,7 @@ export default function KnowledgePmHistorySection({ pmOccurrences, onOpenPump })
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: spacing.xs }}>
             <div>
               <strong>{occurrence.occurrenceDate ?? "N/A"}</strong>{" "}
-              <Badge variant="info">{occurrence.workflowStatus ?? occurrence.status ?? "N/A"}</Badge>{" "}
+              <WorkflowStatusBadge status={occurrence.workflowStatus ?? occurrence.status} />{" "}
               {isUnscheduled(occurrence.pmScheduleCode) ? (
                 <Badge variant="warning">Historical / Unscheduled</Badge>
               ) : occurrence.pmScheduleCode ? (
@@ -62,6 +61,9 @@ export default function KnowledgePmHistorySection({ pmOccurrences, onOpenPump })
           )}
         </div>
       ))}
+      <p style={{ color: colors.textMuted, fontSize: 12, margin: `${spacing.xs}px 0 0` }}>
+        Showing {Math.min(visibleCount, sorted.length)} of {sorted.length}
+      </p>
       {visibleCount < sorted.length && (
         <div style={{ marginTop: spacing.sm }}>
           <Button onClick={() => setVisibleCount((count) => count + 5)}>
