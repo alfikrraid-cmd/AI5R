@@ -270,6 +270,17 @@ def get_ltsa_pump_knowledge(
     # derivation. Only fields with an authoritative source are ever
     # populated -- see _build_current_seal's own header comment.
     current_seal = equipment_timeline_service.build_current_seal(tag)
+    # MWO-LTSA-ASSET360-COMPLETENESS-FIX-021B (items A/B/E/F) -- reuses
+    # the SAME build_lifecycle() already relied on by GET .../lifecycle
+    # (below), passed the SAME already-built `knowledge` object above (no
+    # second LTSAKnowledgeService.build() call) -- this is the one place
+    # that already merges PM/CM/breakdown/work-order/installation/real
+    # seal-lifecycle events into a single, full-timestamp, newest-first,
+    # non-duplicating timeline (equipment_timeline_service.py's own
+    # build_lifecycle()), plus its already-distinct documents list. No new
+    # SQL, no new repository, no new merge/sort logic: only two additive
+    # response keys exposing an aggregate that already existed.
+    lifecycle = equipment_timeline_service.build_lifecycle(tag, knowledge=knowledge)
     # MWO-LTSA-ASSET360-SEAL-SEMANTICS-001 -- configured_seal reuses
     # knowledge.pump, the canonical pump record ltsa_knowledge_service.build()
     # already fetched above for this same response (no second gateway
@@ -343,6 +354,19 @@ def get_ltsa_pump_knowledge(
             # no new endpoint, no duplicate calculation. Always a real
             # ExecutiveMetrics (never None), so no None-guard is needed here.
             "executive_metrics": dataclasses.asdict(executive_metrics),
+            # MWO-LTSA-ASSET360-COMPLETENESS-FIX-021B (items A/B/E/F) --
+            # additive keys, same pass-through convention as
+            # executive_metrics/ai_insight above. lifecycle_timeline is
+            # the complete, real-timestamp-ordered, multi-domain timeline
+            # (including installation and real seal-lifecycle events,
+            # never synthesized -- see equipment_timeline_service.py's
+            # build_lifecycle()); it is additive alongside the existing
+            # "timeline" key above (build()'s older, narrower timeline),
+            # so no existing consumer of "timeline" is broken by this
+            # change. documents is build_lifecycle()'s own, already
+            # distinct-from-drawings document list.
+            "lifecycle_timeline": [dataclasses.asdict(event) for event in lifecycle.timeline],
+            "documents": lifecycle.related_engineering.documents,
         },
     }
 

@@ -47,6 +47,17 @@ class PumpLifecycleCurrentSeal:
     installation_code: str | None
     installed_at: str | None
     source: str
+    # MWO-LTSA-ASSET360-COMPLETENESS-FIX-021B (item G) -- read from the
+    # SAME current_installation record _build_current_seal() already
+    # receives (equipment_timeline_service.py) -- installation_report
+    # already has this column (PumpLifecycleCurrentInstallation.
+    # source_document_name above already exposes it for /lifecycle's
+    # current_installation; this is the identical field, same source, now
+    # also carried on current_seal so /knowledge's own current_seal key
+    # -- which never included current_installation -- doesn't lose it).
+    # No new fetch, no fabrication: null when the underlying installation
+    # record has no value for it.
+    source_document_name: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

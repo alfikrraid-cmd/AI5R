@@ -210,10 +210,22 @@ class FakeEquipmentTimeline:
         self.events = events
 
 
+class FakeLifecycleRelatedEngineering:
+    def __init__(self, documents=()):
+        self.documents = list(documents)
+
+
+class FakeLifecycle:
+    def __init__(self, timeline=(), documents=()):
+        self.timeline = timeline
+        self.related_engineering = FakeLifecycleRelatedEngineering(documents)
+
+
 class FakeEquipmentTimelineService:
-    def __init__(self, timeline=None, current_seal=None):
+    def __init__(self, timeline=None, current_seal=None, lifecycle=None):
         self._timeline = timeline or FakeEquipmentTimeline()
         self._current_seal = current_seal
+        self._lifecycle = lifecycle or FakeLifecycle()
 
     def build(self, tag_number):
         return self._timeline
@@ -224,6 +236,13 @@ class FakeEquipmentTimelineService:
     # configures one.
     def build_current_seal(self, tag_number):
         return self._current_seal
+
+    # MWO-LTSA-ASSET360-COMPLETENESS-FIX-021B -- GET .../knowledge now also
+    # calls build_lifecycle(tag, knowledge=knowledge); defaults to an empty
+    # lifecycle (no installation/seal/document events), matching every
+    # pre-existing test in this file that never configures one.
+    def build_lifecycle(self, tag_number, *, knowledge=None, today=None):
+        return self._lifecycle
 
 
 class FakeEngineeringContextEngine:

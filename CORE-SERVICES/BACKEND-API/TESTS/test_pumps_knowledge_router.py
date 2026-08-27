@@ -48,12 +48,25 @@ class FakeKnowledgeService:
         return self.knowledge
 
 
+class FakeLifecycleRelatedEngineering:
+    def __init__(self, documents=()):
+        self.documents = list(documents)
+
+
+class FakeLifecycle:
+    def __init__(self, timeline=(), documents=()):
+        self.timeline = timeline
+        self.related_engineering = FakeLifecycleRelatedEngineering(documents)
+
+
 class FakeTimelineService:
-    def __init__(self, timeline, current_seal=None):
+    def __init__(self, timeline, current_seal=None, lifecycle=None):
         self.timeline = timeline
         self.current_seal = current_seal
+        self.lifecycle = lifecycle or FakeLifecycle()
         self.calls = []
         self.current_seal_calls = []
+        self.lifecycle_calls = []
 
     def build(self, tag_number):
         self.calls.append(tag_number)
@@ -62,6 +75,14 @@ class FakeTimelineService:
     def build_current_seal(self, tag_number):
         self.current_seal_calls.append(tag_number)
         return self.current_seal
+
+    # MWO-LTSA-ASSET360-COMPLETENESS-FIX-021B -- GET .../knowledge now also
+    # calls build_lifecycle(tag, knowledge=knowledge); defaults to an empty
+    # lifecycle (no installation/seal/document events), matching every
+    # pre-existing test in this file that never configures one.
+    def build_lifecycle(self, tag_number, *, knowledge=None, today=None):
+        self.lifecycle_calls.append((tag_number, knowledge))
+        return self.lifecycle
 
 
 class FakeContextEngine:

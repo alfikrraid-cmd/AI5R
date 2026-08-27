@@ -556,6 +556,10 @@ class EquipmentTimelineService:
             installation_code=current_installation.get("installation_code"),
             installed_at=self._normalize_date_string(current_installation.get("report_date")),
             source="seal_registry" if seal_record else "installation_report",
+            # MWO-LTSA-ASSET360-COMPLETENESS-FIX-021B (item G) -- same
+            # field, same source dict, _map_current_installation() already
+            # reads it two lines below; no new fetch, no fabrication.
+            source_document_name=current_installation.get("source_document_name"),
         )
 
     def _map_current_installation(

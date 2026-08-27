@@ -9,12 +9,13 @@ from API.timeline_value_objects import TimelineCategory, TimelineSeverity, Timel
 
 
 def test_timeline_category_has_all_canonical_categories():
-    # Stale name/assertion fixed in passing (MWO-LTSA-PM-CM-INTAKE-001):
-    # this test already diverged from the real, committed 11-member
-    # TimelineCategory enum before this MWO touched anything (confirmed
-    # via a prior session's own investigation) -- brought back in sync
-    # while this same file is already being edited for TimelineSource
-    # below, not a separate opportunistic pass.
+    # MWO-LTSA-ASSET360-COMPLETENESS-FIX-021B -- re-synced again: this
+    # test had already gone stale once (fixed under MWO-LTSA-PM-CM-
+    # INTAKE-001 for the first 11 members) and then diverged a second
+    # time when MWO-LTSA-SEAL-EQUIPMENT-HISTORY-INTEGRATION-001 added the
+    # 7 physical-mechanical-seal categories (timeline_value_objects.py's
+    # own header comment on that MWO). Both drifts were real, committed
+    # enum members this test simply hadn't been updated to include.
     assert {member.value for member in TimelineCategory} == {
         "PM",
         "CM",
@@ -27,6 +28,13 @@ def test_timeline_category_has_all_canonical_categories():
         "INSPECTION",
         "INVENTORY_EVENT",
         "RECOMMENDATION",
+        "SEAL_INSTALL",
+        "SEAL_REMOVE",
+        "SEAL_INSPECTION",
+        "SEAL_REPAIR",
+        "SEAL_RETURN_TO_STOCK",
+        "SEAL_SCRAP",
+        "SEAL_WARRANTY",
     }
 
 
@@ -49,13 +57,12 @@ def test_timeline_severity_mirrors_existing_cm_report_vocabulary():
 
 
 def test_timeline_source_has_only_real_gateway_backed_sources():
-    # MWO-LTSA-PM-CM-INTAKE-001 -- CONDITION_MONITORING_READING added:
-    # TimelineCategory.INSPECTION is now really populated from
-    # condition_monitoring_reading (equipment_timeline_service.py's
-    # _build_inspection_events), not left as a permanently-empty
-    # declared-but-unpopulated category. INSTALLATION_REPORT/WORK_ORDER/
-    # SEAL_REGISTRY were already real, committed members this test had
-    # never been updated to include either.
+    # MWO-LTSA-ASSET360-COMPLETENESS-FIX-021B -- re-synced again: 4 more
+    # real, committed sources (SEAL_LIFECYCLE_EVENT, SEAL_INSPECTION,
+    # SEAL_REPAIR, SEAL_WARRANTY_ASSESSMENT) were added by MWO-LTSA-SEAL-
+    # EQUIPMENT-HISTORY-INTEGRATION-001 to back the 7 new SEAL_* categories
+    # (see test_timeline_category_has_all_canonical_categories above),
+    # after this assertion was last updated under MWO-LTSA-PM-CM-INTAKE-001.
     assert {member.value for member in TimelineSource} == {
         "PM_OCCURRENCE",
         "CM_REPORT",
@@ -64,5 +71,9 @@ def test_timeline_source_has_only_real_gateway_backed_sources():
         "WORK_ORDER",
         "SEAL_REGISTRY",
         "CONDITION_MONITORING_READING",
+        "SEAL_LIFECYCLE_EVENT",
+        "SEAL_INSPECTION",
+        "SEAL_REPAIR",
+        "SEAL_WARRANTY_ASSESSMENT",
         "UNKNOWN",
     }
