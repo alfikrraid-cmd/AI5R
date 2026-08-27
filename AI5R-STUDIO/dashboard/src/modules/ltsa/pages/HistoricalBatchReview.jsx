@@ -3,7 +3,7 @@ import { Badge, Button, EmptyState, PageHeader, Panel } from "../../../design-sy
 import colors from "../../../design-system/theme/colors";
 import spacing from "../../../design-system/theme/spacing";
 import {
-  getPMOccurrences, getConditionMonitoringReadings,
+  getPMOccurrences, getAllConditionMonitoringReadings,
   batchSubmitPMOccurrences, batchTechnicalReviewPMOccurrences,
   batchSubmitConditionMonitoringReadings, batchTechnicalReviewConditionMonitoringReadings,
 } from "../../../api/ai5rClient";
@@ -53,7 +53,12 @@ export default function HistoricalBatchReview({ onNavigate }) {
 
   function load() {
     setLoading(true);
-    Promise.all([getPMOccurrences(), getConditionMonitoringReadings()])
+    // MWO-LTSA-HISTORICAL-BATCH-CMON-VISIBILITY-FIX-019D -- CMON list
+    // defaults to a 25-row backend page; getAllConditionMonitoringReadings()
+    // pages through the real total until the complete dataset is loaded,
+    // so classification/counters below are never computed over a partial
+    // page again (MWO-019C's proven root cause).
+    Promise.all([getPMOccurrences(), getAllConditionMonitoringReadings()])
       .then(([pmRaw, cmonRaw]) => {
         setPmOccurrences(pmRaw.map(mapPMOccurrenceRecord));
         setCmonReadings(cmonRaw.map(mapConditionMonitoringReadingRecord));

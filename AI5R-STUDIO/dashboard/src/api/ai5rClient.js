@@ -433,6 +433,51 @@ export async function getConditionMonitoringReadingsPage({ limit = 25, offset = 
     };
 }
 
+// MWO-LTSA-HISTORICAL-BATCH-CMON-VISIBILITY-FIX-019D -- dedicated
+// full-fetch helper for Historical Batch Review only (the one screen
+// that genuinely needs the complete dataset to classify/count
+// correctly). Does NOT change getConditionMonitoringReadings()'s own
+// "single call, whatever the backend default page is" contract, nor
+// getConditionMonitoringReadingsPage()'s own single-page contract
+// (ConditionMonitoringWorkspace.jsx's existing paginated-table usage of
+// the latter is untouched) -- this is additive, built on top of the
+// existing page primitive, never a silent global behavior change.
+//
+// Pages through the real total/limit/offset the backend already
+// returns -- never assumes one page is the whole dataset, and never
+// hardcodes an arbitrary large limit (the backend caps at 100 per
+// request regardless, per condition_monitoring.py's own
+// Query(..., le=100)). offset always advances by the number of items
+// actually received (never the requested page size), so a page
+// returning fewer rows than asked for can never cause a skipped or
+// duplicated record. MAX_PAGES is a safety cap (200 * 100 = 20,000
+// records, far beyond any realistic table size) purely to guarantee
+// termination if the backend's own `total` were ever stale/wrong --
+// the loop already terminates correctly on an accurate total or an
+// empty page well before that cap in every real case.
+export async function getAllConditionMonitoringReadings() {
+    const PAGE_SIZE = 100;
+    const MAX_PAGES = 200;
+
+    const items = [];
+    let offset = 0;
+    let total = Infinity;
+    let pages = 0;
+
+    while (items.length < total && pages < MAX_PAGES) {
+        const page = await getConditionMonitoringReadingsPage({ limit: PAGE_SIZE, offset });
+        total = page.total;
+        if (page.items.length === 0) {
+            break;
+        }
+        items.push(...page.items);
+        offset += page.items.length;
+        pages += 1;
+    }
+
+    return items;
+}
+
 // APP-ASSET360-001: fills a second gap found only at implementation time --
 // GET /api/ltsa/condition-monitoring-schedules has existed since
 // WO-CMON-002, but no client function ever called it. Required for the

@@ -21,6 +21,7 @@ import {
   getMaintenanceHistory,
   getPMOccurrences,
   getConditionMonitoringReadings,
+  getAllConditionMonitoringReadings,
   getConditionMonitoringSchedules,
   getPumpKnowledge,
   getFleetOverview,
@@ -54,6 +55,11 @@ vi.mock("../../../api/ai5rClient", () => ({
   getMaintenanceHistory: vi.fn(),
   getPMOccurrences: vi.fn(),
   getConditionMonitoringReadings: vi.fn(),
+  // MWO-LTSA-HISTORICAL-BATCH-CMON-VISIBILITY-FIX-019D -- HistoricalBatchReview.jsx
+  // now calls this full-fetch helper instead of the single-page
+  // getConditionMonitoringReadings() (still used, unchanged, by
+  // ConditionMonitoring.jsx's own Readings tab).
+  getAllConditionMonitoringReadings: vi.fn(),
   getConditionMonitoringSchedules: vi.fn(),
   getPumpKnowledge: vi.fn(),
   getFleetOverview: vi.fn(),
@@ -110,6 +116,7 @@ beforeEach(() => {
   getMaintenanceHistory.mockResolvedValue([]);
   getPMOccurrences.mockResolvedValue([]);
   getConditionMonitoringReadings.mockResolvedValue([]);
+  getAllConditionMonitoringReadings.mockResolvedValue([]);
   getConditionMonitoringSchedules.mockResolvedValue([]);
   getHistoricalReviewCandidates.mockResolvedValue([]);
   getPumpKnowledge.mockResolvedValue({

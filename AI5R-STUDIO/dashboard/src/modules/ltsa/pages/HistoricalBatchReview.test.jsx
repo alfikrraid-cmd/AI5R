@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { afterEach, describe, expect, it, vi } from "vitest";
 import HistoricalBatchReview from "./HistoricalBatchReview";
 import {
-  getPMOccurrences, getConditionMonitoringReadings,
+  getPMOccurrences, getAllConditionMonitoringReadings,
   batchSubmitPMOccurrences, batchTechnicalReviewPMOccurrences,
   batchSubmitConditionMonitoringReadings, batchTechnicalReviewConditionMonitoringReadings,
 } from "../../../api/ai5rClient";
@@ -11,7 +11,7 @@ import { AuthProvider } from "../auth/AuthContext";
 // MWO-LTSA-PM-CMON-HISTORICAL-BATCH-REVIEW-019
 vi.mock("../../../api/ai5rClient", () => ({
   getPMOccurrences: vi.fn(),
-  getConditionMonitoringReadings: vi.fn(),
+  getAllConditionMonitoringReadings: vi.fn(),
   batchSubmitPMOccurrences: vi.fn(),
   batchTechnicalReviewPMOccurrences: vi.fn(),
   batchSubmitConditionMonitoringReadings: vi.fn(),
@@ -59,7 +59,7 @@ afterEach(() => {
 
 function loadDefaults() {
   getPMOccurrences.mockResolvedValue([PM_READY, PM_NEEDS_ATTENTION, PM_ALREADY_FINALIZED]);
-  getConditionMonitoringReadings.mockResolvedValue([CMON_READY]);
+  getAllConditionMonitoringReadings.mockResolvedValue([CMON_READY]);
 }
 
 describe("HistoricalBatchReview", () => {
@@ -139,6 +139,39 @@ describe("HistoricalBatchReview", () => {
     fireEvent.click(screen.getByRole("button", { name: /Batch Submit/ }));
 
     await waitFor(() => expect(batchSubmitPMOccurrences).toHaveBeenCalledWith(["PMOCC-READY-1"]));
+  });
+
+  // MWO-LTSA-HISTORICAL-BATCH-CMON-VISIBILITY-FIX-019D
+  it("classifies/counts over the COMPLETE CMON result getAllConditionMonitoringReadings returns, not a truncated page (H)", async () => {
+    getPMOccurrences.mockResolvedValue([]);
+    // Simulates what the real full-fetch helper hands back once it has
+    // paged through everything (MWO-019C's proven production shape: far
+    // more than one 25/100-row page's worth of READY records).
+    const manyCmonReady = Array.from({ length: 150 }, (_, i) => ({
+      condition_monitoring_reading_code: `CMONR-MANY-${i}`,
+      asset_code: "220-P-4A",
+      reading_date: "2026-07-01",
+      mechseal_temp_de: 70,
+      workflow_status: "DRAFT",
+      provenance: "HISTORICAL_IMPORT",
+      source_reference: `document_field_extraction:DFE-${i}`,
+    }));
+    getAllConditionMonitoringReadings.mockResolvedValue(manyCmonReady);
+    renderWithRole("TAP_ENGINEER", ["maintenance.read", "condition.read", "maintenance.write"]);
+
+    const cmonPanel = (await screen.findByText("CMON", { selector: "strong" })).closest("div");
+    await waitFor(() => expect(cmonPanel.textContent).toContain("Ready for Review: 150"));
+  });
+
+  it("loading the page never calls any workflow-transition function (J)", async () => {
+    loadDefaults();
+    renderWithRole("JOHN_CRANE_ENGINEER", ["maintenance.read", "condition.read", "maintenance.technical_review"]);
+    await screen.findByText("PMOCC-READY-1");
+
+    expect(batchSubmitPMOccurrences).not.toHaveBeenCalled();
+    expect(batchTechnicalReviewPMOccurrences).not.toHaveBeenCalled();
+    expect(batchSubmitConditionMonitoringReadings).not.toHaveBeenCalled();
+    expect(batchTechnicalReviewConditionMonitoringReadings).not.toHaveBeenCalled();
   });
 
   it("existing individual detail navigation still works via Open (Q)", async () => {
