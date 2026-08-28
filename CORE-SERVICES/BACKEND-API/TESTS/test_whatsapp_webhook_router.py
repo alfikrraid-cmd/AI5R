@@ -16,12 +16,18 @@ from fastapi.testclient import TestClient
 from API.auth_service import ROLE_PERMISSIONS, AuthenticatedIdentity
 from API.whatsapp_intake_service import hash_sender_identifier, normalize_sender_identifier
 from API.whatsapp_outbound_client import OutboundResult
-from dependencies import get_pump_gateway, get_whatsapp_intake_repository, get_whatsapp_outbound_client
+from dependencies import (
+    get_condition_monitoring_reading_repository,
+    get_pump_gateway,
+    get_whatsapp_intake_repository,
+    get_whatsapp_outbound_client,
+)
 from main import app
 
 client = TestClient(app)
 
 WEBHOOK_PATH = "/api/ltsa/whatsapp/webhook"
+_UNSET = object()
 
 
 class FakePumpGateway:
@@ -34,6 +40,78 @@ class FakePumpGateway:
     def get_pump(self, tag_number):
         pump = self.pumps.get(tag_number)
         return {"success": bool(pump), "data": pump}
+
+
+class FakeConditionMonitoringReadingRepository:
+    def __init__(self, pumps=None, schedules=None, fail=False):
+        self.pumps = pumps if pumps is not None else {"211-P-13AR", "210-P-05AR"}
+        self.schedules = schedules if schedules is not None else []
+        self.rows = []
+        self._seq = 0
+        self.fail = fail
+        self.create_draft_calls = []
+        self.create_ad_hoc_draft_calls = []
+
+    def find_by_source_reference(self, source_reference):
+        for row in self.rows:
+            if row.get("source_reference") == source_reference:
+                return row
+        return None
+
+    def find_open_schedules_by_asset(self, asset_code):
+        return [
+            dict(s) for s in self.schedules if s["asset_code"] == asset_code and s["status"] not in {"CANCELLED", "COMPLETED"}
+        ]
+
+    def _new_row(self, *, schedule_code, asset_code, asset_type, reading_date, measurements, created_by, provenance, source_reference, finding):
+        self._seq += 1
+        row = {
+            "condition_monitoring_reading_code": f"CMONR-TEST{self._seq:04d}",
+            "condition_monitoring_schedule_code": schedule_code,
+            "asset_code": asset_code,
+            "asset_type": asset_type,
+            "reading_date": reading_date,
+            "measurements": dict(measurements),
+            "created_by": created_by,
+            "provenance": provenance,
+            "source_reference": source_reference,
+            "finding": finding,
+            "workflow_status": "DRAFT",
+        }
+        self.rows.append(row)
+        return row
+
+    def create_draft(self, *, condition_monitoring_schedule_code, asset_code, asset_type, reading_date, measurements, created_by, provenance, source_reference, finding):
+        self.create_draft_calls.append(condition_monitoring_schedule_code)
+        if self.fail:
+            raise RuntimeError("simulated write failure")
+        schedule = next(
+            (s for s in self.schedules if s["condition_monitoring_schedule_code"] == condition_monitoring_schedule_code),
+            None,
+        )
+        if schedule is None or asset_code not in self.pumps:
+            # Mirrors the real repository's own WHERE EXISTS-no-match
+            # behavior (raises IndexError on rows[0] of an empty list).
+            raise IndexError("list index out of range")
+        row = self._new_row(
+            schedule_code=condition_monitoring_schedule_code, asset_code=asset_code, asset_type=asset_type,
+            reading_date=reading_date, measurements=measurements, created_by=created_by,
+            provenance=provenance, source_reference=source_reference, finding=finding,
+        )
+        schedule["status"] = "COMPLETED"
+        return row
+
+    def create_ad_hoc_draft(self, *, asset_code, asset_type, reading_date, measurements, created_by, source_reference, finding, provenance):
+        self.create_ad_hoc_draft_calls.append(source_reference)
+        if self.fail:
+            raise RuntimeError("simulated write failure")
+        if asset_code not in self.pumps:
+            return None
+        return self._new_row(
+            schedule_code=f"UNSCHEDULED::{provenance}", asset_code=asset_code, asset_type=asset_type,
+            reading_date=reading_date, measurements=measurements, created_by=created_by,
+            provenance=provenance, source_reference=source_reference, finding=finding,
+        )
 
 
 class FakeIntakeRepository:
@@ -256,11 +334,17 @@ def _post(body: dict) -> "TestClient.__enter__.__self__":
     return client.post(WEBHOOK_PATH, content=raw, headers={"X-Hub-Signature-256": _sign(raw, "test-app-secret")})
 
 
-def _wire(monkeypatch, repo, outbound=None, pump_gateway=None):
+def _wire(monkeypatch, repo, outbound=None, pump_gateway=None, cmon_repository=_UNSET):
     monkeypatch.setenv("META_APP_SECRET", "test-app-secret")
     app.dependency_overrides[get_whatsapp_intake_repository] = lambda: repo
     app.dependency_overrides[get_pump_gateway] = lambda: (pump_gateway or FakePumpGateway())
     app.dependency_overrides[get_whatsapp_outbound_client] = lambda: (outbound or FakeOutboundClient())
+    # Defaults to None (no authoritative CMON writer available), matching
+    # every pre-existing test's expectation of the prior "draft intake,
+    # no PM/CMON record" behavior -- only tests that explicitly pass a
+    # cmon_repository opt into the new authoritative-write path.
+    resolved_cmon = None if cmon_repository is _UNSET else cmon_repository
+    app.dependency_overrides[get_condition_monitoring_reading_repository] = lambda: resolved_cmon
     return outbound
 
 
@@ -1053,3 +1137,300 @@ def test_only_confirmed_rows_plain_ya_is_not_ambiguous_uses_no_pending_reply(mon
 
     assert response.status_code == 200
     assert outbound.calls[-1] == (SENDER_A, "Tidak ada data yang menunggu konfirmasi.")
+
+
+# --- Authoritative WhatsApp CMON writer -------------------------------------
+
+_PRODUCTION_CMON_TEXT = "CMON 211-P-13AR: ditemukan kebocoran mechanical seal"
+
+
+def test_cmon_write_exact_production_flow_creates_one_canonical_record(monkeypatch):
+    # CMON_WRITE_TEST -- the mandatory exact production reproduction.
+    from datetime import datetime, timedelta, timezone
+
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    cmon = FakeConditionMonitoringReadingRepository()
+    _wire(monkeypatch, repo, outbound, cmon_repository=cmon)
+
+    _post(_message_envelope(message_id="wamid.cmonwriteA", text=_PRODUCTION_CMON_TEXT))
+    assert repo.rows[0]["state"] == "NEEDS_INFORMATION"
+    assert outbound.calls[-1] == (SENDER_A, "Reading date belum ada. Gunakan hari ini?")
+
+    response = _post(_message_envelope(message_id="wamid.cmonwriteB", text="Ya"))
+
+    assert response.status_code == 200
+    assert len(cmon.rows) == 1
+    assert repo.rows[0]["state"] == "CONFIRMED"
+    expected_today = datetime.now(timezone(timedelta(hours=7))).date().isoformat()
+    reply = outbound.calls[-1][1]
+    assert "berhasil disimpan" in reply
+    assert "Terkonfirmasi sebagai draft intake" not in reply
+    assert cmon.rows[0]["reading_date"] == expected_today
+
+
+def test_cmon_field_mapping_matches_structured_payload(monkeypatch):
+    # CMON_FIELD_MAPPING_TEST.
+    from datetime import datetime, timedelta, timezone
+
+    repo = FakeIntakeRepository({SENDER_A: _identity(user_id="user-mapping-1")})
+    outbound = FakeOutboundClient()
+    cmon = FakeConditionMonitoringReadingRepository()
+    _wire(monkeypatch, repo, outbound, cmon_repository=cmon)
+
+    _post(_message_envelope(message_id="wamid.mapA", text=_PRODUCTION_CMON_TEXT))
+    _post(_message_envelope(message_id="wamid.mapB", text="Ya"))
+
+    record = cmon.rows[0]
+    expected_today = datetime.now(timezone(timedelta(hours=7))).date().isoformat()
+    assert record["asset_code"] == "211-P-13AR"
+    assert record["asset_type"] == "PUMP"
+    assert record["reading_date"] == expected_today
+    assert record["finding"] == "ditemukan kebocoran mechanical seal"
+    assert record["created_by"] == "user-mapping-1"
+    assert record["provenance"] == "WHATSAPP"
+    assert record["source_reference"] == f"WHATSAPP::{repo.rows[0]['intake_id']}"
+    # Never fabricated -- no vibration/temperature/pressure/severity value
+    # was ever supplied by this message, so none is invented here.
+    assert record["measurements"].get("mechseal_temp_de") is None
+    assert record["measurements"].get("vertical_vibration_de") is None
+
+
+def test_cmon_zero_open_schedules_uses_unscheduled_sentinel(monkeypatch):
+    # ZERO_SCHEDULE_ADHOC_TEST.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    cmon = FakeConditionMonitoringReadingRepository(schedules=[])
+    _wire(monkeypatch, repo, outbound, cmon_repository=cmon)
+
+    _post(_message_envelope(message_id="wamid.zeroschedA", text=_PRODUCTION_CMON_TEXT))
+    _post(_message_envelope(message_id="wamid.zeroschedB", text="Ya"))
+
+    assert len(cmon.rows) == 1
+    assert cmon.rows[0]["condition_monitoring_schedule_code"] == "UNSCHEDULED::WHATSAPP"
+    assert cmon.create_ad_hoc_draft_calls == [f"WHATSAPP::{repo.rows[0]['intake_id']}"]
+    assert cmon.create_draft_calls == []
+
+
+def test_cmon_one_open_schedule_uses_real_schedule_code(monkeypatch):
+    # ONE_SCHEDULE_RESOLUTION_TEST.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    cmon = FakeConditionMonitoringReadingRepository(
+        schedules=[{"condition_monitoring_schedule_code": "CMSCHED-REAL-1", "asset_code": "211-P-13AR", "status": "ACTIVE", "frequency": "Weekly"}]
+    )
+    _wire(monkeypatch, repo, outbound, cmon_repository=cmon)
+
+    _post(_message_envelope(message_id="wamid.oneschedA", text=_PRODUCTION_CMON_TEXT))
+    _post(_message_envelope(message_id="wamid.oneschedB", text="Ya"))
+
+    assert len(cmon.rows) == 1
+    assert cmon.rows[0]["condition_monitoring_schedule_code"] == "CMSCHED-REAL-1"
+    assert not cmon.rows[0]["condition_monitoring_schedule_code"].startswith("UNSCHEDULED")
+    assert cmon.create_draft_calls == ["CMSCHED-REAL-1"]
+    assert cmon.create_ad_hoc_draft_calls == []
+
+
+def test_cmon_multiple_open_schedules_returns_clarification_no_write(monkeypatch):
+    # MULTIPLE_SCHEDULE_CLARIFICATION_TEST.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    cmon = FakeConditionMonitoringReadingRepository(
+        schedules=[
+            {"condition_monitoring_schedule_code": "CMSCHED-A", "asset_code": "211-P-13AR", "status": "ACTIVE", "frequency": "Weekly"},
+            {"condition_monitoring_schedule_code": "CMSCHED-B", "asset_code": "211-P-13AR", "status": "PLANNED", "frequency": "Monthly"},
+        ]
+    )
+    _wire(monkeypatch, repo, outbound, cmon_repository=cmon)
+
+    _post(_message_envelope(message_id="wamid.multischedA", text=_PRODUCTION_CMON_TEXT))
+    response = _post(_message_envelope(message_id="wamid.multischedB", text="Ya"))
+
+    assert response.status_code == 200
+    assert cmon.rows == []  # no write at all
+    assert repo.rows[0]["state"] != "CONFIRMED"  # pending stays unresolved
+    reply = outbound.calls[-1][1]
+    assert "Ditemukan lebih dari satu jadwal" in reply
+    assert "Weekly" in reply and "Monthly" in reply
+    # Never a raw internal schedule code exposed as the only identifier.
+    assert "CMSCHED-A" not in reply
+    assert "CMSCHED-B" not in reply
+
+
+def test_cmon_only_terminal_schedules_treated_as_zero_open(monkeypatch):
+    # TERMINAL_SCHEDULE_ADHOC_TEST.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    cmon = FakeConditionMonitoringReadingRepository(
+        schedules=[
+            {"condition_monitoring_schedule_code": "CMSCHED-DONE", "asset_code": "211-P-13AR", "status": "COMPLETED", "frequency": "Weekly"},
+            {"condition_monitoring_schedule_code": "CMSCHED-CANCEL", "asset_code": "211-P-13AR", "status": "CANCELLED", "frequency": "Weekly"},
+        ]
+    )
+    _wire(monkeypatch, repo, outbound, cmon_repository=cmon)
+
+    _post(_message_envelope(message_id="wamid.termschedA", text=_PRODUCTION_CMON_TEXT))
+    _post(_message_envelope(message_id="wamid.termschedB", text="Ya"))
+
+    assert len(cmon.rows) == 1
+    assert cmon.rows[0]["condition_monitoring_schedule_code"] == "UNSCHEDULED::WHATSAPP"
+
+
+def test_cmon_repeated_confirmation_does_not_duplicate_canonical_record(monkeypatch):
+    # CMON_REPEATED_CONFIRMATION_TEST.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    cmon = FakeConditionMonitoringReadingRepository()
+    _wire(monkeypatch, repo, outbound, cmon_repository=cmon)
+
+    _post(_message_envelope(message_id="wamid.repconfA", text=_PRODUCTION_CMON_TEXT))
+    _post(_message_envelope(message_id="wamid.repconfB", text="Ya"))
+    assert len(cmon.rows) == 1
+
+    response = _post(_message_envelope(message_id="wamid.repconfC", text="YA"))
+
+    assert response.status_code == 200
+    assert len(cmon.rows) == 1  # no second canonical record
+
+
+def test_cmon_duplicate_webhook_delivery_does_not_duplicate_canonical_record(monkeypatch):
+    # CMON_DUPLICATE_WEBHOOK_TEST -- redelivery of the SAME "Ya" event.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    cmon = FakeConditionMonitoringReadingRepository()
+    _wire(monkeypatch, repo, outbound, cmon_repository=cmon)
+
+    _post(_message_envelope(message_id="wamid.dupwebA", text=_PRODUCTION_CMON_TEXT))
+    body = json.dumps(_message_envelope(message_id="wamid.dupwebB", text="Ya")).encode("utf-8")
+    signature = {"X-Hub-Signature-256": _sign(body, "test-app-secret")}
+    first = client.post(WEBHOOK_PATH, content=body, headers=signature)
+    second = client.post(WEBHOOK_PATH, content=body, headers=signature)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert len(cmon.rows) == 1
+
+
+def test_cmon_explicit_code_repeat_does_not_duplicate_canonical_record(monkeypatch):
+    # CMON_EXPLICIT_REPEAT_TEST.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    cmon = FakeConditionMonitoringReadingRepository()
+    _wire(monkeypatch, repo, outbound, cmon_repository=cmon)
+
+    _post(_message_envelope(message_id="wamid.explrepA", text=_PRODUCTION_CMON_TEXT))
+    code = repo.rows[0]["confirmation_id"]
+    _post(_message_envelope(message_id="wamid.explrepB", text="Ya"))
+    assert len(cmon.rows) == 1
+
+    response = _post(_message_envelope(message_id="wamid.explrepC", text=f"YA {code}"))
+
+    assert response.status_code == 200
+    assert len(cmon.rows) == 1
+    assert outbound.calls[-1] == (SENDER_A, "Data sudah dikonfirmasi.")
+
+
+def test_cmon_idempotent_recovery_when_write_succeeded_but_intake_transition_did_not(monkeypatch):
+    # Durable idempotency proof for the exact gap true cross-repository
+    # atomicity can't close (see TRANSACTION_BOUNDARY in the final
+    # report): a prior attempt's canonical write succeeded but the
+    # process never reached transition_pending (crash/network failure in
+    # between). Retrying must find the existing row by source_reference
+    # and complete the intake transition -- never write a second record.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    cmon = FakeConditionMonitoringReadingRepository()
+    _wire(monkeypatch, repo, outbound, cmon_repository=cmon)
+
+    _post(_message_envelope(message_id="wamid.recoverA", text=_PRODUCTION_CMON_TEXT))
+    intake_id = repo.rows[0]["intake_id"]
+    # Simulate the CMON write having already succeeded on a prior attempt
+    # that crashed before the intake's own CONFIRMED transition.
+    cmon.rows.append(
+        {
+            "condition_monitoring_reading_code": "CMONR-PRIOR0001",
+            "condition_monitoring_schedule_code": "UNSCHEDULED::WHATSAPP",
+            "asset_code": "211-P-13AR",
+            "reading_date": "2026-08-29",
+            "source_reference": f"WHATSAPP::{intake_id}",
+        }
+    )
+    assert repo.rows[0]["state"] == "NEEDS_INFORMATION"  # never completed last time
+
+    response = _post(_message_envelope(message_id="wamid.recoverB", text="Ya"))
+
+    assert response.status_code == 200
+    assert repo.rows[0]["state"] == "CONFIRMED"
+    assert len(cmon.rows) == 1  # still exactly the one pre-existing record
+    assert outbound.calls[-1][1] != "Gagal menyimpan Condition Monitoring. Silakan coba lagi."
+
+
+def test_cmon_write_failure_does_not_confirm_or_send_false_success(monkeypatch):
+    # CMON_WRITE_FAILURE_ROLLBACK_TEST + NO_FALSE_SUCCESS_TEST.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    cmon = FakeConditionMonitoringReadingRepository(fail=True)
+    _wire(monkeypatch, repo, outbound, cmon_repository=cmon)
+
+    _post(_message_envelope(message_id="wamid.failA", text=_PRODUCTION_CMON_TEXT))
+    response = _post(_message_envelope(message_id="wamid.failB", text="Ya"))
+
+    assert response.status_code == 200
+    assert cmon.rows == []
+    assert repo.rows[0]["state"] != "CONFIRMED"
+    reply = outbound.calls[-1][1]
+    assert "berhasil" not in reply
+    assert "Berhasil" not in reply
+    assert reply == "Gagal menyimpan Condition Monitoring. Silakan coba lagi."
+
+
+def test_cmon_wrong_sender_never_reaches_canonical_write(monkeypatch):
+    # CMON_WRONG_SENDER_TEST.
+    repo = FakeIntakeRepository({SENDER_A: _identity(user_id="user-a"), SENDER_B: _identity(user_id="user-b")})
+    outbound = FakeOutboundClient()
+    cmon = FakeConditionMonitoringReadingRepository()
+    _wire(monkeypatch, repo, outbound, cmon_repository=cmon)
+
+    _post(_message_envelope(message_id="wamid.wrongsenderA", sender="15550000001", text=_PRODUCTION_CMON_TEXT))
+    response = _post(_message_envelope(message_id="wamid.wrongsenderB", sender="15550000002", text="Ya"))
+
+    assert response.status_code == 200
+    assert cmon.rows == []
+    assert cmon.create_draft_calls == []
+    assert cmon.create_ad_hoc_draft_calls == []
+    assert repo.rows[0]["state"] != "CONFIRMED"
+
+
+def test_cmon_wrong_org_never_reaches_canonical_write(monkeypatch):
+    # CMON_WRONG_ORG_TEST.
+    repo = FakeIntakeRepository({SENDER_A: _identity(organization_id="org-tap")})
+    outbound = FakeOutboundClient()
+    cmon = FakeConditionMonitoringReadingRepository()
+    _wire(monkeypatch, repo, outbound, cmon_repository=cmon)
+
+    _post(_message_envelope(message_id="wamid.wrongorgA", text=_PRODUCTION_CMON_TEXT))
+    repo.rows[0]["organization_id"] = "org-other"  # simulate a stored row from a different org
+
+    response = _post(_message_envelope(message_id="wamid.wrongorgB", text="Ya"))
+
+    assert response.status_code == 200
+    assert cmon.rows == []
+    assert repo.rows[0]["state"] != "CONFIRMED"
+
+
+def test_cmon_unknown_asset_never_reaches_canonical_write(monkeypatch):
+    # CMON_UNKNOWN_ASSET_TEST -- existing UNKNOWN_PUMP validation already
+    # blocks confirmation before the CMON-write step is ever reached.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    cmon = FakeConditionMonitoringReadingRepository()
+    _wire(monkeypatch, repo, outbound, cmon_repository=cmon)
+
+    _post(_message_envelope(message_id="wamid.unkassetA", text="CM 999-P-99 hari ini DE 78 NDE 81 tidak bocor"))
+    assert "UNKNOWN_PUMP" in repo.rows[0]["validation_result"]["errors"]
+
+    response = _post(_message_envelope(message_id="wamid.unkassetB", text="Ya"))
+
+    assert response.status_code == 200
+    assert cmon.rows == []
+    assert repo.rows[0]["state"] != "CONFIRMED"

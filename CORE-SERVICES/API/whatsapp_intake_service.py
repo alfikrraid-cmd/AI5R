@@ -104,6 +104,39 @@ class PumpGatewayProtocol(Protocol):
     def get_pump(self, tag_number: str) -> dict[str, Any]: ...
 
 
+class ConditionMonitoringWriterProtocol(Protocol):
+    # Authoritative CMON writer -- CORE-SERVICES/API/
+    # condition_monitoring_reading_repository.py's ConditionMonitoringReadingRepository
+    # already implements every method here; reused as-is, not duplicated.
+    def find_by_source_reference(self, source_reference: str) -> dict | None: ...
+    def find_open_schedules_by_asset(self, asset_code: str) -> list[dict]: ...
+    def create_draft(
+        self,
+        *,
+        condition_monitoring_schedule_code: str,
+        asset_code: str,
+        asset_type: str | None,
+        reading_date: str | None,
+        measurements: dict,
+        created_by: str,
+        provenance: str,
+        source_reference: str | None,
+        finding: str | None,
+    ) -> dict: ...
+    def create_ad_hoc_draft(
+        self,
+        *,
+        asset_code: str,
+        asset_type: str | None,
+        reading_date: str | None,
+        measurements: dict,
+        created_by: str,
+        source_reference: str,
+        finding: str | None,
+        provenance: str,
+    ) -> dict | None: ...
+
+
 @dataclass(frozen=True, slots=True)
 class IntakeResult:
     status: str
@@ -139,6 +172,7 @@ def process_inbound_message(
     received_at: str | None = None,
     provider_payload: dict[str, Any] | None = None,
     context_message_id: str | None = None,
+    cmon_repository: ConditionMonitoringWriterProtocol | None = None,
 ) -> IntakeResult:
     result = _process_inbound_message(
         provider=provider,
@@ -150,6 +184,7 @@ def process_inbound_message(
         received_at=received_at,
         provider_payload=provider_payload,
         context_message_id=context_message_id,
+        cmon_repository=cmon_repository,
     )
     _log_intake_result(result)
     return result
@@ -180,6 +215,7 @@ def _process_inbound_message(
     received_at: str | None = None,
     provider_payload: dict[str, Any] | None = None,
     context_message_id: str | None = None,
+    cmon_repository: ConditionMonitoringWriterProtocol | None = None,
 ) -> IntakeResult:
     normalized_sender = normalize_sender_identifier(sender_identifier)
     sender_hash = hash_sender_identifier(normalized_sender)
@@ -196,7 +232,7 @@ def _process_inbound_message(
 
     stripped = (text or "").strip()
     existing_action = _handle_existing_pending_action(
-        stripped, repository, identity, pump_gateway, context_message_id
+        stripped, repository, identity, pump_gateway, context_message_id, cmon_repository
     )
     if existing_action is not None:
         return existing_action
@@ -246,6 +282,7 @@ def _handle_existing_pending_action(
     identity: AuthenticatedIdentity,
     pump_gateway: PumpGatewayProtocol,
     context_message_id: str | None,
+    cmon_repository: ConditionMonitoringWriterProtocol | None = None,
 ) -> IntakeResult | None:
     tokens = text.strip().split(maxsplit=1)
     if not tokens:
@@ -307,7 +344,7 @@ def _handle_existing_pending_action(
         return IntakeResult(status="REJECTED", message="ORG_SCOPE_MISMATCH", reply="Data tidak ditemukan.")
 
     if action in {"ya", "y", "confirm"}:
-        return _confirm_pending(pending, repository, identity, pump_gateway)
+        return _confirm_pending(pending, repository, identity, pump_gateway, cmon_repository)
 
     if action == "ubah":
         updated = repository.transition_pending(
@@ -326,6 +363,7 @@ def _confirm_pending(
     repository: WhatsAppIntakeRepositoryProtocol,
     identity: AuthenticatedIdentity,
     pump_gateway: PumpGatewayProtocol,
+    cmon_repository: ConditionMonitoringWriterProtocol | None = None,
 ) -> IntakeResult:
     if pending.get("state") == "CONFIRMED":
         # MWO-025J2 Part F -- idempotency: no re-transition, no re-stamped
@@ -382,6 +420,14 @@ def _confirm_pending(
         )
         return IntakeResult(status="NEEDS_INFORMATION", message="STILL_INVALID", intake=updated, reply=_build_follow_up(validation))
 
+    # Authoritative CMON writer -- PM is deliberately untouched (PM_CHANGE=
+    # ZERO): only CONDITION_MONITORING reaches the write path below, and
+    # only when a writer was actually supplied (callers that don't pass
+    # one -- none currently, but this keeps the public function backward
+    # compatible -- get the exact prior no-write behavior).
+    if domain == "CONDITION_MONITORING" and cmon_repository is not None:
+        return _confirm_condition_monitoring(pending, payload, validation, repository, identity, cmon_repository)
+
     updated = repository.transition_pending(
         pending["intake_id"],
         state="CONFIRMED",
@@ -394,6 +440,158 @@ def _confirm_pending(
         message="CONFIRMED_NO_ENGINEERING_WRITE",
         intake=updated,
         reply="Terkonfirmasi sebagai draft intake. Belum dibuat record PM/CMON.",
+    )
+
+
+def _extract_cmon_finding(original_message: str | None) -> str | None:
+    # Cleans the free-text observation out of the raw inbound message the
+    # same way the PM path already strips its own tag/intent prefix
+    # (_extract_payload's activity_text derivation) -- reused pattern, not
+    # a new one. "CMON 211-P-13AR: ditemukan kebocoran mechanical seal"
+    # -> "ditemukan kebocoran mechanical seal".
+    text = re.sub(_TAG_PATTERN, "", original_message or "", count=1)
+    text = re.sub(r"^\s*(?:CMON|CM|CONDITION)\b", "", text, flags=re.IGNORECASE).strip()
+    text = text.lstrip(":").strip()
+    return text or None
+
+
+def _cmon_success_reply(record: dict[str, Any]) -> str:
+    lines = [f"Condition Monitoring {record.get('asset_code')} berhasil disimpan."]
+    if record.get("reading_date"):
+        lines.append(f"Tanggal: {record['reading_date']}")
+    if record.get("condition_monitoring_reading_code"):
+        lines.append(f"Kode: {record['condition_monitoring_reading_code']}")
+    return "\n".join(lines)
+
+
+def _confirm_condition_monitoring(
+    pending: dict[str, Any],
+    payload: dict[str, Any],
+    validation: dict[str, Any],
+    repository: WhatsAppIntakeRepositoryProtocol,
+    identity: AuthenticatedIdentity,
+    cmon_repository: ConditionMonitoringWriterProtocol,
+) -> IntakeResult:
+    intake_id = pending["intake_id"]
+    # Idempotency -- deterministic, durable, DB-backed identity key built
+    # from the immutable intake_id (never in-memory state, a timestamp, or
+    # message text). A repeat "YA", a duplicate webhook delivery reaching
+    # this point, or a retry after a network failure between the CMON
+    # insert and the CONFIRMED transition below, all recompute this exact
+    # same value and find the already-written row on the next attempt.
+    source_reference = f"WHATSAPP::{intake_id}"
+
+    already_written = cmon_repository.find_by_source_reference(source_reference)
+    if already_written is not None:
+        updated = repository.transition_pending(
+            intake_id,
+            state="CONFIRMED",
+            confirmed_by=identity.user_id,
+            validation_result=validation,
+            structured_payload=payload,
+        )
+        logger.info("event=whatsapp_cmon_write result=ALREADY_RECORDED intake_id=%s", _correlation_id(intake_id))
+        return IntakeResult(
+            status="CONFIRMED",
+            message="CONFIRMED_CMON_ALREADY_RECORDED",
+            intake=updated,
+            reply=_cmon_success_reply(already_written),
+        )
+
+    asset_code = payload.get("asset_code")
+    open_schedules = cmon_repository.find_open_schedules_by_asset(asset_code)
+
+    if len(open_schedules) > 1:
+        # Never guess which schedule this reading belongs to. Pending
+        # stays open (state unchanged) -- no write, no false confirmation
+        # -- until the user picks one. Human-readable choices only, never
+        # a raw internal schedule code the engineer would have to already
+        # know.
+        listing = "\n".join(
+            f"{i}. {schedule.get('frequency') or schedule.get('condition_monitoring_schedule_code')}"
+            for i, schedule in enumerate(open_schedules, start=1)
+        )
+        logger.info(
+            "event=whatsapp_cmon_write result=AMBIGUOUS_SCHEDULE intake_id=%s candidate_count=%s",
+            _correlation_id(intake_id),
+            len(open_schedules),
+        )
+        return IntakeResult(
+            status="NEEDS_INFORMATION",
+            message="AMBIGUOUS_SCHEDULE_SELECTION",
+            intake=pending,
+            reply=(
+                f"Ditemukan lebih dari satu jadwal Condition Monitoring untuk {asset_code}:\n"
+                f"{listing}\nPilih nomor jadwal yang sesuai."
+            ),
+        )
+
+    measurements = payload.get("measurements") or {}
+    finding = _extract_cmon_finding(pending.get("original_message"))
+
+    try:
+        if len(open_schedules) == 1:
+            created = cmon_repository.create_draft(
+                condition_monitoring_schedule_code=open_schedules[0]["condition_monitoring_schedule_code"],
+                asset_code=asset_code,
+                asset_type=payload.get("asset_type"),
+                reading_date=payload.get("reading_date"),
+                measurements=measurements,
+                created_by=identity.user_id,
+                provenance="WHATSAPP",
+                source_reference=source_reference,
+                finding=finding,
+            )
+        else:
+            # Zero open schedules -- legitimate ad-hoc Condition Monitoring
+            # (established precedent: PRODUCTS/LTSA-BRAIN/INGESTION/
+            # ltsa_hoc_pm_cm_upsert.py's build_unscheduled_reference()).
+            # Deterministic, no timestamp/UUID in the sentinel itself --
+            # only source_reference (already unique per intake_id) carries
+            # per-message identity.
+            created = cmon_repository.create_ad_hoc_draft(
+                asset_code=asset_code,
+                asset_type=payload.get("asset_type"),
+                reading_date=payload.get("reading_date"),
+                measurements=measurements,
+                created_by=identity.user_id,
+                source_reference=source_reference,
+                finding=finding,
+                provenance="WHATSAPP",
+            )
+    except Exception:
+        # Covers create_draft's own WHERE EXISTS-no-match IndexError (e.g.
+        # a schedule was cancelled/completed by someone else between the
+        # find_open_schedules_by_asset check above and this insert) and
+        # any other write-layer failure alike -- never a false success.
+        created = None
+
+    if not created:
+        logger.info("event=whatsapp_cmon_write result=FAILED intake_id=%s", _correlation_id(intake_id))
+        return IntakeResult(
+            status="NEEDS_INFORMATION",
+            message="CMON_WRITE_FAILED",
+            intake=pending,
+            reply="Gagal menyimpan Condition Monitoring. Silakan coba lagi.",
+        )
+
+    updated = repository.transition_pending(
+        intake_id,
+        state="CONFIRMED",
+        confirmed_by=identity.user_id,
+        validation_result=validation,
+        structured_payload=payload,
+    )
+    logger.info(
+        "event=whatsapp_cmon_write result=SUCCESS intake_id=%s schedule=%s",
+        _correlation_id(intake_id),
+        "REAL" if len(open_schedules) == 1 else "UNSCHEDULED",
+    )
+    return IntakeResult(
+        status="CONFIRMED",
+        message="CONFIRMED_CMON_RECORDED",
+        intake=updated,
+        reply=_cmon_success_reply(created),
     )
 
 

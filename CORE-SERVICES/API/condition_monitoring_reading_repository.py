@@ -94,6 +94,32 @@ class ConditionMonitoringReadingRepository:
         )
         return rows[0] if rows else None
 
+    def find_by_source_reference(self, source_reference: str) -> dict | None:
+        # WhatsApp CMON writer -- durable, DB-backed idempotency lookup.
+        # source_reference already exists for exactly this "where did this
+        # record originate from" traceability purpose (see this table's
+        # own DDL comment in CANONICAL_SCHEMA.sql); reused unmodified, no
+        # schema change.
+        rows = _json_query(
+            f"SELECT {_SELECT_COLUMNS} FROM condition_monitoring_reading "
+            f"WHERE source_reference = {_sql(source_reference)} AND deleted_at IS NULL LIMIT 1",
+            self._runner,
+        )
+        return rows[0] if rows else None
+
+    def find_open_schedules_by_asset(self, asset_code: str) -> list[dict]:
+        # WhatsApp CMON writer -- "open" mirrors create_draft's own existing
+        # auto-completion semantics (status NOT IN ('CANCELLED','COMPLETED')
+        # is exactly what its schedule_completion CTE treats as still
+        # eligible to be completed by a new reading).
+        return _json_query(
+            "SELECT condition_monitoring_schedule_code, asset_code, asset_type, frequency, status "
+            "FROM condition_monitoring_schedule "
+            f"WHERE asset_code = {_sql(asset_code)} AND status NOT IN ('CANCELLED', 'COMPLETED') "
+            "ORDER BY condition_monitoring_schedule_code",
+            self._runner,
+        )
+
     def list_all(self, *, scope: frozenset[str] | None = None, limit: int = 25, offset: int = 0) -> dict:
         scope_clause = ""
         if scope is not None:
@@ -205,6 +231,64 @@ class ConditionMonitoringReadingRepository:
             or "[]"
         )
         return rows[0]
+
+    def create_ad_hoc_draft(
+        self,
+        *,
+        asset_code: str,
+        asset_type: str | None,
+        reading_date: str | None,
+        measurements: dict,
+        created_by: str,
+        source_reference: str,
+        finding: str | None = None,
+        provenance: str = "WHATSAPP",
+    ) -> dict | None:
+        """Ad-hoc Condition Monitoring reading with no real schedule to
+        link to -- the same disclosed 'UNSCHEDULED::<source>' sentinel
+        convention PRODUCTS/LTSA-BRAIN/INGESTION/ltsa_hoc_pm_cm_upsert.py's
+        own build_unscheduled_reference() already established for
+        historical ingestion (self-disclosing in any query result, never a
+        fabricated condition_monitoring_schedule row -- that table is
+        never touched by this method). Shares _new_code()/
+        _MEASUREMENT_COLUMNS/_SELECT_COLUMNS and the same CTE shape as
+        create_draft -- only the schedule-EXISTS gate and the schedule-
+        completion side effect are omitted, since by construction this is
+        only called when no real schedule row exists to gate on or
+        complete.
+
+        Returns None (no row created, no exception) when asset_code
+        doesn't exist -- callers must check for this rather than assume
+        success, same contract as create_draft's own WHERE EXISTS-gated
+        silent-no-op-on-missing-asset behavior.
+        """
+        code = _new_code()
+        schedule_code = f"UNSCHEDULED::{provenance}"
+        measurement_cols = ", ".join(_MEASUREMENT_COLUMNS)
+        measurement_vals = ", ".join(_sql(measurements.get(col)) for col in _MEASUREMENT_COLUMNS)
+        rows = json.loads(
+            self._runner.query_scalar(
+                "WITH ins AS ("
+                "INSERT INTO condition_monitoring_reading "
+                "(condition_monitoring_reading_code, condition_monitoring_schedule_code, "
+                f"asset_code, asset_type, reading_date, {measurement_cols}, "
+                "workflow_status, provenance, created_by, updated_by, source_reference, finding) VALUES "
+                f"SELECT {_sql(code)}, {_sql(schedule_code)}, {_sql(asset_code)}, "
+                f"{_sql(asset_type)}, {_sql(reading_date)}, {measurement_vals}, "
+                f"{_sql(DRAFT)}, {_sql(provenance)}, {_sql(created_by)}, {_sql(created_by)}, "
+                f"{_sql(source_reference)}, {_sql(finding)} "
+                f"WHERE EXISTS (SELECT 1 FROM ltsa_pumps WHERE tag_number = {_sql(asset_code)}) "
+                ") "
+                f"RETURNING {_SELECT_COLUMNS}"
+                "), audit AS (INSERT INTO record_change_history "
+                "(entity_type, entity_id, field_name, old_value, new_value, changed_by, reason) "
+                "SELECT 'CONDITION_MONITORING_READING', condition_monitoring_reading_code, '__record__', NULL, "
+                "row_to_json(ins)::text, created_by, 'CREATE' FROM ins) "
+                "SELECT COALESCE(json_agg(row_to_json(t))::text, '[]') FROM ins t;"
+            )
+            or "[]"
+        )
+        return rows[0] if rows else None
 
     def update_draft(
         self,

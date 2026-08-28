@@ -10,7 +10,12 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, 
 from fastapi.responses import PlainTextResponse
 
 from API.whatsapp_intake_service import normalize_sender_identifier, process_inbound_message
-from dependencies import get_pump_gateway, get_whatsapp_intake_repository, get_whatsapp_outbound_client
+from dependencies import (
+    get_condition_monitoring_reading_repository,
+    get_pump_gateway,
+    get_whatsapp_intake_repository,
+    get_whatsapp_outbound_client,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +115,7 @@ def _handle_inbound_message(
     repository,
     pump_gateway,
     outbound_client,
+    cmon_repository,
     background_tasks: BackgroundTasks,
 ) -> dict[str, Any]:
     provider_message_id = message.get("id")
@@ -130,6 +136,7 @@ def _handle_inbound_message(
         pump_gateway=pump_gateway,
         provider_payload=message,
         context_message_id=context_message_id,
+        cmon_repository=cmon_repository,
     )
 
     # A duplicate webhook delivery of the same provider_message_id must not
@@ -165,6 +172,7 @@ async def receive_whatsapp_webhook(
     repository=Depends(get_whatsapp_intake_repository),
     pump_gateway=Depends(get_pump_gateway),
     outbound_client=Depends(get_whatsapp_outbound_client),
+    cmon_repository=Depends(get_condition_monitoring_reading_repository),
 ) -> dict[str, Any]:
     raw_body = await request.body()
     if not _signature_valid(raw_body, x_hub_signature_256):
@@ -189,7 +197,9 @@ async def receive_whatsapp_webhook(
                         _correlation_id(message.get("id")),
                     )
                     results.append(
-                        _handle_inbound_message(message, repository, pump_gateway, outbound_client, background_tasks)
+                        _handle_inbound_message(
+                            message, repository, pump_gateway, outbound_client, cmon_repository, background_tasks
+                        )
                     )
             elif statuses:
                 logger.info("event=whatsapp_webhook_received event_type=statuses signature_valid=true")

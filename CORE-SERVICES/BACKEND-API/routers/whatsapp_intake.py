@@ -6,7 +6,7 @@ import os
 from fastapi import APIRouter, Depends, Header, HTTPException
 
 from API.whatsapp_intake_service import process_inbound_message
-from dependencies import get_pump_gateway, get_whatsapp_intake_repository
+from dependencies import get_condition_monitoring_reading_repository, get_pump_gateway, get_whatsapp_intake_repository
 from models.requests import WhatsAppIntakeRequest
 from models.responses import Payload
 
@@ -39,6 +39,7 @@ def receive_whatsapp_intake(
     payload: WhatsAppIntakeRequest,
     repository=Depends(get_whatsapp_intake_repository),
     pump_gateway=Depends(get_pump_gateway),
+    cmon_repository=Depends(get_condition_monitoring_reading_repository),
 ) -> Payload:
     result = process_inbound_message(
         provider=payload.provider,
@@ -49,6 +50,7 @@ def receive_whatsapp_intake(
         provider_payload=payload.provider_payload,
         repository=repository,
         pump_gateway=pump_gateway,
+        cmon_repository=cmon_repository,
     )
     return {
         "success": result.status not in {"REJECTED"},
