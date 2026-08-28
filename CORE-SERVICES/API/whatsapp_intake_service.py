@@ -42,6 +42,15 @@ _ACTION_WORDS = frozenset({"ya", "y", "confirm", "ubah", "batal", "cancel"})
 _DATE_FIELD_BY_DOMAIN = {"CONDITION_MONITORING": "reading_date", "PM": "occurrence_date"}
 _DATE_ERROR_BY_DOMAIN = {"CONDITION_MONITORING": "READING_DATE_REQUIRED", "PM": "OCCURRENCE_DATE_REQUIRED"}
 
+# Confirmation integrity fix -- confirmation_id is generated as
+# 'WA-CONF-' || a 32-hex-char UUID (migration 030), always this exact
+# shape. Matches it anywhere in the trailing text after the action word,
+# so a reply that echoes AI5R's own "- WA-CONF-xxxx: CONDITION_MONITORING
+# 211-P-13AR" listing format (trailing colon + descriptive label) still
+# extracts just the code, deterministically -- never the raw remainder
+# text, which would only ever equal the stored confirmation_id by luck.
+_CONFIRMATION_CODE_PATTERN = re.compile(r"(WA-CONF-[0-9A-Fa-f]+)")
+
 
 class WhatsAppIntakeRepositoryProtocol(Protocol):
     def find_identity_by_sender_hash(self, sender_hash: str) -> AuthenticatedIdentity | None: ...
@@ -216,7 +225,14 @@ def _handle_existing_pending_action(
     action = tokens[0].casefold()
     if action not in _ACTION_WORDS:
         return None
-    selector = tokens[1].strip() if len(tokens) > 1 else None
+    remainder = tokens[1].strip() if len(tokens) > 1 else None
+    # Only treat this as an explicit code selector when a WA-CONF-shaped
+    # token actually appears in the remainder -- trailing text that never
+    # contained a code (e.g. "YA please") falls through to the normal
+    # single/ambiguous-pending resolution below instead of being rejected
+    # as an unrecognized code.
+    selector_match = _CONFIRMATION_CODE_PATTERN.search(remainder) if remainder else None
+    selector = selector_match.group(1) if selector_match else None
 
     # MWO-025J2 Part E -- context-linked resolution takes priority: if this
     # reply is a Meta reply/quote of a specific AI5R outbound message, that
@@ -337,6 +353,38 @@ def _confirm_pending(
     )
 
 
+def _supersede_prior_actionable_same_intent(
+    repository: WhatsAppIntakeRepositoryProtocol,
+    sender_user_id: str,
+    domain: str | None,
+    asset_code: str | None,
+) -> None:
+    # Confirmation integrity fix -- a user resending essentially the same
+    # CMON/PM request (e.g. impatient retries while waiting for AI5R's
+    # missing-field question) arrives as genuinely distinct
+    # provider_message_ids, so find_pending_by_delivery_key's redelivery
+    # dedup never applies to it: each resend was, until now, creating its
+    # own separate actionable pending row for the identical
+    # (domain, asset_code) pair, which is exactly what produced multiple
+    # simultaneous WA-CONF codes for one real-world intent. Expiring
+    # prior still-open rows (NEEDS_INFORMATION/READY_FOR_CONFIRMATION --
+    # never CONFIRMED; a completed confirmation is never touched by a
+    # later message) for the same intent, only once this is confirmed to
+    # be a genuinely new delivery (called from _persist after its own
+    # duplicate check), keeps at most one actionable row per
+    # (user, domain, asset_code) from this path.
+    if not asset_code or not domain:
+        return
+    for row in repository.find_actionable_pending_list(sender_user_id):
+        if row.get("state") not in {"NEEDS_INFORMATION", "READY_FOR_CONFIRMATION"}:
+            continue
+        if row.get("detected_domain") != domain:
+            continue
+        if (row.get("structured_payload") or {}).get("asset_code") != asset_code:
+            continue
+        repository.transition_pending(row["intake_id"], state="EXPIRED")
+
+
 def _persist(repository: WhatsAppIntakeRepositoryProtocol, **payload: Any) -> IntakeResult:
     payload["normalized_payload_hash"] = normalized_payload_hash(payload["structured_payload"])
     duplicate = repository.find_pending_by_delivery_key(
@@ -344,6 +392,12 @@ def _persist(repository: WhatsAppIntakeRepositoryProtocol, **payload: Any) -> In
     )
     if duplicate is not None:
         return IntakeResult(status=duplicate["state"], message="DUPLICATE_DELIVERY", intake=duplicate, reply=duplicate.get("reply_text"))
+    _supersede_prior_actionable_same_intent(
+        repository,
+        payload["sender_user_id"],
+        payload.get("detected_domain"),
+        (payload.get("structured_payload") or {}).get("asset_code"),
+    )
     saved = repository.create_pending(payload)
     return IntakeResult(status=saved["state"], message="PENDING_CREATED", intake=saved, reply=payload.get("reply"))
 

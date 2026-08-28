@@ -666,3 +666,134 @@ def test_confirmation_flow_never_touches_authoritative_tables(monkeypatch):
     response = _post(_message_envelope(message_id="wamid.noauth_ya1", text="YA"))
     assert response.status_code == 200
     assert repo.rows[0]["state"] == "CONFIRMED"
+
+
+# --- Confirmation integrity fix: real production defect reproduction ------
+#
+# A real WhatsApp interaction produced FOUR simultaneous WA-CONF pending
+# rows for the same (CONDITION_MONITORING, 211-P-13AR) intent, and then
+# "Kode konfirmasi tidak ditemukan." when the user replied with a code
+# copied verbatim from AI5R's own displayed listing (which includes a
+# trailing ": CONDITION_MONITORING 211-P-13AR" label). Two separate root
+# causes, reproduced individually below.
+
+
+def test_create_confirmation_then_retrieve_by_exact_generated_code(monkeypatch):
+    # TEST 1.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    _wire(monkeypatch, repo, outbound)
+    _post(_message_envelope(message_id="wamid.gencode1", text="CM 211-P-13AR hari ini DE 78 NDE 81 tidak bocor"))
+    generated_code = repo.rows[0]["confirmation_id"]
+
+    found = repo.find_pending_by_confirmation_id(generated_code, "user-1")
+
+    assert found is not None
+    assert found["intake_id"] == repo.rows[0]["intake_id"]
+
+
+def test_ya_with_confirmation_code_and_trailing_descriptive_label_resolves(monkeypatch):
+    # TEST 3 -- reproduces the exact real defect: the user replied with
+    # AI5R's own displayed line verbatim, "Ya WA-CONF-<id>:
+    # CONDITION_MONITORING 211-P-13AR", copied straight from the
+    # ambiguity listing. Before the fix, the naive "everything after the
+    # first space" selector included the trailing ": CONDITION_MONITORING
+    # 211-P-13AR" text, so the exact-match confirmation_id lookup always
+    # failed with "Kode konfirmasi tidak ditemukan." -- reproduced here
+    # with two ambiguous rows exactly like the real conversation.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    _wire(monkeypatch, repo, outbound)
+    _post(_message_envelope(message_id="wamid.labelA", text="CM 211-P-13AR hari ini DE 78 NDE 81 tidak bocor"))
+    _post(_message_envelope(message_id="wamid.labelB", text="CM 210-P-05AR hari ini DE 70 NDE 71 tidak bocor"))
+    target_code = repo.rows[0]["confirmation_id"]
+
+    response = _post(
+        _message_envelope(
+            message_id="wamid.label_ya1",
+            text=f"Ya {target_code}: CONDITION_MONITORING 211-P-13AR",
+        )
+    )
+
+    assert response.status_code == 200
+    assert repo.rows[0]["state"] == "CONFIRMED"
+    assert repo.rows[1]["state"] != "CONFIRMED"
+    assert outbound.calls[-1] != (SENDER_A, "Kode konfirmasi tidak ditemukan.")
+
+
+def test_ya_with_unrecognizable_trailing_text_falls_back_instead_of_rejecting(monkeypatch):
+    # A related edge case the same fix resolves: trailing text that was
+    # never meant to be a code (no "WA-CONF-" anywhere in it) must not be
+    # treated as an unrecognized-code rejection -- it falls through to the
+    # normal single-candidate resolution.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    _wire(monkeypatch, repo, outbound)
+    _post(_message_envelope(message_id="wamid.plain1", text="CM 211-P-13AR hari ini DE 78 NDE 81 tidak bocor"))
+
+    response = _post(_message_envelope(message_id="wamid.plain_ya1", text="YA please confirm this one"))
+
+    assert response.status_code == 200
+    assert repo.rows[0]["state"] == "CONFIRMED"
+
+
+def test_invalid_confirmation_code_performs_zero_writes(monkeypatch):
+    # TEST 8.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    _wire(monkeypatch, repo, outbound)
+    _post(_message_envelope(message_id="wamid.badcode1", text="CM 211-P-13AR hari ini DE 78 NDE 81 tidak bocor"))
+    states_before = [dict(row) for row in repo.rows]
+
+    response = _post(_message_envelope(message_id="wamid.badcode_ya1", text="YA WA-CONF-doesnotexist00000000000000"))
+
+    assert response.status_code == 200
+    assert [row["state"] for row in repo.rows] == [row["state"] for row in states_before]
+    assert repo.rows[0].get("confirmed_by") is None
+    assert outbound.calls[-1] == (SENDER_A, "Kode konfirmasi tidak ditemukan.")
+
+
+def test_repeated_resend_of_same_intent_does_not_create_multiple_actionable_confirmations(monkeypatch):
+    # TEST 4 -- reproduces the real defect's second symptom: the same
+    # logical CMON request, resent as genuinely distinct WhatsApp
+    # messages (distinct provider_message_id each -- e.g. an impatient
+    # user retrying), must not accumulate multiple simultaneous
+    # actionable confirmations. Before the fix, each resend created its
+    # own pending row since delivery-key dedup only catches a literal
+    # redelivery of the SAME provider_message_id, never a second,
+    # independent message with equivalent content.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    _wire(monkeypatch, repo, outbound)
+    text = "CMON 211-P-13AR: ditemukan kebocoran mechanical seal"
+    for i in range(4):
+        _post(_message_envelope(message_id=f"wamid.resend{i}", text=text))
+
+    assert len(repo.rows) == 4  # each real message is still recorded...
+    actionable = [row for row in repo.rows if row["state"] in {"NEEDS_INFORMATION", "READY_FOR_CONFIRMATION"}]
+    expired = [row for row in repo.rows if row["state"] == "EXPIRED"]
+    assert len(actionable) == 1  # ...but only the newest stays actionable
+    assert len(expired) == 3
+    assert actionable[0]["intake_id"] == repo.rows[-1]["intake_id"]
+
+    # A plain "YA" is now unambiguous -- exactly the real user's next step.
+    response = _post(_message_envelope(message_id="wamid.resend_ya1", text="YA"))
+    assert response.status_code == 200
+    assert repo.rows[-1]["state"] == "CONFIRMED"
+
+
+def test_repeated_resend_never_expires_an_already_confirmed_row(monkeypatch):
+    # A CONFIRMED reading for an asset must never be touched by a later,
+    # unrelated new message for the same asset -- only still-open
+    # (NEEDS_INFORMATION/READY_FOR_CONFIRMATION) rows are ever superseded.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    _wire(monkeypatch, repo, outbound)
+    _post(_message_envelope(message_id="wamid.conf1", text="CM 211-P-13AR hari ini DE 78 NDE 81 tidak bocor"))
+    _post(_message_envelope(message_id="wamid.conf_ya1", text="YA"))
+    assert repo.rows[0]["state"] == "CONFIRMED"
+
+    _post(_message_envelope(message_id="wamid.conf2", text="CM 211-P-13AR hari ini DE 80 NDE 82 tidak bocor"))
+
+    assert repo.rows[0]["state"] == "CONFIRMED"  # untouched
+    assert repo.rows[1]["state"] in {"NEEDS_INFORMATION", "READY_FOR_CONFIRMATION"}
