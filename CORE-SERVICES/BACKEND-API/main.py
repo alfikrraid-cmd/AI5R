@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import sys
 from pathlib import Path
 
@@ -10,6 +11,32 @@ AI5R_SDK_DIR = CORE_SERVICES_DIR.parent / "AI5R-SDK"
 for _path in (BACKEND_API_DIR, CORE_SERVICES_DIR, AI5R_SDK_DIR):
     if str(_path) not in sys.path:
         sys.path.insert(0, str(_path))
+
+
+def configure_application_logging() -> None:
+    # MWO-025I-WHATSAPP-OBSERVABILITY-FIX -- root cause of MWO-025H's
+    # missing event=whatsapp_* log lines: uvicorn's own default logging
+    # config (api.Dockerfile's `uvicorn main:app` has no --log-config
+    # override) attaches handlers directly to its own "uvicorn"/
+    # "uvicorn.access" loggers with propagate=False -- it never touches
+    # the root logger. Every application logger created via
+    # logging.getLogger(__name__) (whatsapp_webhook.py,
+    # whatsapp_intake_service.py, and any future caller) propagates to
+    # that unconfigured root logger and is silently dropped -- Python's
+    # logging module only ever surfaces WARNING+ through the handler-of-
+    # last-resort when no handler exists anywhere in the chain.
+    #
+    # logging.basicConfig() is a no-op if the root logger already has a
+    # handler, so the explicit guard below is redundant with that built-in
+    # behavior -- kept anyway so intent is obvious to a reader and so a
+    # test can assert directly on it (no handler duplication possible
+    # either way: this never touches uvicorn's own separate logger
+    # subtree, which does not propagate here).
+    if not logging.getLogger().handlers:
+        logging.basicConfig(level=logging.INFO)
+
+
+configure_application_logging()
 
 from fastapi import FastAPI
 
