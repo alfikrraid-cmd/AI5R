@@ -29,6 +29,16 @@ PENDING_STATES = frozenset(
     {"RECEIVED", "NEEDS_INFORMATION", "READY_FOR_CONFIRMATION", "CONFIRMED", "CANCELLED", "REJECTED", "EXPIRED"}
 )
 
+# The canonical "still open" state set. Named here as the single source of
+# truth for what _confirm_pending() may act on; whatsapp_intake_repository.py's
+# find_actionable_pending_list() SQL and every FakeIntakeRepository's own
+# Python implementation of the same method already filter on this exact
+# same set (duplicated there since they're SQL/test doubles, not importers
+# of this module) -- keep them in sync if this set ever changes. Every
+# other PENDING_STATES value (RECEIVED, CANCELLED, REJECTED, EXPIRED) is
+# terminal/non-actionable: none of them may ever be confirmed.
+ACTIONABLE_PENDING_STATES = frozenset({"READY_FOR_CONFIRMATION", "NEEDS_INFORMATION", "CONFIRMED"})
+
 _TAG_PATTERN = re.compile(r"\b\d{3}-P-\d+(?:AR|BR|[A-Z])?\b", re.IGNORECASE)
 _NUMBER_AFTER = r"\s*[:=]?\s*(-?\d+(?:\.\d+)?)"
 
@@ -303,6 +313,22 @@ def _confirm_pending(
         # MWO-025J2 Part F -- idempotency: no re-transition, no re-stamped
         # confirmed_at, on any repeat "YA" for an already-confirmed row.
         return IntakeResult(status="CONFIRMED", message="DUPLICATE_CONFIRMATION", intake=pending, reply="Data sudah dikonfirmasi.")
+
+    if pending.get("state") not in ACTIONABLE_PENDING_STATES:
+        # State-guard fix -- a confirmation code is only ever actionable
+        # from an open state (READY_FOR_CONFIRMATION/NEEDS_INFORMATION;
+        # CONFIRMED already handled above). A terminal row -- EXPIRED (a
+        # row superseded by bf8d525's own duplicate-intent fix included),
+        # CANCELLED, or REJECTED -- must never be resurrected by replaying
+        # its old code, however it was resolved (context link, explicit
+        # WA-CONF selector, or plain "YA"): find_pending_by_confirmation_id
+        # and find_pending_by_outbound_message_id do exact-match lookups
+        # with no state filter at all, so this guard is the only thing
+        # that stops a stale code from bypassing state validity. Reuses
+        # the exact same rejection reply already used for a code that was
+        # never issued at all -- never discloses that a stale/superseded
+        # transaction once existed. No state change, no write.
+        return IntakeResult(status="REJECTED", message="CONFIRMATION_NOT_ACTIONABLE", intake=pending, reply="Kode konfirmasi tidak ditemukan.")
 
     domain = pending.get("detected_domain")
     payload = dict(pending.get("structured_payload") or {})

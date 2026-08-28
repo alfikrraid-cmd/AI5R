@@ -797,3 +797,137 @@ def test_repeated_resend_never_expires_an_already_confirmed_row(monkeypatch):
 
     assert repo.rows[0]["state"] == "CONFIRMED"  # untouched
     assert repo.rows[1]["state"] in {"NEEDS_INFORMATION", "READY_FOR_CONFIRMATION"}
+
+
+# --- State-guard fix: terminal-state confirmation codes never resurrect --
+#
+# bf8d525 fixed code parsing and duplicate-intent pending rows, but left a
+# related gap: _confirm_pending only special-cased state=="CONFIRMED" --
+# a code belonging to an EXPIRED (or CANCELLED, or REJECTED) row could
+# still be used to resurrect and confirm it, since
+# find_pending_by_confirmation_id/find_pending_by_outbound_message_id do
+# exact-match lookups with no state filter at all.
+
+
+def test_expired_code_rejected_and_replacement_code_confirms_normally(monkeypatch):
+    # TEST A.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    _wire(monkeypatch, repo, outbound)
+    text = "CMON 211-P-13AR: ditemukan kebocoran mechanical seal"
+    _post(_message_envelope(message_id="wamid.supA", text=text))
+    code_a = repo.rows[0]["confirmation_id"]
+    _post(_message_envelope(message_id="wamid.supB", text=text))
+    code_b = repo.rows[1]["confirmation_id"]
+    assert repo.rows[0]["state"] == "EXPIRED"
+    assert repo.rows[1]["state"] in {"NEEDS_INFORMATION", "READY_FOR_CONFIRMATION"}
+
+    response = _post(_message_envelope(message_id="wamid.sup_ya_a", text=f"YA {code_a}"))
+
+    assert response.status_code == 200
+    assert repo.rows[0]["state"] == "EXPIRED"  # unchanged -- never resurrected
+    assert repo.rows[0].get("confirmed_by") is None  # no write
+    assert repo.rows[1]["state"] != "CONFIRMED"  # B untouched by this attempt
+    assert outbound.calls[-1] == (SENDER_A, "Kode konfirmasi tidak ditemukan.")
+
+    response_b = _post(_message_envelope(message_id="wamid.sup_ya_b", text=f"YA {code_b}"))
+
+    assert response_b.status_code == 200
+    assert repo.rows[1]["state"] == "CONFIRMED"  # the replacement confirms normally
+
+
+def test_cancelled_code_rejected_and_state_unchanged(monkeypatch):
+    # TEST B.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    _wire(monkeypatch, repo, outbound)
+    _post(_message_envelope(message_id="wamid.cancA", text="CM 211-P-13AR hari ini DE 78 NDE 81 tidak bocor"))
+    code = repo.rows[0]["confirmation_id"]
+    _post(_message_envelope(message_id="wamid.cancB", text="BATAL"))
+    assert repo.rows[0]["state"] == "CANCELLED"
+
+    response = _post(_message_envelope(message_id="wamid.canc_ya", text=f"YA {code}"))
+
+    assert response.status_code == 200
+    assert repo.rows[0]["state"] == "CANCELLED"
+    assert outbound.calls[-1] == (SENDER_A, "Kode konfirmasi tidak ditemukan.")
+
+
+def test_rejected_code_rejected_and_state_unchanged(monkeypatch):
+    # TEST C.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    _wire(monkeypatch, repo, outbound)
+    _post(_message_envelope(message_id="wamid.rejA", text="WO 211-P-13AR broken"))
+    assert repo.rows[0]["state"] == "REJECTED"
+    assert repo.rows[0]["detected_domain"] == "UNSUPPORTED_INTENT"
+    code = repo.rows[0]["confirmation_id"]
+
+    response = _post(_message_envelope(message_id="wamid.rej_ya", text=f"YA {code}"))
+
+    assert response.status_code == 200
+    assert repo.rows[0]["state"] == "REJECTED"
+    assert outbound.calls[-1] == (SENDER_A, "Kode konfirmasi tidak ditemukan.")
+
+
+def test_confirmed_code_repeat_via_explicit_selector_does_not_re_transition(monkeypatch):
+    # TEST D.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    _wire(monkeypatch, repo, outbound)
+    _post(_message_envelope(message_id="wamid.confdA", text="CM 211-P-13AR hari ini DE 78 NDE 81 tidak bocor"))
+    code = repo.rows[0]["confirmation_id"]
+    _post(_message_envelope(message_id="wamid.confd_ya1", text="YA"))
+    assert repo.rows[0]["state"] == "CONFIRMED"
+    confirmed_by_first = repo.rows[0].get("confirmed_by")
+
+    response = _post(_message_envelope(message_id="wamid.confd_ya2", text=f"YA {code}"))
+
+    assert response.status_code == 200
+    assert repo.rows[0]["state"] == "CONFIRMED"
+    assert repo.rows[0].get("confirmed_by") == confirmed_by_first  # no second transition
+    assert outbound.calls[-1] == (SENDER_A, "Data sudah dikonfirmasi.")
+
+
+def test_copied_expired_code_with_trailing_label_rejected(monkeypatch):
+    # TEST E.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    _wire(monkeypatch, repo, outbound)
+    text = "CMON 211-P-13AR: ditemukan kebocoran mechanical seal"
+    _post(_message_envelope(message_id="wamid.cpexpA", text=text))
+    code_a = repo.rows[0]["confirmation_id"]
+    _post(_message_envelope(message_id="wamid.cpexpB", text=text))
+    assert repo.rows[0]["state"] == "EXPIRED"
+
+    response = _post(
+        _message_envelope(message_id="wamid.cpexp_ya", text=f"Ya {code_a}: CONDITION_MONITORING 211-P-13AR")
+    )
+
+    assert response.status_code == 200
+    assert repo.rows[0]["state"] == "EXPIRED"
+    assert outbound.calls[-1] == (SENDER_A, "Kode konfirmasi tidak ditemukan.")
+
+
+def test_four_resends_leave_one_actionable_and_no_expired_code_is_resurrectable(monkeypatch):
+    # Explicit end-to-end scenario: 4 repeated/resent CMON intents -> 1
+    # actionable confirmation, older rows EXPIRED, and NONE of those
+    # expired codes can be resurrected via explicit selector.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    _wire(monkeypatch, repo, outbound)
+    text = "CMON 211-P-13AR: ditemukan kebocoran mechanical seal"
+    for i in range(4):
+        _post(_message_envelope(message_id=f"wamid.foursend{i}", text=text))
+
+    expired_codes = [row["confirmation_id"] for row in repo.rows if row["state"] == "EXPIRED"]
+    assert len(expired_codes) == 3
+
+    for code in expired_codes:
+        response = _post(_message_envelope(message_id=f"wamid.foursend_ya_{code}", text=f"YA {code}"))
+        assert response.status_code == 200
+        assert outbound.calls[-1] == (SENDER_A, "Kode konfirmasi tidak ditemukan.")
+
+    states = [row["state"] for row in repo.rows]
+    assert states.count("EXPIRED") == 3
+    assert states.count("CONFIRMED") == 0  # none resurrected by the attempts above
