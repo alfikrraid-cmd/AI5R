@@ -58,12 +58,20 @@ class FakeIntakeRepository:
         return None
 
     def find_latest_actionable_pending(self, sender_user_id):
-        for row in reversed(self.rows):
-            if row["sender_user_id"] == sender_user_id and row["state"] in {
-                "READY_FOR_CONFIRMATION",
-                "NEEDS_INFORMATION",
-                "CONFIRMED",
-            }:
+        candidates = self.find_actionable_pending_list(sender_user_id)
+        return candidates[0] if candidates else None
+
+    def find_actionable_pending_list(self, sender_user_id):
+        actionable = {"READY_FOR_CONFIRMATION", "NEEDS_INFORMATION", "CONFIRMED"}
+        rows = [r for r in self.rows if r["sender_user_id"] == sender_user_id and r["state"] in actionable]
+        return list(reversed(rows))
+
+    def find_pending_by_outbound_message_id(self, provider_message_id, sender_user_id):
+        for row in self.rows:
+            if (
+                row.get("last_outbound_provider_message_id") == provider_message_id
+                and row["sender_user_id"] == sender_user_id
+            ):
                 return row
         return None
 
@@ -72,12 +80,22 @@ class FakeIntakeRepository:
             "intake_id": f"wa-{len(self.rows) + 1}",
             "confirmation_id": f"CONF-{len(self.rows) + 1}",
             "reply_text": payload.get("reply"),
+            "last_outbound_provider_message_id": None,
             **payload,
         }
         self.rows.append(row)
         return row
 
-    def transition_pending(self, intake_id, *, state, confirmed_by=None, validation_result=None):
+    def transition_pending(
+        self,
+        intake_id,
+        *,
+        state,
+        confirmed_by=None,
+        validation_result=None,
+        structured_payload=None,
+        last_outbound_provider_message_id=None,
+    ):
         for row in self.rows:
             if row["intake_id"] == intake_id:
                 row["state"] = state
@@ -86,6 +104,10 @@ class FakeIntakeRepository:
                     row["confirmed_at"] = "2026-08-27T00:00:00Z"
                 if validation_result is not None:
                     row["validation_result"] = validation_result
+                if structured_payload is not None:
+                    row["structured_payload"] = structured_payload
+                if last_outbound_provider_message_id is not None:
+                    row["last_outbound_provider_message_id"] = last_outbound_provider_message_id
                 self.transitions.append((intake_id, state))
                 return row
         raise AssertionError("missing intake")

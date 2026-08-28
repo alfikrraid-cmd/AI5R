@@ -69,6 +69,11 @@ class WhatsAppIntakeRepository:
         return _decode_row(rows[0]) if rows else None
 
     def find_latest_actionable_pending(self, sender_user_id: str) -> dict | None:
+        # MWO-025J2 note: kept for callers that intentionally want "the one
+        # most recent row" (e.g. tests exercising legacy behavior directly).
+        # whatsapp_intake_service.py's own confirmation flow now uses
+        # find_actionable_pending_list() instead, so it can detect
+        # ambiguity (2+ actionable rows) rather than silently picking one.
         rows = _json_query(
             "SELECT * FROM whatsapp_intake_pending "
             f"WHERE sender_user_id = {_sql(sender_user_id)} "
@@ -78,14 +83,40 @@ class WhatsAppIntakeRepository:
         )
         return _decode_row(rows[0]) if rows else None
 
+    def find_actionable_pending_list(self, sender_user_id: str) -> list[dict]:
+        rows = _json_query(
+            "SELECT * FROM whatsapp_intake_pending "
+            f"WHERE sender_user_id = {_sql(sender_user_id)} "
+            "AND state IN ('READY_FOR_CONFIRMATION', 'NEEDS_INFORMATION', 'CONFIRMED') "
+            "ORDER BY created_at DESC",
+            self._runner,
+        )
+        return [_decode_row(row) for row in rows]
+
+    def find_pending_by_outbound_message_id(self, provider_message_id: str, sender_user_id: str) -> dict | None:
+        # MWO-025J2 -- resolves a Meta inbound message's context.id (the
+        # provider_message_id of the AI5R outbound message being replied
+        # to) back to the exact pending row it belongs to, so "YA" never
+        # has to guess which conversation a reply is for when a context
+        # link is available.
+        rows = _json_query(
+            "SELECT * FROM whatsapp_intake_pending "
+            f"WHERE last_outbound_provider_message_id = {_sql(provider_message_id)} "
+            f"AND sender_user_id = {_sql(sender_user_id)} LIMIT 1",
+            self._runner,
+        )
+        return _decode_row(rows[0]) if rows else None
+
     def create_pending(self, payload: dict[str, Any]) -> dict:
         raw = self._runner.query_scalar(
             "WITH ins AS ("
             "INSERT INTO whatsapp_intake_pending ("
-            "provider, provider_message_id, sender_user_id, received_at, original_message, detected_domain, "
-            "structured_payload, validation_result, state, normalized_payload_hash, provider_payload, reply_text"
+            "provider, provider_message_id, sender_user_id, organization_id, received_at, original_message, "
+            "detected_domain, structured_payload, validation_result, state, normalized_payload_hash, "
+            "provider_payload, reply_text"
             ") VALUES ("
             f"{_sql(payload['provider'])}, {_sql(payload['provider_message_id'])}, {_sql(payload['sender_user_id'])}, "
+            f"{_sql(payload.get('organization_id'))}, "
             f"COALESCE({_sql(payload.get('received_at'))}::timestamptz, NOW()), "
             f"{_sql(payload.get('original_message'))}, {_sql(payload.get('detected_domain'))}, "
             f"{_sql(json.dumps(payload.get('structured_payload') or {}, sort_keys=True))}::jsonb, "
@@ -108,10 +139,22 @@ class WhatsAppIntakeRepository:
         state: str,
         confirmed_by: str | None = None,
         validation_result: dict[str, Any] | None = None,
+        structured_payload: dict[str, Any] | None = None,
+        last_outbound_provider_message_id: str | None = None,
     ) -> dict:
         validation_sql = (
             f", validation_result = {_sql(json.dumps(validation_result, sort_keys=True))}::jsonb"
             if validation_result is not None
+            else ""
+        )
+        payload_sql = (
+            f", structured_payload = {_sql(json.dumps(structured_payload, sort_keys=True))}::jsonb"
+            if structured_payload is not None
+            else ""
+        )
+        outbound_id_sql = (
+            f", last_outbound_provider_message_id = {_sql(last_outbound_provider_message_id)}"
+            if last_outbound_provider_message_id is not None
             else ""
         )
         confirmed_sql = (
@@ -122,7 +165,7 @@ class WhatsAppIntakeRepository:
         raw = self._runner.query_scalar(
             "WITH upd AS ("
             f"UPDATE whatsapp_intake_pending SET state = {_sql(state)}, updated_at = NOW()"
-            f"{confirmed_sql}{validation_sql} WHERE intake_id = {_sql(intake_id)} RETURNING *"
+            f"{confirmed_sql}{validation_sql}{payload_sql}{outbound_id_sql} WHERE intake_id = {_sql(intake_id)} RETURNING *"
             ") SELECT COALESCE(json_agg(row_to_json(t))::text, '[]') FROM upd t;"
         )
         rows = json.loads(raw or "[]")

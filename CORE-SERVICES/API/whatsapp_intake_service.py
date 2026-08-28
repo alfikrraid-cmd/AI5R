@@ -5,13 +5,24 @@ import json
 import logging
 import re
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Protocol
 
 from .auth_service import AuthenticatedIdentity, resolve_area_scope
 from .pump_area_scope import is_asset_in_scope
 
 logger = logging.getLogger(__name__)
+
+
+def _correlation_id(value: str | None) -> str | None:
+    # MWO-025J2 Part G -- never log a raw user UUID (tightens MWO-025G's
+    # original choice to log identity.user_id verbatim). A truncated hash
+    # is stable enough to correlate related log lines for one user across
+    # a conversation without being reversible to the raw id.
+    if not value:
+        return None
+    return hashlib.sha256(str(value).encode("utf-8")).hexdigest()[:12]
+
 
 SUPPORTED_INTENTS = frozenset({"PM", "CONDITION_MONITORING"})
 PENDING_STATES = frozenset(
@@ -21,12 +32,24 @@ PENDING_STATES = frozenset(
 _TAG_PATTERN = re.compile(r"\b\d{3}-P-\d+(?:AR|BR|[A-Z])?\b", re.IGNORECASE)
 _NUMBER_AFTER = r"\s*[:=]?\s*(-?\d+(?:\.\d+)?)"
 
+# MWO-025J2 -- LTSA's configured business timezone for "hari ini"/"today"
+# resolution (both at original intake and at confirmation-time date
+# assignment). Asia/Jakarta (WIB) has no DST, so a fixed UTC+7 offset is
+# exact and needs no tzdata dependency.
+_LTSA_BUSINESS_TIMEZONE = timezone(timedelta(hours=7))
+
+_ACTION_WORDS = frozenset({"ya", "y", "confirm", "ubah", "batal", "cancel"})
+_DATE_FIELD_BY_DOMAIN = {"CONDITION_MONITORING": "reading_date", "PM": "occurrence_date"}
+_DATE_ERROR_BY_DOMAIN = {"CONDITION_MONITORING": "READING_DATE_REQUIRED", "PM": "OCCURRENCE_DATE_REQUIRED"}
+
 
 class WhatsAppIntakeRepositoryProtocol(Protocol):
     def find_identity_by_sender_hash(self, sender_hash: str) -> AuthenticatedIdentity | None: ...
     def find_pending_by_delivery_key(self, provider: str, provider_message_id: str, sender_user_id: str) -> dict | None: ...
     def find_pending_by_confirmation_id(self, confirmation_id: str, sender_user_id: str) -> dict | None: ...
     def find_latest_actionable_pending(self, sender_user_id: str) -> dict | None: ...
+    def find_actionable_pending_list(self, sender_user_id: str) -> list[dict]: ...
+    def find_pending_by_outbound_message_id(self, provider_message_id: str, sender_user_id: str) -> dict | None: ...
     def create_pending(self, payload: dict[str, Any]) -> dict: ...
     def transition_pending(
         self,
@@ -35,6 +58,8 @@ class WhatsAppIntakeRepositoryProtocol(Protocol):
         state: str,
         confirmed_by: str | None = None,
         validation_result: dict[str, Any] | None = None,
+        structured_payload: dict[str, Any] | None = None,
+        last_outbound_provider_message_id: str | None = None,
     ) -> dict: ...
 
 
@@ -76,6 +101,7 @@ def process_inbound_message(
     pump_gateway: PumpGatewayProtocol,
     received_at: str | None = None,
     provider_payload: dict[str, Any] | None = None,
+    context_message_id: str | None = None,
 ) -> IntakeResult:
     result = _process_inbound_message(
         provider=provider,
@@ -86,6 +112,7 @@ def process_inbound_message(
         pump_gateway=pump_gateway,
         received_at=received_at,
         provider_payload=provider_payload,
+        context_message_id=context_message_id,
     )
     _log_intake_result(result)
     return result
@@ -115,6 +142,7 @@ def _process_inbound_message(
     pump_gateway: PumpGatewayProtocol,
     received_at: str | None = None,
     provider_payload: dict[str, Any] | None = None,
+    context_message_id: str | None = None,
 ) -> IntakeResult:
     normalized_sender = normalize_sender_identifier(sender_identifier)
     sender_hash = hash_sender_identifier(normalized_sender)
@@ -124,13 +152,15 @@ def _process_inbound_message(
         return IntakeResult(status="REJECTED", message="UNKNOWN_SENDER", reply="Nomor WhatsApp belum terdaftar.")
     logger.info(
         "event=whatsapp_identity_resolution resolution=RESOLVED user_id=%s org=%s role=%s",
-        identity.user_id,
+        _correlation_id(identity.user_id),
         identity.organization_code,
         identity.role,
     )
 
     stripped = (text or "").strip()
-    existing_action = _handle_existing_pending_action(stripped, repository, identity)
+    existing_action = _handle_existing_pending_action(
+        stripped, repository, identity, pump_gateway, context_message_id
+    )
     if existing_action is not None:
         return existing_action
 
@@ -141,6 +171,7 @@ def _process_inbound_message(
             provider=provider,
             provider_message_id=provider_message_id,
             sender_user_id=identity.user_id,
+            organization_id=identity.organization_id,
             received_at=received_at,
             original_message=stripped,
             detected_domain="UNSUPPORTED_INTENT",
@@ -160,6 +191,7 @@ def _process_inbound_message(
         provider=provider,
         provider_message_id=provider_message_id,
         sender_user_id=identity.user_id,
+        organization_id=identity.organization_id,
         received_at=received_at,
         original_message=stripped,
         detected_domain=detected_domain,
@@ -172,23 +204,68 @@ def _process_inbound_message(
 
 
 def _handle_existing_pending_action(
-    text: str, repository: WhatsAppIntakeRepositoryProtocol, identity: AuthenticatedIdentity
+    text: str,
+    repository: WhatsAppIntakeRepositoryProtocol,
+    identity: AuthenticatedIdentity,
+    pump_gateway: PumpGatewayProtocol,
+    context_message_id: str | None,
 ) -> IntakeResult | None:
-    action = text.strip().casefold()
-    if action not in {"ya", "y", "confirm", "ubah", "batal", "cancel"}:
+    tokens = text.strip().split(maxsplit=1)
+    if not tokens:
         return None
+    action = tokens[0].casefold()
+    if action not in _ACTION_WORDS:
+        return None
+    selector = tokens[1].strip() if len(tokens) > 1 else None
 
-    pending = repository.find_latest_actionable_pending(identity.user_id)
+    # MWO-025J2 Part E -- context-linked resolution takes priority: if this
+    # reply is a Meta reply/quote of a specific AI5R outbound message, that
+    # unambiguously identifies the pending conversation, regardless of what
+    # else the user has pending.
+    pending = None
+    if context_message_id:
+        pending = repository.find_pending_by_outbound_message_id(context_message_id, identity.user_id)
+
+    # An explicit confirmation-code selector (e.g. "YA WA-CONF-AB12CD34")
+    # also resolves directly -- this is the required clarification path
+    # for an otherwise-ambiguous plain "YA" (see below).
+    if pending is None and selector:
+        pending = repository.find_pending_by_confirmation_id(selector, identity.user_id)
+        if pending is None:
+            return IntakeResult(status="REJECTED", message="UNKNOWN_CONFIRMATION_ID", reply="Kode konfirmasi tidak ditemukan.")
+
     if pending is None:
-        return IntakeResult(status="REJECTED", message="NO_PENDING_CONFIRMATION", reply="Tidak ada data yang menunggu konfirmasi.")
+        candidates = repository.find_actionable_pending_list(identity.user_id)
+        if not candidates:
+            return IntakeResult(status="REJECTED", message="NO_PENDING_CONFIRMATION", reply="Tidak ada data yang menunggu konfirmasi.")
+        if len(candidates) > 1:
+            # MWO-025J2 Part E -- never guess which pending record a plain,
+            # unlinked "YA" refers to when more than one is actionable.
+            listing = "\n".join(
+                f"- {candidate.get('confirmation_id')}: {candidate.get('detected_domain')} "
+                f"{(candidate.get('structured_payload') or {}).get('asset_code')}"
+                for candidate in candidates
+            )
+            return IntakeResult(
+                status="NEEDS_INFORMATION",
+                message="AMBIGUOUS_PENDING_SELECTION",
+                reply=f"Ada beberapa data menunggu konfirmasi:\n{listing}\n\nBalas: YA <kode>",
+            )
+        pending = candidates[0]
+
+    # MWO-025J2 Part D -- a pending row only belongs to the org context it
+    # was created under. A generic "not found" reply (rather than a
+    # distinct "wrong org" message) avoids disclosing cross-org existence
+    # of another organization's pending data to a multi-org user currently
+    # resolved into a different membership.
+    pending_org = pending.get("organization_id")
+    if pending_org is not None and pending_org != identity.organization_id:
+        return IntakeResult(status="REJECTED", message="ORG_SCOPE_MISMATCH", reply="Data tidak ditemukan.")
 
     if action in {"ya", "y", "confirm"}:
-        if pending.get("state") == "CONFIRMED":
-            return IntakeResult(status="CONFIRMED", message="DUPLICATE_CONFIRMATION", intake=pending, reply="Data sudah dikonfirmasi.")
-        updated = repository.transition_pending(pending["intake_id"], state="CONFIRMED", confirmed_by=identity.user_id)
-        return IntakeResult(status="CONFIRMED", message="CONFIRMED_NO_ENGINEERING_WRITE", intake=updated, reply="Terkonfirmasi sebagai draft intake. Belum dibuat record PM/CMON.")
+        return _confirm_pending(pending, repository, identity, pump_gateway)
 
-    if action in {"ubah"}:
+    if action == "ubah":
         updated = repository.transition_pending(
             pending["intake_id"],
             state="NEEDS_INFORMATION",
@@ -198,6 +275,66 @@ def _handle_existing_pending_action(
 
     updated = repository.transition_pending(pending["intake_id"], state="CANCELLED")
     return IntakeResult(status="CANCELLED", message="CANCELLED", intake=updated, reply="Dibatalkan. Tidak ada record dibuat.")
+
+
+def _confirm_pending(
+    pending: dict[str, Any],
+    repository: WhatsAppIntakeRepositoryProtocol,
+    identity: AuthenticatedIdentity,
+    pump_gateway: PumpGatewayProtocol,
+) -> IntakeResult:
+    if pending.get("state") == "CONFIRMED":
+        # MWO-025J2 Part F -- idempotency: no re-transition, no re-stamped
+        # confirmed_at, on any repeat "YA" for an already-confirmed row.
+        return IntakeResult(status="CONFIRMED", message="DUPLICATE_CONFIRMATION", intake=pending, reply="Data sudah dikonfirmasi.")
+
+    domain = pending.get("detected_domain")
+    payload = dict(pending.get("structured_payload") or {})
+    prior_errors = (pending.get("validation_result") or {}).get("errors") or []
+
+    # MWO-025J2 Part A -- "YA" answering AI5R's own "Gunakan hari ini?"
+    # question is interpreted as accepting today's date (LTSA business
+    # timezone), but only when a date was actually the missing piece --
+    # never invented for a field the user never spoke to.
+    date_field = _DATE_FIELD_BY_DOMAIN.get(domain)
+    date_error = _DATE_ERROR_BY_DOMAIN.get(domain)
+    if date_field and date_error in prior_errors and not payload.get(date_field):
+        today = _today_in_business_timezone()
+        payload[date_field] = today
+        payload.setdefault("entry_date", today)
+
+    # MWO-025J2 Part C -- re-resolves authorization/area-scope using the
+    # SAME canonical check _validate_payload already performs at original
+    # intake (resolve_area_scope + is_asset_in_scope), against the
+    # identity freshly resolved for THIS "YA" message -- not reused/cached
+    # from the original message. No second permission model.
+    validation = _validate_payload(domain, payload, identity, pump_gateway)
+
+    if not validation["valid"]:
+        # MWO-025J2 Part A -- CONFIRMED must mean valid. Still invalid
+        # (whether the date fix wasn't enough, or scope changed) -> stay
+        # NEEDS_INFORMATION and ask only for what's still missing/invalid.
+        updated = repository.transition_pending(
+            pending["intake_id"],
+            state="NEEDS_INFORMATION",
+            validation_result=validation,
+            structured_payload=payload,
+        )
+        return IntakeResult(status="NEEDS_INFORMATION", message="STILL_INVALID", intake=updated, reply=_build_follow_up(validation))
+
+    updated = repository.transition_pending(
+        pending["intake_id"],
+        state="CONFIRMED",
+        confirmed_by=identity.user_id,
+        validation_result=validation,
+        structured_payload=payload,
+    )
+    return IntakeResult(
+        status="CONFIRMED",
+        message="CONFIRMED_NO_ENGINEERING_WRITE",
+        intake=updated,
+        reply="Terkonfirmasi sebagai draft intake. Belum dibuat record PM/CMON.",
+    )
 
 
 def _persist(repository: WhatsAppIntakeRepositoryProtocol, **payload: Any) -> IntakeResult:
@@ -334,10 +471,14 @@ def _extract_code(pattern: str, text: str) -> str | None:
     return match.group(1).upper() if match else None
 
 
+def _today_in_business_timezone() -> str:
+    return datetime.now(_LTSA_BUSINESS_TIMEZONE).date().isoformat()
+
+
 def _date_from_received_at(received_at: str | None) -> str:
     if received_at:
         return received_at[:10]
-    return datetime.now(timezone.utc).date().isoformat()
+    return _today_in_business_timezone()
 
 
 __all__ = [

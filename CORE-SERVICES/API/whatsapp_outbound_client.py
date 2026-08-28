@@ -15,6 +15,7 @@ class OutboundResult:
     status: str  # "SUCCESS" | "FAILED" | "SKIPPED"
     http_status: int | None = None
     error: str | None = None
+    provider_message_id: str | None = None
 
 
 @dataclass(slots=True)
@@ -72,7 +73,20 @@ class WhatsAppOutboundClient:
         )
         try:
             with urllib.request.urlopen(request, timeout=self.config.timeout) as response:
-                return OutboundResult(status="SUCCESS", http_status=response.status)
+                # MWO-025J2 -- capture Meta's own assigned id for this
+                # outbound message so a later inbound reply's context.id
+                # can be correlated back to the pending row it belongs to
+                # (see whatsapp_webhook.py). Parse failure/absence is never
+                # fatal to the send itself -- it already succeeded.
+                provider_message_id = None
+                try:
+                    body = json.loads(response.read().decode("utf-8"))
+                    messages = body.get("messages") or []
+                    if messages:
+                        provider_message_id = messages[0].get("id")
+                except (ValueError, AttributeError):
+                    pass
+                return OutboundResult(status="SUCCESS", http_status=response.status, provider_message_id=provider_message_id)
         except urllib.error.HTTPError as error:
             return OutboundResult(status="FAILED", http_status=error.code, error="PROVIDER_HTTP_ERROR")
         except TimeoutError:

@@ -19,6 +19,17 @@ router = APIRouter()
 _WEBHOOK_PATH = "/api/ltsa/whatsapp/webhook"
 
 
+def _correlation_id(value: str | None) -> str | None:
+    # MWO-025J2 Part G -- never log a full provider_message_id (tightens
+    # MWO-025G's original choice to log it verbatim as "safe" -- it's
+    # still an opaque Meta id, but this MWO's explicit rule is stricter).
+    # A truncated hash is stable enough to correlate related log lines
+    # without being reversible to the raw id.
+    if not value:
+        return None
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:12]
+
+
 @router.get(_WEBHOOK_PATH)
 def verify_whatsapp_webhook(
     hub_mode: str | None = Query(default=None, alias="hub.mode"),
@@ -47,26 +58,51 @@ def _signature_valid(raw_body: bytes, signature_header: str | None) -> bool:
     return hmac.compare_digest(supplied, expected)
 
 
-def _send_outbound_reply(outbound_client, recipient: str, text: str, provider_message_id: str | None) -> None:
+def _send_outbound_reply(
+    outbound_client,
+    repository,
+    recipient: str,
+    text: str,
+    provider_message_id: str | None,
+    intake_id: str | None,
+    intake_state: str | None,
+) -> None:
     # Safe-by-construction: only ever called with a reply the intake
     # service already decided (never re-derived here), and never logs
-    # `recipient` or `text` -- only the provider-assigned message id and
-    # the transport result, matching MWO-025G's privacy-preserving
-    # observability contract.
+    # `recipient` or `text` -- only a truncated correlation id and the
+    # transport result, per MWO-025J2's privacy-preserving observability
+    # contract.
     try:
         result = outbound_client.send_text(recipient, text)
     except Exception:
         logger.info(
             "event=whatsapp_outbound_result provider_message_id=%s status=FAILED",
-            provider_message_id,
+            _correlation_id(provider_message_id),
         )
         return
     logger.info(
         "event=whatsapp_outbound_result provider_message_id=%s status=%s http_status=%s",
-        provider_message_id,
+        _correlation_id(provider_message_id),
         result.status,
         result.http_status,
     )
+
+    # MWO-025J2 Part E -- record Meta's own id for this outbound message
+    # against the pending row it answers, so a later inbound reply's
+    # context.id can resolve to this exact conversation. Best-effort: a
+    # failure here never affects the already-completed send/ack.
+    if result.status == "SUCCESS" and result.provider_message_id and intake_id and intake_state:
+        try:
+            repository.transition_pending(
+                intake_id,
+                state=intake_state,
+                last_outbound_provider_message_id=result.provider_message_id,
+            )
+        except Exception:
+            logger.info(
+                "event=whatsapp_outbound_result provider_message_id=%s status=CORRELATION_PERSIST_FAILED",
+                _correlation_id(provider_message_id),
+            )
 
 
 def _handle_inbound_message(
@@ -81,6 +117,10 @@ def _handle_inbound_message(
     if not provider_message_id or not sender_identifier:
         return {"status": "IGNORED_MALFORMED_MESSAGE"}
     text_body = (message.get("text") or {}).get("body") or ""
+    # MWO-025J2 Part E -- Meta sets context.id when the user replies to
+    # (quotes) a specific prior message; when present it names the exact
+    # AI5R outbound message being answered.
+    context_message_id = (message.get("context") or {}).get("id")
     result = process_inbound_message(
         provider="whatsapp_cloud",
         provider_message_id=provider_message_id,
@@ -89,6 +129,7 @@ def _handle_inbound_message(
         repository=repository,
         pump_gateway=pump_gateway,
         provider_payload=message,
+        context_message_id=context_message_id,
     )
 
     # A duplicate webhook delivery of the same provider_message_id must not
@@ -101,8 +142,16 @@ def _handle_inbound_message(
         except ValueError:
             recipient = None
         if recipient:
+            intake = result.intake or {}
             background_tasks.add_task(
-                _send_outbound_reply, outbound_client, recipient, result.reply, provider_message_id
+                _send_outbound_reply,
+                outbound_client,
+                repository,
+                recipient,
+                result.reply,
+                provider_message_id,
+                intake.get("intake_id"),
+                intake.get("state"),
             )
 
     return {"status": result.status, "message": result.message}
@@ -137,7 +186,7 @@ async def receive_whatsapp_webhook(
                 for message in messages:
                     logger.info(
                         "event=whatsapp_webhook_received event_type=messages provider_message_id=%s signature_valid=true",
-                        message.get("id"),
+                        _correlation_id(message.get("id")),
                     )
                     results.append(
                         _handle_inbound_message(message, repository, pump_gateway, outbound_client, background_tasks)
