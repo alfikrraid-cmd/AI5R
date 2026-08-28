@@ -84,10 +84,20 @@ class WhatsAppIntakeRepository:
         return _decode_row(rows[0]) if rows else None
 
     def find_actionable_pending_list(self, sender_user_id: str) -> list[dict]:
+        # Production regression fix -- CONFIRMED deliberately excluded.
+        # This powers plain-"YA" candidate discovery
+        # (whatsapp_intake_service.py's OPEN_PENDING_STATES); a confirmed
+        # row is a finished transaction, not an unresolved candidate, and
+        # must never cause AMBIGUOUS_PENDING_SELECTION or be silently
+        # re-selected by an unlinked "YA". Explicit reference to a
+        # CONFIRMED row (WA-CONF code or Meta context.id) remains fully
+        # resolvable via find_pending_by_confirmation_id/
+        # find_pending_by_outbound_message_id, neither of which filters
+        # by state at all -- only this discovery-list query is scoped.
         rows = _json_query(
             "SELECT * FROM whatsapp_intake_pending "
             f"WHERE sender_user_id = {_sql(sender_user_id)} "
-            "AND state IN ('READY_FOR_CONFIRMATION', 'NEEDS_INFORMATION', 'CONFIRMED') "
+            "AND state IN ('READY_FOR_CONFIRMATION', 'NEEDS_INFORMATION') "
             "ORDER BY created_at DESC",
             self._runner,
         )

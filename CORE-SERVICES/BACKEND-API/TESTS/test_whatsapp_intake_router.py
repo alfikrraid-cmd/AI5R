@@ -62,8 +62,10 @@ class FakeIntakeRepository:
         return candidates[0] if candidates else None
 
     def find_actionable_pending_list(self, sender_user_id):
-        actionable = {"READY_FOR_CONFIRMATION", "NEEDS_INFORMATION", "CONFIRMED"}
-        rows = [r for r in self.rows if r["sender_user_id"] == sender_user_id and r["state"] in actionable]
+        # Production regression fix -- CONFIRMED excluded from candidate
+        # discovery (matches the real repository's corrected SQL).
+        open_states = {"READY_FOR_CONFIRMATION", "NEEDS_INFORMATION"}
+        rows = [r for r in self.rows if r["sender_user_id"] == sender_user_id and r["state"] in open_states]
         return list(reversed(rows))
 
     def find_pending_by_outbound_message_id(self, provider_message_id, sender_user_id):
@@ -78,7 +80,7 @@ class FakeIntakeRepository:
     def create_pending(self, payload):
         row = {
             "intake_id": f"wa-{len(self.rows) + 1}",
-            "confirmation_id": f"CONF-{len(self.rows) + 1}",
+            "confirmation_id": f"WA-CONF-{len(self.rows) + 1:04d}",
             "reply_text": payload.get("reply"),
             "last_outbound_provider_message_id": None,
             **payload,
@@ -235,12 +237,26 @@ def test_duplicate_webhook_delivery_returns_existing_pending():
 
 
 def test_duplicate_confirmation_is_idempotent():
+    # Production regression fix, semantic update: a plain, unlinked "YA"
+    # no longer treats CONFIRMED rows as discovery candidates, so with
+    # nothing else open, the repeat correctly falls to the existing
+    # NO_PENDING_CONFIRMATION message rather than DUPLICATE_CONFIRMATION.
+    # The core guarantee this test proves -- no second CONFIRMED
+    # transition -- still holds regardless.
     repo = FakeIntakeRepository(_identity())
     _call_service(repo, "CM 211-P-13AR hari ini DE 78")
     confirmed = _call_service(repo, "YA", message_id="wamid.confirm1")
     repeated = _call_service(repo, "YA", message_id="wamid.confirm2")
     assert confirmed.status == "CONFIRMED"
-    assert repeated.message == "DUPLICATE_CONFIRMATION"
+    assert repeated.message == "NO_PENDING_CONFIRMATION"
+    assert [state for _, state in repo.transitions].count("CONFIRMED") == 1
+
+    # DUPLICATE_CONFIRMATION remains fully reachable and idempotent via an
+    # explicit reference to the already-confirmed row (unaffected by this
+    # fix -- find_pending_by_confirmation_id does not filter by state).
+    code = confirmed.intake["confirmation_id"]
+    repeated_explicit = _call_service(repo, f"YA {code}", message_id="wamid.confirm3")
+    assert repeated_explicit.message == "DUPLICATE_CONFIRMATION"
     assert [state for _, state in repo.transitions].count("CONFIRMED") == 1
 
 

@@ -70,8 +70,10 @@ class FakeIntakeRepository:
         return candidates[0] if candidates else None
 
     def find_actionable_pending_list(self, sender_user_id):
-        actionable = {"READY_FOR_CONFIRMATION", "NEEDS_INFORMATION", "CONFIRMED"}
-        rows = [r for r in self.rows if r["sender_user_id"] == sender_user_id and r["state"] in actionable]
+        # Production regression fix -- CONFIRMED excluded from candidate
+        # discovery (matches the real repository's corrected SQL).
+        open_states = {"READY_FOR_CONFIRMATION", "NEEDS_INFORMATION"}
+        rows = [r for r in self.rows if r["sender_user_id"] == sender_user_id and r["state"] in open_states]
         return list(reversed(rows))
 
     def find_pending_by_outbound_message_id(self, provider_message_id, sender_user_id):
@@ -633,6 +635,18 @@ def test_explicit_confirmation_code_selector_resolves_ambiguity(monkeypatch):
 
 def test_repeated_ya_does_not_re_transition_or_re_confirm(monkeypatch):
     # Test 12.
+    #
+    # Production regression fix, semantic update: a plain, unlinked "YA"
+    # no longer treats CONFIRMED rows as candidates at all (that's the
+    # whole point of this fix -- see the "production regression fix"
+    # section below), so with nothing else open, the repeat correctly
+    # falls to the existing NO_PENDING_CONFIRMATION reply rather than
+    # DUPLICATE_CONFIRMATION -- DUPLICATE_CONFIRMATION is still reachable,
+    # unchanged, via an explicit reference (see
+    # test_confirmed_code_repeat_via_explicit_selector_does_not_re_transition).
+    # What this test still proves, and must keep proving: no re-transition,
+    # no re-stamped confirmed_by/confirmed_at, on repeat -- the guarantee
+    # in this test's name -- regardless of which reply text results.
     repo = FakeIntakeRepository({SENDER_A: _identity()})
     outbound = FakeOutboundClient()
     _wire(monkeypatch, repo, outbound)
@@ -646,7 +660,7 @@ def test_repeated_ya_does_not_re_transition_or_re_confirm(monkeypatch):
     assert response.status_code == 200
     assert repo.rows[0]["state"] == "CONFIRMED"
     assert repo.rows[0].get("confirmed_by") == confirmed_at_first
-    assert outbound.calls[-1] == (SENDER_A, "Data sudah dikonfirmasi.")
+    assert outbound.calls[-1] == (SENDER_A, "Tidak ada data yang menunggu konfirmasi.")
 
 
 # --- structural guard: no authoritative engineering write (test 16) -------
@@ -931,3 +945,111 @@ def test_four_resends_leave_one_actionable_and_no_expired_code_is_resurrectable(
     states = [row["state"] for row in repo.rows]
     assert states.count("EXPIRED") == 3
     assert states.count("CONFIRMED") == 0  # none resurrected by the attempts above
+
+
+# --- Production regression fix: CONFIRMED rows must never participate in --
+# --- plain-YA candidate discovery -------------------------------------------
+#
+# Real production E2E: same sender had 2 CONFIRMED rows + 1 NEEDS_INFORMATION
+# row, all CONDITION_MONITORING/211-P-13AR. A plain "Ya" (answering AI5R's
+# own missing-reading_date question) incorrectly returned
+# AMBIGUOUS_PENDING_SELECTION because find_actionable_pending_list's state
+# filter included CONFIRMED alongside the genuinely open states.
+
+
+def test_production_regression_ya_selects_open_row_ignoring_confirmed_rows(monkeypatch):
+    # TASK 3 -- mandatory exact reproduction of the real production DB state.
+    from datetime import datetime, timedelta, timezone
+
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    _wire(monkeypatch, repo, outbound)
+
+    # Row A: a genuine prior CMON reading, confirmed.
+    _post(_message_envelope(message_id="wamid.prodA1", text="CM 211-P-13AR hari ini DE 78 NDE 81 tidak bocor"))
+    _post(_message_envelope(message_id="wamid.prodA2", text="YA"))
+    assert repo.rows[0]["state"] == "CONFIRMED"
+
+    # Row B: a second, later genuine reading for the same asset, also confirmed.
+    _post(_message_envelope(message_id="wamid.prodB1", text="CM 211-P-13AR hari ini DE 80 NDE 82 tidak bocor"))
+    _post(_message_envelope(message_id="wamid.prodB2", text="YA"))
+    assert repo.rows[1]["state"] == "CONFIRMED"
+
+    # Row C: the real production message, missing reading_date.
+    _post(_message_envelope(message_id="wamid.prodC1", text="CMON 211-P-13AR: ditemukan kebocoran mechanical seal"))
+    assert repo.rows[2]["state"] == "NEEDS_INFORMATION"
+    assert len(repo.rows) == 3
+
+    expected_today = datetime.now(timezone(timedelta(hours=7))).date().isoformat()
+
+    response = _post(_message_envelope(message_id="wamid.prodC2", text="Ya"))
+
+    assert response.status_code == 200
+    reply_text = outbound.calls[-1][1]
+    assert "Ada beberapa data menunggu konfirmasi" not in reply_text  # NOT ambiguous
+    assert repo.rows[2]["structured_payload"]["reading_date"] == expected_today
+    assert repo.rows[2]["state"] == "CONFIRMED"  # C proceeds -- date was its only gap
+    assert repo.rows[0]["state"] == "CONFIRMED"  # A untouched
+    assert repo.rows[1]["state"] == "CONFIRMED"  # B untouched
+    assert len(repo.rows) == 3  # no new duplicate pending row
+
+
+def test_one_open_row_among_ten_confirmed_is_still_selected_unambiguously(monkeypatch):
+    # TASK 4 Test A.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    _wire(monkeypatch, repo, outbound)
+    for i in range(10):
+        tag = "211-P-13AR" if i % 2 == 0 else "210-P-05AR"
+        _post(_message_envelope(message_id=f"wamid.tenA{i}", text=f"CM {tag} hari ini DE 7{i} NDE 8{i} tidak bocor"))
+        _post(_message_envelope(message_id=f"wamid.tenAya{i}", text="YA"))
+    assert sum(1 for r in repo.rows if r["state"] == "CONFIRMED") == 10
+
+    _post(_message_envelope(message_id="wamid.tenA_open", text="CMON 211-P-13AR: ditemukan kebocoran mechanical seal"))
+    open_row_id = repo.rows[-1]["intake_id"]
+    assert repo.rows[-1]["state"] == "NEEDS_INFORMATION"
+
+    response = _post(_message_envelope(message_id="wamid.tenA_ya", text="YA"))
+
+    assert response.status_code == 200
+    updated = [r for r in repo.rows if r["intake_id"] == open_row_id][0]
+    assert updated["state"] == "CONFIRMED"
+    assert sum(1 for r in repo.rows if r["state"] == "CONFIRMED") == 11
+
+
+def test_ready_for_confirmation_row_among_confirmed_rows_is_still_selected(monkeypatch):
+    # TASK 4 Test B.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    _wire(monkeypatch, repo, outbound)
+    for i in range(3):
+        tag = "211-P-13AR" if i % 2 == 0 else "210-P-05AR"
+        _post(_message_envelope(message_id=f"wamid.readyconf{i}", text=f"CM {tag} hari ini DE 7{i} NDE 8{i} tidak bocor"))
+        _post(_message_envelope(message_id=f"wamid.readyconf_ya{i}", text="YA"))
+    assert sum(1 for r in repo.rows if r["state"] == "CONFIRMED") == 3
+
+    _post(_message_envelope(message_id="wamid.ready_open", text="CM 210-P-05AR hari ini DE 90 NDE 91 tidak bocor"))
+    ready_row_id = repo.rows[-1]["intake_id"]
+    assert repo.rows[-1]["state"] == "READY_FOR_CONFIRMATION"
+
+    response = _post(_message_envelope(message_id="wamid.ready_ya", text="YA"))
+
+    assert response.status_code == 200
+    updated = [r for r in repo.rows if r["intake_id"] == ready_row_id][0]
+    assert updated["state"] == "CONFIRMED"
+
+
+def test_only_confirmed_rows_plain_ya_is_not_ambiguous_uses_no_pending_reply(monkeypatch):
+    # TASK 4 Test C -- must use the existing correct no-pending response,
+    # never the "Ada beberapa data menunggu konfirmasi" ambiguity reply.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    _wire(monkeypatch, repo, outbound)
+    _post(_message_envelope(message_id="wamid.onlyconfA", text="CM 211-P-13AR hari ini DE 78 NDE 81 tidak bocor"))
+    _post(_message_envelope(message_id="wamid.onlyconfA_ya", text="YA"))
+    assert repo.rows[0]["state"] == "CONFIRMED"
+
+    response = _post(_message_envelope(message_id="wamid.onlyconf_ya2", text="YA"))
+
+    assert response.status_code == 200
+    assert outbound.calls[-1] == (SENDER_A, "Tidak ada data yang menunggu konfirmasi.")

@@ -29,15 +29,33 @@ PENDING_STATES = frozenset(
     {"RECEIVED", "NEEDS_INFORMATION", "READY_FOR_CONFIRMATION", "CONFIRMED", "CANCELLED", "REJECTED", "EXPIRED"}
 )
 
-# The canonical "still open" state set. Named here as the single source of
-# truth for what _confirm_pending() may act on; whatsapp_intake_repository.py's
-# find_actionable_pending_list() SQL and every FakeIntakeRepository's own
-# Python implementation of the same method already filter on this exact
-# same set (duplicated there since they're SQL/test doubles, not importers
-# of this module) -- keep them in sync if this set ever changes. Every
-# other PENDING_STATES value (RECEIVED, CANCELLED, REJECTED, EXPIRED) is
-# terminal/non-actionable: none of them may ever be confirmed.
-ACTIONABLE_PENDING_STATES = frozenset({"READY_FOR_CONFIRMATION", "NEEDS_INFORMATION", "CONFIRMED"})
+# Production regression fix -- OPEN_PENDING_STATES is the ONLY set that may
+# ever answer "what is a genuinely unresolved candidate for a plain, unlinked
+# 'YA'". CONFIRMED is deliberately excluded here: a confirmed row is a
+# finished transaction, not something still awaiting a decision, so it must
+# never appear in candidate discovery (find_actionable_pending_list) or
+# trigger AMBIGUOUS_PENDING_SELECTION. This is the single source of truth
+# for that query; whatsapp_intake_repository.py's find_actionable_pending_
+# list() SQL and every FakeIntakeRepository's own Python implementation of
+# the same method already filter on this exact same set (duplicated there
+# since they're SQL/test doubles, not importers of this module) -- keep
+# them in sync if this set ever changes.
+#
+# This is a SEPARATE concept from "may _confirm_pending() act on it": that
+# guard (in _confirm_pending itself) checks CONFIRMED first, as a distinct
+# idempotent-duplicate branch, before ever consulting this set -- so
+# OPEN_PENDING_STATES correctly describes both "candidate for discovery"
+# and "eligible to actually transition" without CONFIRMED needing to be a
+# member of either. An explicitly referenced CONFIRMED row (via WA-CONF
+# code or Meta context.id -- both exact-match lookups with no state
+# filter at all) remains fully resolvable and idempotent regardless of
+# this set; only the discovery/transition side is scoped by it.
+OPEN_PENDING_STATES = frozenset({"READY_FOR_CONFIRMATION", "NEEDS_INFORMATION"})
+
+# Documentation-only grouping of PENDING_STATES' remaining non-open values
+# (CONFIRMED is terminal too, but has its own idempotent-lookup branch in
+# _confirm_pending and is intentionally not folded into this set).
+TERMINAL_STATES = frozenset({"CANCELLED", "REJECTED", "EXPIRED"})
 
 _TAG_PATTERN = re.compile(r"\b\d{3}-P-\d+(?:AR|BR|[A-Z])?\b", re.IGNORECASE)
 _NUMBER_AFTER = r"\s*[:=]?\s*(-?\d+(?:\.\d+)?)"
@@ -314,7 +332,7 @@ def _confirm_pending(
         # confirmed_at, on any repeat "YA" for an already-confirmed row.
         return IntakeResult(status="CONFIRMED", message="DUPLICATE_CONFIRMATION", intake=pending, reply="Data sudah dikonfirmasi.")
 
-    if pending.get("state") not in ACTIONABLE_PENDING_STATES:
+    if pending.get("state") not in OPEN_PENDING_STATES:
         # State-guard fix -- a confirmation code is only ever actionable
         # from an open state (READY_FOR_CONFIRMATION/NEEDS_INFORMATION;
         # CONFIRMED already handled above). A terminal row -- EXPIRED (a
