@@ -51,3 +51,20 @@ Where it bites: any future DEV/test/build activity on this VPS while PROD
 containers are running (docker build, docker run, npm ci, pytest, vitest,
 dependency installs).
 Noted: 2026-08-29
+
+## CORE-SERVICES/API/TESTS entire suite blocked at collection (pre-existing)
+Risk: The whole suite (not an individual test) fails to collect at all.
+`CORE-SERVICES/API/TESTS/test_ltsa_messaging_gateway.py` does
+`from API.ltsa_messaging_gateway import LTSAMessagingGateway, MessageRequest,
+MessageResponse`, but `CORE-SERVICES/API/ltsa_messaging_gateway.py` does not
+exist anywhere in the repository (confirmed by a repo-wide filename
+search). pytest aborts the entire collection run on this single import
+error ("Interrupted: 1 error during collection"), so none of this
+suite's other tests produce a result in CI, regardless of PYTHONPATH.
+Where it bites: any CI job or local run that tries `pytest
+CORE-SERVICES/API/TESTS` will report 0 useful results until this
+pre-existing gap (a missing/orphaned module the test file still
+references) is resolved. Confirmed via the first real GitHub Actions
+execution of this suite (2026-08-29, workflow run 33261503281) -- not
+caused by, and not fixed by, the IT Agent Foundation branch.
+Noted: 2026-08-29
