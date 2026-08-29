@@ -1,0 +1,62 @@
+name: IT Agent Foundation CI
+
+on:
+  push:
+    branches:
+      - feature/ai5r-it-agent-foundation
+  pull_request:
+    branches:
+      - release/ltsa-v1-rc1
+      - main
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install production requirements
+        run: pip install -r CORE-SERVICES/BACKEND-API/requirements.txt
+      - name: Install approved test requirements
+        run: pip install -r CORE-SERVICES/BACKEND-API/requirements-dev.txt
+      - name: Run BACKEND-API tests
+        run: |
+          cd CORE-SERVICES/BACKEND-API
+          python -m pytest TESTS -q
+      - name: Attempt CORE-SERVICES/API tests
+        run: |
+          PYTHONPATH="${GITHUB_WORKSPACE}/CORE-SERVICES:${GITHUB_WORKSPACE}/AI5R-SDK" \
+            python -m pytest CORE-SERVICES/API/TESTS -q
+
+  frontend-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: AI5R-STUDIO/dashboard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install dependencies (pinned lockfile)
+        run: npm ci
+      - name: Run tests
+        run: npm test
+      - name: Build
+        run: npm run build
+
+  agent-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate IT Agent Foundation structure
+        run: python scripts/validate_it_agent.py
