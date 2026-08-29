@@ -18,6 +18,7 @@ from API.whatsapp_intake_service import hash_sender_identifier, normalize_sender
 from API.whatsapp_outbound_client import OutboundResult
 from dependencies import (
     get_condition_monitoring_reading_repository,
+    get_pm_occurrence_repository,
     get_pump_gateway,
     get_whatsapp_intake_repository,
     get_whatsapp_outbound_client,
@@ -111,6 +112,78 @@ class FakeConditionMonitoringReadingRepository:
             schedule_code=f"UNSCHEDULED::{provenance}", asset_code=asset_code, asset_type=asset_type,
             reading_date=reading_date, measurements=measurements, created_by=created_by,
             provenance=provenance, source_reference=source_reference, finding=finding,
+        )
+
+
+class FakePMOccurrenceRepository:
+    def __init__(self, pumps=None, schedules=None, fail=False):
+        self.pumps = pumps if pumps is not None else {"211-P-13AR", "210-P-05AR"}
+        self.schedules = schedules if schedules is not None else []
+        self.rows = []
+        self._seq = 0
+        self.fail = fail
+        self.create_draft_calls = []
+        self.create_ad_hoc_draft_calls = []
+
+    def find_by_source_reference(self, source_reference):
+        for row in self.rows:
+            if row.get("source_reference") == source_reference:
+                return row
+        return None
+
+    def find_open_schedules_by_asset(self, asset_code):
+        return [
+            dict(s) for s in self.schedules if s["asset_code"] == asset_code and s["status"] not in {"CANCELLED", "COMPLETED"}
+        ]
+
+    def _new_row(self, *, schedule_code, asset_code, asset_type, occurrence_date, activities, remarks, created_by, provenance, source_reference):
+        self._seq += 1
+        row = {
+            "pm_occurrence_code": f"PMOCC-TEST{self._seq:04d}",
+            "pm_schedule_code": schedule_code,
+            "asset_code": asset_code,
+            "asset_type": asset_type,
+            "occurrence_date": occurrence_date,
+            "activities": activities,
+            "remarks": remarks,
+            "created_by": created_by,
+            "provenance": provenance,
+            "source_reference": source_reference,
+            "workflow_status": "DRAFT",
+        }
+        self.rows.append(row)
+        return row
+
+    def create_draft(self, *, pm_schedule_code, asset_code, asset_type, occurrence_date, activities, remarks, created_by, provenance, source_reference):
+        self.create_draft_calls.append(pm_schedule_code)
+        if self.fail:
+            raise RuntimeError("simulated write failure")
+        schedule = next(
+            (s for s in self.schedules if s["pm_schedule_code"] == pm_schedule_code),
+            None,
+        )
+        if schedule is None or asset_code not in self.pumps:
+            # Mirrors the real repository's own WHERE EXISTS-no-match
+            # behavior (raises IndexError on rows[0] of an empty list).
+            raise IndexError("list index out of range")
+        row = self._new_row(
+            schedule_code=pm_schedule_code, asset_code=asset_code, asset_type=asset_type,
+            occurrence_date=occurrence_date, activities=activities, remarks=remarks, created_by=created_by,
+            provenance=provenance, source_reference=source_reference,
+        )
+        schedule["status"] = "COMPLETED"
+        return row
+
+    def create_ad_hoc_draft(self, *, asset_code, asset_type, occurrence_date, activities, remarks, created_by, source_reference, provenance):
+        self.create_ad_hoc_draft_calls.append(source_reference)
+        if self.fail:
+            raise RuntimeError("simulated write failure")
+        if asset_code not in self.pumps:
+            return None
+        return self._new_row(
+            schedule_code=f"UNSCHEDULED::{provenance}", asset_code=asset_code, asset_type=asset_type,
+            occurrence_date=occurrence_date, activities=activities, remarks=remarks, created_by=created_by,
+            provenance=provenance, source_reference=source_reference,
         )
 
 
@@ -340,17 +413,21 @@ def _post(body: dict) -> "TestClient.__enter__.__self__":
     return client.post(WEBHOOK_PATH, content=raw, headers={"X-Hub-Signature-256": _sign(raw, "test-app-secret")})
 
 
-def _wire(monkeypatch, repo, outbound=None, pump_gateway=None, cmon_repository=_UNSET):
+def _wire(monkeypatch, repo, outbound=None, pump_gateway=None, cmon_repository=_UNSET, pm_repository=_UNSET):
     monkeypatch.setenv("META_APP_SECRET", "test-app-secret")
     app.dependency_overrides[get_whatsapp_intake_repository] = lambda: repo
     app.dependency_overrides[get_pump_gateway] = lambda: (pump_gateway or FakePumpGateway())
     app.dependency_overrides[get_whatsapp_outbound_client] = lambda: (outbound or FakeOutboundClient())
-    # Defaults to None (no authoritative CMON writer available), matching
-    # every pre-existing test's expectation of the prior "draft intake,
-    # no PM/CMON record" behavior -- only tests that explicitly pass a
-    # cmon_repository opt into the new authoritative-write path.
+    # Defaults to None (no authoritative CMON/PM writer available),
+    # matching every pre-existing test's expectation of the prior "draft
+    # intake, no PM/CMON record" behavior -- only tests that explicitly
+    # pass a cmon_repository/pm_repository opt into the authoritative-
+    # write path. Also overrides the REAL production dependency so no
+    # test can accidentally reach a real DB connection attempt.
     resolved_cmon = None if cmon_repository is _UNSET else cmon_repository
     app.dependency_overrides[get_condition_monitoring_reading_repository] = lambda: resolved_cmon
+    resolved_pm = None if pm_repository is _UNSET else pm_repository
+    app.dependency_overrides[get_pm_occurrence_repository] = lambda: resolved_pm
     return outbound
 
 
@@ -1465,6 +1542,456 @@ def test_cmon_unknown_asset_never_reaches_canonical_write(monkeypatch):
     assert response.status_code == 200
     assert cmon.rows == []
     assert repo.rows[0]["state"] != "CONFIRMED"
+
+
+# --- Authoritative WhatsApp PM writer (MWO: AUTHORITATIVE WHATSAPP PM
+# CANONICAL PERSISTENCE) -- mirrors the CMON writer test suite's shape
+# above, adapted to PM's own schema/semantics (51667f9's repository
+# support), never copying CMON assumptions blindly.
+
+_PRODUCTION_PM_TEXT = "PM 211-P-13AR ganti oli mesin"
+
+
+def test_pm_write_exact_flow_creates_one_canonical_record(monkeypatch):
+    # PM_WRITE_TEST -- missing occurrence_date, resolved via the SAME
+    # two-step state-machine boundary fee571a already established: the
+    # first "Ya" answers the date question only (zero canonical writes),
+    # a genuinely separate second "Ya" performs the final write.
+    from datetime import datetime, timedelta, timezone
+
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    pm = FakePMOccurrenceRepository()
+    _wire(monkeypatch, repo, outbound, pm_repository=pm)
+
+    _post(_message_envelope(message_id="wamid.pmwriteA", text=_PRODUCTION_PM_TEXT))
+    assert repo.rows[0]["state"] == "NEEDS_INFORMATION"
+    assert outbound.calls[-1] == (SENDER_A, "Tanggal PM belum ada. Gunakan hari ini?")
+
+    mid_response = _post(_message_envelope(message_id="wamid.pmwriteB", text="Ya"))
+    assert mid_response.status_code == 200
+    assert pm.rows == []
+    assert repo.rows[0]["state"] == "READY_FOR_CONFIRMATION"
+    assert outbound.calls[-1][1].endswith("Confirm?\nYA / UBAH / BATAL")
+
+    response = _post(_message_envelope(message_id="wamid.pmwriteC", text="Ya"))
+
+    assert response.status_code == 200
+    assert len(pm.rows) == 1
+    assert repo.rows[0]["state"] == "CONFIRMED"
+    expected_today = datetime.now(timezone(timedelta(hours=7))).date().isoformat()
+    reply = outbound.calls[-1][1]
+    assert "berhasil disimpan" in reply
+    assert "Terkonfirmasi sebagai draft intake" not in reply
+    assert pm.rows[0]["occurrence_date"] == expected_today
+
+
+def test_pm_field_mapping_matches_structured_payload(monkeypatch):
+    # PM_FIELD_MAPPING_TEST.
+    from datetime import datetime, timedelta, timezone
+
+    repo = FakeIntakeRepository({SENDER_A: _identity(user_id="user-mapping-pm-1")})
+    outbound = FakeOutboundClient()
+    pm = FakePMOccurrenceRepository()
+    _wire(monkeypatch, repo, outbound, pm_repository=pm)
+
+    _post(_message_envelope(message_id="wamid.pmmapA", text=_PRODUCTION_PM_TEXT))
+    _post(_message_envelope(message_id="wamid.pmmapB", text="Ya"))
+    _post(_message_envelope(message_id="wamid.pmmapC", text="Ya"))
+
+    record = pm.rows[0]
+    expected_today = datetime.now(timezone(timedelta(hours=7))).date().isoformat()
+    assert record["asset_code"] == "211-P-13AR"
+    assert record["asset_type"] == "PUMP"
+    assert record["occurrence_date"] == expected_today
+    assert record["activities"] == [{"code": "WHATSAPP-FREE-TEXT", "description": "ganti oli mesin", "side": None, "done": False}]
+    assert record["created_by"] == "user-mapping-pm-1"
+    assert record["provenance"] == "WHATSAPP"
+    assert record["source_reference"] == f"WHATSAPP::{repo.rows[0]['intake_id']}"
+    # Never invented -- remarks was never supplied by this message.
+    assert record.get("remarks") is None
+
+
+def test_pm_zero_open_schedules_uses_unscheduled_sentinel(monkeypatch):
+    # PM_ZERO_SCHEDULE_ADHOC_TEST.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    pm = FakePMOccurrenceRepository(schedules=[])
+    _wire(monkeypatch, repo, outbound, pm_repository=pm)
+
+    _post(_message_envelope(message_id="wamid.pmzeroschedA", text=_PRODUCTION_PM_TEXT))
+    _post(_message_envelope(message_id="wamid.pmzeroschedB", text="Ya"))
+    _post(_message_envelope(message_id="wamid.pmzeroschedC", text="Ya"))
+
+    assert len(pm.rows) == 1
+    assert pm.rows[0]["pm_schedule_code"] == "UNSCHEDULED::WHATSAPP"
+    assert pm.create_ad_hoc_draft_calls == [f"WHATSAPP::{repo.rows[0]['intake_id']}"]
+    assert pm.create_draft_calls == []
+
+
+def test_pm_one_open_schedule_uses_real_schedule_code(monkeypatch):
+    # PM_ONE_SCHEDULE_RESOLUTION_TEST.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    pm = FakePMOccurrenceRepository(
+        schedules=[{"pm_schedule_code": "PMSCHED-REAL-1", "asset_code": "211-P-13AR", "status": "ACTIVE", "procedure": "Lubrication"}]
+    )
+    _wire(monkeypatch, repo, outbound, pm_repository=pm)
+
+    _post(_message_envelope(message_id="wamid.pmoneschedA", text=_PRODUCTION_PM_TEXT))
+    _post(_message_envelope(message_id="wamid.pmoneschedB", text="Ya"))
+    _post(_message_envelope(message_id="wamid.pmoneschedC", text="Ya"))
+
+    assert len(pm.rows) == 1
+    assert pm.rows[0]["pm_schedule_code"] == "PMSCHED-REAL-1"
+    assert not pm.rows[0]["pm_schedule_code"].startswith("UNSCHEDULED")
+    assert pm.create_draft_calls == ["PMSCHED-REAL-1"]
+    assert pm.create_ad_hoc_draft_calls == []
+
+
+def test_pm_multiple_open_schedules_returns_clarification_no_write(monkeypatch):
+    # PM_MULTIPLE_SCHEDULE_CLARIFICATION_TEST.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    pm = FakePMOccurrenceRepository(
+        schedules=[
+            {"pm_schedule_code": "PMSCHED-A", "asset_code": "211-P-13AR", "status": "ACTIVE", "procedure": "Lubrication"},
+            {"pm_schedule_code": "PMSCHED-B", "asset_code": "211-P-13AR", "status": "PLANNED", "procedure": "Inspection"},
+        ]
+    )
+    _wire(monkeypatch, repo, outbound, pm_repository=pm)
+
+    _post(_message_envelope(message_id="wamid.pmmultischedA", text=_PRODUCTION_PM_TEXT))
+    _post(_message_envelope(message_id="wamid.pmmultischedB", text="Ya"))  # answers date question only
+    response = _post(_message_envelope(message_id="wamid.pmmultischedC", text="Ya"))  # final confirmation -- hits ambiguity
+
+    assert response.status_code == 200
+    assert pm.rows == []  # no write at all
+    assert repo.rows[0]["state"] != "CONFIRMED"  # pending stays unresolved
+    reply = outbound.calls[-1][1]
+    assert "Ditemukan lebih dari satu jadwal PM" in reply
+    assert "Lubrication" in reply and "Inspection" in reply
+    # Never a raw internal schedule code exposed as the only identifier.
+    assert "PMSCHED-A" not in reply
+    assert "PMSCHED-B" not in reply
+
+
+def test_pm_only_terminal_schedules_treated_as_zero_open(monkeypatch):
+    # PM_TERMINAL_SCHEDULE_ADHOC_TEST.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    pm = FakePMOccurrenceRepository(
+        schedules=[
+            {"pm_schedule_code": "PMSCHED-DONE", "asset_code": "211-P-13AR", "status": "COMPLETED", "procedure": "Lubrication"},
+            {"pm_schedule_code": "PMSCHED-CANCEL", "asset_code": "211-P-13AR", "status": "CANCELLED", "procedure": "Inspection"},
+        ]
+    )
+    _wire(monkeypatch, repo, outbound, pm_repository=pm)
+
+    _post(_message_envelope(message_id="wamid.pmtermschedA", text=_PRODUCTION_PM_TEXT))
+    _post(_message_envelope(message_id="wamid.pmtermschedB", text="Ya"))
+    _post(_message_envelope(message_id="wamid.pmtermschedC", text="Ya"))
+
+    assert len(pm.rows) == 1
+    assert pm.rows[0]["pm_schedule_code"] == "UNSCHEDULED::WHATSAPP"
+
+
+def test_pm_repeated_confirmation_does_not_duplicate_canonical_record(monkeypatch):
+    # PM_REPEATED_CONFIRMATION_TEST.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    pm = FakePMOccurrenceRepository()
+    _wire(monkeypatch, repo, outbound, pm_repository=pm)
+
+    _post(_message_envelope(message_id="wamid.pmrepconfA", text=_PRODUCTION_PM_TEXT))
+    _post(_message_envelope(message_id="wamid.pmrepconfB", text="Ya"))
+    _post(_message_envelope(message_id="wamid.pmrepconfC", text="Ya"))
+    assert len(pm.rows) == 1
+
+    response = _post(_message_envelope(message_id="wamid.pmrepconfD", text="YA"))
+
+    assert response.status_code == 200
+    assert len(pm.rows) == 1  # no second canonical record
+
+
+def test_pm_duplicate_webhook_delivery_does_not_duplicate_canonical_record(monkeypatch):
+    # PM_DUPLICATE_WEBHOOK_TEST -- redelivery of the SAME final "Ya" event.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    pm = FakePMOccurrenceRepository()
+    _wire(monkeypatch, repo, outbound, pm_repository=pm)
+
+    _post(_message_envelope(message_id="wamid.pmdupwebA", text=_PRODUCTION_PM_TEXT))
+    _post(_message_envelope(message_id="wamid.pmdupwebB", text="Ya"))  # answers date question only
+    body = json.dumps(_message_envelope(message_id="wamid.pmdupwebC", text="Ya")).encode("utf-8")
+    signature = {"X-Hub-Signature-256": _sign(body, "test-app-secret")}
+    first = client.post(WEBHOOK_PATH, content=body, headers=signature)
+    second = client.post(WEBHOOK_PATH, content=body, headers=signature)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert len(pm.rows) == 1
+
+
+def test_pm_explicit_code_repeat_does_not_duplicate_canonical_record(monkeypatch):
+    # PM_EXPLICIT_REPEAT_TEST.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    pm = FakePMOccurrenceRepository()
+    _wire(monkeypatch, repo, outbound, pm_repository=pm)
+
+    _post(_message_envelope(message_id="wamid.pmexplrepA", text=_PRODUCTION_PM_TEXT))
+    code = repo.rows[0]["confirmation_id"]
+    _post(_message_envelope(message_id="wamid.pmexplrepB", text="Ya"))
+    _post(_message_envelope(message_id="wamid.pmexplrepC", text="Ya"))
+    assert len(pm.rows) == 1
+
+    response = _post(_message_envelope(message_id="wamid.pmexplrepD", text=f"YA {code}"))
+
+    assert response.status_code == 200
+    assert len(pm.rows) == 1
+    assert outbound.calls[-1] == (SENDER_A, f"PM 211-P-13AR sudah tersimpan sebelumnya.\nKode: {pm.rows[0]['pm_occurrence_code']}")
+
+
+def test_pm_idempotent_recovery_when_write_succeeded_but_intake_transition_did_not(monkeypatch):
+    # Durable idempotency proof for the exact gap true cross-repository
+    # atomicity can't close: a prior attempt's canonical write succeeded
+    # but the process never reached transition_pending. Retrying must
+    # find the existing row by source_reference and complete the intake
+    # transition -- never write a second record.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    pm = FakePMOccurrenceRepository()
+    _wire(monkeypatch, repo, outbound, pm_repository=pm)
+
+    _post(_message_envelope(message_id="wamid.pmrecoverA", text=_PRODUCTION_PM_TEXT))
+    _post(_message_envelope(message_id="wamid.pmrecoverB", text="Ya"))  # answers date question only
+    intake_id = repo.rows[0]["intake_id"]
+    # Simulate the CMON... err, PM write having already succeeded on a
+    # prior final-confirmation attempt that crashed before the intake's
+    # own CONFIRMED transition. Only reachable from READY_FOR_CONFIRMATION.
+    pm.rows.append(
+        {
+            "pm_occurrence_code": "PMOCC-PRIOR0001",
+            "pm_schedule_code": "UNSCHEDULED::WHATSAPP",
+            "asset_code": "211-P-13AR",
+            "occurrence_date": "2026-08-30",
+            "source_reference": f"WHATSAPP::{intake_id}",
+        }
+    )
+    assert repo.rows[0]["state"] == "READY_FOR_CONFIRMATION"  # never completed last time
+
+    response = _post(_message_envelope(message_id="wamid.pmrecoverC", text="Ya"))
+
+    assert response.status_code == 200
+    assert repo.rows[0]["state"] == "CONFIRMED"
+    assert len(pm.rows) == 1  # still exactly the one pre-existing record
+    assert outbound.calls[-1][1] != "Gagal menyimpan PM. Silakan coba lagi."
+
+
+def test_pm_write_failure_does_not_confirm_or_send_false_success(monkeypatch):
+    # PM_WRITE_FAILURE_ROLLBACK_TEST + NO_FALSE_SUCCESS_TEST.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    pm = FakePMOccurrenceRepository(fail=True)
+    _wire(monkeypatch, repo, outbound, pm_repository=pm)
+
+    _post(_message_envelope(message_id="wamid.pmfailA", text=_PRODUCTION_PM_TEXT))
+    _post(_message_envelope(message_id="wamid.pmfailB", text="Ya"))  # answers date question only
+    response = _post(_message_envelope(message_id="wamid.pmfailC", text="Ya"))  # final confirmation -- attempts write
+
+    assert response.status_code == 200
+    assert pm.rows == []
+    assert repo.rows[0]["state"] != "CONFIRMED"
+    reply = outbound.calls[-1][1]
+    assert "berhasil" not in reply
+    assert "Berhasil" not in reply
+    assert reply == "Gagal menyimpan PM. Silakan coba lagi."
+
+
+def test_pm_wrong_sender_never_reaches_canonical_write(monkeypatch):
+    # PM_WRONG_SENDER_TEST.
+    repo = FakeIntakeRepository({SENDER_A: _identity(user_id="user-a"), SENDER_B: _identity(user_id="user-b")})
+    outbound = FakeOutboundClient()
+    pm = FakePMOccurrenceRepository()
+    _wire(monkeypatch, repo, outbound, pm_repository=pm)
+
+    _post(_message_envelope(message_id="wamid.pmwrongsenderA", sender="15550000001", text=_PRODUCTION_PM_TEXT))
+    response = _post(_message_envelope(message_id="wamid.pmwrongsenderB", sender="15550000002", text="Ya"))
+
+    assert response.status_code == 200
+    assert pm.rows == []
+    assert pm.create_draft_calls == []
+    assert pm.create_ad_hoc_draft_calls == []
+    assert repo.rows[0]["state"] != "CONFIRMED"
+
+
+def test_pm_wrong_org_never_reaches_canonical_write(monkeypatch):
+    # PM_WRONG_ORG_TEST.
+    repo = FakeIntakeRepository({SENDER_A: _identity(organization_id="org-tap")})
+    outbound = FakeOutboundClient()
+    pm = FakePMOccurrenceRepository()
+    _wire(monkeypatch, repo, outbound, pm_repository=pm)
+
+    _post(_message_envelope(message_id="wamid.pmwrongorgA", text=_PRODUCTION_PM_TEXT))
+    repo.rows[0]["organization_id"] = "org-other"  # simulate a stored row from a different org
+
+    response = _post(_message_envelope(message_id="wamid.pmwrongorgB", text="Ya"))
+
+    assert response.status_code == 200
+    assert pm.rows == []
+    assert repo.rows[0]["state"] != "CONFIRMED"
+
+
+def test_pm_unknown_asset_never_reaches_canonical_write(monkeypatch):
+    # PM_UNKNOWN_ASSET_TEST -- existing UNKNOWN_PUMP validation already
+    # blocks confirmation before the PM-write step is ever reached.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    pm = FakePMOccurrenceRepository()
+    _wire(monkeypatch, repo, outbound, pm_repository=pm)
+
+    _post(_message_envelope(message_id="wamid.pmunkassetA", text="PM 999-P-99 ganti oli"))
+    assert "UNKNOWN_PUMP" in repo.rows[0]["validation_result"]["errors"]
+
+    response = _post(_message_envelope(message_id="wamid.pmunkassetB", text="Ya"))
+
+    assert response.status_code == 200
+    assert pm.rows == []
+    assert repo.rows[0]["state"] != "CONFIRMED"
+
+
+def test_confirmed_pm_explicit_retry_returns_existing_canonical_code(monkeypatch):
+    # Mirrors the CMON confirmed-retry disclosure test exactly, for PM.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    pm = FakePMOccurrenceRepository()
+    _wire(monkeypatch, repo, outbound, pm_repository=pm)
+
+    _post(_message_envelope(message_id="wamid.pmconfretryA", text=_PRODUCTION_PM_TEXT))
+    code = repo.rows[0]["confirmation_id"]
+    _post(_message_envelope(message_id="wamid.pmconfretryB", text="Ya"))
+    _post(_message_envelope(message_id="wamid.pmconfretryC", text="Ya"))
+    assert repo.rows[0]["state"] == "CONFIRMED"
+    canonical_code = pm.rows[0]["pm_occurrence_code"]
+    confirmed_by_before = repo.rows[0].get("confirmed_by")
+    create_draft_calls_before = list(pm.create_draft_calls)
+    create_ad_hoc_draft_calls_before = list(pm.create_ad_hoc_draft_calls)
+
+    response = _post(_message_envelope(message_id="wamid.pmconfretryD", text=f"YA {code}"))
+
+    assert response.status_code == 200
+    assert outbound.calls[-1] == (SENDER_A, f"PM 211-P-13AR sudah tersimpan sebelumnya.\nKode: {canonical_code}")
+    assert len(pm.rows) == 1
+    assert pm.create_draft_calls == create_draft_calls_before
+    assert pm.create_ad_hoc_draft_calls == create_ad_hoc_draft_calls_before
+    assert repo.rows[0].get("confirmed_by") == confirmed_by_before
+    assert repo.rows[0]["state"] == "CONFIRMED"
+
+
+def test_confirmed_pm_lowercase_explicit_code_works(monkeypatch):
+    # Confirmation-security regression: PM must benefit from the same
+    # case-insensitive-prefix/strict-32-hex confirmation code fix as CMON
+    # (f76fcbb), since both go through the exact same _handle_existing_
+    # pending_action/_CONFIRMATION_CODE_PATTERN code path.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    pm = FakePMOccurrenceRepository()
+    _wire(monkeypatch, repo, outbound, pm_repository=pm)
+
+    _post(_message_envelope(message_id="wamid.pmlowerA", text=_PRODUCTION_PM_TEXT))
+    code = repo.rows[0]["confirmation_id"]
+    _post(_message_envelope(message_id="wamid.pmlowerB", text="Ya"))
+    _post(_message_envelope(message_id="wamid.pmlowerC", text="Ya"))
+    canonical_code = pm.rows[0]["pm_occurrence_code"]
+
+    response = _post(_message_envelope(message_id="wamid.pmlowerD", text=f"YA {code.lower()}"))
+
+    assert response.status_code == 200
+    assert outbound.calls[-1] == (SENDER_A, f"PM 211-P-13AR sudah tersimpan sebelumnya.\nKode: {canonical_code}")
+    assert len(pm.rows) == 1
+
+
+@pytest.mark.parametrize("terminal_state", ["EXPIRED", "CANCELLED", "REJECTED"])
+def test_pm_terminal_state_never_resurrects(monkeypatch, terminal_state):
+    # PM_TERMINAL_STATE_TEST -- mirrors the CMON version exactly.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    pm = FakePMOccurrenceRepository()
+    _wire(monkeypatch, repo, outbound, pm_repository=pm)
+
+    _post(_message_envelope(message_id=f"wamid.pmtermF1{terminal_state}", text=_PRODUCTION_PM_TEXT))
+    code = repo.rows[0]["confirmation_id"]
+    repo.rows[0]["state"] = terminal_state
+
+    response = _post(_message_envelope(message_id=f"wamid.pmtermF2{terminal_state}", text=f"YA {code}"))
+
+    assert response.status_code == 200
+    assert pm.rows == []
+    assert repo.rows[0]["state"] == terminal_state
+    assert outbound.calls[-1] == (SENDER_A, "Kode konfirmasi tidak ditemukan.")
+
+
+def test_pm_plain_ya_does_not_select_confirmed_row(monkeypatch):
+    # PM_PLAIN_YA_SELECTION_TEST -- mirrors the CMON version exactly.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    pm = FakePMOccurrenceRepository()
+    _wire(monkeypatch, repo, outbound, pm_repository=pm)
+
+    _post(_message_envelope(message_id="wamid.pmplainyaA", text=_PRODUCTION_PM_TEXT))
+    _post(_message_envelope(message_id="wamid.pmplainyaB", text="Ya"))
+    _post(_message_envelope(message_id="wamid.pmplainyaC", text="Ya"))
+    assert repo.rows[0]["state"] == "CONFIRMED"
+    assert len(pm.rows) == 1
+
+    response = _post(_message_envelope(message_id="wamid.pmplainyaD", text="Ya"))
+
+    assert response.status_code == 200
+    assert len(pm.rows) == 1
+    assert outbound.calls[-1] == (SENDER_A, "Tidak ada data yang menunggu konfirmasi.")
+
+
+# --- Phase 9: routing/UX regression -- no PM/CMON cross-routing --------
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "PM 211-P-13AR: ganti oli",
+        "PM 211-P-13AR tanggal 29-08-2026: ganti oli",
+        "PM 211-P-13AR hari ini: ganti oli",
+    ],
+    ids=["no_date", "unparsed_explicit_date", "hari_ini"],
+)
+def test_pm_message_variants_classify_as_pm_never_cmon(monkeypatch, text):
+    # "tanggal 29-08-2026" is NOT currently parsed as an explicit date by
+    # _extract_payload (only "hari ini"/"today" is) -- that variant
+    # correctly still classifies as PM and falls through to the missing-
+    # date follow-up, exactly like the no-date variant. This is an
+    # existing, unmodified limitation (documented, not fixed here -- out
+    # of this MWO's scope), not a routing defect: the point under test is
+    # that domain classification never cross-routes to CMON regardless.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    pm = FakePMOccurrenceRepository()
+    _wire(monkeypatch, repo, outbound, pm_repository=pm)
+
+    response = _post(_message_envelope(message_id=f"wamid.pmroute{hash(text)}", text=text))
+
+    assert response.status_code == 200
+    assert repo.rows[0]["detected_domain"] == "PM"
+
+
+def test_cmon_message_still_routes_exclusively_to_cmon(monkeypatch):
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    cmon = FakeConditionMonitoringReadingRepository()
+    pm = FakePMOccurrenceRepository()
+    _wire(monkeypatch, repo, outbound, cmon_repository=cmon, pm_repository=pm)
+
+    _post(_message_envelope(message_id="wamid.cmonroute", text="CMON 211-P-13AR: ditemukan kebocoran mechanical seal"))
+
+    assert repo.rows[0]["detected_domain"] == "CONDITION_MONITORING"
 
 
 # --- Ordering-bug fix: state-machine boundary between "answer a missing-

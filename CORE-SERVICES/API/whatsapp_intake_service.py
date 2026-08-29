@@ -219,6 +219,41 @@ class ConditionMonitoringWriterProtocol(Protocol):
     ) -> dict | None: ...
 
 
+class PMWriterProtocol(Protocol):
+    # Authoritative WhatsApp PM writer -- CORE-SERVICES/API/
+    # pm_occurrence_repository.py's PMOccurrenceRepository already
+    # implements every method here (create_draft() repaired in 31ea99c,
+    # find_by_source_reference/find_open_schedules_by_asset/
+    # create_ad_hoc_draft added in 51667f9); reused as-is, not duplicated.
+    def find_by_source_reference(self, source_reference: str) -> dict | None: ...
+    def find_open_schedules_by_asset(self, asset_code: str) -> list[dict]: ...
+    def create_draft(
+        self,
+        *,
+        pm_schedule_code: str,
+        asset_code: str,
+        asset_type: str | None,
+        occurrence_date: str | None,
+        activities: list | None,
+        remarks: str | None,
+        created_by: str,
+        provenance: str,
+        source_reference: str | None,
+    ) -> dict: ...
+    def create_ad_hoc_draft(
+        self,
+        *,
+        asset_code: str,
+        asset_type: str | None,
+        occurrence_date: str | None,
+        activities: list | None,
+        remarks: str | None,
+        created_by: str,
+        source_reference: str,
+        provenance: str,
+    ) -> dict | None: ...
+
+
 @dataclass(frozen=True, slots=True)
 class IntakeResult:
     status: str
@@ -255,6 +290,7 @@ def process_inbound_message(
     provider_payload: dict[str, Any] | None = None,
     context_message_id: str | None = None,
     cmon_repository: ConditionMonitoringWriterProtocol | None = None,
+    pm_repository: PMWriterProtocol | None = None,
 ) -> IntakeResult:
     result = _process_inbound_message(
         provider=provider,
@@ -267,6 +303,7 @@ def process_inbound_message(
         provider_payload=provider_payload,
         context_message_id=context_message_id,
         cmon_repository=cmon_repository,
+        pm_repository=pm_repository,
     )
     _log_intake_result(result)
     return result
@@ -298,6 +335,7 @@ def _process_inbound_message(
     provider_payload: dict[str, Any] | None = None,
     context_message_id: str | None = None,
     cmon_repository: ConditionMonitoringWriterProtocol | None = None,
+    pm_repository: PMWriterProtocol | None = None,
 ) -> IntakeResult:
     normalized_sender = normalize_sender_identifier(sender_identifier)
     sender_hash = hash_sender_identifier(normalized_sender)
@@ -314,7 +352,7 @@ def _process_inbound_message(
 
     stripped = (text or "").strip()
     existing_action = _handle_existing_pending_action(
-        stripped, repository, identity, pump_gateway, context_message_id, cmon_repository
+        stripped, repository, identity, pump_gateway, context_message_id, cmon_repository, pm_repository
     )
     if existing_action is not None:
         return existing_action
@@ -365,6 +403,7 @@ def _handle_existing_pending_action(
     pump_gateway: PumpGatewayProtocol,
     context_message_id: str | None,
     cmon_repository: ConditionMonitoringWriterProtocol | None = None,
+    pm_repository: PMWriterProtocol | None = None,
 ) -> IntakeResult | None:
     tokens = text.strip().split(maxsplit=1)
     if not tokens:
@@ -469,7 +508,7 @@ def _handle_existing_pending_action(
         return _emit(IntakeResult(status="REJECTED", message="ORG_SCOPE_MISMATCH", reply="Data tidak ditemukan."))
 
     if action in {"ya", "y", "confirm"}:
-        return _emit(_confirm_pending(pending, repository, identity, pump_gateway, cmon_repository))
+        return _emit(_confirm_pending(pending, repository, identity, pump_gateway, cmon_repository, pm_repository))
 
     if action == "ubah":
         updated = repository.transition_pending(
@@ -489,23 +528,25 @@ def _confirm_pending(
     identity: AuthenticatedIdentity,
     pump_gateway: PumpGatewayProtocol,
     cmon_repository: ConditionMonitoringWriterProtocol | None = None,
+    pm_repository: PMWriterProtocol | None = None,
 ) -> IntakeResult:
     if pending.get("state") == "CONFIRMED":
         # MWO-025J2 Part F -- idempotency: no re-transition, no re-stamped
         # confirmed_at, on any repeat "YA" for an already-confirmed row.
-        # Production hardening -- a CONFIRMED CONDITION_MONITORING row has
-        # a real canonical record to disclose (source_reference is the
-        # same immutable WHATSAPP::<intake_id> key _confirm_condition_
-        # monitoring already writes with), so an explicit-code retry can
-        # tell the engineer exactly which record already exists instead of
-        # a generic message. Read-only lookup -- never calls create_draft/
-        # create_ad_hoc_draft again, never calls transition_pending, so
-        # confirmed_at/confirmed_by and the canonical row count are both
-        # untouched by construction. PM (no cmon_repository match) and any
-        # CMON row whose canonical record isn't found (e.g. a pre-da59a18
-        # CONFIRMED_NO_ENGINEERING_WRITE row) fall through to the original
-        # generic reply unchanged.
-        if pending.get("detected_domain") == "CONDITION_MONITORING" and cmon_repository is not None:
+        # Production hardening -- a CONFIRMED CONDITION_MONITORING/PM row
+        # has a real canonical record to disclose (source_reference is
+        # the same immutable WHATSAPP::<intake_id> key _confirm_condition_
+        # monitoring/_confirm_pm already write with), so an explicit-code
+        # retry can tell the engineer exactly which record already exists
+        # instead of a generic message. Read-only lookup -- never calls
+        # create_draft/create_ad_hoc_draft again, never calls
+        # transition_pending, so confirmed_at/confirmed_by and the
+        # canonical row count are both untouched by construction. Any row
+        # whose canonical record isn't found (e.g. a pre-writer
+        # CONFIRMED_NO_ENGINEERING_WRITE row) falls through to the
+        # original generic reply unchanged.
+        retry_domain = pending.get("detected_domain")
+        if retry_domain == "CONDITION_MONITORING" and cmon_repository is not None:
             existing = cmon_repository.find_by_source_reference(f"WHATSAPP::{pending['intake_id']}")
             if existing is not None:
                 asset_code = existing.get("asset_code") or (pending.get("structured_payload") or {}).get("asset_code")
@@ -516,6 +557,19 @@ def _confirm_pending(
                     reply=(
                         f"Condition Monitoring {asset_code} sudah tersimpan sebelumnya.\n"
                         f"Kode: {existing.get('condition_monitoring_reading_code')}"
+                    ),
+                )
+        elif retry_domain == "PM" and pm_repository is not None:
+            existing = pm_repository.find_by_source_reference(f"WHATSAPP::{pending['intake_id']}")
+            if existing is not None:
+                asset_code = existing.get("asset_code") or (pending.get("structured_payload") or {}).get("asset_code")
+                return IntakeResult(
+                    status="CONFIRMED",
+                    message="DUPLICATE_CONFIRMATION_PM_RECORDED",
+                    intake=pending,
+                    reply=(
+                        f"PM {asset_code} sudah tersimpan sebelumnya.\n"
+                        f"Kode: {existing.get('pm_occurrence_code')}"
                     ),
                 )
         return IntakeResult(status="CONFIRMED", message="DUPLICATE_CONFIRMATION", intake=pending, reply="Data sudah dikonfirmasi.")
@@ -570,12 +624,14 @@ def _confirm_pending(
         )
         return IntakeResult(status="NEEDS_INFORMATION", message="STILL_INVALID", intake=updated, reply=_build_follow_up(validation))
 
-    # Authoritative CMON writer -- PM is deliberately untouched (PM_CHANGE=
-    # ZERO): only CONDITION_MONITORING reaches the write path below, and
-    # only when a writer was actually supplied (callers that don't pass
-    # one -- none currently, but this keeps the public function backward
-    # compatible -- get the exact prior no-write behavior).
-    has_real_writer = domain == "CONDITION_MONITORING" and cmon_repository is not None
+    # Authoritative writer dispatch -- CONDITION_MONITORING and PM each
+    # reach their own write path below only when the matching writer was
+    # actually supplied (a caller that passes neither -- none currently,
+    # but this keeps the public function backward compatible -- gets the
+    # exact prior no-write behavior for both domains).
+    has_real_writer = (domain == "CONDITION_MONITORING" and cmon_repository is not None) or (
+        domain == "PM" and pm_repository is not None
+    )
 
     if has_real_writer and pending.get("state") != "READY_FOR_CONFIRMATION":
         # State-machine boundary fix -- "Ya" answering AI5R's own missing-
@@ -590,9 +646,9 @@ def _confirm_pending(
         # -- never write until a SEPARATE, explicit final "Ya" (or
         # equivalent code/context reference) arrives against an
         # already-READY_FOR_CONFIRMATION row. Scoped to has_real_writer
-        # only: PM (no writer exists) and CMON-without-a-writer keep the
-        # exact prior single-step behavior, since nothing irreversible
-        # happens on either of those paths either way.
+        # only: a domain with no writer supplied keeps the exact prior
+        # single-step behavior, since nothing irreversible happens on
+        # that path either way.
         updated = repository.transition_pending(
             pending["intake_id"],
             state="READY_FOR_CONFIRMATION",
@@ -607,7 +663,9 @@ def _confirm_pending(
         )
 
     if has_real_writer:
-        return _confirm_condition_monitoring(pending, payload, validation, repository, identity, cmon_repository)
+        if domain == "CONDITION_MONITORING":
+            return _confirm_condition_monitoring(pending, payload, validation, repository, identity, cmon_repository)
+        return _confirm_pm(pending, payload, validation, repository, identity, pm_repository)
 
     updated = repository.transition_pending(
         pending["intake_id"],
@@ -798,6 +856,164 @@ def _confirm_condition_monitoring(
         message="CONFIRMED_CMON_RECORDED",
         intake=updated,
         reply=_cmon_success_reply(created),
+    )
+
+
+def _pm_success_reply(record: dict[str, Any]) -> str:
+    lines = [f"PM {record.get('asset_code')} berhasil disimpan."]
+    if record.get("occurrence_date"):
+        # Presentation-only, same reasoning as _cmon_success_reply's own
+        # identical slice: the real repository's occurrence_date column
+        # is TIMESTAMP, so a real DB row's value arrives as an ISO
+        # datetime string; a date-only string (Fake repositories, tests)
+        # is unaffected. Never touches the stored value/type.
+        lines.append(f"Tanggal: {str(record['occurrence_date'])[:10]}")
+    if record.get("pm_occurrence_code"):
+        lines.append(f"Kode: {record['pm_occurrence_code']}")
+    schedule_code = record.get("pm_schedule_code") or ""
+    if schedule_code.startswith("UNSCHEDULED::"):
+        lines.append("Jadwal: Ad-hoc (tidak terjadwal)")
+    elif schedule_code:
+        lines.append(f"Jadwal: {schedule_code}")
+    return "\n".join(lines)
+
+
+def _confirm_pm(
+    pending: dict[str, Any],
+    payload: dict[str, Any],
+    validation: dict[str, Any],
+    repository: WhatsAppIntakeRepositoryProtocol,
+    identity: AuthenticatedIdentity,
+    pm_repository: PMWriterProtocol,
+) -> IntakeResult:
+    # Mirrors _confirm_condition_monitoring's exact structure/guarantees,
+    # adapted to PM's own schema and business semantics (51667f9's own
+    # repository support) -- not a copy of CMON semantics, but the same
+    # proven orchestration shape: idempotency check, schedule resolution,
+    # ambiguity guard, write-failure safety, all before any state change.
+    intake_id = pending["intake_id"]
+    source_reference = f"WHATSAPP::{intake_id}"
+
+    already_written = pm_repository.find_by_source_reference(source_reference)
+    if already_written is not None:
+        updated = repository.transition_pending(
+            intake_id,
+            state="CONFIRMED",
+            confirmed_by=identity.user_id,
+            validation_result=validation,
+            structured_payload=payload,
+        )
+        logger.info("event=whatsapp_pm_write result=ALREADY_RECORDED intake_id=%s", _correlation_id(intake_id))
+        return IntakeResult(
+            status="CONFIRMED",
+            message="CONFIRMED_PM_ALREADY_RECORDED",
+            intake=updated,
+            reply=_pm_success_reply(already_written),
+        )
+
+    asset_code = payload.get("asset_code")
+    open_schedules = pm_repository.find_open_schedules_by_asset(asset_code)
+
+    if len(open_schedules) > 1:
+        # Never guess which schedule this occurrence belongs to. Pending
+        # stays open (state unchanged) -- no write, no false confirmation
+        # -- until the user picks one. Human-readable choices only, never
+        # a raw internal schedule code the engineer would have to already
+        # know.
+        listing = "\n".join(
+            f"{i}. {schedule.get('procedure') or schedule.get('pm_schedule_code')}"
+            for i, schedule in enumerate(open_schedules, start=1)
+        )
+        logger.info(
+            "event=whatsapp_pm_write result=AMBIGUOUS_SCHEDULE intake_id=%s candidate_count=%s",
+            _correlation_id(intake_id),
+            len(open_schedules),
+        )
+        return IntakeResult(
+            status="NEEDS_INFORMATION",
+            message="AMBIGUOUS_SCHEDULE_SELECTION",
+            intake=pending,
+            reply=(
+                f"Ditemukan lebih dari satu jadwal PM untuk {asset_code}:\n"
+                f"{listing}\nPilih nomor jadwal yang sesuai."
+            ),
+        )
+
+    activities = payload.get("activities")
+
+    write_exception_class: str | None = None
+    write_exception_sqlstate: str | None = None
+    write_exception_summary: str | None = None
+    try:
+        if len(open_schedules) == 1:
+            created = pm_repository.create_draft(
+                pm_schedule_code=open_schedules[0]["pm_schedule_code"],
+                asset_code=asset_code,
+                asset_type=payload.get("asset_type"),
+                occurrence_date=payload.get("occurrence_date"),
+                activities=activities,
+                remarks=None,
+                created_by=identity.user_id,
+                provenance="WHATSAPP",
+                source_reference=source_reference,
+            )
+        else:
+            # Zero open schedules -- legitimate ad-hoc PM (51667f9's own
+            # domain-evidenced UNSCHEDULED::<source> convention, already
+            # shipped in production via the historical batch importer).
+            created = pm_repository.create_ad_hoc_draft(
+                asset_code=asset_code,
+                asset_type=payload.get("asset_type"),
+                occurrence_date=payload.get("occurrence_date"),
+                activities=activities,
+                remarks=None,
+                created_by=identity.user_id,
+                source_reference=source_reference,
+                provenance="WHATSAPP",
+            )
+    except Exception as exc:
+        # Same diagnostic-only privacy/safety standard as _confirm_
+        # condition_monitoring's own identical except-block: exception
+        # class/SQLSTATE/a bounded first-line summary only, never the
+        # phone number, raw provider payload, or full user message.
+        created = None
+        write_exception_class = type(exc).__name__
+        write_exception_sqlstate = getattr(exc, "pgcode", None)
+        first_line = str(exc).strip().splitlines()[0] if str(exc).strip() else ""
+        write_exception_summary = first_line[:200] or None
+
+    if not created:
+        logger.info(
+            "event=whatsapp_pm_write result=FAILED intake_id=%s exception_class=%s sqlstate=%s error_summary=%s",
+            _correlation_id(intake_id),
+            write_exception_class,
+            write_exception_sqlstate,
+            write_exception_summary,
+        )
+        return IntakeResult(
+            status="NEEDS_INFORMATION",
+            message="PM_WRITE_FAILED",
+            intake=pending,
+            reply="Gagal menyimpan PM. Silakan coba lagi.",
+        )
+
+    updated = repository.transition_pending(
+        intake_id,
+        state="CONFIRMED",
+        confirmed_by=identity.user_id,
+        validation_result=validation,
+        structured_payload=payload,
+    )
+    logger.info(
+        "event=whatsapp_pm_write result=SUCCESS intake_id=%s schedule=%s",
+        _correlation_id(intake_id),
+        "REAL" if len(open_schedules) == 1 else "UNSCHEDULED",
+    )
+    return IntakeResult(
+        status="CONFIRMED",
+        message="CONFIRMED_PM_RECORDED",
+        intake=updated,
+        reply=_pm_success_reply(created),
     )
 
 

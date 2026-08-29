@@ -141,6 +141,9 @@ def test_real_db_three_message_flow_writes_exactly_one_canonical_record(monkeypa
     # with the CMON writer backed by real Postgres running the actual
     # canonical schema, proving both the state-machine ordering fix
     # (fee571a) and the SQL syntax fix land correctly together.
+    from datetime import datetime, timedelta, timezone
+    expected_today = datetime.now(timezone(timedelta(hours=7))).date().isoformat()
+
     repo = FakeIntakeRepository({SENDER_A: _identity(user_id="11111111-1111-1111-1111-111111111111")})
     outbound = FakeOutboundClient()
     _wire(monkeypatch, repo, outbound, cmon_repository=cmon_repo)
@@ -166,7 +169,7 @@ def test_real_db_three_message_flow_writes_exactly_one_canonical_record(monkeypa
     assert record is not None
     assert record["asset_code"] == "211-P-13AR"
     assert record["asset_type"] == "PUMP"
-    assert record["reading_date"].startswith("2026-08-29")
+    assert record["reading_date"].startswith(expected_today)
     assert record["mechanical_seal_leak_de"] is True
     assert record["mechanical_seal_leak_nde"] is True
     assert record["finding"] == "ditemukan kebocoran mechanical seal"
@@ -177,10 +180,10 @@ def test_real_db_three_message_flow_writes_exactly_one_canonical_record(monkeypa
     reply = outbound.calls[-1][1]
     assert "berhasil disimpan" in reply
     # Date-format fix -- the real reading_date column is TIMESTAMP, so
-    # record["reading_date"] above is correctly the full
-    # "2026-08-29T00:00:00" (stored value/type untouched); the WhatsApp
-    # reply text must show the date-only presentation form instead.
-    assert "Tanggal: 2026-08-29\nKode:" in reply
+    # record["reading_date"] above is correctly the full ISO datetime
+    # (stored value/type untouched); the WhatsApp reply text must show
+    # the date-only presentation form instead.
+    assert f"Tanggal: {expected_today}\nKode:" in reply
     assert "T00:00:00" not in reply
 
     # Repeat final confirmation (plain "Ya") -- idempotent against the
