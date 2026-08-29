@@ -425,7 +425,38 @@ def _confirm_pending(
     # only when a writer was actually supplied (callers that don't pass
     # one -- none currently, but this keeps the public function backward
     # compatible -- get the exact prior no-write behavior).
-    if domain == "CONDITION_MONITORING" and cmon_repository is not None:
+    has_real_writer = domain == "CONDITION_MONITORING" and cmon_repository is not None
+
+    if has_real_writer and pending.get("state") != "READY_FOR_CONFIRMATION":
+        # State-machine boundary fix -- "Ya" answering AI5R's own missing-
+        # information question (e.g. "Gunakan hari ini?") is NOT the same
+        # action as final confirmation, even though both currently arrive
+        # as the literal text "Ya". Before an authoritative writer
+        # existed, collapsing the two into one step was harmless (the
+        # only outcome was a draft acknowledgement); now that CONFIRMED
+        # can trigger a real, irreversible canonical write, a row that
+        # was NEEDS_INFORMATION when this message arrived must stop here
+        # at READY_FOR_CONFIRMATION and show the user the actual preview
+        # -- never write until a SEPARATE, explicit final "Ya" (or
+        # equivalent code/context reference) arrives against an
+        # already-READY_FOR_CONFIRMATION row. Scoped to has_real_writer
+        # only: PM (no writer exists) and CMON-without-a-writer keep the
+        # exact prior single-step behavior, since nothing irreversible
+        # happens on either of those paths either way.
+        updated = repository.transition_pending(
+            pending["intake_id"],
+            state="READY_FOR_CONFIRMATION",
+            validation_result=validation,
+            structured_payload=payload,
+        )
+        return IntakeResult(
+            status="READY_FOR_CONFIRMATION",
+            message="TRANSITIONED_TO_READY_FOR_CONFIRMATION",
+            intake=updated,
+            reply=_build_preview(domain, payload),
+        )
+
+    if has_real_writer:
         return _confirm_condition_monitoring(pending, payload, validation, repository, identity, cmon_repository)
 
     updated = repository.transition_pending(

@@ -1157,7 +1157,17 @@ def test_cmon_write_exact_production_flow_creates_one_canonical_record(monkeypat
     assert repo.rows[0]["state"] == "NEEDS_INFORMATION"
     assert outbound.calls[-1] == (SENDER_A, "Reading date belum ada. Gunakan hari ini?")
 
-    response = _post(_message_envelope(message_id="wamid.cmonwriteB", text="Ya"))
+    # First "Ya" answers the missing-date question only -- it must NOT
+    # write anything yet, only move the row to READY_FOR_CONFIRMATION and
+    # show the preview.
+    mid_response = _post(_message_envelope(message_id="wamid.cmonwriteB", text="Ya"))
+    assert mid_response.status_code == 200
+    assert cmon.rows == []
+    assert repo.rows[0]["state"] == "READY_FOR_CONFIRMATION"
+    assert outbound.calls[-1][1].endswith("Confirm?\nYA / UBAH / BATAL")
+
+    # Second, separate "Ya" is the real final confirmation.
+    response = _post(_message_envelope(message_id="wamid.cmonwriteC", text="Ya"))
 
     assert response.status_code == 200
     assert len(cmon.rows) == 1
@@ -1179,7 +1189,8 @@ def test_cmon_field_mapping_matches_structured_payload(monkeypatch):
     _wire(monkeypatch, repo, outbound, cmon_repository=cmon)
 
     _post(_message_envelope(message_id="wamid.mapA", text=_PRODUCTION_CMON_TEXT))
-    _post(_message_envelope(message_id="wamid.mapB", text="Ya"))
+    _post(_message_envelope(message_id="wamid.mapB", text="Ya"))  # answers missing-date question only
+    _post(_message_envelope(message_id="wamid.mapC", text="Ya"))  # final confirmation -- writes
 
     record = cmon.rows[0]
     expected_today = datetime.now(timezone(timedelta(hours=7))).date().isoformat()
@@ -1205,6 +1216,7 @@ def test_cmon_zero_open_schedules_uses_unscheduled_sentinel(monkeypatch):
 
     _post(_message_envelope(message_id="wamid.zeroschedA", text=_PRODUCTION_CMON_TEXT))
     _post(_message_envelope(message_id="wamid.zeroschedB", text="Ya"))
+    _post(_message_envelope(message_id="wamid.zeroschedC", text="Ya"))
 
     assert len(cmon.rows) == 1
     assert cmon.rows[0]["condition_monitoring_schedule_code"] == "UNSCHEDULED::WHATSAPP"
@@ -1223,6 +1235,7 @@ def test_cmon_one_open_schedule_uses_real_schedule_code(monkeypatch):
 
     _post(_message_envelope(message_id="wamid.oneschedA", text=_PRODUCTION_CMON_TEXT))
     _post(_message_envelope(message_id="wamid.oneschedB", text="Ya"))
+    _post(_message_envelope(message_id="wamid.oneschedC", text="Ya"))
 
     assert len(cmon.rows) == 1
     assert cmon.rows[0]["condition_monitoring_schedule_code"] == "CMSCHED-REAL-1"
@@ -1244,7 +1257,8 @@ def test_cmon_multiple_open_schedules_returns_clarification_no_write(monkeypatch
     _wire(monkeypatch, repo, outbound, cmon_repository=cmon)
 
     _post(_message_envelope(message_id="wamid.multischedA", text=_PRODUCTION_CMON_TEXT))
-    response = _post(_message_envelope(message_id="wamid.multischedB", text="Ya"))
+    _post(_message_envelope(message_id="wamid.multischedB", text="Ya"))  # answers missing-date question only
+    response = _post(_message_envelope(message_id="wamid.multischedC", text="Ya"))  # final confirmation -- hits ambiguity
 
     assert response.status_code == 200
     assert cmon.rows == []  # no write at all
@@ -1271,6 +1285,7 @@ def test_cmon_only_terminal_schedules_treated_as_zero_open(monkeypatch):
 
     _post(_message_envelope(message_id="wamid.termschedA", text=_PRODUCTION_CMON_TEXT))
     _post(_message_envelope(message_id="wamid.termschedB", text="Ya"))
+    _post(_message_envelope(message_id="wamid.termschedC", text="Ya"))
 
     assert len(cmon.rows) == 1
     assert cmon.rows[0]["condition_monitoring_schedule_code"] == "UNSCHEDULED::WHATSAPP"
@@ -1284,10 +1299,11 @@ def test_cmon_repeated_confirmation_does_not_duplicate_canonical_record(monkeypa
     _wire(monkeypatch, repo, outbound, cmon_repository=cmon)
 
     _post(_message_envelope(message_id="wamid.repconfA", text=_PRODUCTION_CMON_TEXT))
-    _post(_message_envelope(message_id="wamid.repconfB", text="Ya"))
+    _post(_message_envelope(message_id="wamid.repconfB", text="Ya"))  # answers missing-date question only
+    _post(_message_envelope(message_id="wamid.repconfC", text="Ya"))  # final confirmation -- writes
     assert len(cmon.rows) == 1
 
-    response = _post(_message_envelope(message_id="wamid.repconfC", text="YA"))
+    response = _post(_message_envelope(message_id="wamid.repconfD", text="YA"))
 
     assert response.status_code == 200
     assert len(cmon.rows) == 1  # no second canonical record
@@ -1301,7 +1317,8 @@ def test_cmon_duplicate_webhook_delivery_does_not_duplicate_canonical_record(mon
     _wire(monkeypatch, repo, outbound, cmon_repository=cmon)
 
     _post(_message_envelope(message_id="wamid.dupwebA", text=_PRODUCTION_CMON_TEXT))
-    body = json.dumps(_message_envelope(message_id="wamid.dupwebB", text="Ya")).encode("utf-8")
+    _post(_message_envelope(message_id="wamid.dupwebB", text="Ya"))  # answers missing-date question only
+    body = json.dumps(_message_envelope(message_id="wamid.dupwebC", text="Ya")).encode("utf-8")
     signature = {"X-Hub-Signature-256": _sign(body, "test-app-secret")}
     first = client.post(WEBHOOK_PATH, content=body, headers=signature)
     second = client.post(WEBHOOK_PATH, content=body, headers=signature)
@@ -1320,10 +1337,11 @@ def test_cmon_explicit_code_repeat_does_not_duplicate_canonical_record(monkeypat
 
     _post(_message_envelope(message_id="wamid.explrepA", text=_PRODUCTION_CMON_TEXT))
     code = repo.rows[0]["confirmation_id"]
-    _post(_message_envelope(message_id="wamid.explrepB", text="Ya"))
+    _post(_message_envelope(message_id="wamid.explrepB", text="Ya"))  # answers missing-date question only
+    _post(_message_envelope(message_id="wamid.explrepC", text="Ya"))  # final confirmation -- writes
     assert len(cmon.rows) == 1
 
-    response = _post(_message_envelope(message_id="wamid.explrepC", text=f"YA {code}"))
+    response = _post(_message_envelope(message_id="wamid.explrepD", text=f"YA {code}"))
 
     assert response.status_code == 200
     assert len(cmon.rows) == 1
@@ -1343,9 +1361,12 @@ def test_cmon_idempotent_recovery_when_write_succeeded_but_intake_transition_did
     _wire(monkeypatch, repo, outbound, cmon_repository=cmon)
 
     _post(_message_envelope(message_id="wamid.recoverA", text=_PRODUCTION_CMON_TEXT))
+    _post(_message_envelope(message_id="wamid.recoverB", text="Ya"))  # answers missing-date question only
     intake_id = repo.rows[0]["intake_id"]
-    # Simulate the CMON write having already succeeded on a prior attempt
-    # that crashed before the intake's own CONFIRMED transition.
+    # Simulate the CMON write having already succeeded on a prior final-
+    # confirmation attempt that crashed before the intake's own CONFIRMED
+    # transition. Only reachable from READY_FOR_CONFIRMATION now -- a real
+    # write attempt can no longer originate from NEEDS_INFORMATION.
     cmon.rows.append(
         {
             "condition_monitoring_reading_code": "CMONR-PRIOR0001",
@@ -1355,9 +1376,9 @@ def test_cmon_idempotent_recovery_when_write_succeeded_but_intake_transition_did
             "source_reference": f"WHATSAPP::{intake_id}",
         }
     )
-    assert repo.rows[0]["state"] == "NEEDS_INFORMATION"  # never completed last time
+    assert repo.rows[0]["state"] == "READY_FOR_CONFIRMATION"  # never completed last time
 
-    response = _post(_message_envelope(message_id="wamid.recoverB", text="Ya"))
+    response = _post(_message_envelope(message_id="wamid.recoverC", text="Ya"))
 
     assert response.status_code == 200
     assert repo.rows[0]["state"] == "CONFIRMED"
@@ -1373,7 +1394,8 @@ def test_cmon_write_failure_does_not_confirm_or_send_false_success(monkeypatch):
     _wire(monkeypatch, repo, outbound, cmon_repository=cmon)
 
     _post(_message_envelope(message_id="wamid.failA", text=_PRODUCTION_CMON_TEXT))
-    response = _post(_message_envelope(message_id="wamid.failB", text="Ya"))
+    _post(_message_envelope(message_id="wamid.failB", text="Ya"))  # answers missing-date question only
+    response = _post(_message_envelope(message_id="wamid.failC", text="Ya"))  # final confirmation -- attempts write
 
     assert response.status_code == 200
     assert cmon.rows == []
@@ -1434,3 +1456,164 @@ def test_cmon_unknown_asset_never_reaches_canonical_write(monkeypatch):
     assert response.status_code == 200
     assert cmon.rows == []
     assert repo.rows[0]["state"] != "CONFIRMED"
+
+
+# --- Ordering-bug fix: state-machine boundary between "answer a missing-
+# information question" and "final confirmation" -----------------------
+
+def test_production_ordering_bug_exact_three_message_regression(monkeypatch):
+    # EXACT_THREE_MESSAGE_REGRESSION -- verbatim reproduction of the
+    # production conversation that exposed the bug: a plain "Ya" that
+    # only answers AI5R's own "Reading date belum ada. Gunakan hari ini?"
+    # question must NOT trigger the canonical write. It must take a
+    # second, separate "Ya" against an already-READY_FOR_CONFIRMATION row.
+    from datetime import datetime, timedelta, timezone
+
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    cmon = FakeConditionMonitoringReadingRepository()
+    _wire(monkeypatch, repo, outbound, cmon_repository=cmon)
+
+    # Message 1: original report, missing reading_date.
+    _post(_message_envelope(message_id="wamid.prod3A", text=_PRODUCTION_CMON_TEXT))
+    assert repo.rows[0]["state"] == "NEEDS_INFORMATION"
+    assert cmon.rows == []
+    assert outbound.calls[-1] == (SENDER_A, "Reading date belum ada. Gunakan hari ini?")
+
+    # Message 2: "Ya" answers the date question ONLY. Zero canonical
+    # writes must happen here -- this is exactly what production got
+    # wrong. The row must move to READY_FOR_CONFIRMATION and show a
+    # preview asking for the real, separate confirmation.
+    second = _post(_message_envelope(message_id="wamid.prod3B", text="Ya"))
+    assert second.status_code == 200
+    assert cmon.rows == []
+    assert cmon.create_draft_calls == []
+    assert cmon.create_ad_hoc_draft_calls == []
+    assert repo.rows[0]["state"] == "READY_FOR_CONFIRMATION"
+    assert repo.rows[0].get("confirmed_by") is None
+    reply_after_second = outbound.calls[-1][1]
+    assert reply_after_second.endswith("Confirm?\nYA / UBAH / BATAL")
+    assert "berhasil disimpan" not in reply_after_second
+
+    # Message 3: a genuinely separate "Ya" is the real final confirmation.
+    # Only now may the canonical write happen.
+    third = _post(_message_envelope(message_id="wamid.prod3C", text="Ya"))
+    assert third.status_code == 200
+    assert len(cmon.rows) == 1
+    expected_today = datetime.now(timezone(timedelta(hours=7))).date().isoformat()
+    assert cmon.rows[0]["reading_date"] == expected_today
+    assert cmon.rows[0]["asset_code"] == "211-P-13AR"
+    assert repo.rows[0]["state"] == "CONFIRMED"
+    reply_after_third = outbound.calls[-1][1]
+    assert "berhasil disimpan" in reply_after_third
+
+
+def test_state_matrix_needs_information_plus_ya_does_not_write(monkeypatch):
+    # NEEDS_INFO_NO_WRITE_TEST.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    cmon = FakeConditionMonitoringReadingRepository()
+    _wire(monkeypatch, repo, outbound, cmon_repository=cmon)
+
+    _post(_message_envelope(message_id="wamid.matrixA1", text=_PRODUCTION_CMON_TEXT))
+    assert repo.rows[0]["state"] == "NEEDS_INFORMATION"
+
+    _post(_message_envelope(message_id="wamid.matrixA2", text="Ya"))
+
+    assert cmon.rows == []
+    assert repo.rows[0]["state"] == "READY_FOR_CONFIRMATION"
+
+
+def test_state_matrix_ready_for_confirmation_plus_ya_writes(monkeypatch):
+    # READY_CONFIRM_WRITE_TEST.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    cmon = FakeConditionMonitoringReadingRepository()
+    _wire(monkeypatch, repo, outbound, cmon_repository=cmon)
+
+    _post(_message_envelope(message_id="wamid.matrixB1", text=_PRODUCTION_CMON_TEXT))
+    _post(_message_envelope(message_id="wamid.matrixB2", text="Ya"))  # -> READY_FOR_CONFIRMATION
+    assert repo.rows[0]["state"] == "READY_FOR_CONFIRMATION"
+
+    _post(_message_envelope(message_id="wamid.matrixB3", text="Ya"))
+
+    assert len(cmon.rows) == 1
+    assert repo.rows[0]["state"] == "CONFIRMED"
+
+
+def test_state_matrix_needs_information_plus_explicit_code_does_not_write(monkeypatch):
+    # EXPLICIT_NEEDS_INFO_TEST -- an explicit confirmation code must not
+    # bypass the missing-information gate either; the fix lives inside
+    # _confirm_pending, which explicit-code resolution also flows through.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    cmon = FakeConditionMonitoringReadingRepository()
+    _wire(monkeypatch, repo, outbound, cmon_repository=cmon)
+
+    _post(_message_envelope(message_id="wamid.matrixC1", text=_PRODUCTION_CMON_TEXT))
+    code = repo.rows[0]["confirmation_id"]
+    assert repo.rows[0]["state"] == "NEEDS_INFORMATION"
+
+    _post(_message_envelope(message_id="wamid.matrixC2", text=f"YA {code}"))
+
+    assert cmon.rows == []
+    assert repo.rows[0]["state"] == "READY_FOR_CONFIRMATION"
+
+
+def test_state_matrix_ready_for_confirmation_plus_explicit_code_writes(monkeypatch):
+    # EXPLICIT_READY_TEST.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    cmon = FakeConditionMonitoringReadingRepository()
+    _wire(monkeypatch, repo, outbound, cmon_repository=cmon)
+
+    _post(_message_envelope(message_id="wamid.matrixD1", text=_PRODUCTION_CMON_TEXT))
+    code = repo.rows[0]["confirmation_id"]
+    _post(_message_envelope(message_id="wamid.matrixD2", text="Ya"))  # -> READY_FOR_CONFIRMATION
+    assert repo.rows[0]["state"] == "READY_FOR_CONFIRMATION"
+
+    _post(_message_envelope(message_id="wamid.matrixD3", text=f"YA {code}"))
+
+    assert len(cmon.rows) == 1
+    assert repo.rows[0]["state"] == "CONFIRMED"
+
+
+def test_state_matrix_confirmed_plus_repeated_explicit_code_is_idempotent(monkeypatch):
+    # CONFIRMED_REPEAT_TEST.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    cmon = FakeConditionMonitoringReadingRepository()
+    _wire(monkeypatch, repo, outbound, cmon_repository=cmon)
+
+    _post(_message_envelope(message_id="wamid.matrixE1", text=_PRODUCTION_CMON_TEXT))
+    code = repo.rows[0]["confirmation_id"]
+    _post(_message_envelope(message_id="wamid.matrixE2", text="Ya"))
+    _post(_message_envelope(message_id="wamid.matrixE3", text="Ya"))
+    assert repo.rows[0]["state"] == "CONFIRMED"
+    assert len(cmon.rows) == 1
+
+    response = _post(_message_envelope(message_id="wamid.matrixE4", text=f"YA {code}"))
+
+    assert response.status_code == 200
+    assert len(cmon.rows) == 1
+    assert outbound.calls[-1] == (SENDER_A, "Data sudah dikonfirmasi.")
+
+
+@pytest.mark.parametrize("terminal_state", ["EXPIRED", "CANCELLED", "REJECTED"])
+def test_state_matrix_terminal_states_reject_confirmation_no_write(monkeypatch, terminal_state):
+    # TERMINAL_STATE_TEST.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    cmon = FakeConditionMonitoringReadingRepository()
+    _wire(monkeypatch, repo, outbound, cmon_repository=cmon)
+
+    _post(_message_envelope(message_id=f"wamid.matrixF1{terminal_state}", text=_PRODUCTION_CMON_TEXT))
+    code = repo.rows[0]["confirmation_id"]
+    repo.rows[0]["state"] = terminal_state  # simulate expiry/cancellation/rejection
+
+    response = _post(_message_envelope(message_id=f"wamid.matrixF2{terminal_state}", text=f"YA {code}"))
+
+    assert response.status_code == 200
+    assert cmon.rows == []
+    assert repo.rows[0]["state"] == terminal_state
+    assert outbound.calls[-1] == (SENDER_A, "Kode konfirmasi tidak ditemukan.")
