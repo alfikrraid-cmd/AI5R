@@ -102,6 +102,15 @@ def main() -> int:
         if "Shared-host safety" not in text:
             fail("'Shared-host safety' section missing from ai5r-it-orchestrator/SKILL.md")
 
+    # 6b. MWO policy present (added Phase 2.9 -- was previously only
+    # confirmed by manual grep, not the automated validator)
+    if orchestrator.is_file():
+        text = orchestrator.read_text(encoding="utf-8")
+        if "MWO" not in text:
+            fail("no 'MWO' reference found in ai5r-it-orchestrator/SKILL.md (MWO policy)")
+        if "Determine MWO/change scope" not in text:
+            fail("'Determine MWO/change scope' workflow step missing from ai5r-it-orchestrator/SKILL.md")
+
     # 7. ECC attribution + pinned commit exist
     attribution = IT_AGENT_DIR / "ECC-ATTRIBUTION.md"
     if not attribution.is_file():

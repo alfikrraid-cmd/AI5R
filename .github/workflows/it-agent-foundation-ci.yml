@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 jobs:
-  backend-tests:
+  backend-api-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,12 +27,43 @@ jobs:
         run: pip install -r CORE-SERVICES/BACKEND-API/requirements-dev.txt
       - name: Run BACKEND-API tests
         run: |
+          mkdir -p "${GITHUB_WORKSPACE}/ci-artifacts/backend-api-tests"
           cd CORE-SERVICES/BACKEND-API
-          python -m pytest TESTS -q
-      - name: Attempt CORE-SERVICES/API tests
+          set -o pipefail
+          python -m pytest TESTS -q 2>&1 | tee "${GITHUB_WORKSPACE}/ci-artifacts/backend-api-tests/pytest-output.txt"
+      - name: Upload results (always, so failures remain inspectable)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-api-tests-results
+          path: ci-artifacts/backend-api-tests/pytest-output.txt
+
+  core-services-api-tests:
+    runs-on: ubuntu-latest
+    # No `needs:` on backend-api-tests -- independent job, so this suite
+    # is attempted even when BACKEND-API/TESTS fails.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install production requirements
+        run: pip install -r CORE-SERVICES/BACKEND-API/requirements.txt
+      - name: Install approved test requirements
+        run: pip install -r CORE-SERVICES/BACKEND-API/requirements-dev.txt
+      - name: Run CORE-SERVICES/API tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}/CORE-SERVICES:${{ github.workspace }}/AI5R-SDK
         run: |
-          PYTHONPATH="${GITHUB_WORKSPACE}/CORE-SERVICES:${GITHUB_WORKSPACE}/AI5R-SDK" \
-            python -m pytest CORE-SERVICES/API/TESTS -q
+          mkdir -p "${GITHUB_WORKSPACE}/ci-artifacts/core-services-api-tests"
+          set -o pipefail
+          python -m pytest CORE-SERVICES/API/TESTS -q 2>&1 | tee "${GITHUB_WORKSPACE}/ci-artifacts/core-services-api-tests/pytest-output.txt"
+      - name: Upload results (always, so failures remain inspectable)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-services-api-tests-results
+          path: ci-artifacts/core-services-api-tests/pytest-output.txt
 
   frontend-tests:
     runs-on: ubuntu-latest
@@ -47,7 +78,30 @@ jobs:
       - name: Install dependencies (pinned lockfile)
         run: npm ci
       - name: Run tests
-        run: npm test
+        run: |
+          mkdir -p "${GITHUB_WORKSPACE}/ci-artifacts/frontend-tests"
+          npm test -- --reporter=default --reporter=json --outputFile="${GITHUB_WORKSPACE}/ci-artifacts/frontend-tests/frontend-test-results.json"
+      - name: Upload results (always, so failures remain inspectable)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-tests-results
+          path: ci-artifacts/frontend-tests/frontend-test-results.json
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    # No `needs:` on frontend-tests -- independent job, so the build's
+    # own pass/fail is never hidden behind (or gated by) test results.
+    defaults:
+      run:
+        working-directory: AI5R-STUDIO/dashboard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install dependencies (pinned lockfile)
+        run: npm ci
       - name: Build
         run: npm run build
 
@@ -60,3 +114,33 @@ jobs:
           python-version: "3.12"
       - name: Validate IT Agent Foundation structure
         run: python scripts/validate_it_agent.py
+
+  baseline-compare:
+    runs-on: ubuntu-latest
+    needs: [backend-api-tests, core-services-api-tests, frontend-tests]
+    # Runs even when the suites above fail -- this job's purpose IS to
+    # classify those failures, not to be skipped because of them. It
+    # never alters those jobs' own exit status.
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v4
+        with:
+          name: backend-api-tests-results
+          path: ci-artifacts/backend-api-tests
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: core-services-api-tests-results
+          path: ci-artifacts/core-services-api-tests
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend-tests-results
+          path: ci-artifacts/frontend-tests
+        continue-on-error: true
+      - name: Compare against known-failures baseline
+        run: python scripts/ci_baseline_compare.py
