@@ -299,6 +299,37 @@ def _handle_existing_pending_action(
     selector_match = _CONFIRMATION_CODE_PATTERN.search(remainder) if remainder else None
     selector = selector_match.group(1) if selector_match else None
 
+    # Production diagnostic instrumentation -- read-only tracking of which
+    # resolution path this call actually took, so a report like "why did
+    # this exact retry return NO_PENDING_CONFIRMATION" is answerable from
+    # logs alone next time, without a manual DB reproduction. Every branch
+    # below is byte-identical to before; only _emit() (which logs, then
+    # returns its argument unchanged) was inserted at each existing return
+    # site -- no new repository calls, no reordering, no changed values.
+    explicit_lookup_attempted = False
+    explicit_lookup_found = False
+    explicit_lookup_state: str | None = None
+    broad_lookup_attempted = False
+    broad_candidate_count: int | None = None
+
+    def _emit(result: IntakeResult) -> IntakeResult:
+        logger.info(
+            "event=whatsapp_confirmation_selection action=%s selector_present=%s selector_hash=%s "
+            "identity_user_hash=%s explicit_lookup_attempted=%s explicit_lookup_found=%s "
+            "explicit_lookup_state=%s broad_lookup_attempted=%s broad_candidate_count=%s result_code=%s",
+            action,
+            selector is not None,
+            _correlation_id(selector),
+            _correlation_id(identity.user_id),
+            explicit_lookup_attempted,
+            explicit_lookup_found,
+            explicit_lookup_state,
+            broad_lookup_attempted,
+            broad_candidate_count,
+            result.message,
+        )
+        return result
+
     # MWO-025J2 Part E -- context-linked resolution takes priority: if this
     # reply is a Meta reply/quote of a specific AI5R outbound message, that
     # unambiguously identifies the pending conversation, regardless of what
@@ -311,14 +342,19 @@ def _handle_existing_pending_action(
     # also resolves directly -- this is the required clarification path
     # for an otherwise-ambiguous plain "YA" (see below).
     if pending is None and selector:
+        explicit_lookup_attempted = True
         pending = repository.find_pending_by_confirmation_id(selector, identity.user_id)
         if pending is None:
-            return IntakeResult(status="REJECTED", message="UNKNOWN_CONFIRMATION_ID", reply="Kode konfirmasi tidak ditemukan.")
+            return _emit(IntakeResult(status="REJECTED", message="UNKNOWN_CONFIRMATION_ID", reply="Kode konfirmasi tidak ditemukan."))
+        explicit_lookup_found = True
+        explicit_lookup_state = pending.get("state")
 
     if pending is None:
+        broad_lookup_attempted = True
         candidates = repository.find_actionable_pending_list(identity.user_id)
+        broad_candidate_count = len(candidates)
         if not candidates:
-            return IntakeResult(status="REJECTED", message="NO_PENDING_CONFIRMATION", reply="Tidak ada data yang menunggu konfirmasi.")
+            return _emit(IntakeResult(status="REJECTED", message="NO_PENDING_CONFIRMATION", reply="Tidak ada data yang menunggu konfirmasi."))
         if len(candidates) > 1:
             # MWO-025J2 Part E -- never guess which pending record a plain,
             # unlinked "YA" refers to when more than one is actionable.
@@ -327,11 +363,11 @@ def _handle_existing_pending_action(
                 f"{(candidate.get('structured_payload') or {}).get('asset_code')}"
                 for candidate in candidates
             )
-            return IntakeResult(
+            return _emit(IntakeResult(
                 status="NEEDS_INFORMATION",
                 message="AMBIGUOUS_PENDING_SELECTION",
                 reply=f"Ada beberapa data menunggu konfirmasi:\n{listing}\n\nBalas: YA <kode>",
-            )
+            ))
         pending = candidates[0]
 
     # MWO-025J2 Part D -- a pending row only belongs to the org context it
@@ -341,10 +377,10 @@ def _handle_existing_pending_action(
     # resolved into a different membership.
     pending_org = pending.get("organization_id")
     if pending_org is not None and pending_org != identity.organization_id:
-        return IntakeResult(status="REJECTED", message="ORG_SCOPE_MISMATCH", reply="Data tidak ditemukan.")
+        return _emit(IntakeResult(status="REJECTED", message="ORG_SCOPE_MISMATCH", reply="Data tidak ditemukan."))
 
     if action in {"ya", "y", "confirm"}:
-        return _confirm_pending(pending, repository, identity, pump_gateway, cmon_repository)
+        return _emit(_confirm_pending(pending, repository, identity, pump_gateway, cmon_repository))
 
     if action == "ubah":
         updated = repository.transition_pending(
@@ -352,10 +388,10 @@ def _handle_existing_pending_action(
             state="NEEDS_INFORMATION",
             validation_result={"valid": False, "errors": ["CORRECTION_REQUESTED"]},
         )
-        return IntakeResult(status="NEEDS_INFORMATION", message="CORRECTION_REQUESTED", intake=updated, reply="Kirim nilai yang perlu diubah.")
+        return _emit(IntakeResult(status="NEEDS_INFORMATION", message="CORRECTION_REQUESTED", intake=updated, reply="Kirim nilai yang perlu diubah."))
 
     updated = repository.transition_pending(pending["intake_id"], state="CANCELLED")
-    return IntakeResult(status="CANCELLED", message="CANCELLED", intake=updated, reply="Dibatalkan. Tidak ada record dibuat.")
+    return _emit(IntakeResult(status="CANCELLED", message="CANCELLED", intake=updated, reply="Dibatalkan. Tidak ada record dibuat."))
 
 
 def _confirm_pending(

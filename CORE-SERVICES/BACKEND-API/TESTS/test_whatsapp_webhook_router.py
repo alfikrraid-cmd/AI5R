@@ -1856,3 +1856,84 @@ def test_plain_ya_still_searches_open_states_only_with_production_shaped_row(mon
     assert response.status_code == 200
     assert outbound.calls[-1] == (SENDER_A, "Tidak ada data yang menunggu konfirmasi.")
     assert len(cmon.rows) == 1
+
+
+# --- Production diagnostic instrumentation ------------------------------
+
+def test_confirmation_selection_diagnostic_log_explicit_confirmed_retry(monkeypatch, caplog):
+    # Explicit-code retry against a CONFIRMED row: exactly one
+    # event=whatsapp_confirmation_selection line, with the correct
+    # explicit-lookup fields and no broad lookup attempted.
+    repo, outbound, cmon = _seed_confirmed_cmon_matching_production(monkeypatch)
+
+    with caplog.at_level("INFO"):
+        response = _post(_message_envelope(
+            message_id="wamid.diaglog1",
+            text="YA WA-CONF-f02afd2db6e94b9d9cb20e3cef2ac33a",
+        ))
+    assert response.status_code == 200
+
+    selection_lines = [
+        record.getMessage() for record in caplog.records
+        if record.getMessage().startswith("event=whatsapp_confirmation_selection")
+    ]
+    assert len(selection_lines) == 1
+    line = selection_lines[0]
+    assert "action=ya" in line
+    assert "selector_present=True" in line
+    assert "explicit_lookup_attempted=True" in line
+    assert "explicit_lookup_found=True" in line
+    assert "explicit_lookup_state=CONFIRMED" in line
+    assert "broad_lookup_attempted=False" in line
+    assert "broad_candidate_count=None" in line
+    assert "result_code=DUPLICATE_CONFIRMATION_CMON_RECORDED" in line
+
+    # Never the plaintext confirmation_id, raw user_id, or phone number.
+    log_text = "\n".join(record.getMessage() for record in caplog.records)
+    assert "WA-CONF-f02afd2db6e94b9d9cb20e3cef2ac33a" not in log_text
+    assert "44216d8d-a0d2-4a5f-8c00-34fac69cf82c" not in log_text
+    assert "user-1" not in log_text
+    assert "15550000001" not in log_text
+
+
+def test_confirmation_selection_diagnostic_log_broad_no_pending(monkeypatch, caplog):
+    # Plain "Ya" with zero open pending: broad lookup attempted, explicit
+    # lookup never attempted.
+    repo, outbound, cmon = _seed_confirmed_cmon_matching_production(monkeypatch)
+
+    with caplog.at_level("INFO"):
+        _post(_message_envelope(message_id="wamid.diaglog2", text="Ya"))
+
+    selection_lines = [
+        record.getMessage() for record in caplog.records
+        if record.getMessage().startswith("event=whatsapp_confirmation_selection")
+    ]
+    assert len(selection_lines) == 1
+    line = selection_lines[0]
+    assert "explicit_lookup_attempted=False" in line
+    assert "explicit_lookup_found=False" in line
+    assert "explicit_lookup_state=None" in line
+    assert "broad_lookup_attempted=True" in line
+    assert "broad_candidate_count=0" in line
+    assert "result_code=NO_PENDING_CONFIRMATION" in line
+
+
+def test_confirmation_selection_diagnostic_log_unknown_code(monkeypatch, caplog):
+    # A code that doesn't exist at all: explicit lookup attempted but not
+    # found, broad lookup never reached (early return).
+    repo, outbound, cmon = _seed_confirmed_cmon_matching_production(monkeypatch)
+
+    with caplog.at_level("INFO"):
+        _post(_message_envelope(message_id="wamid.diaglog3", text="YA WA-CONF-000000000000000000000000000000ff"))
+
+    selection_lines = [
+        record.getMessage() for record in caplog.records
+        if record.getMessage().startswith("event=whatsapp_confirmation_selection")
+    ]
+    assert len(selection_lines) == 1
+    line = selection_lines[0]
+    assert "explicit_lookup_attempted=True" in line
+    assert "explicit_lookup_found=False" in line
+    assert "explicit_lookup_state=None" in line
+    assert "broad_lookup_attempted=False" in line
+    assert "result_code=UNKNOWN_CONFIRMATION_ID" in line
