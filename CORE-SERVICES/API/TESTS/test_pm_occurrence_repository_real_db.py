@@ -380,3 +380,144 @@ def test_historical_promotion_reaches_repaired_repository_and_persists(pm_repo):
     stored = pm_repo.find_by_code(record["pm_occurrence_code"])
     assert stored is not None
     assert len(pm_repo.list_by_asset(_ASSET_CODE)) == 1
+
+
+# --- MWO: PM ad-hoc / unscheduled canonical write -----------------------
+
+def test_ad_hoc_zero_schedules_writes_exactly_one_occurrence_no_fake_schedule(pm_repo, runner):
+    # Requirements 1-3: zero open schedules -> exactly one pm_occurrence,
+    # pm_schedule table stays at zero rows, sentinel stored exactly as
+    # designed (UNSCHEDULED::<provenance>, never a fabricated schedule row).
+    # The `runner` fixture seeds one ACTIVE schedule by default (used by
+    # the real-schedule tests above) -- cleared here for a genuinely
+    # empty pm_schedule table.
+    runner.execute_script("DELETE FROM pm_schedule;")
+    assert pm_repo.find_open_schedules_by_asset(_ASSET_CODE) == []
+
+    created = pm_repo.create_ad_hoc_draft(
+        asset_code=_ASSET_CODE,
+        asset_type="PUMP",
+        occurrence_date="2026-08-29",
+        activities=[{"description": "Ad-hoc lubrication", "done": True}],
+        remarks="unscheduled visit",
+        created_by=_ACTOR,
+        source_reference="WHATSAPP::test-intake-1",
+        provenance="WHATSAPP",
+    )
+
+    assert created is not None
+    assert created["pm_schedule_code"] == "UNSCHEDULED::WHATSAPP"
+    assert created["asset_code"] == _ASSET_CODE
+    assert created["remarks"] == "unscheduled visit"
+    assert created["source_reference"] == "WHATSAPP::test-intake-1"
+    assert created["provenance"] == "WHATSAPP"
+    assert created["workflow_status"] == "DRAFT"
+
+    assert len(pm_repo.list_by_asset(_ASSET_CODE)) == 1
+    schedule_count = runner.query_scalar("SELECT count(*) FROM pm_schedule")
+    assert schedule_count == "0"
+
+
+def test_ad_hoc_create_audit_exists_no_schedule_audit(pm_repo, runner):
+    # Requirements 4-5: PM occurrence CREATE audit exists; no PM_SCHEDULE
+    # AUTO_COMPLETE_ON_OCCURRENCE audit event -- there is no real schedule
+    # to complete or audit.
+    created = pm_repo.create_ad_hoc_draft(
+        asset_code=_ASSET_CODE, asset_type="PUMP", occurrence_date="2026-08-29",
+        activities=None, remarks=None, created_by=_ACTOR,
+        source_reference="WHATSAPP::test-intake-2",
+    )
+
+    import json
+    audit_rows = json.loads(
+        runner.query_scalar(
+            "SELECT COALESCE(json_agg(row_to_json(t))::text, '[]') FROM "
+            "(SELECT entity_type, entity_id, reason FROM record_change_history) t;"
+        )
+    )
+    assert len(audit_rows) == 1
+    assert audit_rows[0]["entity_type"] == "PM_OCCURRENCE"
+    assert audit_rows[0]["entity_id"] == created["pm_occurrence_code"]
+    assert audit_rows[0]["reason"] == "CREATE"
+    assert not any(row["entity_type"] == "PM_SCHEDULE" for row in audit_rows)
+
+
+def test_real_schedule_path_still_works_alongside_ad_hoc(pm_repo, runner):
+    # Requirement 6: the pre-existing real-schedule path (create_draft)
+    # is unaffected by adding create_ad_hoc_draft alongside it. The
+    # `runner` fixture already seeds _SCHEDULE_CODE as ACTIVE.
+    real = pm_repo.create_draft(
+        pm_schedule_code=_SCHEDULE_CODE, asset_code=_ASSET_CODE, asset_type="PUMP",
+        occurrence_date="2026-08-29", activities=None, remarks=None, created_by=_ACTOR,
+    )
+    assert real["pm_schedule_code"] == _SCHEDULE_CODE
+    schedule_status = runner.query_scalar(
+        f"SELECT status FROM pm_schedule WHERE pm_schedule_code = '{_SCHEDULE_CODE}'"
+    )
+    assert schedule_status == "COMPLETED"  # real-schedule auto-completion still fires
+
+
+def test_ad_hoc_nonexistent_pump_returns_none_not_exception(pm_repo):
+    # Requirement 7: invalid/nonexistent pump rejected according to
+    # EXISTING semantics -- create_ad_hoc_draft's contract mirrors
+    # condition_monitoring_reading_repository.create_ad_hoc_draft's own
+    # (returns None, no exception), distinct from create_draft's own
+    # IndexError-on-gate-failure contract (that method is unchanged).
+    result = pm_repo.create_ad_hoc_draft(
+        asset_code="999-P-99", asset_type="PUMP", occurrence_date="2026-08-29",
+        activities=None, remarks=None, created_by=_ACTOR,
+        source_reference="WHATSAPP::test-intake-3",
+    )
+    assert result is None
+
+
+def test_ad_hoc_never_affects_cmon_records(pm_repo, runner):
+    # Requirement 8: no CMON records are affected.
+    pm_repo.create_ad_hoc_draft(
+        asset_code=_ASSET_CODE, asset_type="PUMP", occurrence_date="2026-08-29",
+        activities=None, remarks=None, created_by=_ACTOR,
+        source_reference="WHATSAPP::test-intake-4",
+    )
+    cmon_repo = ConditionMonitoringReadingRepository(runner)
+    assert cmon_repo.list_by_asset(_ASSET_CODE) == []
+
+
+def test_terminal_only_schedules_treated_as_zero_open(pm_repo, runner):
+    # Requirement 9: a schedule that exists but is CANCELLED/COMPLETED is
+    # correctly treated as "no open schedule" -- find_open_schedules_by_
+    # asset excludes it, matching create_draft's own auto-completion
+    # eligibility semantics exactly. Clears the fixture's default ACTIVE
+    # schedule first so only the two terminal ones below are present.
+    runner.execute_script("DELETE FROM pm_schedule;")
+    runner.execute_script(
+        f"INSERT INTO pm_schedule (pm_schedule_code, asset_code, asset_type, procedure, frequency, trigger_type, status) "
+        f"VALUES ('PMSCHED-DONE', '{_ASSET_CODE}', 'PUMP', 'Lubrication', 'Monthly', 'TIME_BASED', 'COMPLETED'), "
+        f"('PMSCHED-CANCEL', '{_ASSET_CODE}', 'PUMP', 'Inspection', 'Weekly', 'TIME_BASED', 'CANCELLED');"
+    )
+
+    assert pm_repo.find_open_schedules_by_asset(_ASSET_CODE) == []
+
+    created = pm_repo.create_ad_hoc_draft(
+        asset_code=_ASSET_CODE, asset_type="PUMP", occurrence_date="2026-08-29",
+        activities=None, remarks=None, created_by=_ACTOR,
+        source_reference="WHATSAPP::test-intake-5",
+    )
+    assert created["pm_schedule_code"] == "UNSCHEDULED::WHATSAPP"
+
+
+def test_multiple_open_schedules_reported_for_future_resolver(pm_repo, runner):
+    # Requirement 10: find_open_schedules_by_asset (the repository-level
+    # query a future clarification resolver would act on -- no service-
+    # layer resolver exists yet, per this MWO's own Phase 6 GO/NO-GO scope)
+    # correctly reports ALL open schedules when more than one exists, never
+    # silently picking one.
+    runner.execute_script("DELETE FROM pm_schedule;")
+    runner.execute_script(
+        f"INSERT INTO pm_schedule (pm_schedule_code, asset_code, asset_type, procedure, frequency, trigger_type, status) "
+        f"VALUES ('PMSCHED-A', '{_ASSET_CODE}', 'PUMP', 'Lubrication', 'Monthly', 'TIME_BASED', 'ACTIVE'), "
+        f"('PMSCHED-B', '{_ASSET_CODE}', 'PUMP', 'Inspection', 'Weekly', 'TIME_BASED', 'PLANNED');"
+    )
+
+    open_schedules = pm_repo.find_open_schedules_by_asset(_ASSET_CODE)
+    assert {s["pm_schedule_code"] for s in open_schedules} == {"PMSCHED-A", "PMSCHED-B"}
+    assert len(pm_repo.list_by_asset(_ASSET_CODE)) == 0  # nothing written -- ambiguity, no guess

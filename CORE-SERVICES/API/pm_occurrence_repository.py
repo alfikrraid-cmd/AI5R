@@ -161,6 +161,94 @@ class PMOccurrenceRepository:
         )
         return rows[0]
 
+    def find_by_source_reference(self, source_reference: str) -> dict | None:
+        # WhatsApp PM writer readiness (MWO: PM AD-HOC / UNSCHEDULED
+        # CANONICAL WRITE DESIGN) -- same durable, DB-backed idempotency
+        # lookup purpose as condition_monitoring_reading_repository.py's
+        # identical method; source_reference already exists on this table
+        # for exactly this "where did this record originate from"
+        # traceability purpose, reused unmodified, no schema change.
+        rows = _json_query(
+            f"SELECT {_SELECT_COLUMNS} FROM pm_occurrence "
+            f"WHERE source_reference = {_sql(source_reference)} AND deleted_at IS NULL LIMIT 1",
+            self._runner,
+        )
+        return rows[0] if rows else None
+
+    def find_open_schedules_by_asset(self, asset_code: str) -> list[dict]:
+        # "Open" mirrors create_draft's own existing auto-completion
+        # semantics (status NOT IN ('CANCELLED', 'COMPLETED') is exactly
+        # what its schedule_completion CTE treats as still eligible to be
+        # completed by a new occurrence) -- same convention
+        # condition_monitoring_reading_repository.py's identical method
+        # already established, against pm_schedule's own pre-existing
+        # PLANNED/ACTIVE/OVERDUE/COMPLETED/CANCELLED lifecycle (migration
+        # 029's own comment: "the owner-approved ... lifecycle already
+        # implemented for pm_schedule").
+        return _json_query(
+            "SELECT pm_schedule_code, asset_code, asset_type, procedure, frequency, status "
+            "FROM pm_schedule "
+            f"WHERE asset_code = {_sql(asset_code)} AND status NOT IN ('CANCELLED', 'COMPLETED') "
+            "ORDER BY pm_schedule_code",
+            self._runner,
+        )
+
+    def create_ad_hoc_draft(
+        self,
+        *,
+        asset_code: str,
+        asset_type: str | None,
+        occurrence_date: str | None,
+        activities: list | None,
+        remarks: str | None,
+        created_by: str,
+        source_reference: str,
+        provenance: str = "WHATSAPP",
+    ) -> dict | None:
+        """PM occurrence with no real schedule to link to -- the same
+        disclosed 'UNSCHEDULED::<source>' sentinel convention
+        PRODUCTS/LTSA-BRAIN/INGESTION/ltsa_hoc_pm_cm_upsert.py's own
+        build_unscheduled_reference() already established (and
+        ltsa_hoc_pm_cm_db_upsert.py's apply_plan() already ships to
+        production with, via its own direct INSERT INTO pm_occurrence --
+        this method is the same convention finally exposed through the
+        authoritative repository's own write path). pm_occurrence.
+        pm_schedule_code is NOT NULL but not FK-constrained to pm_schedule
+        (see CANONICAL_SCHEMA.sql's own DDL comment on this table) -- a
+        self-disclosing sentinel string satisfies the NOT NULL requirement
+        without ever inserting or referencing a fabricated pm_schedule
+        row. No schedule_completion CTE, no PM_SCHEDULE audit event --
+        there is no real schedule to complete or audit.
+
+        Returns None (no row created, no exception) when asset_code
+        doesn't exist -- callers must check for this rather than assume
+        success, same contract as create_draft's own WHERE EXISTS-gated
+        silent-no-op-on-missing-asset behavior.
+        """
+        code = _new_code()
+        schedule_code = f"UNSCHEDULED::{provenance}"
+        rows = json.loads(
+            self._runner.query_scalar(
+                "WITH ins AS ("
+                "INSERT INTO pm_occurrence "
+                "(pm_occurrence_code, pm_schedule_code, asset_code, asset_type, occurrence_date, "
+                "activities, remarks, workflow_status, provenance, created_by, updated_by, source_reference) "
+                f"SELECT {_sql(code)}, {_sql(schedule_code)}, {_sql(asset_code)}, {_sql(asset_type)}, "
+                f"{_sql(occurrence_date)}, {_sql(json.dumps(activities) if activities is not None else None)}::jsonb, "
+                f"{_sql(remarks)}, {_sql(DRAFT)}, {_sql(provenance)}, {_sql(created_by)}, {_sql(created_by)}, "
+                f"{_sql(source_reference)} "
+                f"WHERE EXISTS (SELECT 1 FROM ltsa_pumps WHERE tag_number = {_sql(asset_code)}) "
+                f"RETURNING {_SELECT_COLUMNS}"
+                "), audit AS (INSERT INTO record_change_history "
+                "(entity_type, entity_id, field_name, old_value, new_value, changed_by, reason) "
+                "SELECT 'PM_OCCURRENCE', pm_occurrence_code, '__record__', NULL, "
+                "row_to_json(ins)::text, created_by, 'CREATE' FROM ins) "
+                "SELECT COALESCE(json_agg(row_to_json(t))::text, '[]') FROM ins t;"
+            )
+            or "[]"
+        )
+        return rows[0] if rows else None
+
     def update_draft(
         self,
         pm_occurrence_code: str,
