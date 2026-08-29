@@ -1709,3 +1709,150 @@ def test_confirmed_cmon_plain_ya_does_not_select_confirmed_row(monkeypatch):
     assert response.status_code == 200
     assert len(cmon.rows) == 1  # no second write, no resurrection
     assert outbound.calls[-1] == (SENDER_A, "Tidak ada data yang menunggu konfirmasi.")
+
+
+# --- WhatsApp explicit confirmation routing bug investigation -----------
+#
+# Investigation result: no parsing/routing defect was found in
+# whatsapp_intake_service.py for the exact reported production message.
+# _CONFIRMATION_CODE_PATTERN.search() correctly extracts the WA-CONF
+# token from "YA WA-CONF-<hex>" (verified directly, and via the tests
+# below, entering through the SAME public webhook route production
+# uses); "ya" is in _ACTION_WORDS regardless of case
+# (tokens[0].casefold()); find_pending_by_confirmation_id's real SQL
+# (whatsapp_intake_repository.py) has no state filter, matching the
+# Fake used here; migration 030's confirmation_id DEFAULT
+# ('WA-CONF-' || replace(gen_random_uuid()::text, '-', '')) produces
+# exactly the lowercase, unhyphenated hex shape in the production
+# evidence, so there is no case/format mismatch either. These tests use
+# the EXACT literal production text (not a variable-built string) with
+# the production intake_id/confirmation_id/canonical code hardcoded, to
+# remove any doubt.
+
+def _seed_confirmed_cmon_matching_production(monkeypatch):
+    # Drives the normal 3-message flow, then overwrites the generated
+    # confirmation_id/canonical code to the EXACT production values so
+    # the literal-text tests below are a byte-for-byte reproduction of
+    # the reported incident, not an approximation.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    cmon = FakeConditionMonitoringReadingRepository()
+    _wire(monkeypatch, repo, outbound, cmon_repository=cmon)
+
+    _post(_message_envelope(message_id="wamid.routingA", text=_PRODUCTION_CMON_TEXT))
+    _post(_message_envelope(message_id="wamid.routingB", text="Ya"))
+    _post(_message_envelope(message_id="wamid.routingC", text="Ya"))
+    assert repo.rows[0]["state"] == "CONFIRMED"
+    assert len(cmon.rows) == 1
+
+    repo.rows[0]["intake_id"] = "06501e02-60bf-4a2d-bc2b-9c750a0289a8"
+    repo.rows[0]["confirmation_id"] = "WA-CONF-f02afd2db6e94b9d9cb20e3cef2ac33a"
+    cmon.rows[0]["condition_monitoring_reading_code"] = "CMONR-4B33E52CA2B5"
+    cmon.rows[0]["source_reference"] = "WHATSAPP::06501e02-60bf-4a2d-bc2b-9c750a0289a8"
+    return repo, outbound, cmon
+
+
+def test_exact_production_message_explicit_confirmed_retry(monkeypatch):
+    # EXACT_PRODUCTION_MESSAGE_TEST -- the literal reported text, entering
+    # through the same public FastAPI webhook route production uses.
+    # Starts from: one CONFIRMED CMON intake, canonical CMON already
+    # exists, zero open pending confirmations (all three states hold
+    # after _seed_confirmed_cmon_matching_production above).
+    repo, outbound, cmon = _seed_confirmed_cmon_matching_production(monkeypatch)
+    confirmed_by_before = repo.rows[0].get("confirmed_by")
+    transition_calls_before = repo.transition_calls
+    create_draft_calls_before = list(cmon.create_draft_calls)
+    create_ad_hoc_draft_calls_before = list(cmon.create_ad_hoc_draft_calls)
+
+    response = _post(_message_envelope(
+        message_id="wamid.exactprod",
+        text="YA WA-CONF-f02afd2db6e94b9d9cb20e3cef2ac33a",
+    ))
+
+    assert response.status_code == 200
+    assert outbound.calls[-1] == (
+        SENDER_A,
+        "Condition Monitoring 211-P-13AR sudah tersimpan sebelumnya.\nKode: CMONR-4B33E52CA2B5",
+    )
+    # canonical_count remains exactly 1; no canonical create method called.
+    assert len(cmon.rows) == 1
+    assert cmon.create_draft_calls == create_draft_calls_before
+    assert cmon.create_ad_hoc_draft_calls == create_ad_hoc_draft_calls_before
+    # confirmed_at/confirmed_by unchanged; no pending state transition (the
+    # +1 is _send_outbound_reply's own pre-existing, unrelated
+    # last_outbound_provider_message_id correlation bookkeeping).
+    assert repo.transition_calls == transition_calls_before + 1
+    assert repo.rows[0].get("confirmed_by") == confirmed_by_before
+    assert repo.rows[0]["state"] == "CONFIRMED"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "YA WA-CONF-f02afd2db6e94b9d9cb20e3cef2ac33a",
+        "Ya WA-CONF-f02afd2db6e94b9d9cb20e3cef2ac33a",
+        "ya WA-CONF-f02afd2db6e94b9d9cb20e3cef2ac33a",
+    ],
+    ids=["upper", "title", "lower"],
+)
+def test_explicit_confirmed_retry_case_variants(monkeypatch, text):
+    repo, outbound, cmon = _seed_confirmed_cmon_matching_production(monkeypatch)
+
+    response = _post(_message_envelope(message_id=f"wamid.case{text[:2]}", text=text))
+
+    assert response.status_code == 200
+    assert outbound.calls[-1] == (
+        SENDER_A,
+        "Condition Monitoring 211-P-13AR sudah tersimpan sebelumnya.\nKode: CMONR-4B33E52CA2B5",
+    )
+    assert len(cmon.rows) == 1
+
+
+def test_trailing_description_form_extracts_only_the_code(monkeypatch):
+    # TRAILING_DESCRIPTION_TEST -- a trailing ": <description>" after the
+    # WA-CONF token (a form that previously existed in production) must
+    # continue extracting only the code, never rejected as unrecognized.
+    repo, outbound, cmon = _seed_confirmed_cmon_matching_production(monkeypatch)
+
+    response = _post(_message_envelope(
+        message_id="wamid.trailingdesc",
+        text="YA WA-CONF-f02afd2db6e94b9d9cb20e3cef2ac33a: CONDITION_MONITORING 211-P-13AR",
+    ))
+
+    assert response.status_code == 200
+    assert outbound.calls[-1] == (
+        SENDER_A,
+        "Condition Monitoring 211-P-13AR sudah tersimpan sebelumnya.\nKode: CMONR-4B33E52CA2B5",
+    )
+    assert len(cmon.rows) == 1
+
+
+@pytest.mark.parametrize("terminal_state", ["EXPIRED", "CANCELLED", "REJECTED"])
+def test_exact_production_code_shape_terminal_state_never_resurrects(monkeypatch, terminal_state):
+    # TERMINAL_STATE_GUARD -- same production-shaped confirmation_id, but
+    # a terminal (not CONFIRMED) row must still be rejected, never
+    # resurrected, regardless of the code's exact shape.
+    repo, outbound, cmon = _seed_confirmed_cmon_matching_production(monkeypatch)
+    repo.rows[0]["state"] = terminal_state
+
+    response = _post(_message_envelope(
+        message_id=f"wamid.termprod{terminal_state}",
+        text="YA WA-CONF-f02afd2db6e94b9d9cb20e3cef2ac33a",
+    ))
+
+    assert response.status_code == 200
+    assert outbound.calls[-1] == (SENDER_A, "Kode konfirmasi tidak ditemukan.")
+    assert repo.rows[0]["state"] == terminal_state
+    assert len(cmon.rows) == 1  # the pre-existing canonical row, untouched
+
+
+def test_plain_ya_still_searches_open_states_only_with_production_shaped_row(monkeypatch):
+    # PLAIN_YA_GUARD -- re-confirms, with the exact production row shape,
+    # that a plain "Ya" (no code) never re-selects the CONFIRMED row.
+    repo, outbound, cmon = _seed_confirmed_cmon_matching_production(monkeypatch)
+
+    response = _post(_message_envelope(message_id="wamid.plainprod", text="Ya"))
+
+    assert response.status_code == 200
+    assert outbound.calls[-1] == (SENDER_A, "Tidak ada data yang menunggu konfirmasi.")
+    assert len(cmon.rows) == 1
