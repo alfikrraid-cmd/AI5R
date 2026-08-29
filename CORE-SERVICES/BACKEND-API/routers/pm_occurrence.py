@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from API.auth_service import AuthenticatedIdentity, resolve_area_scope
@@ -20,6 +22,8 @@ from models.requests import (
     TechnicalReviewRequest,
 )
 from models.responses import Payload
+
+logger = logging.getLogger(__name__)
 
 # MWO-LTSA-AUTH-001
 router = APIRouter(dependencies=[Depends(require_permission("maintenance.read"))])
@@ -85,15 +89,32 @@ def create_ltsa_pm_occurrence(
     current_user=Depends(require_permission("maintenance.write")),
     pm_occurrence_repository=Depends(get_pm_occurrence_repository),
 ) -> Payload:
-    created = pm_occurrence_repository.create_draft(
-        pm_schedule_code=payload.pm_schedule_code,
-        asset_code=payload.asset_code,
-        asset_type=payload.asset_type,
-        occurrence_date=payload.occurrence_date,
-        activities=[entry.model_dump() for entry in payload.activities] if payload.activities else None,
-        remarks=payload.remarks,
-        created_by=_actor_id(current_user),
-    )
+    try:
+        created = pm_occurrence_repository.create_draft(
+            pm_schedule_code=payload.pm_schedule_code,
+            asset_code=payload.asset_code,
+            asset_type=payload.asset_type,
+            occurrence_date=payload.occurrence_date,
+            activities=[entry.model_dump() for entry in payload.activities] if payload.activities else None,
+            remarks=payload.remarks,
+            created_by=_actor_id(current_user),
+        )
+    except Exception as exc:
+        # Diagnostic-only (matches the same privacy/safety standard
+        # already established for the WhatsApp CMON writer's own
+        # event=whatsapp_cmon_write logging) -- never the request
+        # payload, never a raw SQL dump. Re-raises the SAME exception
+        # unchanged, so this changes nothing about the response a caller
+        # receives; it only makes a write failure diagnosable from logs
+        # alone instead of needing a manual DB reproduction.
+        first_line = str(exc).strip().splitlines()[0] if str(exc).strip() else ""
+        logger.info(
+            "event=pm_occurrence_write result=FAILED exception_class=%s sqlstate=%s error_summary=%s",
+            type(exc).__name__,
+            getattr(exc, "pgcode", None),
+            first_line[:200] or None,
+        )
+        raise
     if created is None:
         raise HTTPException(status_code=404, detail="Canonical pump or PM schedule not found")
     return {"data": created}

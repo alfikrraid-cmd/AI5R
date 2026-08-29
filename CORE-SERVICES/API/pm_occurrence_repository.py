@@ -106,13 +106,25 @@ class PMOccurrenceRepository:
                 "WITH ins AS ("
                 "INSERT INTO pm_occurrence "
                 "(pm_occurrence_code, pm_schedule_code, asset_code, asset_type, occurrence_date, "
-                "activities, remarks, workflow_status, provenance, created_by, updated_by, source_reference) VALUES "
+                "activities, remarks, workflow_status, provenance, created_by, updated_by, source_reference) "
+                # Production reproduction fix (mirrors condition_monitoring_
+                # reading_repository.py's identical fix) -- this is an
+                # INSERT...SELECT (required to carry the WHERE EXISTS gate
+                # below, which a plain VALUES tuple cannot), never
+                # INSERT...VALUES. A stray "VALUES " token before SELECT was
+                # a hard Postgres syntax error (SQLSTATE 42601) on every
+                # call -- reproduced against the real canonical schema,
+                # never caught by any Fake-runner test (FakeRunner only
+                # records the SQL text, never executes it). RETURNING must
+                # also sit inside the `ins` CTE's own parens (immediately
+                # after the WHERE clause), not after its closing paren --
+                # it was previously misplaced there too, a second syntax
+                # error masked by the first.
                 f"SELECT {_sql(code)}, {_sql(pm_schedule_code)}, {_sql(asset_code)}, {_sql(asset_type)}, "
                 f"{_sql(occurrence_date)}, {_sql(json.dumps(activities) if activities is not None else None)}::jsonb, "
                 f"{_sql(remarks)}, {_sql(DRAFT)}, {_sql(provenance)}, {_sql(created_by)}, {_sql(created_by)}, "
                 f"{_sql(source_reference)} WHERE EXISTS (SELECT 1 FROM ltsa_pumps WHERE tag_number = {_sql(asset_code)}) "
                 f"AND EXISTS (SELECT 1 FROM pm_schedule WHERE pm_schedule_code = {_sql(pm_schedule_code)}) "
-                ") "
                 f"RETURNING {_SELECT_COLUMNS}"
                 # MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016 -- "Actual PM
                 # record is created -> Schedule becomes COMPLETED -> Schedule
