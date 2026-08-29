@@ -176,10 +176,26 @@ def test_real_db_three_message_flow_writes_exactly_one_canonical_record(monkeypa
 
     reply = outbound.calls[-1][1]
     assert "berhasil disimpan" in reply
+    # Date-format fix -- the real reading_date column is TIMESTAMP, so
+    # record["reading_date"] above is correctly the full
+    # "2026-08-29T00:00:00" (stored value/type untouched); the WhatsApp
+    # reply text must show the date-only presentation form instead.
+    assert "Tanggal: 2026-08-29\nKode:" in reply
+    assert "T00:00:00" not in reply
 
-    # Repeat final confirmation -- idempotent against the real database,
-    # never a second canonical row.
+    # Repeat final confirmation (plain "Ya") -- idempotent against the
+    # real database, never a second canonical row.
     repeat = _post(_message_envelope(message_id="wamid.realdbD", text="Ya"))
     assert repeat.status_code == 200
     all_rows = cmon_repo.list_by_asset("211-P-13AR")
     assert len(all_rows) == 1
+
+    # Task A: explicit confirmation-code retry against the same, now-
+    # CONFIRMED row -- must resolve, disclose the existing canonical code,
+    # and never write a second canonical record, against the real database.
+    code = repo.rows[0]["confirmation_id"]
+    canonical_code = record["condition_monitoring_reading_code"]
+    explicit_retry = _post(_message_envelope(message_id="wamid.realdbE", text=f"YA {code}"))
+    assert explicit_retry.status_code == 200
+    assert outbound.calls[-1] == (SENDER_A, f"Condition Monitoring 211-P-13AR sudah tersimpan sebelumnya.\nKode: {canonical_code}")
+    assert len(cmon_repo.list_by_asset("211-P-13AR")) == 1

@@ -368,6 +368,31 @@ def _confirm_pending(
     if pending.get("state") == "CONFIRMED":
         # MWO-025J2 Part F -- idempotency: no re-transition, no re-stamped
         # confirmed_at, on any repeat "YA" for an already-confirmed row.
+        # Production hardening -- a CONFIRMED CONDITION_MONITORING row has
+        # a real canonical record to disclose (source_reference is the
+        # same immutable WHATSAPP::<intake_id> key _confirm_condition_
+        # monitoring already writes with), so an explicit-code retry can
+        # tell the engineer exactly which record already exists instead of
+        # a generic message. Read-only lookup -- never calls create_draft/
+        # create_ad_hoc_draft again, never calls transition_pending, so
+        # confirmed_at/confirmed_by and the canonical row count are both
+        # untouched by construction. PM (no cmon_repository match) and any
+        # CMON row whose canonical record isn't found (e.g. a pre-da59a18
+        # CONFIRMED_NO_ENGINEERING_WRITE row) fall through to the original
+        # generic reply unchanged.
+        if pending.get("detected_domain") == "CONDITION_MONITORING" and cmon_repository is not None:
+            existing = cmon_repository.find_by_source_reference(f"WHATSAPP::{pending['intake_id']}")
+            if existing is not None:
+                asset_code = existing.get("asset_code") or (pending.get("structured_payload") or {}).get("asset_code")
+                return IntakeResult(
+                    status="CONFIRMED",
+                    message="DUPLICATE_CONFIRMATION_CMON_RECORDED",
+                    intake=pending,
+                    reply=(
+                        f"Condition Monitoring {asset_code} sudah tersimpan sebelumnya.\n"
+                        f"Kode: {existing.get('condition_monitoring_reading_code')}"
+                    ),
+                )
         return IntakeResult(status="CONFIRMED", message="DUPLICATE_CONFIRMATION", intake=pending, reply="Data sudah dikonfirmasi.")
 
     if pending.get("state") not in OPEN_PENDING_STATES:
@@ -489,7 +514,12 @@ def _extract_cmon_finding(original_message: str | None) -> str | None:
 def _cmon_success_reply(record: dict[str, Any]) -> str:
     lines = [f"Condition Monitoring {record.get('asset_code')} berhasil disimpan."]
     if record.get("reading_date"):
-        lines.append(f"Tanggal: {record['reading_date']}")
+        # Presentation-only -- the real repository's reading_date column is
+        # TIMESTAMP, so a real DB row's value arrives as an ISO datetime
+        # string ("2026-08-29T00:00:00"); a date-only string (Fake
+        # repositories, tests) is unaffected since its own first 10 chars
+        # are already the full value. Never touches the stored value/type.
+        lines.append(f"Tanggal: {str(record['reading_date'])[:10]}")
     if record.get("condition_monitoring_reading_code"):
         lines.append(f"Kode: {record['condition_monitoring_reading_code']}")
     return "\n".join(lines)

@@ -120,6 +120,7 @@ class FakeIntakeRepository:
         self.identities = identities or {}
         self.rows = []
         self._seq = 0
+        self.transition_calls = 0
 
     def find_identity_by_sender_hash(self, sender_hash):
         for phone, identity in self.identities.items():
@@ -185,6 +186,7 @@ class FakeIntakeRepository:
         structured_payload=None,
         last_outbound_provider_message_id=None,
     ):
+        self.transition_calls += 1
         for row in self.rows:
             if row["intake_id"] == intake_id:
                 row["state"] = state
@@ -1345,7 +1347,7 @@ def test_cmon_explicit_code_repeat_does_not_duplicate_canonical_record(monkeypat
 
     assert response.status_code == 200
     assert len(cmon.rows) == 1
-    assert outbound.calls[-1] == (SENDER_A, "Data sudah dikonfirmasi.")
+    assert outbound.calls[-1] == (SENDER_A, f"Condition Monitoring 211-P-13AR sudah tersimpan sebelumnya.\nKode: {cmon.rows[0]['condition_monitoring_reading_code']}")
 
 
 def test_cmon_idempotent_recovery_when_write_succeeded_but_intake_transition_did_not(monkeypatch):
@@ -1596,7 +1598,11 @@ def test_state_matrix_confirmed_plus_repeated_explicit_code_is_idempotent(monkey
 
     assert response.status_code == 200
     assert len(cmon.rows) == 1
-    assert outbound.calls[-1] == (SENDER_A, "Data sudah dikonfirmasi.")
+    # Production hardening -- a CONFIRMED CMON row's explicit-code retry
+    # now discloses the existing canonical code rather than the old
+    # generic message (see the dedicated confirmed-retry tests below for
+    # full coverage of this behavior).
+    assert outbound.calls[-1] == (SENDER_A, f"Condition Monitoring 211-P-13AR sudah tersimpan sebelumnya.\nKode: {cmon.rows[0]['condition_monitoring_reading_code']}")
 
 
 @pytest.mark.parametrize("terminal_state", ["EXPIRED", "CANCELLED", "REJECTED"])
@@ -1617,3 +1623,89 @@ def test_state_matrix_terminal_states_reject_confirmation_no_write(monkeypatch, 
     assert cmon.rows == []
     assert repo.rows[0]["state"] == terminal_state
     assert outbound.calls[-1] == (SENDER_A, "Kode konfirmasi tidak ditemukan.")
+
+
+# --- Task A: confirmed WhatsApp CMON retry idempotency -----------------
+
+def test_confirmed_cmon_explicit_retry_returns_existing_canonical_code(monkeypatch):
+    # CONFIRMED_RETRY_TEST -- explicit confirmation-code retry against an
+    # already-CONFIRMED CMON row must resolve, disclose the existing
+    # canonical code, and never write a second canonical record.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    cmon = FakeConditionMonitoringReadingRepository()
+    _wire(monkeypatch, repo, outbound, cmon_repository=cmon)
+
+    _post(_message_envelope(message_id="wamid.confretryA", text=_PRODUCTION_CMON_TEXT))
+    code = repo.rows[0]["confirmation_id"]
+    _post(_message_envelope(message_id="wamid.confretryB", text="Ya"))  # answers missing-date question only
+    _post(_message_envelope(message_id="wamid.confretryC", text="Ya"))  # final confirmation -- writes
+    assert repo.rows[0]["state"] == "CONFIRMED"
+    assert len(cmon.rows) == 1
+    canonical_code = cmon.rows[0]["condition_monitoring_reading_code"]
+    confirmed_by_before = repo.rows[0].get("confirmed_by")
+    transition_calls_before = repo.transition_calls
+    create_draft_calls_before = list(cmon.create_draft_calls)
+    create_ad_hoc_draft_calls_before = list(cmon.create_ad_hoc_draft_calls)
+
+    response = _post(_message_envelope(message_id="wamid.confretryD", text=f"YA {code}"))
+
+    assert response.status_code == 200
+    # Requirement 4: existing canonical code disclosed.
+    assert outbound.calls[-1] == (SENDER_A, f"Condition Monitoring 211-P-13AR sudah tersimpan sebelumnya.\nKode: {canonical_code}")
+    # Requirement 2/6: canonical writer never invoked again, count stays 1.
+    assert cmon.create_draft_calls == create_draft_calls_before
+    assert cmon.create_ad_hoc_draft_calls == create_ad_hoc_draft_calls_before
+    assert len(cmon.rows) == 1
+    # Requirement 5: no re-CONFIRMATION transition -- confirmed_by (and by
+    # construction, confirmed_at) unchanged. The one extra transition_calls
+    # increment is _send_outbound_reply's own pre-existing, unrelated
+    # last_outbound_provider_message_id correlation bookkeeping (fires
+    # after every reply, confirmed_by=None, so it never touches
+    # confirmed_by/confirmed_at) -- not a second confirmation.
+    assert repo.transition_calls == transition_calls_before + 1
+    assert repo.rows[0].get("confirmed_by") == confirmed_by_before
+    assert repo.rows[0]["state"] == "CONFIRMED"
+
+
+def test_confirmed_cmon_pm_retry_keeps_generic_message(monkeypatch):
+    # PM_CHANGE=ZERO -- a CONFIRMED PM row's retry (no cmon_repository
+    # match, detected_domain != CONDITION_MONITORING) keeps the original
+    # generic reply, unaffected by the CMON-specific disclosure branch.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    _wire(monkeypatch, repo, outbound)  # no cmon_repository -- matches PM's real wiring
+
+    _post(_message_envelope(message_id="wamid.pmretryA", text="CM 211-P-13AR hari ini DE 78 NDE 81 tidak bocor"))
+    code = repo.rows[0]["confirmation_id"]
+    _post(_message_envelope(message_id="wamid.pmretryB", text="YA"))
+    assert repo.rows[0]["state"] == "CONFIRMED"
+
+    response = _post(_message_envelope(message_id="wamid.pmretryC", text=f"YA {code}"))
+
+    assert response.status_code == 200
+    assert outbound.calls[-1] == (SENDER_A, "Data sudah dikonfirmasi.")
+
+
+def test_confirmed_cmon_plain_ya_does_not_select_confirmed_row(monkeypatch):
+    # PLAIN_YA_SELECTION_TEST -- after a CMON row is CONFIRMED, a plain,
+    # unlinked "Ya" with no other open pending must never re-select it
+    # (find_actionable_pending_list already excludes CONFIRMED; this
+    # proves the confirmed-retry disclosure branch above doesn't change
+    # that guarantee).
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    cmon = FakeConditionMonitoringReadingRepository()
+    _wire(monkeypatch, repo, outbound, cmon_repository=cmon)
+
+    _post(_message_envelope(message_id="wamid.plainyaA", text=_PRODUCTION_CMON_TEXT))
+    _post(_message_envelope(message_id="wamid.plainyaB", text="Ya"))
+    _post(_message_envelope(message_id="wamid.plainyaC", text="Ya"))
+    assert repo.rows[0]["state"] == "CONFIRMED"
+    assert len(cmon.rows) == 1
+
+    response = _post(_message_envelope(message_id="wamid.plainyaD", text="Ya"))
+
+    assert response.status_code == 200
+    assert len(cmon.rows) == 1  # no second write, no resurrection
+    assert outbound.calls[-1] == (SENDER_A, "Tidak ada data yang menunggu konfirmasi.")
