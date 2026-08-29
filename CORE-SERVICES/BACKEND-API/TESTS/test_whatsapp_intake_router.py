@@ -80,7 +80,11 @@ class FakeIntakeRepository:
     def create_pending(self, payload):
         row = {
             "intake_id": f"wa-{len(self.rows) + 1}",
-            "confirmation_id": f"WA-CONF-{len(self.rows) + 1:04d}",
+            # Matches the real shape exactly (migration 030's
+            # confirmation_id DEFAULT: 'WA-CONF-' + 32 lowercase hex chars)
+            # -- required now that _CONFIRMATION_CODE_PATTERN strictly
+            # requires exactly 32 hex characters.
+            "confirmation_id": f"WA-CONF-{len(self.rows) + 1:032x}",
             "reply_text": payload.get("reply"),
             "last_outbound_provider_message_id": None,
             **payload,

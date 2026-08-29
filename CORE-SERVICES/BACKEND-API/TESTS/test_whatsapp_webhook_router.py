@@ -168,7 +168,11 @@ class FakeIntakeRepository:
         self._seq += 1
         row = {
             "intake_id": f"wa-{self._seq}",
-            "confirmation_id": f"WA-CONF-{self._seq:04d}",
+            # Matches the real shape exactly (migration 030's confirmation_id
+            # DEFAULT: 'WA-CONF-' + 32 lowercase hex chars) -- required now
+            # that _CONFIRMATION_CODE_PATTERN strictly requires exactly 32
+            # hex characters; a shorter sequential id would never match.
+            "confirmation_id": f"WA-CONF-{self._seq:032x}",
             "reply_text": payload.get("reply"),
             "last_outbound_provider_message_id": None,
             **payload,
@@ -845,7 +849,10 @@ def test_invalid_confirmation_code_performs_zero_writes(monkeypatch):
     _post(_message_envelope(message_id="wamid.badcode1", text="CM 211-P-13AR hari ini DE 78 NDE 81 tidak bocor"))
     states_before = [dict(row) for row in repo.rows]
 
-    response = _post(_message_envelope(message_id="wamid.badcode_ya1", text="YA WA-CONF-doesnotexist00000000000000"))
+    # Well-formed (exactly 32 hex) but non-existent -- distinct from a
+    # malformed/wrong-length code, which never matches at all and falls
+    # through to plain-YA semantics instead (see the strict-length tests).
+    response = _post(_message_envelope(message_id="wamid.badcode_ya1", text="YA WA-CONF-00000000000000000000000000000000"))
 
     assert response.status_code == 200
     assert [row["state"] for row in repo.rows] == [row["state"] for row in states_before]
@@ -2009,17 +2016,15 @@ def test_remainder_diagnostic_detects_unicode_dash_variant(monkeypatch, caplog):
     assert "f02afd2db6e94b9d9cb20e3cef2ac33a" not in log_text
 
 
-def test_remainder_diagnostic_mid_hex_break_truncates_rather_than_fails(monkeypatch, caplog):
-    # Evidence-narrowing finding: an invisible/whitespace character
-    # landing INSIDE the hex portion does NOT make the regex fail to
-    # match at all -- [0-9A-Fa-f]+ is greedy-but-partial, so it matches a
-    # SHORTER, truncated selector up to the break point and stops there.
-    # selector_present stays True (just wrong), giving
-    # UNKNOWN_CONFIRMATION_ID -- not production's exact symptom
-    # (selector_present=False). This rules OUT a mid-hex-token break as
-    # the production cause and narrows it specifically to something
-    # inside the literal "WA-CONF-" prefix itself (see the dash-variant
-    # test above, which DOES reproduce selector_present=False exactly).
+def test_remainder_diagnostic_mid_hex_break_fails_cleanly(monkeypatch, caplog):
+    # Strict-32-hex fix -- the {32} fixed count plus trailing negative
+    # lookahead means an invisible character landing INSIDE the hex
+    # portion now correctly fails the WHOLE match (never a truncated
+    # partial selector, unlike the old unbounded [0-9A-Fa-f]+). No other
+    # pending is open here, so this falls through to plain-YA broad
+    # discovery and NO_PENDING_CONFIRMATION -- production's exact
+    # symptom, and a strictly better outcome than accepting a wrong,
+    # truncated selector.
     repo, outbound, cmon = _seed_confirmed_cmon_matching_production(monkeypatch)
     text = "YA WA-CONF-f02afd2db6e94b9d9cb20e3cef2ac33a".replace("f02afd2d", "f02afd2d​")
 
@@ -2033,14 +2038,14 @@ def test_remainder_diagnostic_mid_hex_break_truncates_rather_than_fails(monkeypa
     selection_line = next(
         r.getMessage() for r in caplog.records if r.getMessage().startswith("event=whatsapp_confirmation_selection")
     )
-    assert "selector_present=True" in selection_line  # truncated match, not a total miss
-    assert "explicit_lookup_found=False" in selection_line
-    assert "result_code=UNKNOWN_CONFIRMATION_ID" in selection_line
+    assert "selector_present=False" in selection_line
+    assert "explicit_lookup_attempted=False" in selection_line
+    assert "result_code=NO_PENDING_CONFIRMATION" in selection_line
 
 
-def test_remainder_diagnostic_internal_nbsp_also_truncates_not_fails(monkeypatch, caplog):
-    # Same evidence-narrowing point as above, for NO-BREAK SPACE (U+00A0)
-    # landing inside the hex portion instead.
+def test_remainder_diagnostic_internal_nbsp_also_fails_cleanly(monkeypatch, caplog):
+    # Same point as above, for NO-BREAK SPACE (U+00A0) landing inside the
+    # hex portion instead.
     repo, outbound, cmon = _seed_confirmed_cmon_matching_production(monkeypatch)
     text = "YA WA-CONF-f02afd2d b6e94b9d9cb20e3cef2ac33a"
 
@@ -2054,9 +2059,9 @@ def test_remainder_diagnostic_internal_nbsp_also_truncates_not_fails(monkeypatch
     selection_line = next(
         r.getMessage() for r in caplog.records if r.getMessage().startswith("event=whatsapp_confirmation_selection")
     )
-    assert "selector_present=True" in selection_line
-    assert "explicit_lookup_found=False" in selection_line
-    assert "result_code=UNKNOWN_CONFIRMATION_ID" in selection_line
+    assert "selector_present=False" in selection_line
+    assert "explicit_lookup_attempted=False" in selection_line
+    assert "result_code=NO_PENDING_CONFIRMATION" in selection_line
 
 
 def test_remainder_diagnostic_fullwidth_hyphen_normalizes_under_nfkc(monkeypatch, caplog):
@@ -2141,11 +2146,16 @@ def test_prefix_diagnostic_codepoints_by_case(monkeypatch, caplog, prefix, expec
     assert "f02afd2d" not in log_text
 
 
-def test_lowercase_prefix_reproduces_every_evidenced_production_field(monkeypatch, caplog):
-    # The full-line evidence match: a lowercase remainder alone (no
-    # unusual/invisible character at all) reproduces every field from the
-    # authoritative production diagnostic simultaneously.
+def test_lowercase_prefix_now_resolves_correctly_exact_production_regression(monkeypatch, caplog):
+    # THE FIX, proven against the exact production message: a lowercase
+    # remainder used to reproduce every field of the production failure
+    # (see 7ed0f95's diagnostic commit); with the case-insensitive
+    # prefix + canonicalization fix, it now resolves exactly like the
+    # uppercase form.
     repo, outbound, cmon = _seed_confirmed_cmon_matching_production(monkeypatch)
+    confirmed_by_before = repo.rows[0].get("confirmed_by")
+    create_draft_calls_before = list(cmon.create_draft_calls)
+    create_ad_hoc_draft_calls_before = list(cmon.create_ad_hoc_draft_calls)
     text = "YA wa-conf-f02afd2db6e94b9d9cb20e3cef2ac33a"
 
     with caplog.at_level("INFO"):
@@ -2154,10 +2164,6 @@ def test_lowercase_prefix_reproduces_every_evidenced_production_field(monkeypatc
 
     diag_line = _diagnostic_lines(caplog)[0]
     assert "remainder_length=40" in diag_line
-    assert "starts_with_expected_ascii_prefix=False" in diag_line
-    assert "contains_ascii_wa_conf=False" in diag_line
-    assert "nfkc_changes_input=False" in diag_line
-    assert "whitespace_codepoints=[]" in diag_line
     assert "dash_like_codepoints=['0x2d']" in diag_line
     assert "zero_width_codepoints=[]" in diag_line
     assert "prefix_casefold_matches_expected=True" in diag_line
@@ -2165,13 +2171,69 @@ def test_lowercase_prefix_reproduces_every_evidenced_production_field(monkeypatc
     selection_line = next(
         r.getMessage() for r in caplog.records if r.getMessage().startswith("event=whatsapp_confirmation_selection")
     )
-    assert "selector_present=False" in selection_line
-    assert "explicit_lookup_attempted=False" in selection_line
-    assert "broad_lookup_attempted=True" in selection_line
-    assert "broad_candidate_count=0" in selection_line
-    assert "result_code=NO_PENDING_CONFIRMATION" in selection_line
+    assert "selector_present=True" in selection_line
+    assert "explicit_lookup_attempted=True" in selection_line
+    assert "explicit_lookup_found=True" in selection_line
+    assert "explicit_lookup_state=CONFIRMED" in selection_line
+    assert "result_code=DUPLICATE_CONFIRMATION_CMON_RECORDED" in selection_line
 
-    # No behavior change: this is still correctly rejected, not silently
-    # accepted -- no parser fix exists yet, by design.
-    assert outbound.calls[-1] == (SENDER_A, "Tidak ada data yang menunggu konfirmasi.")
-    assert len(cmon.rows) == 1  # the pre-existing canonical row, untouched by this attempt
+    # Response says CMON already stored, includes the existing canonical
+    # code -- not the old generic "Data sudah dikonfirmasi." or the
+    # broken NO_PENDING_CONFIRMATION.
+    assert outbound.calls[-1] == (
+        SENDER_A,
+        "Condition Monitoring 211-P-13AR sudah tersimpan sebelumnya.\nKode: CMONR-4B33E52CA2B5",
+    )
+    # Zero canonical write, canonical count stays exactly 1, confirmed_at/
+    # confirmed_by unchanged (no transition_pending call for confirmation
+    # -- read-only lookup only).
+    assert len(cmon.rows) == 1
+    assert cmon.create_draft_calls == create_draft_calls_before
+    assert cmon.create_ad_hoc_draft_calls == create_ad_hoc_draft_calls_before
+    assert repo.rows[0]["state"] == "CONFIRMED"
+    assert repo.rows[0].get("confirmed_by") == confirmed_by_before
+
+
+# --- Strict 32-hex + case-insensitive-prefix boundary matrix ------------
+
+@pytest.mark.parametrize(
+    "text,should_resolve",
+    [
+        ("YA WA-CONF-f02afd2db6e94b9d9cb20e3cef2ac33a", True),
+        ("YA wa-conf-f02afd2db6e94b9d9cb20e3cef2ac33a", True),
+        ("YA Wa-Conf-f02afd2db6e94b9d9cb20e3cef2ac33a", True),
+        ("YA WA-CONF-F02AFD2DB6E94B9D9CB20E3CEF2AC33A", True),
+        ("YA wa-conf-F02AFD2DB6E94B9D9CB20E3CEF2AC33A", True),
+        ("YA WA-CONF-f02afd2db6e94b9d9cb20e3cef2ac33", False),
+        ("YA WA-CONF-f02afd2db6e94b9d9cb20e3cef2ac33aa", False),
+        ("YA WA-CONF-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz", False),
+        ("YA WA‐CONF‐f02afd2db6e94b9d9cb20e3cef2ac33a", False),
+    ],
+    ids=[
+        "upper_prefix_lower_hex", "lower_prefix_lower_hex", "mixed_prefix_lower_hex",
+        "upper_prefix_upper_hex", "lower_prefix_upper_hex",
+        "31_hex_reject", "33_hex_reject", "non_hex_reject", "unicode_dash_prefix_reject",
+    ],
+)
+def test_selector_strict_boundary_matrix(monkeypatch, text, should_resolve):
+    repo, outbound, cmon = _seed_confirmed_cmon_matching_production(monkeypatch)
+    create_draft_calls_before = list(cmon.create_draft_calls)
+    create_ad_hoc_draft_calls_before = list(cmon.create_ad_hoc_draft_calls)
+
+    response = _post(_message_envelope(message_id=f"wamid.boundary{abs(hash(text))}", text=text))
+
+    assert response.status_code == 200
+    if should_resolve:
+        assert outbound.calls[-1] == (
+            SENDER_A,
+            "Condition Monitoring 211-P-13AR sudah tersimpan sebelumnya.\nKode: CMONR-4B33E52CA2B5",
+        )
+    else:
+        # Falls through to plain-YA broad discovery (zero open pending
+        # here), never accepted as a fuzzy/partial match, never a second
+        # canonical write, never a false "found" response.
+        assert outbound.calls[-1] == (SENDER_A, "Tidak ada data yang menunggu konfirmasi.")
+    assert len(cmon.rows) == 1
+    assert cmon.create_draft_calls == create_draft_calls_before
+    assert cmon.create_ad_hoc_draft_calls == create_ad_hoc_draft_calls_before
+    assert repo.rows[0]["state"] == "CONFIRMED"

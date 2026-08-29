@@ -142,7 +142,24 @@ _DATE_ERROR_BY_DOMAIN = {"CONDITION_MONITORING": "READING_DATE_REQUIRED", "PM": 
 # 211-P-13AR" listing format (trailing colon + descriptive label) still
 # extracts just the code, deterministically -- never the raw remainder
 # text, which would only ever equal the stored confirmation_id by luck.
-_CONFIRMATION_CODE_PATTERN = re.compile(r"(WA-CONF-[0-9A-Fa-f]+)")
+#
+# Case-insensitivity fix -- production evidence (structural diagnostic
+# only, never plaintext) proved a real retry arrived as lowercase
+# "wa-conf-<hex>"; the prefix literal must match regardless of casing.
+# re.IGNORECASE also covers the hex class (redundant with [0-9A-Fa-f]
+# but harmless). The hex group is a FIXED {32} count with a trailing
+# negative lookahead so this can never accept a truncated prefix of a
+# longer hex run (33+ chars) or a short one (31 or fewer) -- .search()
+# only has one viable anchor point (immediately after the literal
+# "WA-CONF-"), so a run of the wrong length simply fails to match at
+# all rather than silently matching a wrong-length substring. Unicode
+# lookalike dashes/letters are still rejected: IGNORECASE only affects
+# ASCII letter case, never non-ASCII codepoints.
+_CONFIRMATION_HEX_LENGTH = 32
+_CONFIRMATION_CODE_PATTERN = re.compile(
+    rf"WA-CONF-([0-9A-Fa-f]{{{_CONFIRMATION_HEX_LENGTH}}})(?![0-9A-Fa-f])",
+    re.IGNORECASE,
+)
 
 
 class WhatsAppIntakeRepositoryProtocol(Protocol):
@@ -364,7 +381,12 @@ def _handle_existing_pending_action(
     # single/ambiguous-pending resolution below instead of being rejected
     # as an unrecognized code.
     selector_match = _CONFIRMATION_CODE_PATTERN.search(remainder) if remainder else None
-    selector = selector_match.group(1) if selector_match else None
+    # Canonicalize to the exact stored shape (migration 030's
+    # confirmation_id DEFAULT: uppercase "WA-CONF-" + lowercase hex)
+    # regardless of what case the user typed either half in -- the
+    # repository lookup below is an exact string match, not
+    # case-insensitive, so this must normalize BEFORE that call.
+    selector = f"WA-CONF-{selector_match.group(1).lower()}" if selector_match else None
 
     # Production diagnostic instrumentation -- read-only tracking of which
     # resolution path this call actually took, so a report like "why did

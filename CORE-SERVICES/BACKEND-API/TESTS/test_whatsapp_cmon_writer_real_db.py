@@ -199,3 +199,12 @@ def test_real_db_three_message_flow_writes_exactly_one_canonical_record(monkeypa
     assert explicit_retry.status_code == 200
     assert outbound.calls[-1] == (SENDER_A, f"Condition Monitoring 211-P-13AR sudah tersimpan sebelumnya.\nKode: {canonical_code}")
     assert len(cmon_repo.list_by_asset("211-P-13AR")) == 1
+
+    # Case-insensitivity fix -- the exact production regression: an
+    # explicit code typed/arrived in lowercase must resolve identically
+    # against the real database's exact-match lookup (canonicalized to
+    # the stored uppercase-prefix/lowercase-hex shape before the query).
+    lowercase_retry = _post(_message_envelope(message_id="wamid.realdbF", text=f"YA {code.lower()}"))
+    assert lowercase_retry.status_code == 200
+    assert outbound.calls[-1] == (SENDER_A, f"Condition Monitoring 211-P-13AR sudah tersimpan sebelumnya.\nKode: {canonical_code}")
+    assert len(cmon_repo.list_by_asset("211-P-13AR")) == 1
