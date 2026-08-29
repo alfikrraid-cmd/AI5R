@@ -25,3 +25,26 @@ found anywhere outside comments/tests).
 Status: diagnosis-only, no code change made (mock IT task) - a real fix
 (decouple the two optional fetches render gates) would warrant its own
 MWO; not opened, see unresolved-tasks.md.
+
+## 2026-08-29 — DEV Docker test activity correlated with two PROD api healthcheck failures/recreates
+Module: Infrastructure (shared VPS, `ai5ros-prod` compose project)
+Root cause: not proven with certainty. Strongest available explanation:
+CPU/IO contention from DEV Docker image builds/container runs (for this
+branch's isolated backend/frontend test setup) on the same host as PROD,
+coinciding with `ai5ros-prod-api-1` healthcheck failures that led Docker
+to recreate the container — twice, in two separate ~1-2 minute windows.
+Evidence: dockerd journal showed the same escalation pattern both times
+("healthcheck failed" -> "healthcheck failed fatally" -> "stopping
+restart-manager"), each window overlapping active DEV build/run commands;
+container Created/StartedAt timestamps confirm fresh recreates (not
+crash-restarts — RestartCount reset to 0, clean ExitCode 0 each time). No
+cron, systemd timer, watchtower, or other-operator login found that would
+independently explain either recreate.
+Status: fixed (policy, not code) — see `risks.md` and the "Shared-host
+safety" section added to `ai5r-it-orchestrator/SKILL.md`: resource-
+intensive DEV/test/build operations now require either genuinely separate
+infrastructure or explicit maintenance-window approval before running on
+a host that also serves PROD. No PROD file/container/DB/n8n config was
+directly touched at any point; the impact was resource contention only,
+and PROD returned to stable/healthy within minutes once the DEV workload
+stopped.

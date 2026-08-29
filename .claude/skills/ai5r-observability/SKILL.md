@@ -21,6 +21,18 @@ and stop — that action requires explicit human approval outside this
 skill, same as every other hard-safety boundary in
 `ai5r-it-orchestrator`.
 
+**Read-only for THIS skill's own checks does not mean the wider IT task is
+resource-safe.** `docker compose ps`/`logs` are cheap and fine to run
+freely. But before this skill's findings are used to justify a SEPARATE
+build/test/reproduction step (e.g. "let's build an image to check"), apply
+`ai5r-it-orchestrator`'s shared-host safety rule: if the target host also
+runs production containers, that follow-up step needs a maintenance
+window, not just a different image tag or container name. A container
+being logically separate from production does not make it separate on the
+CPU/memory/disk-I/O axis when both run on the same physical/virtual host —
+see `ENGINEERING/IT-AGENT/MEMORY/incidents.md` for the 2026-08-29 case
+where this distinction mattered in practice.
+
 ## Checks
 
 Container / service health (compose project `ai5ros-prod`, runtime at

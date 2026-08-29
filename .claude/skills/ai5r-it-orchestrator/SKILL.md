@@ -123,6 +123,32 @@ skills / 94 commands / hooks / MCP configs) is never installed.
 - Observability is read-only, always (see `ai5r-observability`).
 - Never load all 26 vendored components for one task.
 
+## Shared-host safety (added 2026-08-29, see incident below)
+
+**"PROD mutation zero" is insufficient.** Never touching a production
+file, container, database, or n8n workflow directly is necessary but not
+sufficient — on a host that also runs production workloads, the IT Agent
+must additionally treat CPU/memory/disk-I/O contention as production
+impact in its own right.
+
+Therefore: **do not run resource-intensive DEV/test/build operations
+(`docker build`, `docker run`, `pytest`, `vitest`, `npm ci`/`npm run
+build`, dependency installs, or anything comparable) on infrastructure
+that also runs production services, unless a maintenance window has been
+explicitly approved for that specific work.** A separate image tag,
+container name, or Docker network is NOT sufficient isolation by itself
+when the host's CPU/memory/disk I/O is shared with production — that
+resource layer is invisible to "isolated," and different container
+identity does not protect it.
+
+Before any such operation: identify whether the target host runs
+production containers (`docker compose ps` for the relevant project is
+enough to check, and is itself lightweight/safe). If it does, either run
+the operation on genuinely separate infrastructure, or get explicit
+maintenance-window approval first, or don't run it. See
+`ENGINEERING/IT-AGENT/MEMORY/risks.md` and `incidents.md` for the incident
+that established this rule.
+
 ## Hard safety (always, no exception)
 
 No production DB writes. No schema migration. No destructive command. No
@@ -130,4 +156,6 @@ secret/credential changes. No production deploy/restart/recreate. No n8n
 workflow mutation. No unrelated refactor. No direct edits to the
 production checkout (`/home/unikom666/AI5R-PROD` or equivalent) — all
 implementation happens in a dev clone / feature branch, reviewed through
-this repo's normal process before merge or deploy.
+this repo's normal process before merge or deploy. No resource-intensive
+DEV/test/build workload on a host shared with production without explicit
+maintenance-window approval (see "Shared-host safety" above).
