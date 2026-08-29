@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 import re
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Protocol
@@ -22,6 +23,53 @@ def _correlation_id(value: str | None) -> str | None:
     if not value:
         return None
     return hashlib.sha256(str(value).encode("utf-8")).hexdigest()[:12]
+
+
+# TEMPORARY -- WhatsApp explicit-confirmation-selector routing
+# investigation. Zero-width codepoints deliberately kept separate from
+# Python's own str.isspace() classification below: several (e.g. ZERO
+# WIDTH SPACE U+200B) are Unicode category Cf (Format), not Zs (Space
+# Separator), so they are NOT stripped by .strip() and would NOT show up
+# under "whitespace_codepoints" -- exactly the class of invisible
+# character that could silently break a regex match while looking
+# visually identical to the intended text. Remove this block and its
+# call site once the routing investigation this exists to answer is
+# closed.
+_ZERO_WIDTH_CODEPOINTS = frozenset({
+    0x200B,  # ZERO WIDTH SPACE
+    0x200C,  # ZERO WIDTH NON-JOINER
+    0x200D,  # ZERO WIDTH JOINER
+    0x2060,  # WORD JOINER
+    0xFEFF,  # ZERO WIDTH NO-BREAK SPACE / BOM
+})
+
+
+def _log_confirmation_remainder_diagnostic(remainder: str) -> None:
+    # Structural metadata only -- never the remainder text itself, never
+    # any letter or digit from a confirmation token, never the phone
+    # number/message/provider payload. Codepoint fields report the SET of
+    # distinct codepoint TYPES encountered (as hex), never their
+    # positions or the surrounding text.
+    whitespace_codepoints = sorted({ord(ch) for ch in remainder if ch.isspace()})
+    dash_like_codepoints = sorted({
+        ord(ch) for ch in remainder if ch == "-" or unicodedata.category(ch) == "Pd"
+    })
+    zero_width_codepoints = sorted({
+        ord(ch) for ch in remainder if ord(ch) in _ZERO_WIDTH_CODEPOINTS
+    })
+    logger.info(
+        "event=whatsapp_confirmation_remainder_diagnostic remainder_length=%s remainder_sha256=%s "
+        "starts_with_expected_ascii_prefix=%s contains_ascii_wa_conf=%s nfkc_changes_input=%s "
+        "whitespace_codepoints=%s dash_like_codepoints=%s zero_width_codepoints=%s",
+        len(remainder),
+        hashlib.sha256(remainder.encode("utf-8")).hexdigest()[:12],
+        remainder.startswith("WA-CONF-"),
+        "WA-CONF" in remainder,
+        unicodedata.normalize("NFKC", remainder) != remainder,
+        [hex(cp) for cp in whitespace_codepoints],
+        [hex(cp) for cp in dash_like_codepoints],
+        [hex(cp) for cp in zero_width_codepoints],
+    )
 
 
 SUPPORTED_INTENTS = frozenset({"PM", "CONDITION_MONITORING"})
@@ -291,6 +339,8 @@ def _handle_existing_pending_action(
     if action not in _ACTION_WORDS:
         return None
     remainder = tokens[1].strip() if len(tokens) > 1 else None
+    if remainder:
+        _log_confirmation_remainder_diagnostic(remainder)
     # Only treat this as an explicit code selector when a WA-CONF-shaped
     # token actually appears in the remainder -- trailing text that never
     # contained a code (e.g. "YA please") falls through to the normal

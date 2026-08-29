@@ -1937,3 +1937,163 @@ def test_confirmation_selection_diagnostic_log_unknown_code(monkeypatch, caplog)
     assert "explicit_lookup_state=None" in line
     assert "broad_lookup_attempted=False" in line
     assert "result_code=UNKNOWN_CONFIRMATION_ID" in line
+
+
+# --- WhatsApp explicit-selector Unicode character-class diagnostic ------
+#
+# TEMPORARY diagnostic (see _log_confirmation_remainder_diagnostic in
+# whatsapp_intake_service.py) for the still-open "selector_present=False
+# despite a visually-ASCII message" production question. These tests
+# prove the diagnostic itself correctly identifies plausible look-alike
+# character classes -- they do NOT claim any one of these is the actual
+# production cause, since no raw production message bytes are available
+# to confirm that. No normalization fix is implemented here: the mission
+# gates that on conclusive evidence, which does not yet exist.
+
+def _diagnostic_lines(caplog):
+    return [
+        record.getMessage() for record in caplog.records
+        if record.getMessage().startswith("event=whatsapp_confirmation_remainder_diagnostic")
+    ]
+
+
+def test_remainder_diagnostic_clean_ascii_reports_no_anomalies(monkeypatch, caplog):
+    repo, outbound, cmon = _seed_confirmed_cmon_matching_production(monkeypatch)
+
+    with caplog.at_level("INFO"):
+        _post(_message_envelope(message_id="wamid.udiagA", text="YA WA-CONF-f02afd2db6e94b9d9cb20e3cef2ac33a"))
+
+    lines = _diagnostic_lines(caplog)
+    assert len(lines) == 1
+    line = lines[0]
+    assert "starts_with_expected_ascii_prefix=True" in line
+    assert "contains_ascii_wa_conf=True" in line
+    assert "nfkc_changes_input=False" in line
+    assert "whitespace_codepoints=[]" in line
+    assert "dash_like_codepoints=['0x2d']" in line
+    assert "zero_width_codepoints=[]" in line
+
+
+def test_remainder_diagnostic_detects_unicode_dash_variant(monkeypatch, caplog):
+    # HYPHEN (U+2010) instead of HYPHEN-MINUS (U+002D) -- visually near-
+    # identical in most UI fonts, but the regex's literal "-" won't match
+    # it. A plausible source: mobile keyboard "smart punctuation"/
+    # autocorrect substituting typed hyphens outside a recognized code/
+    # URL field.
+    repo, outbound, cmon = _seed_confirmed_cmon_matching_production(monkeypatch)
+    text = "YA WA‐CONF‐f02afd2db6e94b9d9cb20e3cef2ac33a"
+
+    with caplog.at_level("INFO"):
+        response = _post(_message_envelope(message_id="wamid.udiagB", text=text))
+
+    assert response.status_code == 200
+    lines = _diagnostic_lines(caplog)
+    assert len(lines) == 1
+    line = lines[0]
+    assert "starts_with_expected_ascii_prefix=False" in line
+    assert "contains_ascii_wa_conf=False" in line
+    assert "0x2010" in line  # dash_like_codepoints
+
+    # Reproduces the exact production symptom for this character class:
+    # selector never extracted, falls through to broad discovery, and
+    # (with zero open pending here) NO_PENDING_CONFIRMATION.
+    selection_line = next(
+        r.getMessage() for r in caplog.records if r.getMessage().startswith("event=whatsapp_confirmation_selection")
+    )
+    assert "selector_present=False" in selection_line
+    assert "explicit_lookup_attempted=False" in selection_line
+    assert "result_code=NO_PENDING_CONFIRMATION" in selection_line
+
+    # Never the plaintext code, even for a non-matching, diagnostic-only path.
+    log_text = "\n".join(r.getMessage() for r in caplog.records)
+    assert "f02afd2db6e94b9d9cb20e3cef2ac33a" not in log_text
+
+
+def test_remainder_diagnostic_mid_hex_break_truncates_rather_than_fails(monkeypatch, caplog):
+    # Evidence-narrowing finding: an invisible/whitespace character
+    # landing INSIDE the hex portion does NOT make the regex fail to
+    # match at all -- [0-9A-Fa-f]+ is greedy-but-partial, so it matches a
+    # SHORTER, truncated selector up to the break point and stops there.
+    # selector_present stays True (just wrong), giving
+    # UNKNOWN_CONFIRMATION_ID -- not production's exact symptom
+    # (selector_present=False). This rules OUT a mid-hex-token break as
+    # the production cause and narrows it specifically to something
+    # inside the literal "WA-CONF-" prefix itself (see the dash-variant
+    # test above, which DOES reproduce selector_present=False exactly).
+    repo, outbound, cmon = _seed_confirmed_cmon_matching_production(monkeypatch)
+    text = "YA WA-CONF-f02afd2db6e94b9d9cb20e3cef2ac33a".replace("f02afd2d", "f02afd2d​")
+
+    with caplog.at_level("INFO"):
+        _post(_message_envelope(message_id="wamid.udiagC", text=text))
+
+    diag_line = _diagnostic_lines(caplog)[0]
+    assert "0x200b" in diag_line  # zero_width_codepoints
+    assert "whitespace_codepoints=[]" in diag_line  # confirms it is NOT whitespace-classified
+
+    selection_line = next(
+        r.getMessage() for r in caplog.records if r.getMessage().startswith("event=whatsapp_confirmation_selection")
+    )
+    assert "selector_present=True" in selection_line  # truncated match, not a total miss
+    assert "explicit_lookup_found=False" in selection_line
+    assert "result_code=UNKNOWN_CONFIRMATION_ID" in selection_line
+
+
+def test_remainder_diagnostic_internal_nbsp_also_truncates_not_fails(monkeypatch, caplog):
+    # Same evidence-narrowing point as above, for NO-BREAK SPACE (U+00A0)
+    # landing inside the hex portion instead.
+    repo, outbound, cmon = _seed_confirmed_cmon_matching_production(monkeypatch)
+    text = "YA WA-CONF-f02afd2d b6e94b9d9cb20e3cef2ac33a"
+
+    with caplog.at_level("INFO"):
+        _post(_message_envelope(message_id="wamid.udiagD", text=text))
+
+    diag_line = _diagnostic_lines(caplog)[0]
+    assert "0xa0" in diag_line  # whitespace_codepoints
+    assert "starts_with_expected_ascii_prefix=True" in diag_line  # prefix itself is clean ASCII
+
+    selection_line = next(
+        r.getMessage() for r in caplog.records if r.getMessage().startswith("event=whatsapp_confirmation_selection")
+    )
+    assert "selector_present=True" in selection_line
+    assert "explicit_lookup_found=False" in selection_line
+    assert "result_code=UNKNOWN_CONFIRMATION_ID" in selection_line
+
+
+def test_remainder_diagnostic_fullwidth_hyphen_normalizes_under_nfkc(monkeypatch, caplog):
+    # FULLWIDTH HYPHEN-MINUS (U+FF0D) -- unlike most dash look-alikes,
+    # this one IS resolved by NFKC compatibility normalization, so
+    # nfkc_changes_input=True specifically flags this class as
+    # recoverable without weakening WA-CONF+32-hex validation.
+    repo, outbound, cmon = _seed_confirmed_cmon_matching_production(monkeypatch)
+    text = "YA WA－CONF－f02afd2db6e94b9d9cb20e3cef2ac33a"
+
+    with caplog.at_level("INFO"):
+        _post(_message_envelope(message_id="wamid.udiagE", text=text))
+
+    lines = _diagnostic_lines(caplog)
+    assert len(lines) == 1
+    line = lines[0]
+    assert "nfkc_changes_input=True" in line
+    assert "0xff0d" in line  # dash_like_codepoints
+
+
+def test_remainder_diagnostic_never_logs_plaintext_across_all_variants(monkeypatch, caplog):
+    # Cross-cutting privacy check across every character-class variant
+    # above, in one place.
+    repo, outbound, cmon = _seed_confirmed_cmon_matching_production(monkeypatch)
+    variants = [
+        "YA WA-CONF-f02afd2db6e94b9d9cb20e3cef2ac33a",
+        "YA WA‐CONF‐f02afd2db6e94b9d9cb20e3cef2ac33a",
+        "YA WA-CONF-f02afd2d​b6e94b9d9cb20e3cef2ac33a",
+        "YA WA-CONF-f02afd2d b6e94b9d9cb20e3cef2ac33a",
+    ]
+    with caplog.at_level("INFO"):
+        for i, text in enumerate(variants):
+            _post(_message_envelope(message_id=f"wamid.udiagF{i}", text=text))
+
+    log_text = "\n".join(r.getMessage() for r in caplog.records)
+    assert "f02afd2db6e94b9d9cb20e3cef2ac33a" not in log_text
+    assert "f02afd2d" not in log_text
+    assert "b6e94b9d9cb20e3cef2ac33a" not in log_text
+    assert "44216d8d-a0d2-4a5f-8c00-34fac69cf82c" not in log_text
+    assert "15550000001" not in log_text
