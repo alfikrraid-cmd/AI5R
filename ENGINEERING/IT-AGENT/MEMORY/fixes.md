@@ -38,3 +38,42 @@ review/merge, per IT Agent hard-safety (no merge to release, no deploy).
 Note: this MWO's own memory entry lives here (feature/ai5r-it-agent-foundation)
 rather than on the fix branch, since the IT Agent's memory system is not
 yet merged into release/ltsa-v1-rc1 -- see ENGINEERING/IT-AGENT/MEMORY/unresolved-tasks.md.
+
+## 2026-08-30 — CORE-SERVICES/API test suite cannot complete collection (MWO-LTSA-039A, second acceptance test)
+MWO: MWO-LTSA-039A (pre-existing, referenced by test_ltsa_messaging_gateway.py
+since commit c5078a0; never previously completed -- no completion report
+existed under ENGINEERING/MWO/ before this fix)
+Change: Added CORE-SERVICES/API/ltsa_messaging_gateway.py (LTSAMessagingGateway,
+MessageRequest, MessageResponse), implementing exactly the contract the
+pre-existing test file already specified.
+Root cause (git-history-verified, not assumed): the test file was
+committed alongside 3 siblings (executive_metrics, pump_lifecycle,
+recommendation_engine) as "completed work that had never been committed"
+-- 3 of 4 implementations exist in the repo; only this one was never
+written. `git log --all` confirms ltsa_messaging_gateway.py has never
+existed at any point in this repository's history -- not a rename, not
+a deletion, not a wrong import path.
+Tests: red (collection aborted, "Interrupted: 1 error during collection",
+exit code 2) -> green (collection succeeds, all ~19
+test_ltsa_messaging_gateway.py tests pass, exit code changes to 1 only
+because of pre-existing unrelated failures below). Verified via 2 GitHub
+Actions runs on fix/ltsa-messaging-gateway-implementation.
+First-ever completed run of this suite also surfaced 24 pre-existing
+issues invisible until now: 23 known Class C real-stack tests
+(test_import_cli.py, same docker-compose-exec-psql pattern already
+documented) + 1 unrelated auth test failure -- see risks.md.
+BLOCKER before merge: python-reviewer specialist dispatch returned a
+Block verdict -- get_fleet_summary() has no area/MA scope enforcement,
+matching a class of leak already fixed once elsewhere
+(MWO-LTSA-AUTH-DATA-SCOPE-FINAL-CLOSURE-001). Confirmed this gap is
+inherited from the pre-existing test's own Fake contract (takes no scope
+argument), not introduced by this fix -- adding scope threading now
+would mean inventing behavior beyond current test evidence. Recorded as
+a MUST-fix-before-wiring risk, not fixed in this MWO. Human decision
+needed: ship as-is (resolves the assigned collection-blocking issue,
+matches existing test contract, zero live blast radius since nothing
+imports this module yet) vs. hold for a dedicated scope-closure MWO
+first.
+Verified: fix/ltsa-messaging-gateway-implementation, branched from
+release/ltsa-v1-rc1. Not merged -- left for human review per hard safety
+and the scope decision above.

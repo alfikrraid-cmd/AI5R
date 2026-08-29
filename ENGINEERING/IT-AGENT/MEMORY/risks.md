@@ -68,3 +68,52 @@ references) is resolved. Confirmed via the first real GitHub Actions
 execution of this suite (2026-08-29, workflow run 33261503281) -- not
 caused by, and not fixed by, the IT Agent Foundation branch.
 Noted: 2026-08-29
+
+## LTSAMessagingGateway.get_fleet_summary() has no area/MA scope enforcement (CRITICAL, pre-wiring)
+Risk: `CORE-SERVICES/API/ltsa_messaging_gateway.py` (added for
+MWO-LTSA-039A, see fixes.md) calls
+`fleet_executive_summary_service.build()` with no `scope` argument,
+which defaults to unrestricted (every pump, every area) per
+FleetExecutiveSummaryService's own contract. This exactly reopens the
+class of leak MWO-LTSA-AUTH-DATA-SCOPE-FINAL-CLOSURE-001 already fixed
+for /api/ltsa/fleet/powerbi (which always threads
+scope=resolve_area_scope(current_user)). MessageRequest/get_fleet_summary
+currently carry no identity/scope concept at all.
+Why not fixed now: the pre-existing test file
+(test_ltsa_messaging_gateway.py, part of MWO-LTSA-039A) specifies this
+exact no-scope-argument contract via its own
+FakeFleetExecutiveSummaryService.build(self) fixture -- adding scope
+threading would mean inventing new test cases/API shape beyond what any
+existing evidence specifies, not implementing an already-specified
+contract. This mirrors this codebase's own established two-phase
+pattern (FleetReliabilityService/get_fleet_powerbi were also built
+unscoped first, then scope-closed in a dedicated follow-up MWO) --
+appropriate to repeat here as its own MWO, not to invent unilaterally.
+Where it bites: the moment anyone wires this gateway to a real channel/
+router (WhatsApp, an HTTP endpoint, anything), any area-restricted
+(Pertamina) user's fleet summary request would return fleet-wide data
+in violation of the same policy MWO-LTSA-AUTH-DATA-SCOPE-FINAL-CLOSURE-001
+established. Currently zero live blast radius: this module is not
+imported by main.py/dependencies.py or any router today (confirmed --
+and its own test file's structural guards explicitly forbid a router/
+FastAPI import at this stage).
+MUST be resolved (a dedicated scope-closure MWO, mirroring
+MWO-LTSA-AUTH-DATA-SCOPE-FINAL-CLOSURE-001) BEFORE this gateway is ever
+wired to any real request path.
+Noted: 2026-08-30 (surfaced by python-reviewer specialist dispatch during
+MWO-LTSA-039A's own acceptance-test fix, Block verdict)
+
+## test_auth_admin_service.py::TestAuthorizeUserManagement::test_tap_admin_cannot_manage_john_crane_engineer fails (newly surfaced, unrelated)
+Risk: "DID NOT RAISE DelegationDeniedError" -- a TAP_ADMIN role test
+expects a delegation-management restriction to be enforced and it isn't,
+per this one test. Surfaced for the first time in this repo's CI history
+on 2026-08-30 (CORE-SERVICES/API/TESTS could never complete collection
+before this session's MWO-LTSA-039A fix, so this pre-existing failure
+was always there but invisible). Completely unrelated to
+LTSAMessagingGateway or the collection-blocking bug. Not investigated
+further here -- out of MWO-LTSA-039A's scope, and NOT a "known,
+already-understood" issue like the Class C real-stack tests are. Needs
+its own separate IT ticket/MWO to investigate whether this is a genuine
+authorization gap (given the DelegationDeniedError name, this may be
+security-relevant) or a stale test assertion.
+Noted: 2026-08-30
