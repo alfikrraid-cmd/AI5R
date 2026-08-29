@@ -560,6 +560,9 @@ def _confirm_condition_monitoring(
     measurements = payload.get("measurements") or {}
     finding = _extract_cmon_finding(pending.get("original_message"))
 
+    write_exception_class: str | None = None
+    write_exception_sqlstate: str | None = None
+    write_exception_summary: str | None = None
     try:
         if len(open_schedules) == 1:
             created = cmon_repository.create_draft(
@@ -590,15 +593,32 @@ def _confirm_condition_monitoring(
                 finding=finding,
                 provenance="WHATSAPP",
             )
-    except Exception:
+    except Exception as exc:
         # Covers create_draft's own WHERE EXISTS-no-match IndexError (e.g.
         # a schedule was cancelled/completed by someone else between the
         # find_open_schedules_by_asset check above and this insert) and
         # any other write-layer failure alike -- never a false success.
+        # Exception class/SQLSTATE/a bounded first-line summary are
+        # captured for observability (see the FAILED log line below) --
+        # this is diagnostic-only: it was the missing piece that made the
+        # original production ordering bug's actual cause invisible.
+        # Never the phone number, raw provider payload, or full user
+        # message -- none of those are ever part of a DB driver exception
+        # in the first place.
         created = None
+        write_exception_class = type(exc).__name__
+        write_exception_sqlstate = getattr(exc, "pgcode", None)
+        first_line = str(exc).strip().splitlines()[0] if str(exc).strip() else ""
+        write_exception_summary = first_line[:200] or None
 
     if not created:
-        logger.info("event=whatsapp_cmon_write result=FAILED intake_id=%s", _correlation_id(intake_id))
+        logger.info(
+            "event=whatsapp_cmon_write result=FAILED intake_id=%s exception_class=%s sqlstate=%s error_summary=%s",
+            _correlation_id(intake_id),
+            write_exception_class,
+            write_exception_sqlstate,
+            write_exception_summary,
+        )
         return IntakeResult(
             status="NEEDS_INFORMATION",
             message="CMON_WRITE_FAILED",

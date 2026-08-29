@@ -194,13 +194,17 @@ class ConditionMonitoringReadingRepository:
                 "INSERT INTO condition_monitoring_reading "
                 "(condition_monitoring_reading_code, condition_monitoring_schedule_code, "
                 f"asset_code, asset_type, reading_date, {measurement_cols}, "
-                "workflow_status, provenance, created_by, updated_by, source_reference, finding) VALUES "
+                "workflow_status, provenance, created_by, updated_by, source_reference, finding) "
+                # Production reproduction fix -- same stray "VALUES "/
+                # misplaced-RETURNING syntax error as create_ad_hoc_draft's
+                # own identical CTE shape (see that method's comment for
+                # the full reasoning); this is an INSERT...SELECT, and
+                # RETURNING belongs inside `ins`'s own parens.
                 f"SELECT {_sql(code)}, {_sql(condition_monitoring_schedule_code)}, {_sql(asset_code)}, "
                 f"{_sql(asset_type)}, {_sql(reading_date)}, {measurement_vals}, "
                 f"{_sql(DRAFT)}, {_sql(provenance)}, {_sql(created_by)}, {_sql(created_by)}, "
                 f"{_sql(source_reference)}, {_sql(finding)} WHERE EXISTS (SELECT 1 FROM ltsa_pumps WHERE tag_number = {_sql(asset_code)}) "
                 f"AND EXISTS (SELECT 1 FROM condition_monitoring_schedule WHERE condition_monitoring_schedule_code = {_sql(condition_monitoring_schedule_code)}) "
-                ") "
                 f"RETURNING {_SELECT_COLUMNS}"
                 # MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016A -- atomic
                 # schedule->actual completion linking, mirroring
@@ -272,13 +276,23 @@ class ConditionMonitoringReadingRepository:
                 "INSERT INTO condition_monitoring_reading "
                 "(condition_monitoring_reading_code, condition_monitoring_schedule_code, "
                 f"asset_code, asset_type, reading_date, {measurement_cols}, "
-                "workflow_status, provenance, created_by, updated_by, source_reference, finding) VALUES "
+                "workflow_status, provenance, created_by, updated_by, source_reference, finding) "
+                # Production reproduction fix -- this is an INSERT...SELECT
+                # (required for the WHERE EXISTS gate below, which a plain
+                # VALUES tuple cannot carry), never INSERT...VALUES. A
+                # stray "VALUES " token before SELECT was a hard Postgres
+                # syntax error (SQLSTATE 42601) on every call -- reproduced
+                # against the real canonical schema, never caught by the
+                # Fake-repository test suite. RETURNING must also sit
+                # inside the `ins` CTE's own parens (immediately after the
+                # WHERE clause), not after its closing paren -- it was
+                # previously misplaced there too, a second syntax error
+                # masked by the first.
                 f"SELECT {_sql(code)}, {_sql(schedule_code)}, {_sql(asset_code)}, "
                 f"{_sql(asset_type)}, {_sql(reading_date)}, {measurement_vals}, "
                 f"{_sql(DRAFT)}, {_sql(provenance)}, {_sql(created_by)}, {_sql(created_by)}, "
                 f"{_sql(source_reference)}, {_sql(finding)} "
                 f"WHERE EXISTS (SELECT 1 FROM ltsa_pumps WHERE tag_number = {_sql(asset_code)}) "
-                ") "
                 f"RETURNING {_SELECT_COLUMNS}"
                 "), audit AS (INSERT INTO record_change_history "
                 "(entity_type, entity_id, field_name, old_value, new_value, changed_by, reason) "
