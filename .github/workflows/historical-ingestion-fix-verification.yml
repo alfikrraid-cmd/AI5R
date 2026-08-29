@@ -1,0 +1,27 @@
+name: Historical Ingestion Fix Verification
+
+on:
+  push:
+    branches:
+      - fix/historical-ingestion-pdfplumber-dependency
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  backend-api-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install production requirements
+        run: pip install -r CORE-SERVICES/BACKEND-API/requirements.txt
+      - name: Install test-runner-only dependencies (pytest + httpx; verified in MWO-IT-001 Phase 2.9 -- httpx not httpx2, see requirements-dev.txt on feature/ai5r-it-agent-foundation)
+        run: pip install pytest "httpx>=0.27.0,<0.29.0"
+      - name: Run BACKEND-API tests
+        run: |
+          cd CORE-SERVICES/BACKEND-API
+          python -m pytest TESTS -q
