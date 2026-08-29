@@ -44,6 +44,12 @@ _ZERO_WIDTH_CODEPOINTS = frozenset({
 })
 
 
+_PREFIX_INSPECT_LENGTH = 8  # len("WA-CONF-") -- the fixed public protocol
+# marker only. The 32-hex identifier begins at position 8 and is never
+# inspected or logged by this diagnostic.
+_EXPECTED_PREFIX_CASEFOLD = "wa-conf-"
+
+
 def _log_confirmation_remainder_diagnostic(remainder: str) -> None:
     # Structural metadata only -- never the remainder text itself, never
     # any letter or digit from a confirmation token, never the phone
@@ -57,10 +63,18 @@ def _log_confirmation_remainder_diagnostic(remainder: str) -> None:
     zero_width_codepoints = sorted({
         ord(ch) for ch in remainder if ord(ch) in _ZERO_WIDTH_CODEPOINTS
     })
+    # Prefix-only extension -- bounded by construction to the first 8
+    # characters (Python slicing never reads past the string's own
+    # length, so this is safe even for a shorter-than-expected
+    # remainder). Positions 8+ (the 32-hex identifier) are NEVER sliced,
+    # indexed, or logged here.
+    prefix = remainder[:_PREFIX_INSPECT_LENGTH]
+    prefix_codepoints = [hex(ord(ch)) for ch in prefix]
     logger.info(
         "event=whatsapp_confirmation_remainder_diagnostic remainder_length=%s remainder_sha256=%s "
         "starts_with_expected_ascii_prefix=%s contains_ascii_wa_conf=%s nfkc_changes_input=%s "
-        "whitespace_codepoints=%s dash_like_codepoints=%s zero_width_codepoints=%s",
+        "whitespace_codepoints=%s dash_like_codepoints=%s zero_width_codepoints=%s "
+        "prefix_length_inspected=%s prefix_codepoints=%s prefix_casefold_matches_expected=%s",
         len(remainder),
         hashlib.sha256(remainder.encode("utf-8")).hexdigest()[:12],
         remainder.startswith("WA-CONF-"),
@@ -69,6 +83,9 @@ def _log_confirmation_remainder_diagnostic(remainder: str) -> None:
         [hex(cp) for cp in whitespace_codepoints],
         [hex(cp) for cp in dash_like_codepoints],
         [hex(cp) for cp in zero_width_codepoints],
+        len(prefix),
+        prefix_codepoints,
+        prefix.casefold() == _EXPECTED_PREFIX_CASEFOLD,
     )
 
 

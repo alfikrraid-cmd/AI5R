@@ -2097,3 +2097,81 @@ def test_remainder_diagnostic_never_logs_plaintext_across_all_variants(monkeypat
     assert "b6e94b9d9cb20e3cef2ac33a" not in log_text
     assert "44216d8d-a0d2-4a5f-8c00-34fac69cf82c" not in log_text
     assert "15550000001" not in log_text
+
+
+# --- Prefix-only structural diagnostic (WA-CONF- casing candidate) ------
+#
+# Static-audit finding: _CONFIRMATION_CODE_PATTERN has no re.IGNORECASE
+# flag, so its literal "WA-CONF-" prefix is case-sensitive (only the hex
+# suffix's own [0-9A-Fa-f] character class already covers both cases).
+# A lowercase or mixed-case remainder reproduces EVERY SINGLE field of
+# the authoritative production evidence simultaneously (length=40, ASCII
+# hyphens only, NFKC-unchanged, no whitespace, no zero-width chars,
+# contains_ascii_wa_conf=False, starts_with_expected_ascii_prefix=False,
+# selector_present=False) -- unlike the Unicode-dash hypothesis, which
+# only explained a subset. Reported here as a candidate, not a proven
+# cause: no raw production message bytes exist to confirm it. No parser
+# fix is implemented -- diagnostics only, per instruction.
+
+@pytest.mark.parametrize(
+    "prefix,expected_codepoints,casefold_matches",
+    [
+        ("WA-CONF-", "['0x57', '0x41', '0x2d', '0x43', '0x4f', '0x4e', '0x46', '0x2d']", True),
+        ("wa-conf-", "['0x77', '0x61', '0x2d', '0x63', '0x6f', '0x6e', '0x66', '0x2d']", True),
+        ("Wa-Conf-", "['0x57', '0x61', '0x2d', '0x43', '0x6f', '0x6e', '0x66', '0x2d']", True),
+    ],
+    ids=["upper", "lower", "mixed"],
+)
+def test_prefix_diagnostic_codepoints_by_case(monkeypatch, caplog, prefix, expected_codepoints, casefold_matches):
+    repo, outbound, cmon = _seed_confirmed_cmon_matching_production(monkeypatch)
+    text = f"YA {prefix}f02afd2db6e94b9d9cb20e3cef2ac33a"
+
+    with caplog.at_level("INFO"):
+        response = _post(_message_envelope(message_id=f"wamid.prefixdiag{prefix[:2]}", text=text))
+    assert response.status_code == 200
+
+    diag_line = _diagnostic_lines(caplog)[0]
+    assert "prefix_length_inspected=8" in diag_line
+    assert f"prefix_codepoints={expected_codepoints}" in diag_line
+    assert f"prefix_casefold_matches_expected={casefold_matches}" in diag_line
+
+    # Never the 32-hex identifier -- position 8 onward is never inspected.
+    log_text = "\n".join(r.getMessage() for r in caplog.records)
+    assert "f02afd2db6e94b9d9cb20e3cef2ac33a" not in log_text
+    assert "f02afd2d" not in log_text
+
+
+def test_lowercase_prefix_reproduces_every_evidenced_production_field(monkeypatch, caplog):
+    # The full-line evidence match: a lowercase remainder alone (no
+    # unusual/invisible character at all) reproduces every field from the
+    # authoritative production diagnostic simultaneously.
+    repo, outbound, cmon = _seed_confirmed_cmon_matching_production(monkeypatch)
+    text = "YA wa-conf-f02afd2db6e94b9d9cb20e3cef2ac33a"
+
+    with caplog.at_level("INFO"):
+        response = _post(_message_envelope(message_id="wamid.lowercaseprod", text=text))
+    assert response.status_code == 200
+
+    diag_line = _diagnostic_lines(caplog)[0]
+    assert "remainder_length=40" in diag_line
+    assert "starts_with_expected_ascii_prefix=False" in diag_line
+    assert "contains_ascii_wa_conf=False" in diag_line
+    assert "nfkc_changes_input=False" in diag_line
+    assert "whitespace_codepoints=[]" in diag_line
+    assert "dash_like_codepoints=['0x2d']" in diag_line
+    assert "zero_width_codepoints=[]" in diag_line
+    assert "prefix_casefold_matches_expected=True" in diag_line
+
+    selection_line = next(
+        r.getMessage() for r in caplog.records if r.getMessage().startswith("event=whatsapp_confirmation_selection")
+    )
+    assert "selector_present=False" in selection_line
+    assert "explicit_lookup_attempted=False" in selection_line
+    assert "broad_lookup_attempted=True" in selection_line
+    assert "broad_candidate_count=0" in selection_line
+    assert "result_code=NO_PENDING_CONFIRMATION" in selection_line
+
+    # No behavior change: this is still correctly rejected, not silently
+    # accepted -- no parser fix exists yet, by design.
+    assert outbound.calls[-1] == (SENDER_A, "Tidak ada data yang menunggu konfirmasi.")
+    assert len(cmon.rows) == 1  # the pre-existing canonical row, untouched by this attempt
