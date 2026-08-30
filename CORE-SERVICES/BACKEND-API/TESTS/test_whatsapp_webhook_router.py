@@ -17,6 +17,7 @@ from API.auth_service import ROLE_PERMISSIONS, AuthenticatedIdentity
 from API.whatsapp_intake_service import _normalize_pump_tag_text, hash_sender_identifier, normalize_sender_identifier
 from API.whatsapp_outbound_client import OutboundResult
 from dependencies import (
+    get_cm_report_repository,
     get_condition_monitoring_reading_gateway,
     get_condition_monitoring_reading_repository,
     get_copilot_ai_client,
@@ -25,6 +26,7 @@ from dependencies import (
     get_installation_gateway,
     get_installation_report_repository,
     get_ltsa_ai_condition_monitoring_reading_repository,
+    get_ltsa_ai_pm_occurrence_repository,
     get_ltsa_knowledge_service,
     get_maintenance_history_gateway,
     get_mechanical_seal_stock_repository,
@@ -460,6 +462,8 @@ def _default_ltsa_ai_query_deps():
         # own test suite, not just asserted here.
         condition_monitoring_reading_repository=_InertLTSAAIGateway(),
         fleet_executive_summary_service=_InertLTSAAIGateway(),
+        pm_occurrence_repository=_InertLTSAAIGateway(),
+        cm_report_repository=_InertLTSAAIGateway(),
     )
 
 
@@ -502,6 +506,12 @@ def _wire(
     # independent test overrides despite sharing one production singleton.
     app.dependency_overrides[get_ltsa_ai_condition_monitoring_reading_repository] = lambda: deps.condition_monitoring_reading_repository
     app.dependency_overrides[get_fleet_executive_summary_service] = lambda: deps.fleet_executive_summary_service
+    # Distinct callable from get_pm_occurrence_repository (overridden
+    # separately above via resolved_pm) -- same write/query independent-
+    # override reasoning as get_ltsa_ai_condition_monitoring_reading_
+    # repository.
+    app.dependency_overrides[get_ltsa_ai_pm_occurrence_repository] = lambda: deps.pm_occurrence_repository
+    app.dependency_overrides[get_cm_report_repository] = lambda: deps.cm_report_repository
     return outbound
 
 
@@ -2964,6 +2974,8 @@ def _poison_ltsa_ai_query_deps():
         mechanical_seal_stock_repository=_PoisonLTSAAIGateway(),
         condition_monitoring_reading_repository=_PoisonLTSAAIGateway(),
         fleet_executive_summary_service=_PoisonLTSAAIGateway(),
+        pm_occurrence_repository=_PoisonLTSAAIGateway(),
+        cm_report_repository=_PoisonLTSAAIGateway(),
     )
 
 
@@ -2993,6 +3005,8 @@ def _query_deps(
     condition_monitoring_reading_gateway=None,
     condition_monitoring_reading_repository=None,
     fleet_executive_summary_service=None,
+    pm_occurrence_repository=None,
+    cm_report_repository=None,
 ):
     from API.whatsapp_intake_service import LTSAAIQueryDependencies
     return LTSAAIQueryDependencies(
@@ -3007,6 +3021,8 @@ def _query_deps(
         mechanical_seal_stock_repository=mechanical_seal_stock_repository or _InertLTSAAIGateway(),
         condition_monitoring_reading_repository=condition_monitoring_reading_repository or _InertLTSAAIGateway(),
         fleet_executive_summary_service=fleet_executive_summary_service or _InertLTSAAIGateway(),
+        pm_occurrence_repository=pm_occurrence_repository or _InertLTSAAIGateway(),
+        cm_report_repository=cm_report_repository or _InertLTSAAIGateway(),
     )
 
 
@@ -3798,6 +3814,7 @@ def test_language_dashboard_default_stays_english(monkeypatch):
         condition_monitoring_reading_gateway=_InertLTSAAIGateway(), installation_report_repository=_InertLTSAAIGateway(),
         mechanical_seal_stock_repository=_InertLTSAAIGateway(), condition_monitoring_reading_repository=_InertLTSAAIGateway(),
         fleet_executive_summary_service=_InertLTSAAIGateway(),
+        pm_occurrence_repository=_InertLTSAAIGateway(), cm_report_repository=_InertLTSAAIGateway(),
     )
     assert "is currently" in answer.answer
     assert "saat ini" not in answer.answer

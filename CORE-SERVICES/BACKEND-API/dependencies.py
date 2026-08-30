@@ -446,6 +446,17 @@ def get_pm_occurrence_repository() -> PMOccurrenceRepository:
     return _pm_occurrence_repository
 
 
+def get_ltsa_ai_pm_occurrence_repository() -> PMOccurrenceRepository:
+    # MWO-LTSA-EQUIPMENT-360-001 -- same singleton as
+    # get_pm_occurrence_repository() above (never a second repository/
+    # connection); a distinct callable purely so a router needing BOTH
+    # the PM WRITE dependency and the read-only LTSA AI query dependency
+    # in one function signature can override each independently in tests
+    # (see get_ltsa_ai_condition_monitoring_reading_repository's own
+    # docstring for the identical reasoning).
+    return _pm_occurrence_repository
+
+
 def get_condition_monitoring_reading_repository() -> ConditionMonitoringReadingRepository:
     return _condition_monitoring_reading_repository
 

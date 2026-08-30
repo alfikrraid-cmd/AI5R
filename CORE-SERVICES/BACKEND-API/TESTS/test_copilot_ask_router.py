@@ -17,6 +17,7 @@ for _path in (BACKEND_API_DIR, CORE_SERVICES_DIR):
 
 from main import app  # noqa: E402
 from dependencies import (  # noqa: E402
+    get_cm_report_repository,
     get_condition_monitoring_reading_gateway,
     get_condition_monitoring_reading_repository,
     get_copilot_ai_client,
@@ -28,6 +29,7 @@ from dependencies import (  # noqa: E402
     get_ltsa_knowledge_service,
     get_maintenance_history_gateway,
     get_mechanical_seal_stock_repository,
+    get_pm_occurrence_repository,
     get_pump_gateway,
     get_work_order_gateway,
 )
@@ -131,6 +133,23 @@ class FakeConditionMonitoringReadingRepository:
         return list(self._readings_by_asset.get(asset_code, []))
 
 
+class FakePMOccurrenceRepository:
+    def __init__(self, occurrences_by_asset=None):
+        self._occurrences_by_asset = occurrences_by_asset or {}
+
+    def list_by_asset(self, asset_code):
+        return list(self._occurrences_by_asset.get(asset_code, []))
+
+
+class FakeCMReportRepository:
+    def __init__(self, records=None, *, success=True):
+        self._records = records if records is not None else []
+        self._success = success
+
+    def list_cm_reports(self, **_kwargs):
+        return {"success": self._success, "data": self._records}
+
+
 class _FakeTopRisk:
     def __init__(self, tag_number, title, priority, action):
         self.tag_number = tag_number
@@ -210,6 +229,8 @@ def _as(identity: AuthenticatedIdentity):
     app.dependency_overrides[get_condition_monitoring_reading_gateway] = lambda: FakeConditionMonitoringReadingGateway()
     app.dependency_overrides[get_condition_monitoring_reading_repository] = lambda: FakeConditionMonitoringReadingRepository()
     app.dependency_overrides[get_fleet_executive_summary_service] = lambda: FakeFleetExecutiveSummaryService()
+    app.dependency_overrides[get_pm_occurrence_repository] = lambda: FakePMOccurrenceRepository()
+    app.dependency_overrides[get_cm_report_repository] = lambda: FakeCMReportRepository()
 
 
 def _clear():
@@ -219,6 +240,7 @@ def _clear():
         get_equipment_timeline_service, get_condition_monitoring_reading_gateway,
         get_installation_report_repository, get_mechanical_seal_stock_repository,
         get_condition_monitoring_reading_repository, get_fleet_executive_summary_service,
+        get_pm_occurrence_repository, get_cm_report_repository,
     ):
         app.dependency_overrides.pop(dep, None)
 

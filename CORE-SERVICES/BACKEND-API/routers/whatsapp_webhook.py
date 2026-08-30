@@ -11,6 +11,7 @@ from fastapi.responses import PlainTextResponse
 
 from API.whatsapp_intake_service import LTSAAIQueryDependencies, normalize_sender_identifier, process_inbound_message
 from dependencies import (
+    get_cm_report_repository,
     get_condition_monitoring_reading_gateway,
     get_condition_monitoring_reading_repository,
     get_copilot_ai_client,
@@ -19,6 +20,7 @@ from dependencies import (
     get_installation_gateway,
     get_installation_report_repository,
     get_ltsa_ai_condition_monitoring_reading_repository,
+    get_ltsa_ai_pm_occurrence_repository,
     get_ltsa_knowledge_service,
     get_maintenance_history_gateway,
     get_mechanical_seal_stock_repository,
@@ -201,15 +203,18 @@ async def receive_whatsapp_webhook(
     mechanical_seal_stock_repository=Depends(get_mechanical_seal_stock_repository),
     ltsa_ai_condition_monitoring_reading_repository=Depends(get_ltsa_ai_condition_monitoring_reading_repository),
     fleet_executive_summary_service=Depends(get_fleet_executive_summary_service),
+    ltsa_ai_pm_occurrence_repository=Depends(get_ltsa_ai_pm_occurrence_repository),
+    cm_report_repository=Depends(get_cm_report_repository),
 ) -> dict[str, Any]:
     # Same canonical gateways/services routers/copilot.py's own
     # ask_copilot_endpoint already depends on -- no new gateway, no
     # duplicated business logic, WhatsApp calls the exact same LTSA AI
     # service the dashboard does. ltsa_ai_condition_monitoring_reading_
-    # repository resolves the SAME repository singleton cmon_repository
-    # above already uses for the CMON WRITE flow (see get_ltsa_ai_
-    # condition_monitoring_reading_repository's own docstring for why it
-    # is a distinct dependency callable, not a second repository).
+    # repository/ltsa_ai_pm_occurrence_repository resolve the SAME
+    # repository singletons cmon_repository/pm_repository above already
+    # use for the CMON/PM WRITE flows (see get_ltsa_ai_condition_
+    # monitoring_reading_repository's own docstring for why each is a
+    # distinct dependency callable, not a second repository).
     ltsa_ai_query_deps = LTSAAIQueryDependencies(
         ai_client=ai_client,
         maintenance_history_gateway=maintenance_history_gateway,
@@ -222,6 +227,8 @@ async def receive_whatsapp_webhook(
         mechanical_seal_stock_repository=mechanical_seal_stock_repository,
         condition_monitoring_reading_repository=ltsa_ai_condition_monitoring_reading_repository,
         fleet_executive_summary_service=fleet_executive_summary_service,
+        pm_occurrence_repository=ltsa_ai_pm_occurrence_repository,
+        cm_report_repository=cm_report_repository,
     )
     raw_body = await request.body()
     if not _signature_valid(raw_body, x_hub_signature_256):
