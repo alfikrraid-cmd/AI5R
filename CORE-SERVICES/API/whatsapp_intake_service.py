@@ -122,8 +122,47 @@ OPEN_PENDING_STATES = frozenset({"READY_FOR_CONFIRMATION", "NEEDS_INFORMATION"})
 # _confirm_pending and is intentionally not folded into this set).
 TERMINAL_STATES = frozenset({"CANCELLED", "REJECTED", "EXPIRED"})
 
-_TAG_PATTERN = re.compile(r"\b\d{3}-P-\d+(?:AR|BR|[A-Z])?\b", re.IGNORECASE)
+# MWO-LTSA-WHATSAPP-ID-TAG-NORMALIZE-001 -- broadened from the original
+# hyphen-required _TAG_PATTERN to also match separator-free/space-separated/
+# mixed-case human input ("211p13ar", "211 P 13 AR", "211P-13AR") while
+# keeping the exact same "AREA digits - P - NUMBER digits - optional
+# AR/BR/single-letter suffix" shape and \b-anchored boundaries -- a
+# malformed string with no isolated "P" between two digit runs (e.g.
+# "999p999xyz", whose trailing "xyz" is not a valid 1-2 char suffix and
+# leaves no word boundary for the pattern to anchor on) still does not
+# match at all, never partially. This is the ONE tag-shape pattern for
+# WhatsApp; _normalize_pump_tag_match() below is the ONE reshaping step --
+# every extraction call site in this module uses both, never a second,
+# competing normalizer. Existence (does a pump with this exact canonical
+# tag actually exist?) is deliberately NOT decided here -- that is still
+# _validate_payload's/_handle_ltsa_ai_query's own existing pump_gateway
+# check, unchanged, so normalization can never bypass authorization or
+# fabricate an asset that isn't real.
+_TAG_PATTERN = re.compile(
+    r"\b(\d{3})[\s-]*[Pp][\s-]*(\d+)(?:[\s-]*(AR|BR|[A-Za-z]))?\b", re.IGNORECASE
+)
 _NUMBER_AFTER = r"\s*[:=]?\s*(-?\d+(?:\.\d+)?)"
+
+
+def _normalize_pump_tag_match(match: "re.Match[str]") -> str:
+    """Reshapes an already-matched _TAG_PATTERN span into the canonical
+    LTSA spelling (AREA-P-NUMBER[SUFFIX], suffix upper-cased) -- pure
+    spelling normalization, no registry lookup, no existence claim."""
+    area, number, suffix = match.group(1), match.group(2), match.group(3)
+    canonical = f"{area}-P-{number}"
+    if suffix:
+        canonical += suffix.upper()
+    return canonical
+
+
+def _normalize_pump_tag_text(text: str) -> str | None:
+    """Finds the first tag-shaped substring in free text and returns its
+    canonical spelling, or None if no tag-shaped substring exists. Never
+    confirms the tag is a REAL registered pump -- callers that need that
+    guarantee (extraction call sites in this module) still go through the
+    existing pump_gateway.get_pump()-based checks downstream, unchanged."""
+    match = _TAG_PATTERN.search(text or "")
+    return _normalize_pump_tag_match(match) if match else None
 
 # MWO-025J2 -- LTSA's configured business timezone for "hari ini"/"today"
 # resolution (both at original intake and at confirmation-time date
@@ -1154,8 +1193,7 @@ def _detect_intent(text: str) -> str:
 
 
 def _extract_ltsa_ai_query_tag(text: str) -> str | None:
-    match = _TAG_PATTERN.search(text)
-    return match.group(0).upper() if match else None
+    return _normalize_pump_tag_text(text)
 
 
 def _format_ltsa_ai_reply(answer: Any) -> str:
@@ -1171,7 +1209,7 @@ def _format_ltsa_ai_reply(answer: Any) -> str:
 
     if answer.kind == DATA_GAP and not answer.evidence:
         return answer.answer
-    return f"{answer.answer}\n\nSource: LTSA canonical data ({answer.kind})"
+    return f"{answer.answer}\n\nSumber: Data kanonik LTSA ({answer.kind})"
 
 
 def _handle_ltsa_ai_query(
@@ -1211,8 +1249,12 @@ def _handle_ltsa_ai_query(
         pump = response.get("data") if isinstance(response, dict) else None
         known = isinstance(pump, dict) and pump.get("tag_number") == tag
         if not known or not is_asset_in_scope(tag, scope, pump_gateway):
-            return IntakeResult(status="REJECTED", message="LTSA_AI_QUERY_OUT_OF_SCOPE", reply=f"Pump {tag} tidak ditemukan.")
+            return IntakeResult(status="REJECTED", message="LTSA_AI_QUERY_OUT_OF_SCOPE", reply=f"Tag pompa {tag} tidak ditemukan.")
 
+    # MWO-LTSA-WHATSAPP-ID-LANGUAGE-001 -- WhatsApp is the one channel that
+    # requests Indonesian output from the SAME LTSA AI/copilot; the
+    # dashboard's own routers/copilot.py never passes language, so it keeps
+    # ask_copilot()/orchestrate_copilot()'s existing "en" default untouched.
     answer, _tools_used = orchestrate_copilot(
         text,
         tag,
@@ -1229,6 +1271,7 @@ def _handle_ltsa_ai_query(
         mechanical_seal_stock_repository=ltsa_ai_query_deps.mechanical_seal_stock_repository,
         condition_monitoring_reading_repository=ltsa_ai_query_deps.condition_monitoring_reading_repository,
         fleet_executive_summary_service=ltsa_ai_query_deps.fleet_executive_summary_service,
+        language="id",
     )
     # READ-ONLY by construction: every function reachable from here
     # (ask_copilot/orchestrate_copilot/TOOL_HANDLERS) only ever calls
@@ -1241,8 +1284,7 @@ def _handle_ltsa_ai_query(
 
 
 def _extract_payload(domain: str, text: str, *, received_at: str | None) -> dict[str, Any]:
-    tag_match = _TAG_PATTERN.search(text)
-    asset_code = tag_match.group(0).upper() if tag_match else None
+    asset_code = _normalize_pump_tag_text(text)
     payload: dict[str, Any] = {"domain": domain, "asset_code": asset_code, "asset_type": "PUMP", "source": "WHATSAPP_ENTRY"}
     if "hari ini" in text.casefold() or "today" in text.casefold():
         payload["entry_date"] = _date_from_received_at(received_at)
@@ -1315,37 +1357,43 @@ def _validate_payload(
 
 
 def _build_preview(domain: str, payload: dict[str, Any]) -> str:
+    # MWO-LTSA-WHATSAPP-ID-LANGUAGE-001 -- field labels translated to
+    # Bahasa Indonesia (Phase 6's "confirmation prompts" requirement);
+    # domain nouns that are already standard LTSA technical vocabulary
+    # (Condition Monitoring, Preventive Maintenance, PM/CMON) are kept
+    # unchanged, matching Phase 6's own "technical nouns may remain
+    # technical" carve-out.
     if domain == "CONDITION_MONITORING":
         measurements = payload.get("measurements") or {}
-        lines = ["Condition Monitoring", f"Pump: {payload.get('asset_code')}", f"Date: {payload.get('reading_date')}"]
+        lines = ["Condition Monitoring", f"Pompa: {payload.get('asset_code')}", f"Tanggal: {payload.get('reading_date')}"]
         if "mechseal_temp_de" in measurements:
-            lines.append(f"Seal Temp DE: {measurements['mechseal_temp_de']} C")
+            lines.append(f"Suhu Seal DE: {measurements['mechseal_temp_de']} C")
         if "mechseal_temp_nde" in measurements:
-            lines.append(f"Seal Temp NDE: {measurements['mechseal_temp_nde']} C")
+            lines.append(f"Suhu Seal NDE: {measurements['mechseal_temp_nde']} C")
         if measurements.get("mechanical_seal_leak_de") is False and measurements.get("mechanical_seal_leak_nde") is False:
-            lines.append("Leak: No")
+            lines.append("Bocor: Tidak")
         elif measurements.get("mechanical_seal_leak_de") is True or measurements.get("mechanical_seal_leak_nde") is True:
-            lines.append("Leak: Yes")
+            lines.append("Bocor: Ya")
     else:
-        lines = ["Preventive Maintenance", f"Pump: {payload.get('asset_code')}", f"Date: {payload.get('occurrence_date')}"]
+        lines = ["Preventive Maintenance", f"Pompa: {payload.get('asset_code')}", f"Tanggal: {payload.get('occurrence_date')}"]
         for activity in payload.get("activities") or []:
-            lines.append(f"Activity: {activity.get('description')}")
-    lines.extend(["", "Confirm?", "YA / UBAH / BATAL"])
+            lines.append(f"Aktivitas: {activity.get('description')}")
+    lines.extend(["", "Konfirmasi?", "YA / UBAH / BATAL"])
     return "\n".join(lines)
 
 
 def _build_follow_up(validation: dict[str, Any]) -> str:
     errors = validation.get("errors") or []
     if "UNKNOWN_PUMP" in errors or "PUMP_TAG_REQUIRED" in errors:
-        return "Kode pump tidak ditemukan. Kirim tag pump yang tepat."
+        return "Kode pompa tidak ditemukan. Kirim tag pompa yang tepat."
     if "READING_DATE_REQUIRED" in errors:
-        return "Reading date belum ada. Gunakan hari ini?"
+        return "Tanggal reading belum ada. Gunakan hari ini?"
     if "OCCURRENCE_DATE_REQUIRED" in errors:
         return "Tanggal PM belum ada. Gunakan hari ini?"
     if "MEASUREMENT_REQUIRED" in errors:
-        return "Measurement belum ada. Kirim nilai yang diukur."
+        return "Pengukuran belum ada. Kirim nilai yang diukur."
     if "PUMP_OUT_OF_SCOPE" in errors:
-        return "Pump di luar scope akun Anda."
+        return "Pompa di luar scope akun Anda."
     return "Data belum lengkap. Mohon lengkapi informasi."
 
 

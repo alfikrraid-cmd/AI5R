@@ -437,6 +437,7 @@ def test_tag_scoped_condition_monitoring_returns_latest_reading():
         mechanical_seal_stock_repository=_FakeMechanicalSealStockRepository([]),
         condition_monitoring_reading_repository=repo,
         fleet_executive_summary_service=_FakeFleetExecutiveSummaryService(),
+        language="id",
     )
     assert answer.kind == FACT
     assert "CMON terakhir: 2026-08-30" in answer.answer
@@ -481,6 +482,7 @@ def test_tag_scoped_condition_monitoring_no_data_is_truthful_fact_not_fabricated
         mechanical_seal_stock_repository=_FakeMechanicalSealStockRepository([]),
         condition_monitoring_reading_repository=repo,
         fleet_executive_summary_service=_FakeFleetExecutiveSummaryService(),
+        language="id",
     )
     assert answer.answer == "Belum ada data Condition Monitoring untuk 211-P-13AR."
     assert answer.kind == FACT
@@ -500,6 +502,7 @@ def test_tag_scoped_condition_monitoring_missing_fields_never_invented():
         mechanical_seal_stock_repository=_FakeMechanicalSealStockRepository([]),
         condition_monitoring_reading_repository=repo,
         fleet_executive_summary_service=_FakeFleetExecutiveSummaryService(),
+        language="id",
     )
     assert "CMON terakhir: tidak diketahui" in answer.answer
     assert "Temuan: tidak ada catatan" in answer.answer

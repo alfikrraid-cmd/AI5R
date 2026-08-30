@@ -350,9 +350,11 @@ class TestIntents:
         assert "Kebocoran mechanical seal" in body["answer"]
 
     def test_tag_scoped_condition_monitoring_no_data_is_truthful(self):
+        # Dashboard uses the endpoint's own default language ("en") -- WhatsApp
+        # is the only caller that requests "id" (MWO-LTSA-WHATSAPP-ID-LANGUAGE-001).
         body = _ask("CMON terakhir apa?", "940-P-2A").json()  # default FakeConditionMonitoringReadingRepository: empty
         assert body["kind"] == "FACT"
-        assert "Belum ada data" in body["answer"]
+        assert "No Condition Monitoring data found" in body["answer"]
 
     def test_fleet_priority_question_needs_no_asset(self):
         app.dependency_overrides[get_fleet_executive_summary_service] = lambda: FakeFleetExecutiveSummaryService(

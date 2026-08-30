@@ -14,7 +14,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from API.auth_service import ROLE_PERMISSIONS, AuthenticatedIdentity
-from API.whatsapp_intake_service import hash_sender_identifier, normalize_sender_identifier
+from API.whatsapp_intake_service import _normalize_pump_tag_text, hash_sender_identifier, normalize_sender_identifier
 from API.whatsapp_outbound_client import OutboundResult
 from dependencies import (
     get_condition_monitoring_reading_gateway,
@@ -690,7 +690,7 @@ def test_missing_reading_date_stays_needs_information(monkeypatch):
     )
     assert response.status_code == 200
     assert repo.rows[0]["state"] == "NEEDS_INFORMATION"
-    assert outbound.calls[-1] == (SENDER_A, "Reading date belum ada. Gunakan hari ini?")
+    assert outbound.calls[-1] == (SENDER_A, "Tanggal reading belum ada. Gunakan hari ini?")
 
 
 def test_ya_answering_date_question_assigns_asia_jakarta_date_and_confirms(monkeypatch):
@@ -731,7 +731,7 @@ def test_ya_still_invalid_after_date_fix_stays_needs_information(monkeypatch):
 
     assert response.status_code == 200
     assert repo.rows[0]["state"] == "NEEDS_INFORMATION"
-    assert outbound.calls[-1] == (SENDER_A, "Kode pump tidak ditemukan. Kirim tag pump yang tepat.")
+    assert outbound.calls[-1] == (SENDER_A, "Kode pompa tidak ditemukan. Kirim tag pompa yang tepat.")
 
 
 # --- MWO-025J2 Part C: MA/area authorization -------------------------------
@@ -765,7 +765,7 @@ def test_registered_out_of_scope_sender_denied_before_confirmed(monkeypatch):
     assert response.status_code == 200
     assert repo.rows[0]["state"] != "CONFIRMED"
     assert "PUMP_OUT_OF_SCOPE" in repo.rows[0]["validation_result"]["errors"]
-    assert outbound.calls[-1] == (SENDER_A, "Pump di luar scope akun Anda.")
+    assert outbound.calls[-1] == (SENDER_A, "Pompa di luar scope akun Anda.")
 
 
 # --- MWO-025J2 Part D: org binding -----------------------------------------
@@ -1322,7 +1322,7 @@ def test_cmon_write_exact_production_flow_creates_one_canonical_record(monkeypat
 
     _post(_message_envelope(message_id="wamid.cmonwriteA", text=_PRODUCTION_CMON_TEXT))
     assert repo.rows[0]["state"] == "NEEDS_INFORMATION"
-    assert outbound.calls[-1] == (SENDER_A, "Reading date belum ada. Gunakan hari ini?")
+    assert outbound.calls[-1] == (SENDER_A, "Tanggal reading belum ada. Gunakan hari ini?")
 
     # First "Ya" answers the missing-date question only -- it must NOT
     # write anything yet, only move the row to READY_FOR_CONFIRMATION and
@@ -1331,7 +1331,7 @@ def test_cmon_write_exact_production_flow_creates_one_canonical_record(monkeypat
     assert mid_response.status_code == 200
     assert cmon.rows == []
     assert repo.rows[0]["state"] == "READY_FOR_CONFIRMATION"
-    assert outbound.calls[-1][1].endswith("Confirm?\nYA / UBAH / BATAL")
+    assert outbound.calls[-1][1].endswith("Konfirmasi?\nYA / UBAH / BATAL")
 
     # Second, separate "Ya" is the real final confirmation.
     response = _post(_message_envelope(message_id="wamid.cmonwriteC", text="Ya"))
@@ -1364,12 +1364,12 @@ def test_cmon_golden_flow_matches_pm_interaction_parity(monkeypatch):
     _wire(monkeypatch, repo, outbound, cmon_repository=cmon)
 
     _post(_message_envelope(message_id="wamid.cmonparityA", text=_PRODUCTION_CMON_TEXT))
-    assert outbound.calls[-1] == (SENDER_A, "Reading date belum ada. Gunakan hari ini?")
+    assert outbound.calls[-1] == (SENDER_A, "Tanggal reading belum ada. Gunakan hari ini?")
 
     _post(_message_envelope(message_id="wamid.cmonparityB", text="YA"))
     assert outbound.calls[-1] == (
         SENDER_A,
-        f"Condition Monitoring\nPump: 211-P-13AR\nDate: {expected_today}\nLeak: Yes\n\nConfirm?\nYA / UBAH / BATAL",
+        f"Condition Monitoring\nPompa: 211-P-13AR\nTanggal: {expected_today}\nBocor: Ya\n\nKonfirmasi?\nYA / UBAH / BATAL",
     )
     assert cmon.rows == []
 
@@ -1694,7 +1694,7 @@ def test_pm_write_exact_flow_creates_one_canonical_record(monkeypatch):
     assert mid_response.status_code == 200
     assert pm.rows == []
     assert repo.rows[0]["state"] == "READY_FOR_CONFIRMATION"
-    assert outbound.calls[-1][1].endswith("Confirm?\nYA / UBAH / BATAL")
+    assert outbound.calls[-1][1].endswith("Konfirmasi?\nYA / UBAH / BATAL")
 
     response = _post(_message_envelope(message_id="wamid.pmwriteC", text="Ya"))
 
@@ -1756,8 +1756,8 @@ def test_pm_leading_colon_after_tag_stripped_from_activity_description(monkeypat
     # doubled "Activity: : check strainer".
     _post(_message_envelope(message_id="wamid.pmcolonB", text="Ya"))
     reply = outbound.calls[-1][1]
-    assert "Activity: check strainer" in reply
-    assert "Activity: : " not in reply
+    assert "Aktivitas: check strainer" in reply
+    assert "Aktivitas: : " not in reply
 
 
 def test_pm_zero_open_schedules_uses_unscheduled_sentinel(monkeypatch):
@@ -2148,7 +2148,7 @@ def test_cmon_message_still_routes_exclusively_to_cmon(monkeypatch):
 def test_production_ordering_bug_exact_three_message_regression(monkeypatch):
     # EXACT_THREE_MESSAGE_REGRESSION -- verbatim reproduction of the
     # production conversation that exposed the bug: a plain "Ya" that
-    # only answers AI5R's own "Reading date belum ada. Gunakan hari ini?"
+    # only answers AI5R's own "Tanggal reading belum ada. Gunakan hari ini?"
     # question must NOT trigger the canonical write. It must take a
     # second, separate "Ya" against an already-READY_FOR_CONFIRMATION row.
     from datetime import datetime, timedelta, timezone
@@ -2162,7 +2162,7 @@ def test_production_ordering_bug_exact_three_message_regression(monkeypatch):
     _post(_message_envelope(message_id="wamid.prod3A", text=_PRODUCTION_CMON_TEXT))
     assert repo.rows[0]["state"] == "NEEDS_INFORMATION"
     assert cmon.rows == []
-    assert outbound.calls[-1] == (SENDER_A, "Reading date belum ada. Gunakan hari ini?")
+    assert outbound.calls[-1] == (SENDER_A, "Tanggal reading belum ada. Gunakan hari ini?")
 
     # Message 2: "Ya" answers the date question ONLY. Zero canonical
     # writes must happen here -- this is exactly what production got
@@ -2176,7 +2176,7 @@ def test_production_ordering_bug_exact_three_message_regression(monkeypatch):
     assert repo.rows[0]["state"] == "READY_FOR_CONFIRMATION"
     assert repo.rows[0].get("confirmed_by") is None
     reply_after_second = outbound.calls[-1][1]
-    assert reply_after_second.endswith("Confirm?\nYA / UBAH / BATAL")
+    assert reply_after_second.endswith("Konfirmasi?\nYA / UBAH / BATAL")
     assert "berhasil disimpan" not in reply_after_second
 
     # Message 3: a genuinely separate "Ya" is the real final confirmation.
@@ -3011,8 +3011,8 @@ def _query_deps(
 
 
 _PUMP_STATUS_ANSWER = (
-    "211-P-13AR (unknown type) is currently UNKNOWN, located at an unknown "
-    "location in area HOC.\n\nSource: LTSA canonical data (FACT)"
+    "211-P-13AR (tipe tidak diketahui) saat ini TIDAK DIKETAHUI, berlokasi di "
+    "lokasi tidak diketahui di area HOC.\n\nSumber: Data kanonik LTSA (FACT)"
 )
 
 
@@ -3043,7 +3043,7 @@ def test_work_orders_query_answers_via_ltsa_ai_and_never_persists_pending_row(mo
     assert response.status_code == 200
     reply = outbound.calls[-1][1]
     assert "WO-1001" in reply
-    assert "Source: LTSA canonical data (FACT)" in reply
+    assert "Sumber: Data kanonik LTSA (FACT)" in reply
     assert repo.rows == []
 
 
@@ -3065,7 +3065,7 @@ def test_tag_scoped_condition_monitoring_query_is_graceful_data_gap_not_a_crash(
 
     assert response.status_code == 200
     reply = outbound.calls[-1][1]
-    assert "currently unavailable" in reply
+    assert "sedang tidak tersedia" in reply
     assert repo.rows == []
 
 
@@ -3079,8 +3079,8 @@ def test_query_with_no_available_data_is_truthful_data_gap(monkeypatch):
 
     assert response.status_code == 200
     reply = outbound.calls[-1][1]
-    assert "currently unavailable" in reply
-    assert "Source:" not in reply  # DATA_GAP with no evidence -> no footer, never a fabricated source.
+    assert "sedang tidak tersedia" in reply
+    assert "Sumber:" not in reply  # DATA_GAP with no evidence -> no footer, never a fabricated source.
     assert repo.rows == []
 
 
@@ -3092,7 +3092,7 @@ def test_query_for_unknown_pump_tag_is_rejected_with_generic_message(monkeypatch
     response = _post(_message_envelope(message_id="wamid.qunknown", text="Apa status pompa 999-P-99AR?"))
 
     assert response.status_code == 200
-    assert outbound.calls[-1] == (SENDER_A, "Pump 999-P-99AR tidak ditemukan.")
+    assert outbound.calls[-1] == (SENDER_A, "Tag pompa 999-P-99AR tidak ditemukan.")
     assert repo.rows == []
 
 
@@ -3108,7 +3108,7 @@ def test_query_for_out_of_scope_pump_tag_is_rejected_with_same_generic_message_a
     response = _post(_message_envelope(message_id="wamid.qoutscope", text="Apa status pompa 211-P-13AR?"))
 
     assert response.status_code == 200
-    assert outbound.calls[-1] == (SENDER_A, "Pump 211-P-13AR tidak ditemukan.")
+    assert outbound.calls[-1] == (SENDER_A, "Tag pompa 211-P-13AR tidak ditemukan.")
     assert repo.rows == []
 
 
@@ -3311,7 +3311,7 @@ def test_cmon_query_unknown_pump_rejected_generic_message(monkeypatch):
     response = _post(_message_envelope(message_id="wamid.cmonq4", text="Ada temuan terbaru di 999-P-99AR?"))
 
     assert response.status_code == 200
-    assert outbound.calls[-1] == (SENDER_A, "Pump 999-P-99AR tidak ditemukan.")
+    assert outbound.calls[-1] == (SENDER_A, "Tag pompa 999-P-99AR tidak ditemukan.")
 
 
 def test_cmon_query_out_of_scope_pump_rejected_same_generic_message(monkeypatch):
@@ -3322,7 +3322,7 @@ def test_cmon_query_out_of_scope_pump_rejected_same_generic_message(monkeypatch)
     response = _post(_message_envelope(message_id="wamid.cmonq5", text="Ada temuan terbaru di 211-P-13AR?"))
 
     assert response.status_code == 200
-    assert outbound.calls[-1] == (SENDER_A, "Pump 211-P-13AR tidak ditemukan.")
+    assert outbound.calls[-1] == (SENDER_A, "Tag pompa 211-P-13AR tidak ditemukan.")
 
 
 def test_cmon_query_missing_canonical_fields_never_invented(monkeypatch):
@@ -3338,7 +3338,13 @@ def test_cmon_query_missing_canonical_fields_never_invented(monkeypatch):
     assert "Temuan: tidak ada catatan" in reply
     assert "Status:" not in reply
     assert "Rekomendasi:" not in reply
-    assert "Sumber:" not in reply
+    # The handler's OWN optional "Sumber: {source_reference}" line must be
+    # absent (no source_reference in this fixture) -- distinct from
+    # _format_ltsa_ai_reply's own "Sumber: Data kanonik LTSA (FACT)"
+    # footer, which is always appended for a FACT-kind answer and is the
+    # only "Sumber:" line expected here.
+    assert reply.count("Sumber:") == 1
+    assert reply.endswith("Sumber: Data kanonik LTSA (FACT)")
 
 
 def test_cmon_query_never_persists_pending_row(monkeypatch):
@@ -3422,7 +3428,7 @@ def test_fleet_priority_no_actionable_assets_is_truthful_no_crash(monkeypatch):
     response = _post(_message_envelope(message_id="wamid.fleetq5", text="Ada equipment yang perlu diperhatikan?"))
 
     assert response.status_code == 200
-    assert "no pumps" in outbound.calls[-1][1].lower()
+    assert "tidak ada pompa" in outbound.calls[-1][1].lower()
 
 
 def test_fleet_priority_empty_fleet_is_truthful_no_crash(monkeypatch):
@@ -3438,7 +3444,7 @@ def test_fleet_priority_empty_fleet_is_truthful_no_crash(monkeypatch):
     response = _post(_message_envelope(message_id="wamid.fleetq6", text="Prioritas pompa hari ini"))
 
     assert response.status_code == 200
-    assert "no pumps" in outbound.calls[-1][1].lower()
+    assert "tidak ada pompa" in outbound.calls[-1][1].lower()
 
 
 def test_fleet_priority_service_failure_is_data_gap_not_a_crash(monkeypatch):
@@ -3450,7 +3456,7 @@ def test_fleet_priority_service_failure_is_data_gap_not_a_crash(monkeypatch):
     response = _post(_message_envelope(message_id="wamid.fleetq7", text="Pompa mana yang perlu perhatian hari ini?"))
 
     assert response.status_code == 200
-    assert "unavailable" in outbound.calls[-1][1].lower()
+    assert "tidak tersedia" in outbound.calls[-1][1].lower()
 
 
 def test_fleet_priority_malformed_service_result_never_crashes(monkeypatch):
@@ -3466,7 +3472,7 @@ def test_fleet_priority_malformed_service_result_never_crashes(monkeypatch):
     response = _post(_message_envelope(message_id="wamid.fleetq8", text="Pompa mana yang perlu perhatian hari ini?"))
 
     assert response.status_code == 200
-    assert "no pumps" in outbound.calls[-1][1].lower()
+    assert "tidak ada pompa" in outbound.calls[-1][1].lower()
 
 
 # --- Routing: the critical CMON write-vs-query ambiguity -------------------
@@ -3498,3 +3504,300 @@ def test_cmon_write_vs_query_ambiguity_resolved_correctly(monkeypatch):
     assert "CMON terakhir: 2026-08-30" in reply
     # The query must not have created a SECOND pending row.
     assert len(repo.rows) == 1
+
+
+# --- MWO-LTSA-WHATSAPP-ID-TAG-NORMALIZE-001 -- canonical tag normalization -----
+# and MWO-LTSA-WHATSAPP-ID-LANGUAGE-001 -- Bahasa Indonesia response contract.
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("211-P-13AR", "211-P-13AR"),
+        ("211-p-13ar", "211-P-13AR"),
+        ("211P13AR", "211-P-13AR"),
+        ("211p13ar", "211-P-13AR"),
+        ("211 P 13 AR", "211-P-13AR"),
+        ("211 p 13 ar", "211-P-13AR"),
+        ("211-P13AR", "211-P-13AR"),
+        ("211P-13AR", "211-P-13AR"),
+        ("840p1a", "840-P-1A"),
+    ],
+    ids=[
+        "1_canonical", "2_lower_hyphen", "3_upper_nosep", "4_lower_nosep", "5_upper_space",
+        "6_lower_space", "7_mixed_a", "8_mixed_b", "9_840p1a",
+    ],
+)
+def test_tag_normalization_variants_resolve_to_canonical(raw, expected):
+    assert _normalize_pump_tag_text(raw) == expected
+
+
+def test_tag_normalization_malformed_arbitrary_string_returns_none():
+    # Item 11 -- a permissive-looking but structurally invalid string
+    # (no isolated "P" between two digit runs with a valid 1-2 char
+    # suffix) must not resolve to any candidate at all.
+    assert _normalize_pump_tag_text("999p999xyz") is None
+    assert _normalize_pump_tag_text("hello world, no tag here") is None
+
+
+def test_tag_normalization_unknown_normalized_looking_asset_is_rejected(monkeypatch):
+    # Item 10 -- "999p999xyz" would need real digits+P+digits to even
+    # shape-match; use a genuinely tag-shaped but nonexistent candidate
+    # instead ("999-P-99AR") to prove canonical EXISTENCE is still
+    # required after normalization, never fabricated from the regex match
+    # alone.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    _wire(monkeypatch, repo, outbound, ltsa_ai_query_deps=_query_deps())
+
+    response = _post(_message_envelope(message_id="wamid.tagnorm10", text="Apa status pompa 999p99ar?"))
+
+    assert response.status_code == 200
+    assert outbound.calls[-1] == (SENDER_A, "Tag pompa 999-P-99AR tidak ditemukan.")
+
+
+def test_tag_normalization_out_of_scope_normalized_asset_is_rejected(monkeypatch):
+    # Item 12 -- normalization resolves "211p13ar" -> "211-P-13AR" (a REAL
+    # pump), but the caller's own scope excludes it; must be rejected with
+    # the same generic message as an unknown tag, never revealing the
+    # pump exists.
+    repo = FakeIntakeRepository({SENDER_A: _out_of_scope_identity()})  # AREA=HSC, pump is in HOC
+    outbound = FakeOutboundClient()
+    _wire(monkeypatch, repo, outbound, ltsa_ai_query_deps=_query_deps())
+
+    response = _post(_message_envelope(message_id="wamid.tagnorm12", text="Apa status pompa 211p13ar?"))
+
+    assert response.status_code == 200
+    assert outbound.calls[-1] == (SENDER_A, "Tag pompa 211-P-13AR tidak ditemukan.")
+
+
+# --- Read routing with variant tag spelling (items 13-17) -------------------
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "CMON terakhir 211p13ar?",
+        "Kapan terakhir PM 211p13ar?",
+        "Bagaimana kondisi 211p13ar?",
+        "Mechanical seal 211p13ar apa?",
+        "Ada stok seal untuk 211p13ar?",
+    ],
+    ids=["13_cmon_terakhir", "14_pm_terakhir", "15_kondisi", "16_seal", "17_stok_seal"],
+)
+def test_read_query_variant_tag_spelling_resolves_to_canonical(monkeypatch, text):
+    # None of these route through the deterministic write path (proven
+    # separately by the poison-deps tests) -- here we only prove tag
+    # resolution: the query must not be rejected as unknown/out-of-scope,
+    # i.e. it must reach a real answer for 211-P-13AR, never a
+    # "not found" reply caused by failing to normalize the spelling.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    _wire(monkeypatch, repo, outbound, ltsa_ai_query_deps=_query_deps())
+
+    response = _post(_message_envelope(message_id=f"wamid.readvariant{abs(hash(text))}", text=text))
+
+    assert response.status_code == 200
+    reply = outbound.calls[-1][1]
+    assert "tidak ditemukan" not in reply
+    assert "211-P-13AR" in reply
+
+
+# --- Write routing with variant tag spelling (items 18-20) ------------------
+
+
+def test_pm_write_variant_tag_spelling_confirmation_shows_canonical(monkeypatch):
+    # Item 18.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    pm = FakePMOccurrenceRepository()
+    _wire(monkeypatch, repo, outbound, pm_repository=pm)
+
+    _post(_message_envelope(message_id="wamid.pmvariantA", text="PM 211p13ar: check strainer"))
+    assert repo.rows[0]["detected_domain"] == "PM"
+    assert repo.rows[0]["structured_payload"]["asset_code"] == "211-P-13AR"
+
+    _post(_message_envelope(message_id="wamid.pmvariantB", text="Ya"))
+    reply = outbound.calls[-1][1]
+    assert "Pompa: 211-P-13AR" in reply
+    assert "Konfirmasi?" in reply
+
+
+def test_cmon_write_variant_tag_spelling_confirmation_shows_canonical(monkeypatch):
+    # Item 19.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    cmon = FakeConditionMonitoringReadingRepository()
+    _wire(monkeypatch, repo, outbound, cmon_repository=cmon)
+
+    _post(_message_envelope(message_id="wamid.cmonvariantA", text="CMON 211p13ar: mechanical seal bocor"))
+    assert repo.rows[0]["detected_domain"] == "CONDITION_MONITORING"
+    assert repo.rows[0]["structured_payload"]["asset_code"] == "211-P-13AR"
+
+    _post(_message_envelope(message_id="wamid.cmonvariantB", text="Ya"))
+    reply = outbound.calls[-1][1]
+    assert "Pompa: 211-P-13AR" in reply
+    assert "Konfirmasi?" in reply
+
+
+def test_cmon_read_query_variant_tag_spelling_never_routes_to_write(monkeypatch):
+    # Item 20 -- "CMON terakhir 211p13ar?" must NOT create a transactional
+    # pending row at all (read-only query), even with a variant-spelled tag.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    cmon_query_repo = _FakeQueryCMONRepository({
+        "211-P-13AR": [{"condition_monitoring_reading_code": "CMONR-1", "reading_date": "2026-08-30", "finding": "Kebocoran mechanical seal"}],
+    })
+    _wire(monkeypatch, repo, outbound, ltsa_ai_query_deps=_query_deps(condition_monitoring_reading_repository=cmon_query_repo))
+
+    response = _post(_message_envelope(message_id="wamid.cmonreadvariant", text="CMON terakhir 211p13ar?"))
+
+    assert response.status_code == 200
+    assert repo.rows == []
+    reply = outbound.calls[-1][1]
+    assert "211-P-13AR" in reply
+    assert "CMON terakhir: 2026-08-30" in reply
+
+
+# --- Bahasa Indonesia response contract (items 21-28) -----------------------
+
+
+def test_language_successful_query_response_is_indonesian(monkeypatch):
+    # Item 21.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    _wire(monkeypatch, repo, outbound, ltsa_ai_query_deps=_query_deps())
+
+    response = _post(_message_envelope(message_id="wamid.lang21", text="Apa status pompa 211-P-13AR?"))
+
+    assert response.status_code == 200
+    reply = outbound.calls[-1][1]
+    assert "saat ini" in reply
+    assert "is currently" not in reply
+    assert "Sumber: Data kanonik LTSA" in reply
+
+
+def test_language_data_gap_is_indonesian(monkeypatch):
+    # Item 22.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    _wire(monkeypatch, repo, outbound, ltsa_ai_query_deps=_query_deps())
+
+    response = _post(_message_envelope(message_id="wamid.lang22", text="Ada work order aktif untuk 211-P-13AR?"))
+
+    assert response.status_code == 200
+    reply = outbound.calls[-1][1]
+    assert "sedang tidak tersedia" in reply
+    assert "currently unavailable" not in reply
+
+
+def test_language_unknown_asset_is_indonesian(monkeypatch):
+    # Item 23.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    _wire(monkeypatch, repo, outbound, ltsa_ai_query_deps=_query_deps())
+
+    response = _post(_message_envelope(message_id="wamid.lang23", text="Apa status pompa 999-P-99AR?"))
+
+    assert response.status_code == 200
+    assert outbound.calls[-1] == (SENDER_A, "Tag pompa 999-P-99AR tidak ditemukan.")
+
+
+def test_language_authorization_safe_rejection_is_indonesian(monkeypatch):
+    # Item 24 -- unregistered phone number rejection.
+    repo = FakeIntakeRepository({})  # SENDER_A registers no identity
+    outbound = FakeOutboundClient()
+    _wire(monkeypatch, repo, outbound, ltsa_ai_query_deps=_query_deps())
+
+    response = _post(_message_envelope(message_id="wamid.lang24", text="Apa status pompa 211-P-13AR?"))
+
+    assert response.status_code == 200
+    assert outbound.calls[-1] == (SENDER_A, "Nomor WhatsApp belum terdaftar.")
+
+
+def test_language_ai_error_fallback_is_indonesian(monkeypatch):
+    # Item 25.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    _wire(monkeypatch, repo, outbound, ltsa_ai_query_deps=_query_deps(ai_client=_RaisingAIClient()))
+
+    response = _post(_message_envelope(message_id="wamid.lang25", text="Apa status pompa 211-P-13AR?"))
+
+    assert response.status_code == 200
+    reply = outbound.calls[-1][1]
+    assert "saat ini" in reply
+    assert "is currently" not in reply
+
+
+def test_language_fleet_priority_is_indonesian(monkeypatch):
+    # Item 26.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    summary = _FakeFleetExecutiveSummary(
+        top_risks=(_FakeTopRisk("211-P-13AR", "Vibration trending high", 120, "Schedule CM inspection"),)
+    )
+    service = _FakeFleetExecutiveSummaryService(summary)
+    _wire(monkeypatch, repo, outbound, ltsa_ai_query_deps=_query_deps(fleet_executive_summary_service=service))
+
+    response = _post(_message_envelope(message_id="wamid.lang26", text="Pompa mana yang perlu perhatian hari ini?"))
+
+    assert response.status_code == 200
+    reply = outbound.calls[-1][1]
+    assert "perlu perhatian" in reply
+    assert "needing attention" not in reply
+
+
+def test_language_pm_confirmation_is_indonesian(monkeypatch):
+    # Item 27.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    pm = FakePMOccurrenceRepository()
+    _wire(monkeypatch, repo, outbound, pm_repository=pm)
+
+    _post(_message_envelope(message_id="wamid.lang27A", text=_PRODUCTION_PM_TEXT))
+    _post(_message_envelope(message_id="wamid.lang27B", text="Ya"))
+    reply = outbound.calls[-1][1]
+    assert "Konfirmasi?" in reply
+    assert "Pompa:" in reply
+    assert "Confirm?" not in reply
+
+
+def test_language_cmon_confirmation_is_indonesian(monkeypatch):
+    # Item 28.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    cmon = FakeConditionMonitoringReadingRepository()
+    _wire(monkeypatch, repo, outbound, cmon_repository=cmon)
+
+    _post(_message_envelope(message_id="wamid.lang28A", text=_PRODUCTION_CMON_TEXT))
+    _post(_message_envelope(message_id="wamid.lang28B", text="Ya"))
+    reply = outbound.calls[-1][1]
+    assert "Konfirmasi?" in reply
+    assert "Pompa:" in reply
+    assert "Confirm?" not in reply
+
+
+def test_language_dashboard_default_stays_english(monkeypatch):
+    # Reverse-guard: the dashboard's own routers/copilot.py never passes
+    # language, so ask_copilot()'s default ("en") must remain untouched --
+    # proven directly (not via WhatsApp) so a future accidental default
+    # flip would be caught here regardless of WhatsApp-side changes.
+    import sys as _sys
+    from pathlib import Path as _Path
+
+    _CORE_SERVICES_DIR = _Path(__file__).resolve().parents[2]
+    if str(_CORE_SERVICES_DIR) not in _sys.path:
+        _sys.path.insert(0, str(_CORE_SERVICES_DIR))
+    from API.copilot_ask_service import ask_copilot as _ask_copilot_fn
+
+    answer = _ask_copilot_fn(
+        "what is the pump status?", "211-P-13AR", None,
+        pump_gateway=FakePumpGateway(), maintenance_history_gateway=_InertLTSAAIGateway(),
+        work_order_gateway=_InertLTSAAIGateway(), installation_gateway=_InertLTSAAIGateway(),
+        ltsa_knowledge_service=_InertLTSAAIGateway(), equipment_timeline_service=_InertLTSAAIGateway(),
+        condition_monitoring_reading_gateway=_InertLTSAAIGateway(), installation_report_repository=_InertLTSAAIGateway(),
+        mechanical_seal_stock_repository=_InertLTSAAIGateway(), condition_monitoring_reading_repository=_InertLTSAAIGateway(),
+        fleet_executive_summary_service=_InertLTSAAIGateway(),
+    )
+    assert "is currently" in answer.answer
+    assert "saat ini" not in answer.answer

@@ -83,6 +83,15 @@ _SELECTION_SYSTEM_PROMPT = (
     "question about a different tag. Respond with strict JSON only, no "
     "prose, no explanation."
 )
+# MWO-LTSA-WHATSAPP-ID-LANGUAGE-001 -- language is a channel/context
+# preference (threaded through **service_deps from the caller, e.g.
+# whatsapp_intake_service.py passing language="id"), never a second AI
+# layer or a new grounding rule: both prompt variants below carry the
+# EXACT SAME evidence-only/no-fabrication constraints, only the output
+# language instruction differs. The deterministic dispatcher
+# (copilot_ask_service.ask_copilot) receives `language` the same way,
+# via **service_deps, so both the AI path and its own fallback stay
+# consistent for one request.
 _SYNTHESIS_SYSTEM_PROMPT = (
     "You are an LTSA engineering assistant. Use ONLY the given tool "
     "results as facts -- never invent dates, seal codes, stock levels, "
@@ -91,6 +100,19 @@ _SYNTHESIS_SYSTEM_PROMPT = (
     "evidence for part of the question is missing or the tool results "
     "conflict, say so explicitly and prefer kind DATA_GAP. Respond with "
     "strict JSON only, no prose, no chain-of-thought."
+)
+_SYNTHESIS_SYSTEM_PROMPT_ID = (
+    "Anda adalah asisten teknik LTSA. Gunakan HANYA hasil tool yang "
+    "diberikan sebagai fakta -- jangan pernah mengarang tanggal, kode "
+    "seal, level stok, kegagalan, catatan PM/CM, gambar, atau rekomendasi. "
+    "Sajikan rekomendasi sebagai rekomendasi, bukan fakta yang sudah "
+    "pasti. Jika bukti untuk sebagian pertanyaan tidak ada atau hasil "
+    "tool saling bertentangan, nyatakan secara eksplisit dan gunakan "
+    "kind DATA_GAP. Tulis jawaban ('answer') dalam Bahasa Indonesia yang "
+    "natural -- istilah teknis (mechanical seal, bearing, vibration, PM, "
+    "CMON, dll.) boleh tetap dalam bahasa aslinya, tapi kalimatnya harus "
+    "Bahasa Indonesia. Respond with strict JSON only, no prose, no "
+    "chain-of-thought."
 )
 
 
@@ -110,6 +132,12 @@ def orchestrate_copilot(
     """Returns (answer, tools_used). tools_used is [] whenever the
     deterministic dispatcher answered instead of the AI path (no client
     configured, tag-less question, or any AI failure)."""
+
+    # language flows to ask_copilot()/every TOOL_HANDLERS call below via
+    # **service_deps unchanged (each already accepts it as a language="en"
+    # keyword-only default); only _synthesize's own system-prompt
+    # selection needs it read out explicitly here.
+    language = service_deps.get("language", "en")
 
     if ai_client is None or tag is None:
         # No AI client configured (dependencies.get_copilot_ai_client()
@@ -134,7 +162,7 @@ def orchestrate_copilot(
         if not results:
             return ask_copilot(question, tag, scope, **service_deps), []
 
-        answer = _synthesize(ai_client, question, tag, results)
+        answer = _synthesize(ai_client, question, tag, results, language=language)
         return answer, list(results.keys())
     except Exception:
         # Any AI-path failure (unreachable provider, timeout, malformed
@@ -157,7 +185,9 @@ def _select_tools(ai_client: AIClient, question: str, tag: str) -> list[str]:
     return [name for name in tools if isinstance(name, str) and name in TOOL_CATALOG]
 
 
-def _synthesize(ai_client: AIClient, question: str, tag: str, results: dict[str, CopilotAnswer]) -> CopilotAnswer:
+def _synthesize(
+    ai_client: AIClient, question: str, tag: str, results: dict[str, CopilotAnswer], *, language: str = "en"
+) -> CopilotAnswer:
     # Only the tools' own already-computed, evidence-bearing output is
     # sent -- never a raw DB dump, never unrelated history (token/cost
     # control, and the actual factual boundary the LLM may reason within).
@@ -171,7 +201,8 @@ def _synthesize(ai_client: AIClient, question: str, tag: str, results: dict[str,
         'facts above; state DATA_GAP explicitly for anything missing or '
         'conflicting>, "kind": "FACT"|"INTERPRETATION"|"RECOMMENDATION"|"DATA_GAP"}.'
     )
-    result = ai_client.generate_json(prompt, system_prompt=_SYNTHESIS_SYSTEM_PROMPT, temperature=0.2)
+    system_prompt = _SYNTHESIS_SYSTEM_PROMPT_ID if language == "id" else _SYNTHESIS_SYSTEM_PROMPT
+    result = ai_client.generate_json(prompt, system_prompt=system_prompt, temperature=0.2)
     answer_text = result.get("answer") if isinstance(result, dict) else None
     kind = result.get("kind") if isinstance(result, dict) else None
     if not isinstance(answer_text, str) or not answer_text.strip():

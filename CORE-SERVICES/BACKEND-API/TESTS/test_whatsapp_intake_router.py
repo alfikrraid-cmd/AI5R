@@ -175,7 +175,7 @@ def test_valid_known_sender_creates_ready_cmon_pending_payload():
     assert result.intake["detected_domain"] == "CONDITION_MONITORING"
     assert result.intake["structured_payload"]["measurements"]["mechseal_temp_de"] == 78.0
     assert result.intake["structured_payload"]["measurements"]["mechanical_seal_leak_de"] is False
-    assert "Confirm?" in result.reply
+    assert "Konfirmasi?" in result.reply
 
 
 def test_unknown_sender_rejected_without_pending_write():
