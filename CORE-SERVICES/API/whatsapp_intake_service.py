@@ -255,6 +255,33 @@ class PMWriterProtocol(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
+class LTSAAIQueryDependencies:
+    # MWO: PRODUCTION READINESS + WHATSAPP -> LTSA AI INTEGRATION AUDIT --
+    # bundles the exact same canonical gateways/services/AI client
+    # routers/copilot.py's own ask_copilot_endpoint already depends on
+    # (dependencies.py's existing get_maintenance_history_gateway/
+    # get_work_order_gateway/get_installation_gateway/
+    # get_ltsa_knowledge_service/get_equipment_timeline_service/
+    # get_condition_monitoring_reading_gateway/
+    # get_installation_report_repository/
+    # get_mechanical_seal_stock_repository/get_copilot_ai_client) -- one
+    # object so process_inbound_message's signature gains a single new
+    # optional parameter instead of nine. No new gateway, no new AI
+    # client, no duplicated business logic: WhatsApp calls the exact same
+    # ask_copilot()/orchestrate_copilot() functions the dashboard's own
+    # /api/ltsa/copilot/ask route calls.
+    ai_client: Any
+    maintenance_history_gateway: Any
+    work_order_gateway: Any
+    installation_gateway: Any
+    ltsa_knowledge_service: Any
+    equipment_timeline_service: Any
+    condition_monitoring_reading_gateway: Any
+    installation_report_repository: Any
+    mechanical_seal_stock_repository: Any
+
+
+@dataclass(frozen=True, slots=True)
 class IntakeResult:
     status: str
     message: str
@@ -291,6 +318,7 @@ def process_inbound_message(
     context_message_id: str | None = None,
     cmon_repository: ConditionMonitoringWriterProtocol | None = None,
     pm_repository: PMWriterProtocol | None = None,
+    ltsa_ai_query_deps: LTSAAIQueryDependencies | None = None,
 ) -> IntakeResult:
     result = _process_inbound_message(
         provider=provider,
@@ -304,6 +332,7 @@ def process_inbound_message(
         context_message_id=context_message_id,
         cmon_repository=cmon_repository,
         pm_repository=pm_repository,
+        ltsa_ai_query_deps=ltsa_ai_query_deps,
     )
     _log_intake_result(result)
     return result
@@ -336,6 +365,7 @@ def _process_inbound_message(
     context_message_id: str | None = None,
     cmon_repository: ConditionMonitoringWriterProtocol | None = None,
     pm_repository: PMWriterProtocol | None = None,
+    ltsa_ai_query_deps: LTSAAIQueryDependencies | None = None,
 ) -> IntakeResult:
     normalized_sender = normalize_sender_identifier(sender_identifier)
     sender_hash = hash_sender_identifier(normalized_sender)
@@ -359,6 +389,15 @@ def _process_inbound_message(
 
     detected_domain = _detect_intent(stripped)
     if detected_domain not in SUPPORTED_INTENTS:
+        # LTSA AI query routing -- deterministic gate: only reached once
+        # PM/CMON has already been ruled out above, so a transactional
+        # command is never intercepted. Read-only; never persists a
+        # pending row (see _handle_ltsa_ai_query's own comment) -- a
+        # question a caller asks leaves no state for a later "Ya" to act
+        # on, unlike PM/CMON's own two-step confirmation flow.
+        query_result = _handle_ltsa_ai_query(stripped, identity, pump_gateway, ltsa_ai_query_deps)
+        if query_result is not None:
+            return query_result
         return _persist(
             repository,
             provider=provider,
@@ -1075,6 +1114,104 @@ def _detect_intent(text: str) -> str:
     return "UNSUPPORTED_INTENT"
 
 
+# --- WhatsApp -> LTSA AI query routing -----------------------------------
+#
+# Deterministic gate, not "route every message to an LLM": this is only
+# ever reached AFTER _detect_intent above has already ruled out PM/CMON
+# (SUPPORTED_INTENTS), so "PM ..."/"CM ..."/"CMON ..." commands are
+# completely unaffected and never reach this function at all. Within this
+# function, copilot_ask_service's own _detect_intent (a SEPARATE,
+# pre-existing keyword classifier already proven by the dashboard) decides
+# whether the remaining text is a recognized LTSA question; if it isn't,
+# this returns None and the caller falls through to the existing
+# "Format belum didukung" message, unchanged.
+
+
+def _extract_ltsa_ai_query_tag(text: str) -> str | None:
+    match = _TAG_PATTERN.search(text)
+    return match.group(0).upper() if match else None
+
+
+def _format_ltsa_ai_reply(answer: Any) -> str:
+    # Phase 9's grounded response contract: the tool/AI-produced answer
+    # text is already the compact, WhatsApp-appropriate summary (every
+    # handler in copilot_ask_service.py already writes short, direct
+    # sentences, not a dashboard-sized report) -- this only appends a
+    # source/kind footer so a WhatsApp reader can see whether a RECOMMEN-
+    # DATION/INTERPRETATION was distinguished from a plain FACT, and never
+    # silently drops the DATA_GAP-vs-evidence distinction the orchestrator
+    # already enforces upstream.
+    from .copilot_ask_service import DATA_GAP
+
+    if answer.kind == DATA_GAP and not answer.evidence:
+        return answer.answer
+    return f"{answer.answer}\n\nSource: LTSA canonical data ({answer.kind})"
+
+
+def _handle_ltsa_ai_query(
+    text: str,
+    identity: AuthenticatedIdentity,
+    pump_gateway: PumpGatewayProtocol,
+    ltsa_ai_query_deps: "LTSAAIQueryDependencies | None",
+) -> IntakeResult | None:
+    if ltsa_ai_query_deps is None:
+        return None
+
+    # Deferred import -- keeps whatsapp_intake_service.py's own import
+    # graph independent of the copilot module unless a query is actually
+    # in flight (mirrors this file's existing deferred-import discipline
+    # elsewhere, e.g. the sys.path insert at module load for _INGESTION_DIR
+    # in the sibling repository modules).
+    from .copilot_ask_service import _detect_intent as _detect_copilot_intent
+    from .copilot_orchestrator import orchestrate_copilot
+
+    if _detect_copilot_intent(text) is None:
+        return None
+
+    tag = _extract_ltsa_ai_query_tag(text)
+    scope = resolve_area_scope(identity)
+
+    if tag is not None:
+        # Same "safe not-found" discipline routers/copilot.py's own
+        # _require_tag_in_scope already establishes: an out-of-scope tag
+        # and a nonexistent tag get the exact same generic reply, never a
+        # distinct status that would leak which case it was. Checked
+        # BEFORE orchestrate_copilot()/ask_copilot() ever read any data
+        # for this tag -- Phase 7's "WhatsApp query access must respect
+        # the same data scope" and "unauthorized/out-of-scope must not
+        # receive sensitive LTSA data" both enforced here, not trusted to
+        # the read-only tool handlers downstream.
+        response = pump_gateway.get_pump(tag)
+        pump = response.get("data") if isinstance(response, dict) else None
+        known = isinstance(pump, dict) and pump.get("tag_number") == tag
+        if not known or not is_asset_in_scope(tag, scope, pump_gateway):
+            return IntakeResult(status="REJECTED", message="LTSA_AI_QUERY_OUT_OF_SCOPE", reply=f"Pump {tag} tidak ditemukan.")
+
+    answer, _tools_used = orchestrate_copilot(
+        text,
+        tag,
+        scope,
+        ltsa_ai_query_deps.ai_client,
+        pump_gateway=pump_gateway,
+        maintenance_history_gateway=ltsa_ai_query_deps.maintenance_history_gateway,
+        work_order_gateway=ltsa_ai_query_deps.work_order_gateway,
+        installation_gateway=ltsa_ai_query_deps.installation_gateway,
+        ltsa_knowledge_service=ltsa_ai_query_deps.ltsa_knowledge_service,
+        equipment_timeline_service=ltsa_ai_query_deps.equipment_timeline_service,
+        condition_monitoring_reading_gateway=ltsa_ai_query_deps.condition_monitoring_reading_gateway,
+        installation_report_repository=ltsa_ai_query_deps.installation_report_repository,
+        mechanical_seal_stock_repository=ltsa_ai_query_deps.mechanical_seal_stock_repository,
+    )
+    # READ-ONLY by construction: every function reachable from here
+    # (ask_copilot/orchestrate_copilot/TOOL_HANDLERS) only ever calls
+    # .get_*/.list_*/.build*-style read methods -- there is no
+    # create_pending, no transition_pending, no repository write call
+    # anywhere on this path. No pending row is created for a query either
+    # (nothing here calls _persist) -- a question can never leave state
+    # behind for a later "Ya" to act on.
+    return IntakeResult(status="ANSWERED", message="LTSA_AI_QUERY_ANSWERED", reply=_format_ltsa_ai_reply(answer))
+
+
 def _extract_payload(domain: str, text: str, *, received_at: str | None) -> dict[str, Any]:
     tag_match = _TAG_PATTERN.search(text)
     asset_code = tag_match.group(0).upper() if tag_match else None
@@ -1106,6 +1243,13 @@ def _extract_payload(domain: str, text: str, *, received_at: str | None) -> dict
     payload["occurrence_date"] = payload.get("entry_date")
     activity_text = re.sub(_TAG_PATTERN, "", text, count=1)
     activity_text = re.sub(r"^\s*PM\b", "", activity_text, flags=re.IGNORECASE).strip()
+    # Cosmetic fix -- a message shaped "PM <tag>: <activity>" left a
+    # leading ":" attached after the tag/prefix strip above (rendered as
+    # "Activity: : check strainer" in the preview). Same leading-colon
+    # strip _extract_cmon_finding already performs for the identical
+    # "CMON <tag>: <finding>" shape -- brings PM in line with that
+    # existing convention rather than introducing a new one.
+    activity_text = activity_text.lstrip(":").strip()
     done = bool(re.search(r"\b(selesai|done|complete|completed)\b", activity_text, re.IGNORECASE))
     if activity_text:
         payload["activities"] = [{"code": "WHATSAPP-FREE-TEXT", "description": activity_text, "side": None, "done": done}]

@@ -5,12 +5,21 @@ import os
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 
-from API.whatsapp_intake_service import process_inbound_message
+from API.whatsapp_intake_service import LTSAAIQueryDependencies, process_inbound_message
 from dependencies import (
+    get_condition_monitoring_reading_gateway,
     get_condition_monitoring_reading_repository,
+    get_copilot_ai_client,
+    get_equipment_timeline_service,
+    get_installation_gateway,
+    get_installation_report_repository,
+    get_ltsa_knowledge_service,
+    get_maintenance_history_gateway,
+    get_mechanical_seal_stock_repository,
     get_pm_occurrence_repository,
     get_pump_gateway,
     get_whatsapp_intake_repository,
+    get_work_order_gateway,
 )
 from models.requests import WhatsAppIntakeRequest
 from models.responses import Payload
@@ -46,7 +55,27 @@ def receive_whatsapp_intake(
     pump_gateway=Depends(get_pump_gateway),
     cmon_repository=Depends(get_condition_monitoring_reading_repository),
     pm_repository=Depends(get_pm_occurrence_repository),
+    ai_client=Depends(get_copilot_ai_client),
+    maintenance_history_gateway=Depends(get_maintenance_history_gateway),
+    work_order_gateway=Depends(get_work_order_gateway),
+    installation_gateway=Depends(get_installation_gateway),
+    ltsa_knowledge_service=Depends(get_ltsa_knowledge_service),
+    equipment_timeline_service=Depends(get_equipment_timeline_service),
+    condition_monitoring_reading_gateway=Depends(get_condition_monitoring_reading_gateway),
+    installation_report_repository=Depends(get_installation_report_repository),
+    mechanical_seal_stock_repository=Depends(get_mechanical_seal_stock_repository),
 ) -> Payload:
+    ltsa_ai_query_deps = LTSAAIQueryDependencies(
+        ai_client=ai_client,
+        maintenance_history_gateway=maintenance_history_gateway,
+        work_order_gateway=work_order_gateway,
+        installation_gateway=installation_gateway,
+        ltsa_knowledge_service=ltsa_knowledge_service,
+        equipment_timeline_service=equipment_timeline_service,
+        condition_monitoring_reading_gateway=condition_monitoring_reading_gateway,
+        installation_report_repository=installation_report_repository,
+        mechanical_seal_stock_repository=mechanical_seal_stock_repository,
+    )
     result = process_inbound_message(
         provider=payload.provider,
         provider_message_id=payload.provider_message_id,
@@ -58,6 +87,7 @@ def receive_whatsapp_intake(
         pump_gateway=pump_gateway,
         cmon_repository=cmon_repository,
         pm_repository=pm_repository,
+        ltsa_ai_query_deps=ltsa_ai_query_deps,
     )
     return {
         "success": result.status not in {"REJECTED"},

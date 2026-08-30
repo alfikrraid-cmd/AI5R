@@ -17,11 +17,20 @@ from API.auth_service import ROLE_PERMISSIONS, AuthenticatedIdentity
 from API.whatsapp_intake_service import hash_sender_identifier, normalize_sender_identifier
 from API.whatsapp_outbound_client import OutboundResult
 from dependencies import (
+    get_condition_monitoring_reading_gateway,
     get_condition_monitoring_reading_repository,
+    get_copilot_ai_client,
+    get_equipment_timeline_service,
+    get_installation_gateway,
+    get_installation_report_repository,
+    get_ltsa_knowledge_service,
+    get_maintenance_history_gateway,
+    get_mechanical_seal_stock_repository,
     get_pm_occurrence_repository,
     get_pump_gateway,
     get_whatsapp_intake_repository,
     get_whatsapp_outbound_client,
+    get_work_order_gateway,
 )
 from main import app
 
@@ -413,7 +422,41 @@ def _post(body: dict) -> "TestClient.__enter__.__self__":
     return client.post(WEBHOOK_PATH, content=raw, headers={"X-Hub-Signature-256": _sign(raw, "test-app-secret")})
 
 
-def _wire(monkeypatch, repo, outbound=None, pump_gateway=None, cmon_repository=_UNSET, pm_repository=_UNSET):
+class _InertLTSAAIGateway:
+    # Safe stand-in for every LTSA AI query gateway/service/repository --
+    # ANY method call returns a uniform {"success": False} shape, matching
+    # every copilot_ask_service.py handler's own "data unavailable ->
+    # DATA_GAP" branch. Used as the default for all nine LTSA AI query
+    # dependencies so a pre-existing test whose message text happens to
+    # match copilot_ask_service's OWN intent classifier (e.g. containing
+    # "WO"/"PM"-adjacent words) can never accidentally reach a real
+    # gateway/DB, and never crashes -- it just gets a DATA_GAP answer
+    # exactly like a real "nothing found" response would produce.
+    def __getattr__(self, _name):
+        def _stub(*_args, **_kwargs):
+            return {"success": False, "data": None}
+        return _stub
+
+
+def _default_ltsa_ai_query_deps():
+    from API.whatsapp_intake_service import LTSAAIQueryDependencies
+    return LTSAAIQueryDependencies(
+        ai_client=None,
+        maintenance_history_gateway=_InertLTSAAIGateway(),
+        work_order_gateway=_InertLTSAAIGateway(),
+        installation_gateway=_InertLTSAAIGateway(),
+        ltsa_knowledge_service=_InertLTSAAIGateway(),
+        equipment_timeline_service=_InertLTSAAIGateway(),
+        condition_monitoring_reading_gateway=_InertLTSAAIGateway(),
+        installation_report_repository=_InertLTSAAIGateway(),
+        mechanical_seal_stock_repository=_InertLTSAAIGateway(),
+    )
+
+
+def _wire(
+    monkeypatch, repo, outbound=None, pump_gateway=None, cmon_repository=_UNSET, pm_repository=_UNSET,
+    ltsa_ai_query_deps=_UNSET,
+):
     monkeypatch.setenv("META_APP_SECRET", "test-app-secret")
     app.dependency_overrides[get_whatsapp_intake_repository] = lambda: repo
     app.dependency_overrides[get_pump_gateway] = lambda: (pump_gateway or FakePumpGateway())
@@ -428,6 +471,20 @@ def _wire(monkeypatch, repo, outbound=None, pump_gateway=None, cmon_repository=_
     app.dependency_overrides[get_condition_monitoring_reading_repository] = lambda: resolved_cmon
     resolved_pm = None if pm_repository is _UNSET else pm_repository
     app.dependency_overrides[get_pm_occurrence_repository] = lambda: resolved_pm
+    # LTSA AI query dependencies -- defaults to the inert/no-AI-client
+    # bundle above so no pre-existing test can accidentally reach a real
+    # gateway or LLM provider; a test exercising the query path passes an
+    # explicit LTSAAIQueryDependencies (see _fake_ltsa_ai_query_deps below).
+    deps = _default_ltsa_ai_query_deps() if ltsa_ai_query_deps is _UNSET else ltsa_ai_query_deps
+    app.dependency_overrides[get_copilot_ai_client] = lambda: deps.ai_client
+    app.dependency_overrides[get_maintenance_history_gateway] = lambda: deps.maintenance_history_gateway
+    app.dependency_overrides[get_work_order_gateway] = lambda: deps.work_order_gateway
+    app.dependency_overrides[get_installation_gateway] = lambda: deps.installation_gateway
+    app.dependency_overrides[get_ltsa_knowledge_service] = lambda: deps.ltsa_knowledge_service
+    app.dependency_overrides[get_equipment_timeline_service] = lambda: deps.equipment_timeline_service
+    app.dependency_overrides[get_condition_monitoring_reading_gateway] = lambda: deps.condition_monitoring_reading_gateway
+    app.dependency_overrides[get_installation_report_repository] = lambda: deps.installation_report_repository
+    app.dependency_overrides[get_mechanical_seal_stock_repository] = lambda: deps.mechanical_seal_stock_repository
     return outbound
 
 
@@ -1042,7 +1099,14 @@ def test_rejected_code_rejected_and_state_unchanged(monkeypatch):
     repo = FakeIntakeRepository({SENDER_A: _identity()})
     outbound = FakeOutboundClient()
     _wire(monkeypatch, repo, outbound)
-    _post(_message_envelope(message_id="wamid.rejA", text="WO 211-P-13AR broken"))
+    # "WO 211-P-13AR broken" previously stood in for arbitrary unsupported-
+    # intent text; "WO" now correctly matches the LTSA AI query router's
+    # own work-orders intent (MWO: PRODUCTION READINESS + WHATSAPP -> LTSA
+    # AI INTEGRATION AUDIT), so this test -- which is about REJECTED-code
+    # terminal-state protection, not routing -- uses different text that
+    # neither classifier recognizes, to keep testing exactly what it
+    # always tested.
+    _post(_message_envelope(message_id="wamid.rejA", text="Zzz 211-P-13AR unclassified nonsense message"))
     assert repo.rows[0]["state"] == "REJECTED"
     assert repo.rows[0]["detected_domain"] == "UNSUPPORTED_INTENT"
     code = repo.rows[0]["confirmation_id"]
@@ -1263,6 +1327,47 @@ def test_cmon_write_exact_production_flow_creates_one_canonical_record(monkeypat
     assert "berhasil disimpan" in reply
     assert "Terkonfirmasi sebagai draft intake" not in reply
     assert cmon.rows[0]["reading_date"] == expected_today
+
+
+def test_cmon_golden_flow_matches_pm_interaction_parity(monkeypatch):
+    # MWO: PRODUCTION READINESS + WHATSAPP -> LTSA AI INTEGRATION AUDIT,
+    # Phase 3 -- proves CMON confirmation already follows the exact same
+    # interaction shape as PM's own golden flow (test_pm_write_exact_flow_
+    # creates_one_canonical_record): missing-field question, preview,
+    # canonical write with a truthful success message, then a fourth "Ya"
+    # correctly reports nothing pending -- the full 4-message conversation
+    # in one place, not scattered across separate tests. No code change
+    # was needed here; this documents/guards the already-correct behavior.
+    from datetime import datetime, timedelta, timezone
+    expected_today = datetime.now(timezone(timedelta(hours=7))).date().isoformat()
+
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    cmon = FakeConditionMonitoringReadingRepository()
+    _wire(monkeypatch, repo, outbound, cmon_repository=cmon)
+
+    _post(_message_envelope(message_id="wamid.cmonparityA", text=_PRODUCTION_CMON_TEXT))
+    assert outbound.calls[-1] == (SENDER_A, "Reading date belum ada. Gunakan hari ini?")
+
+    _post(_message_envelope(message_id="wamid.cmonparityB", text="YA"))
+    assert outbound.calls[-1] == (
+        SENDER_A,
+        f"Condition Monitoring\nPump: 211-P-13AR\nDate: {expected_today}\nLeak: Yes\n\nConfirm?\nYA / UBAH / BATAL",
+    )
+    assert cmon.rows == []
+
+    _post(_message_envelope(message_id="wamid.cmonparityC", text="YA"))
+    canonical_code = cmon.rows[0]["condition_monitoring_reading_code"]
+    assert outbound.calls[-1] == (
+        SENDER_A,
+        f"Condition Monitoring 211-P-13AR berhasil disimpan.\nTanggal: {expected_today}\nKode: {canonical_code}",
+    )
+    assert len(cmon.rows) == 1
+
+    # Repeated "YA" -- no duplicate write, pending state correctly cleared.
+    _post(_message_envelope(message_id="wamid.cmonparityD", text="YA"))
+    assert outbound.calls[-1] == (SENDER_A, "Tidak ada data yang menunggu konfirmasi.")
+    assert len(cmon.rows) == 1
 
 
 def test_cmon_field_mapping_matches_structured_payload(monkeypatch):
@@ -1610,6 +1715,32 @@ def test_pm_field_mapping_matches_structured_payload(monkeypatch):
     assert record["source_reference"] == f"WHATSAPP::{repo.rows[0]['intake_id']}"
     # Never invented -- remarks was never supplied by this message.
     assert record.get("remarks") is None
+
+
+def test_pm_leading_colon_after_tag_stripped_from_activity_description(monkeypatch):
+    # Cosmetic fix -- "PM <tag>: <activity>" previously left a leading ":"
+    # attached to the activity description (rendered as the doubled
+    # "Activity: : check strainer" in the preview). Brings PM in line
+    # with _extract_cmon_finding's own identical leading-colon strip for
+    # the same "CMON <tag>: <finding>" shape.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    pm = FakePMOccurrenceRepository()
+    _wire(monkeypatch, repo, outbound, pm_repository=pm)
+
+    # Exact golden-flow shape: "PM <tag>: <activity>", no date -- the
+    # colon lands immediately after the tag, which is exactly the case
+    # that previously leaked through as a leading ":".
+    _post(_message_envelope(message_id="wamid.pmcolonA", text="PM 211-P-13AR: check strainer"))
+    activities = repo.rows[0]["structured_payload"]["activities"]
+    assert activities == [{"code": "WHATSAPP-FREE-TEXT", "description": "check strainer", "side": None, "done": False}]
+
+    # "Ya" resolves the date, producing the preview that used to show the
+    # doubled "Activity: : check strainer".
+    _post(_message_envelope(message_id="wamid.pmcolonB", text="Ya"))
+    reply = outbound.calls[-1][1]
+    assert "Activity: check strainer" in reply
+    assert "Activity: : " not in reply
 
 
 def test_pm_zero_open_schedules_uses_unscheduled_sentinel(monkeypatch):
@@ -2764,3 +2895,275 @@ def test_selector_strict_boundary_matrix(monkeypatch, text, should_resolve):
     assert cmon.create_draft_calls == create_draft_calls_before
     assert cmon.create_ad_hoc_draft_calls == create_ad_hoc_draft_calls_before
     assert repo.rows[0]["state"] == "CONFIRMED"
+
+
+# --- MWO: PRODUCTION READINESS + WHATSAPP -> LTSA AI INTEGRATION AUDIT, ------
+# Phase 11 -- WhatsApp -> LTSA AI query routing. Reuses the exact same
+# LTSAAIQueryDependencies bundle / orchestrate_copilot / ask_copilot
+# machinery routers/copilot.py's own dashboard endpoint already depends on
+# -- no new gateway, no duplicated business logic. All tests below use
+# ai_client=None (no LLM configured) unless the test is specifically
+# exercising the AI-error/malformed-response fallback, since orchestrate_
+# copilot's own deterministic fallback IS the AI-less production behavior
+# today (dependencies.get_copilot_ai_client() only returns a client when a
+# provider env var is configured).
+
+
+class _FakeWorkOrderGateway:
+    def __init__(self, work_orders):
+        self._work_orders = work_orders
+
+    def list_work_orders(self):
+        return {"success": True, "data": self._work_orders}
+
+
+class _PoisonLTSAAIGateway:
+    # Raises instead of returning inert data -- proves a deterministic
+    # PM/CMON command NEVER reaches the LTSA AI query path at all (not
+    # merely that it produces a harmless answer). Any attribute access
+    # (not just a call) already indicates the routing gate was bypassed.
+    def __getattr__(self, name):
+        raise AssertionError(
+            f"LTSA AI query path must not be reached for a deterministic PM/CMON command (accessed .{name})"
+        )
+
+
+class _PoisonAIClient:
+    def generate_json(self, *args, **kwargs):
+        raise AssertionError("LTSA AI query path must not be reached for a deterministic PM/CMON command")
+
+
+def _poison_ltsa_ai_query_deps():
+    from API.whatsapp_intake_service import LTSAAIQueryDependencies
+    return LTSAAIQueryDependencies(
+        ai_client=_PoisonAIClient(),
+        maintenance_history_gateway=_PoisonLTSAAIGateway(),
+        work_order_gateway=_PoisonLTSAAIGateway(),
+        installation_gateway=_PoisonLTSAAIGateway(),
+        ltsa_knowledge_service=_PoisonLTSAAIGateway(),
+        equipment_timeline_service=_PoisonLTSAAIGateway(),
+        condition_monitoring_reading_gateway=_PoisonLTSAAIGateway(),
+        installation_report_repository=_PoisonLTSAAIGateway(),
+        mechanical_seal_stock_repository=_PoisonLTSAAIGateway(),
+    )
+
+
+class _RaisingAIClient:
+    # Simulates an AI provider timeout/error -- orchestrate_copilot's own
+    # try/except must catch this and fall back to the deterministic
+    # dispatcher, never surface a 500 to the WhatsApp caller.
+    def generate_json(self, *args, **kwargs):
+        raise TimeoutError("simulated AI provider timeout")
+
+
+class _MalformedToolSelectionAIClient:
+    # Simulates a configured AI provider returning a response that doesn't
+    # match the expected {"tools": [...]} shape -- _select_tools must treat
+    # this as "no tools selected" and fall back to the deterministic
+    # dispatcher, never raise.
+    def generate_json(self, *args, **kwargs):
+        return {"unexpected_field": "not a tools list"}
+
+
+def _query_deps(*, ai_client=None, pump_gateway=None, work_order_gateway=None, mechanical_seal_stock_repository=None, condition_monitoring_reading_gateway=None):
+    from API.whatsapp_intake_service import LTSAAIQueryDependencies
+    return LTSAAIQueryDependencies(
+        ai_client=ai_client,
+        maintenance_history_gateway=_InertLTSAAIGateway(),
+        work_order_gateway=work_order_gateway or _InertLTSAAIGateway(),
+        installation_gateway=_InertLTSAAIGateway(),
+        ltsa_knowledge_service=_InertLTSAAIGateway(),
+        equipment_timeline_service=_InertLTSAAIGateway(),
+        condition_monitoring_reading_gateway=condition_monitoring_reading_gateway or _InertLTSAAIGateway(),
+        installation_report_repository=_InertLTSAAIGateway(),
+        mechanical_seal_stock_repository=mechanical_seal_stock_repository or _InertLTSAAIGateway(),
+    )
+
+
+_PUMP_STATUS_ANSWER = (
+    "211-P-13AR (unknown type) is currently UNKNOWN, located at an unknown "
+    "location in area HOC.\n\nSource: LTSA canonical data (FACT)"
+)
+
+
+def test_natural_language_pump_status_query_answers_via_ltsa_ai(monkeypatch):
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    _wire(monkeypatch, repo, outbound, ltsa_ai_query_deps=_query_deps())
+
+    response = _post(_message_envelope(message_id="wamid.qstatus", text="Apa status pompa 211-P-13AR?"))
+
+    assert response.status_code == 200
+    assert outbound.calls[-1] == (SENDER_A, _PUMP_STATUS_ANSWER)
+    # Read-only: a question never persists a pending intake row, unlike
+    # PM/CMON's own two-step confirmation flow.
+    assert repo.rows == []
+
+
+def test_work_orders_query_answers_via_ltsa_ai_and_never_persists_pending_row(monkeypatch):
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    wo_gateway = _FakeWorkOrderGateway([
+        {"work_order_code": "WO-1001", "asset_code": "211-P-13AR", "status": "OPEN", "assigned_to": "tech-1", "closed_at": None},
+    ])
+    _wire(monkeypatch, repo, outbound, ltsa_ai_query_deps=_query_deps(work_order_gateway=wo_gateway))
+
+    response = _post(_message_envelope(message_id="wamid.qwo", text="Ada work order aktif untuk 211-P-13AR?"))
+
+    assert response.status_code == 200
+    reply = outbound.calls[-1][1]
+    assert "WO-1001" in reply
+    assert "Source: LTSA canonical data (FACT)" in reply
+    assert repo.rows == []
+
+
+def test_tag_scoped_condition_monitoring_query_is_graceful_data_gap_not_a_crash(monkeypatch):
+    # Regression for the pre-existing copilot_ask_service.py KeyError bug
+    # (TOOL_HANDLERS has no per-asset "condition_monitoring" entry) --
+    # this text contains "kebocoran" (leak), which is the exact word that
+    # would otherwise raise an unhandled KeyError and produce no reply at
+    # all instead of a truthful "I don't have that yet" answer.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    _wire(monkeypatch, repo, outbound, ltsa_ai_query_deps=_query_deps())
+
+    response = _post(_message_envelope(message_id="wamid.qcmon", text="Apakah ada kebocoran di 211-P-13AR?"))
+
+    assert response.status_code == 200
+    reply = outbound.calls[-1][1]
+    assert "don't yet have" in reply
+    assert repo.rows == []
+
+
+def test_query_with_no_available_data_is_truthful_data_gap(monkeypatch):
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    # Default _InertLTSAAIGateway work_order_gateway -> {"success": False}.
+    _wire(monkeypatch, repo, outbound, ltsa_ai_query_deps=_query_deps())
+
+    response = _post(_message_envelope(message_id="wamid.qgap", text="Ada work order aktif untuk 211-P-13AR?"))
+
+    assert response.status_code == 200
+    reply = outbound.calls[-1][1]
+    assert "currently unavailable" in reply
+    assert "Source:" not in reply  # DATA_GAP with no evidence -> no footer, never a fabricated source.
+    assert repo.rows == []
+
+
+def test_query_for_unknown_pump_tag_is_rejected_with_generic_message(monkeypatch):
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    _wire(monkeypatch, repo, outbound, ltsa_ai_query_deps=_query_deps())
+
+    response = _post(_message_envelope(message_id="wamid.qunknown", text="Apa status pompa 999-P-99AR?"))
+
+    assert response.status_code == 200
+    assert outbound.calls[-1] == (SENDER_A, "Pump 999-P-99AR tidak ditemukan.")
+    assert repo.rows == []
+
+
+def test_query_for_out_of_scope_pump_tag_is_rejected_with_same_generic_message_as_unknown(monkeypatch):
+    # Phase 7: an out-of-scope real pump must produce the EXACT same
+    # generic reply as a nonexistent tag -- never a distinct status that
+    # would leak "this pump exists but you can't see it" to an
+    # unauthorized caller.
+    repo = FakeIntakeRepository({SENDER_A: _out_of_scope_identity()})
+    outbound = FakeOutboundClient()
+    _wire(monkeypatch, repo, outbound, ltsa_ai_query_deps=_query_deps())
+
+    response = _post(_message_envelope(message_id="wamid.qoutscope", text="Apa status pompa 211-P-13AR?"))
+
+    assert response.status_code == 200
+    assert outbound.calls[-1] == (SENDER_A, "Pump 211-P-13AR tidak ditemukan.")
+    assert repo.rows == []
+
+
+def test_query_from_unregistered_phone_is_rejected_before_reaching_ltsa_ai(monkeypatch):
+    # Auth gate runs before ANY routing decision -- an unknown sender must
+    # never receive LTSA data, and the LTSA AI path must never even be
+    # touched (proven via the poison deps, not just a benign inert stub).
+    repo = FakeIntakeRepository({})  # SENDER_A registers no identity
+    outbound = FakeOutboundClient()
+    _wire(monkeypatch, repo, outbound, ltsa_ai_query_deps=_poison_ltsa_ai_query_deps())
+
+    response = _post(_message_envelope(message_id="wamid.qunauth", text="Apa status pompa 211-P-13AR?"))
+
+    assert response.status_code == 200
+    assert outbound.calls[-1] == (SENDER_A, "Nomor WhatsApp belum terdaftar.")
+    assert repo.rows == []
+
+
+def test_ai_provider_timeout_falls_back_to_deterministic_answer_not_500(monkeypatch):
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    _wire(monkeypatch, repo, outbound, ltsa_ai_query_deps=_query_deps(ai_client=_RaisingAIClient()))
+
+    response = _post(_message_envelope(message_id="wamid.qaierr", text="Apa status pompa 211-P-13AR?"))
+
+    assert response.status_code == 200
+    assert outbound.calls[-1] == (SENDER_A, _PUMP_STATUS_ANSWER)
+
+
+def test_malformed_ai_tool_selection_falls_back_to_deterministic_answer(monkeypatch):
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    _wire(monkeypatch, repo, outbound, ltsa_ai_query_deps=_query_deps(ai_client=_MalformedToolSelectionAIClient()))
+
+    response = _post(_message_envelope(message_id="wamid.qaimalformed", text="Apa status pompa 211-P-13AR?"))
+
+    assert response.status_code == 200
+    assert outbound.calls[-1] == (SENDER_A, _PUMP_STATUS_ANSWER)
+
+
+def test_deterministic_pm_command_never_reaches_ltsa_ai_path(monkeypatch):
+    # _PRODUCTION_PM_TEXT ("PM 211-P-13AR ganti oli mesin") contains "PM"
+    # and "ganti", both of which copilot_ask_service's OWN classifier would
+    # also recognize (as "pm"/"installation") if this ever reached it --
+    # the poison deps prove the SUPPORTED_INTENTS gate, not just that the
+    # answer happens to look like a normal PM confirmation.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    pm = FakePMOccurrenceRepository()
+    _wire(monkeypatch, repo, outbound, pm_repository=pm, ltsa_ai_query_deps=_poison_ltsa_ai_query_deps())
+
+    response = _post(_message_envelope(message_id="wamid.pmnotai", text=_PRODUCTION_PM_TEXT))
+
+    assert response.status_code == 200
+    assert repo.rows[0]["state"] in {"NEEDS_INFORMATION", "READY_FOR_CONFIRMATION"}
+    assert repo.rows[0]["detected_domain"] == "PM"
+
+
+def test_deterministic_cmon_command_never_reaches_ltsa_ai_path(monkeypatch):
+    # _PRODUCTION_CMON_TEXT contains "kebocoran" (leak), which
+    # copilot_ask_service's OWN classifier maps to "condition_monitoring"
+    # if this ever reached it -- poison deps prove the gate holds.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    cmon = FakeConditionMonitoringReadingRepository()
+    _wire(monkeypatch, repo, outbound, cmon_repository=cmon, ltsa_ai_query_deps=_poison_ltsa_ai_query_deps())
+
+    response = _post(_message_envelope(message_id="wamid.cmonnotai", text=_PRODUCTION_CMON_TEXT))
+
+    assert response.status_code == 200
+    assert repo.rows[0]["detected_domain"] == "CONDITION_MONITORING"
+
+
+def test_repeated_identical_query_delivery_is_idempotent_and_read_only(monkeypatch):
+    # A query never persists a pending row (unlike PM/CMON), so a
+    # duplicate webhook delivery of the exact same provider_message_id has
+    # no state to collide with -- it simply answers again, read-only, both
+    # times. Proves no duplicate side effect can accumulate even without
+    # the PM/CMON DUPLICATE_DELIVERY mechanism applying here.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    _wire(monkeypatch, repo, outbound, ltsa_ai_query_deps=_query_deps())
+
+    envelope = _message_envelope(message_id="wamid.qdupe", text="Apa status pompa 211-P-13AR?")
+    first = _post(envelope)
+    second = _post(envelope)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert outbound.calls[0] == (SENDER_A, _PUMP_STATUS_ANSWER)
+    assert outbound.calls[1] == (SENDER_A, _PUMP_STATUS_ANSWER)
+    assert repo.rows == []
