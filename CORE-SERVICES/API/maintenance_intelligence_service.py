@@ -205,6 +205,32 @@ def get_pump_condition_monitoring_flag(
         if reading.get("asset_code") == tag_number
     ]
 
+    flag = leak_flag_from_readings(readings, window_days=window_days, today=today)
+    return {
+        "success": response.get("success", False),
+        "tag_number": tag_number,
+        "flagged": flag["flagged"],
+        "window_days": window_days,
+        "latest_flagged_reading": flag["latest_flagged_reading"],
+    }
+
+
+def leak_flag_from_readings(
+    readings: list[dict[str, Any]],
+    window_days: int = DEFAULT_CONDITION_MONITORING_WINDOW_DAYS,
+    today: date | None = None,
+) -> dict[str, Any]:
+    """Pure windowing/flag logic extracted from get_pump_condition_monitoring_
+    flag() (MWO-LTSA-FLEET-ATTENTION-001) -- identical rule, zero I/O of its
+    own. Exists so a caller that already has an already-fetched, already-
+    tag-filtered readings list (e.g. LTSAKnowledge.condition_monitoring_
+    readings, itself already fetched via the fast direct-DB repository) can
+    derive the SAME current/active-leak determination this function's own
+    caller already relies on, without a second, redundant gateway fetch of
+    every reading in the table. Never fabricates a threshold beyond the
+    disclosed default window -- readings with no parseable `reading_date`
+    are excluded from the window rather than assumed recent or assumed
+    stale, unchanged from the original inline logic."""
     today = today or date.today()
     cutoff = today - timedelta(days=window_days)
 
@@ -229,10 +255,7 @@ def get_pump_condition_monitoring_flag(
     )
 
     return {
-        "success": response.get("success", False),
-        "tag_number": tag_number,
         "flagged": len(flagged_readings) > 0,
-        "window_days": window_days,
         "latest_flagged_reading": flagged_sorted[0] if flagged_sorted else None,
     }
 
@@ -501,7 +524,16 @@ def flatten_stock_v1_fleet_rows(pools: list[dict[str, Any]]) -> tuple[dict[str, 
     list (MechanicalSealStockRepository.list_pools()'s own JOIN against
     mechanical_seal_stock_application, reused unmodified: this function
     performs no query of its own). Never infers a pump's stock from a pool
-    it has no real application row for, and never invents a tag."""
+    it has no real application row for, and never invents a tag.
+
+    MWO-LTSA-STOCK-RESPONSE-STANDARD-001 -- nominal_size/size_unit/
+    stock_location added: list_pools()'s own SQL already SELECTs
+    p.nominal_size, p.size_unit, p.stock_location for every pool row (see
+    mechanical_seal_stock_repository.py) -- this was already-fetched data
+    this function was simply not surfacing. No new query, no parsing of
+    seal_code/seal_type strings for a size (the canonical structured field
+    is used as-is, per this MWO's own explicit "never derive size from an
+    identifier string" rule)."""
     rows: list[dict[str, Any]] = []
     for pool in pools:
         for application in pool.get("applications") or []:
@@ -514,6 +546,9 @@ def flatten_stock_v1_fleet_rows(pools: list[dict[str, Any]]) -> tuple[dict[str, 
                     "seal_type": pool.get("seal_type"),
                     "stock_pool_id": pool.get("stock_pool_id"),
                     "quantity_available": pool.get("quantity_available"),
+                    "nominal_size": pool.get("nominal_size"),
+                    "size_unit": pool.get("size_unit"),
+                    "stock_location": pool.get("stock_location"),
                 }
             )
     return tuple(rows)

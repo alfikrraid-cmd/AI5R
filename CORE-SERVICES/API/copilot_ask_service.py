@@ -148,7 +148,7 @@ def _detect_intent(question: str) -> str | None:
         return "cm"
     if has("work order", "workorder", r"\bwo\b", "kerja"):
         return "work_orders"
-    if has("stock", "stok", "inventory", "inventaris", "spare part", "sparepart", "suku cadang", "tersedia"):
+    if has("stock", "stok", "inventory", "inventaris", "spare part", "sparepart", "spare seal", "suku cadang", "tersedia"):
         return "inventory"
     if has(r"\bseal\b", r"\bsegel\b", "compatib", "cocok"):
         return "seal_compat"
@@ -581,7 +581,42 @@ def _handle_seal_compat(tag: str, *, ltsa_knowledge_service, language: str = "en
         return CopilotAnswer(f"Compatible seal data for {tag} is currently unavailable.", DATA_GAP, ())
 
 
-def _handle_inventory(tag: str, *, mechanical_seal_stock_repository, language: str = "en", **_: Any) -> CopilotAnswer:
+def _seal_size_display(row: dict[str, Any]) -> str:
+    # MWO-LTSA-STOCK-RESPONSE-STANDARD-001 -- nominal_size/size_unit are
+    # Stock V1's own canonical structured size fields (mechanical_seal_
+    # stock_pool.nominal_size/size_unit, already SELECTed by list_pools())
+    # -- never derived by parsing seal_code/seal_type identifier strings
+    # (e.g. "T6014DP" or "LTSA-SEAL-T6014DP-60MM" must NOT be parsed for
+    # "60mm"). "N/A" whenever the canonical field itself is absent, the
+    # field is never omitted.
+    nominal_size = row.get("nominal_size")
+    if nominal_size is None or str(nominal_size).strip() == "":
+        return "N/A"
+    size_unit = row.get("size_unit")
+    if size_unit is None or str(size_unit).strip() == "":
+        return str(nominal_size)
+    return f"{nominal_size} {size_unit}"
+
+
+def _installed_seal_line(tag: str, *, equipment_timeline_service, language: str = "en") -> str:
+    # Compatible != installed (Hard Rule, unchanged from _handle_current_
+    # seal): reads ONLY equipment_timeline_service.build_current_seal(tag),
+    # the same identity-safe, evidence-required source -- never inferred
+    # from the compatible-seal/stock list this handler already has.
+    current_seal = None
+    try:
+        current_seal = equipment_timeline_service.build_current_seal(tag)
+    except Exception:
+        current_seal = None
+    if current_seal is None:
+        return "Installed seal: Belum terkonfirmasi" if language == "id" else "Installed seal: Not confirmed"
+    label = "terkonfirmasi" if language == "id" else "confirmed"
+    return f"Installed seal: {current_seal.seal_code or 'N/A'} ({label})"
+
+
+def _handle_inventory(
+    tag: str, *, mechanical_seal_stock_repository, equipment_timeline_service, language: str = "en", **_: Any
+) -> CopilotAnswer:
     # MWO-LTSA-EQUIPMENT-360-001 -- reads via mechanical_seal_stock_
     # repository (Stock V1, direct-DB), replacing the previous
     # ltsa_knowledge_service.build(tag).inventory call -- LTSAKnowledge
@@ -597,6 +632,15 @@ def _handle_inventory(tag: str, *, mechanical_seal_stock_repository, language: s
     # (equipment_tag, pool) application mapping unmodified -- never
     # infers a pump's stock from a pool it has no real application row
     # for.
+    #
+    # MWO-LTSA-STOCK-RESPONSE-STANDARD-001 -- rewritten to the mission's
+    # standard response shape: canonical tag/model/size/qty always shown,
+    # location when available, installed-seal status always shown
+    # (compatible != installed, never conflated). Zero stock is rendered
+    # as "0 unit", never as "no compatible seal" (compatibility and
+    # inventory availability are different facts) -- matches produce one
+    # numbered block each, quantities from different seal models/sizes
+    # are never combined.
     try:
         response = mechanical_seal_stock_repository.list_pools(limit=200)
         if not response.get("success"):
@@ -611,12 +655,56 @@ def _handle_inventory(tag: str, *, mechanical_seal_stock_repository, language: s
                 return CopilotAnswer(f"Tidak ada catatan stok suku cadang untuk seal kompatibel {tag}.", FACT, ())
             return CopilotAnswer(f"No spare-part stock records are registered for {tag}'s compatible seals.", FACT, ())
 
-        if language == "id":
-            lines = [f"- {row['seal_type'] or 'N/A'}: {_quantity_available_phrase(row['quantity_available'], language)}" for row in matches]
-            answer = f"Stok suku cadang untuk {tag}:\n" + "\n".join(lines)
+        installed_line = _installed_seal_line(tag, equipment_timeline_service=equipment_timeline_service, language=language)
+
+        if len(matches) == 1:
+            row = matches[0]
+            qty = row["quantity_available"] if row["quantity_available"] is not None else "N/A"
+            if language == "id":
+                lines = [
+                    f"Stock Mechanical Seal — {tag}",
+                    "",
+                    f"Seal: {row['seal_type'] or 'N/A'}",
+                    f"Size: {_seal_size_display(row)}",
+                    f"Stock tersedia: {qty} unit",
+                    f"Lokasi: {row.get('stock_location') or 'N/A'}",
+                    installed_line,
+                    "",
+                    "Source: LTSA canonical data",
+                ]
+            else:
+                lines = [
+                    f"Mechanical Seal Stock — {tag}",
+                    "",
+                    f"Seal: {row['seal_type'] or 'N/A'}",
+                    f"Size: {_seal_size_display(row)}",
+                    f"Stock available: {qty} unit",
+                    f"Location: {row.get('stock_location') or 'N/A'}",
+                    installed_line,
+                    "",
+                    "Source: LTSA canonical data",
+                ]
         else:
-            lines = [f"- {row['seal_type'] or 'N/A'}: {_quantity_available_phrase(row['quantity_available'], language)}" for row in matches]
-            answer = f"Spare-part stock for {tag}:\n" + "\n".join(lines)
+            header = f"Stock Mechanical Seal — {tag}" if language == "id" else f"Mechanical Seal Stock — {tag}"
+            lines = [header, ""]
+            for index, row in enumerate(matches, start=1):
+                qty = row["quantity_available"] if row["quantity_available"] is not None else "N/A"
+                if language == "id":
+                    lines.append(f"{index}. {row['seal_type'] or 'N/A'}")
+                    lines.append(f"   Size: {_seal_size_display(row)}")
+                    lines.append(f"   Stock: {qty} unit")
+                    lines.append(f"   Lokasi: {row.get('stock_location') or 'N/A'}")
+                else:
+                    lines.append(f"{index}. {row['seal_type'] or 'N/A'}")
+                    lines.append(f"   Size: {_seal_size_display(row)}")
+                    lines.append(f"   Stock: {qty} unit")
+                    lines.append(f"   Location: {row.get('stock_location') or 'N/A'}")
+            lines.append("")
+            lines.append(installed_line)
+            lines.append("")
+            lines.append("Source: LTSA canonical data")
+
+        answer = "\n".join(lines)
         evidence = tuple(
             _evidence("MechanicalSealStockV1", row["stock_pool_id"] or tag, "quantity_available", row["quantity_available"])
             for row in matches
@@ -1031,30 +1119,62 @@ def _handle_fleet_priority(
     # Everything downstream (not just build() itself) is inside this try:
     # a mis-shaped/unexpected result must degrade to DATA_GAP exactly like
     # a genuine service failure, never propagate as an unhandled 500 to
-    # the WhatsApp caller.
+    # the WhatsApp caller -- "never silently fail" (this MWO's own rule):
+    # every path below terminates as either FACT (nothing needs attention),
+    # RECOMMENDATION (a ranked list), or DATA_GAP, never an unhandled crash.
+    #
+    # MWO-LTSA-FLEET-ATTENTION-001 -- rewritten to a concise, operational
+    # WhatsApp shape: one row per PUMP (never several rows for the same
+    # pump crowding out a different one -- top_risk_pumps, not the older
+    # flat top_risks, which may carry >1 entry per pump), capped at
+    # FLEET_ATTENTION_MAX_RESULTS, with a truthful "N more pumps" overflow
+    # line reusing attention_pump_count (the fleet's own already-computed
+    # total, never approximated). FACT vs RECOMMENDATION is kept explicit:
+    # the ranked list itself is a RECOMMENDATION (a derived, prioritized
+    # action list), while "no pumps need attention" is a FACT (a direct
+    # read of canonical data, not a derived judgement).
     try:
         summary = fleet_executive_summary_service.build(scope=scope)
-        top_risks = getattr(summary, "top_risks", None) or ()
-        if not top_risks:
+        # getattr fallback: a caller/test double that only ever set
+        # top_risks (pre-this-MWO shape) still renders correctly, one row
+        # per entry, rather than raising AttributeError.
+        top_risk_pumps = getattr(summary, "top_risk_pumps", None)
+        if not top_risk_pumps:
+            top_risk_pumps = getattr(summary, "top_risks", None) or ()
+        if not top_risk_pumps:
             if language == "id":
                 return CopilotAnswer("Tidak ada pompa yang saat ini perlu perhatian dalam cakupan otorisasi Anda.", FACT, ())
             return CopilotAnswer("No pumps currently need attention in your authorized scope.", FACT, ())
 
-        fleet_status = getattr(summary, "fleet_status", None) or "UNKNOWN"
+        attention_pump_count = getattr(summary, "attention_pump_count", None) or len(top_risk_pumps)
+        overflow = max(attention_pump_count - len(top_risk_pumps), 0)
+
         if language == "id":
-            lines = [f"- {risk.tag_number}: {risk.title} (priority {risk.priority}) -- {risk.action}" for risk in top_risks]
-            answer = (
-                f"{len(top_risks)} pompa perlu perhatian dalam cakupan otorisasi Anda "
-                f"(status fleet: {fleet_status}):\n" + "\n".join(lines)
-            )
+            lines = ["Pompa yang perlu perhatian hari ini:", ""]
+            for index, risk in enumerate(top_risk_pumps, start=1):
+                lines.append(f"{index}. {risk.tag_number} — {risk.title}")
+                lines.append(f"   {risk.description}")
+                lines.append(f"   Tindakan: {risk.action}")
+                lines.append("")
+            if overflow > 0:
+                lines.append(f"Masih ada {overflow} pompa lain yang memerlukan perhatian.")
+                lines.append("")
+            lines.append("Source: LTSA canonical data")
         else:
-            lines = [f"- {risk.tag_number}: {risk.title} (priority {risk.priority}) -- {risk.action}" for risk in top_risks]
-            answer = (
-                f"{len(top_risks)} pump(s) needing attention in your authorized scope "
-                f"(fleet status: {fleet_status}):\n" + "\n".join(lines)
-            )
+            lines = ["Pumps needing attention today:", ""]
+            for index, risk in enumerate(top_risk_pumps, start=1):
+                lines.append(f"{index}. {risk.tag_number} — {risk.title}")
+                lines.append(f"   {risk.description}")
+                lines.append(f"   Action: {risk.action}")
+                lines.append("")
+            if overflow > 0:
+                lines.append(f"{overflow} more pump(s) also need attention.")
+                lines.append("")
+            lines.append("Source: LTSA canonical data")
+
+        answer = "\n".join(lines)
         evidence = tuple(
-            _evidence("FleetExecutiveSummaryService", risk.tag_number, "priority", risk.priority) for risk in top_risks
+            _evidence("FleetExecutiveSummaryService", risk.tag_number, "priority", risk.priority) for risk in top_risk_pumps
         )
         return CopilotAnswer(answer, RECOMMENDATION, evidence)
     except Exception:

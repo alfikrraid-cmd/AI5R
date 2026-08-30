@@ -22,6 +22,18 @@ class FakeFleetReliabilityService:
         self._knowledge = knowledge
         self.build_calls = 0
         self.list_pump_knowledge_calls = 0
+        self.aggregate_from_knowledge_calls = 0
+        # MWO-LTSA-FLEET-ATTENTION-001 -- a minimal stand-in for
+        # LTSAKnowledgeService.recommendation_engine, which
+        # FleetExecutiveSummaryService now reaches for (via
+        # fleet_reliability_service.ltsa_knowledge_service.
+        # recommendation_engine) to recompute fleet-aware recommendations
+        # from already-fetched knowledge -- see RecommendationEngine's own
+        # real implementation; this fake just returns knowledge.recommendation
+        # unchanged so every pre-existing test's injected recommendation
+        # tuple keeps flowing through top_risks/critical_asset_count exactly
+        # as before.
+        self.ltsa_knowledge_service = _FakeKnowledgeServiceHolder()
 
     def build(self, *, scope=None):
         self.build_calls += 1
@@ -30,6 +42,20 @@ class FakeFleetReliabilityService:
     def list_pump_knowledge(self, *, scope=None):
         self.list_pump_knowledge_calls += 1
         return self._knowledge
+
+    def aggregate_from_knowledge(self, knowledge):
+        self.aggregate_from_knowledge_calls += 1
+        return self._reliability
+
+
+class _FakeRecommendationEngine:
+    def recommend(self, knowledge, summary=None):
+        return knowledge.recommendation
+
+
+class _FakeKnowledgeServiceHolder:
+    def __init__(self):
+        self.recommendation_engine = _FakeRecommendationEngine()
 
 
 def _reliability(**overrides):
@@ -107,11 +133,19 @@ def test_fleet_availability_breakdown_and_critical_spare_pass_through_unchanged_
 
 
 def test_calls_fleet_reliability_service_build_exactly_once_no_backend_duplication():
+    # MWO-LTSA-FLEET-ATTENTION-001 -- build() is no longer called at all
+    # (FleetReliabilityService.build() itself used to independently re-fetch
+    # every pump's knowledge a second time, the dominant cause of this
+    # query's own reported latency). Reliability is now derived from the
+    # SAME already-fetched knowledge via aggregate_from_knowledge() (pure,
+    # no I/O) -- strictly LESS backend duplication than the property this
+    # test's own name already asserted, not a regression of it.
     service, fake = _service(_reliability(), (_knowledge("P-1"),))
 
     service.build()
 
-    assert fake.build_calls == 1
+    assert fake.build_calls == 0
+    assert fake.aggregate_from_knowledge_calls == 1
 
 
 # MWO-LTSA-038B -- fleet_mtbf_days / fleet_mttr_hours added: pure

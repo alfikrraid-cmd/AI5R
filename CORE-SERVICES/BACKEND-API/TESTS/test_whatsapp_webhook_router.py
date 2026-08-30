@@ -3237,11 +3237,12 @@ class _FakeQueryCMONRepository:
 
 
 class _FakeTopRisk:
-    def __init__(self, tag_number, title, priority, action):
+    def __init__(self, tag_number, title, priority, action, description="test evidence"):
         self.tag_number = tag_number
         self.title = title
         self.priority = priority
         self.action = action
+        self.description = description
 
 
 class _FakeFleetExecutiveSummary:
