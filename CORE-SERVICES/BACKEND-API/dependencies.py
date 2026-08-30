@@ -278,9 +278,26 @@ _equipment_timeline_service = EquipmentTimelineService(
 
 # MWO-LTSA-037C -- built from the same singleton PumpGateway and
 # LTSAKnowledgeService above, not fresh ones -- no second aggregate.
+#
+# MWO-LTSA-FLEET-ANALYTICS-001 -- also given the same singleton batch-
+# sourcing repositories/gateways every other route already reuses (not
+# fresh instances), so list_pump_knowledge_fast() can batch-fetch the
+# whole fleet in ~6-9 total calls instead of one round trip per pump.
+# work_order_gateway/maintenance_history_gateway included too, to keep
+# REC_REPEATED_BREAKDOWN's breakdown_history coverage identical to the
+# old per-pump LTSAKnowledgeService.build() path.
 _fleet_reliability_service = FleetReliabilityService(
     pump_gateway=_pump_gateway,
     ltsa_knowledge_service=_ltsa_knowledge_service,
+    condition_monitoring_reading_repository=_condition_monitoring_reading_repository,
+    cm_report_repository=_cm_report_repository,
+    pm_occurrence_repository=_pm_occurrence_repository,
+    pm_schedule_repository=_pm_schedule_repository,
+    seal_pump_compatibility_gateway=_seal_pump_compatibility_gateway,
+    seal_gateway=_seal_gateway,
+    mechanical_seal_stock_repository=_mechanical_seal_stock_repository,
+    work_order_gateway=_work_order_gateway,
+    maintenance_history_gateway=_maintenance_history_gateway,
 )
 
 # MWO-LTSA-038A -- built from the same singleton FleetReliabilityService

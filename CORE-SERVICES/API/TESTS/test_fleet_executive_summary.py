@@ -43,6 +43,15 @@ class FakeFleetReliabilityService:
         self.list_pump_knowledge_calls += 1
         return self._knowledge
 
+    def list_pump_knowledge_fast(self, *, scope=None):
+        # MWO-LTSA-FLEET-ANALYTICS-001 -- FleetExecutiveSummaryService.
+        # build() now calls list_pump_knowledge_fast() (the real
+        # FleetReliabilityService's own batch-or-fallback method); this
+        # fake mirrors that same public interface, delegating to the
+        # existing list_pump_knowledge_calls counter so every pre-existing
+        # assertion on it keeps working unchanged.
+        return self.list_pump_knowledge(scope=scope)
+
     def aggregate_from_knowledge(self, knowledge):
         self.aggregate_from_knowledge_calls += 1
         return self._reliability

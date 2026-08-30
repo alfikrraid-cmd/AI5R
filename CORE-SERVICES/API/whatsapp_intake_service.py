@@ -360,6 +360,16 @@ class LTSAAIQueryDependencies:
     # ask_copilot()'s own default-constructed n8n gateways instead.
     pm_occurrence_repository: Any
     cm_report_repository: Any
+    # MWO-LTSA-FLEET-ANALYTICS-001 -- optional (default None, keeping every
+    # pre-existing construction site/test working unchanged): the SAME
+    # canonical repositories/gateways the dashboard's own routers/copilot.py
+    # now also supplies, so WhatsApp's fleet-wide temperature/vibration
+    # ranking, current/historical leak, stock-state, and overdue-PM queries
+    # use the identical O(1)-batch fetch (fleet_analytics_service.py), not a
+    # second, divergent WhatsApp-only implementation.
+    pm_schedule_repository: Any = None
+    seal_pump_compatibility_gateway: Any = None
+    seal_gateway: Any = None
     # MWO-LTSA-FLEET-ATTENTION-001 -- optional callable(text) -> None, sent
     # an immediate acknowledgement before a fleet-wide analysis begins (see
     # _handle_ltsa_ai_query's own fleet_priority branch). Defaults to None
@@ -1379,6 +1389,9 @@ def _handle_ltsa_ai_query(
         pm_occurrence_repository=ltsa_ai_query_deps.pm_occurrence_repository,
         cm_report_repository=ltsa_ai_query_deps.cm_report_repository,
         pm_cm_evidence_repository=ltsa_ai_query_deps.pm_cm_evidence_repository,
+        pm_schedule_repository=ltsa_ai_query_deps.pm_schedule_repository,
+        seal_pump_compatibility_gateway=ltsa_ai_query_deps.seal_pump_compatibility_gateway,
+        seal_gateway=ltsa_ai_query_deps.seal_gateway,
         language="id",
     )
     # READ-ONLY by construction: every function reachable from here

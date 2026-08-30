@@ -22,8 +22,11 @@ from dependencies import (
     get_mechanical_seal_stock_repository,
     get_pm_cm_evidence_repository,
     get_pm_occurrence_repository,
+    get_pm_schedule_repository,
     get_product_name,
     get_pump_gateway,
+    get_seal_gateway,
+    get_seal_pump_compatibility_gateway,
     get_work_order_gateway,
     require_permission,
 )
@@ -97,6 +100,9 @@ def ask_copilot_endpoint(
     pm_occurrence_repository=Depends(get_pm_occurrence_repository),
     cm_report_repository=Depends(get_cm_report_repository),
     pm_cm_evidence_repository=Depends(get_pm_cm_evidence_repository),
+    pm_schedule_repository=Depends(get_pm_schedule_repository),
+    seal_pump_compatibility_gateway=Depends(get_seal_pump_compatibility_gateway),
+    seal_gateway=Depends(get_seal_gateway),
     ai_client=Depends(get_copilot_ai_client),
     current_user: AuthenticatedIdentity = Depends(get_current_user),
 ) -> Payload:
@@ -137,6 +143,9 @@ def ask_copilot_endpoint(
         pm_occurrence_repository=pm_occurrence_repository,
         cm_report_repository=cm_report_repository,
         pm_cm_evidence_repository=pm_cm_evidence_repository,
+        pm_schedule_repository=pm_schedule_repository,
+        seal_pump_compatibility_gateway=seal_pump_compatibility_gateway,
+        seal_gateway=seal_gateway,
     )
 
     # tools_used is additive/optional -- existing frontend (CopilotPanel/

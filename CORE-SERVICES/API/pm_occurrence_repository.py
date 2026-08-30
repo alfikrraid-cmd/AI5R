@@ -73,6 +73,35 @@ class PMOccurrenceRepository:
             self._runner,
         )
 
+    def list_all(self, *, scope: frozenset[str] | None = None, limit: int = 5000, offset: int = 0) -> list[dict]:
+        # MWO-LTSA-FLEET-ANALYTICS-001 -- fleet-wide batch fetch, mirroring
+        # condition_monitoring_reading_repository.list_all()'s own exact
+        # shape (LEFT JOIN ltsa_pumps for area, same scope-filter
+        # convention) so a fleet scan fetches every asset's PM occurrences
+        # in ONE query instead of one list_by_asset() call per pump. limit
+        # defaults generously (5000, matching this repository's own
+        # "generous but bounded" convention elsewhere in this codebase,
+        # e.g. PMCMEvidenceRepository's own MAX_FILE_SIZE_BYTES) -- a
+        # caller needing true pagination can still lower it/page with
+        # offset; this is a read-only, additive method, no change to any
+        # existing method's behavior.
+        scope_clause = ""
+        if scope is not None:
+            if scope:
+                values = ", ".join(_sql(area) for area in sorted(scope))
+                scope_clause = f"AND pump.area IN ({values})"
+            else:
+                scope_clause = "AND FALSE"
+        columns = ", ".join(f"r.{col}" for col in _SELECT_COLUMNS.split(", "))
+        return _json_query(
+            f"SELECT {columns}, pump.area "
+            "FROM pm_occurrence r LEFT JOIN ltsa_pumps pump ON pump.tag_number = r.asset_code "
+            f"WHERE r.deleted_at IS NULL {scope_clause} "
+            "ORDER BY r.occurrence_date DESC NULLS LAST, r.created_at DESC "
+            f"LIMIT {int(limit)} OFFSET {int(offset)}",
+            self._runner,
+        )
+
     def create_draft(
         self,
         *,

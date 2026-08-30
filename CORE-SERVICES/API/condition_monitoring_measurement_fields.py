@@ -124,6 +124,12 @@ def render_reading_lines(record: dict[str, Any]) -> list[str]:
 _PARAMETER_SEARCH_TERMS: dict[str, str] = {
     "temperature": "temp",
     "suhu": "temp",
+    # MWO-LTSA-FLEET-ANALYTICS-001 -- "temperatur" (no final "e") is the
+    # common Indonesian technical spelling ("temperaturnya paling
+    # tinggi?") and is NOT a substring of "temperature" -- a genuinely
+    # separate word, not covered by the \w* suffix-agglutination fix
+    # below.
+    "temperatur": "temp",
     "vibration": "vibration",
     "getaran": "vibration",
     "pressure": "pressure",
@@ -151,10 +157,15 @@ def parameter_display_label(term: str) -> str:
 def detect_parameter_search_term(text: str) -> str | None:
     """Returns the search term (e.g. "temp") for the first recognized
     parameter word found in `text`, or None if no parameter word is
-    present. Word-boundary matched, case-insensitive."""
+    present. Word-boundary matched at the START of the word, case-
+    insensitive -- \\w* after the literal word (MWO-LTSA-FLEET-ANALYTICS-
+    001) allows an agglutinated Indonesian suffix ("suhunya",
+    "vibrationnya", "getarannya") to still match, since a strict trailing
+    \\b would otherwise fail (the suffix's first letter is itself a word
+    character, so no boundary exists there)."""
     lowered = (text or "").casefold()
     for word, term in _PARAMETER_SEARCH_TERMS.items():
-        if re.search(r"\b" + re.escape(word) + r"\b", lowered):
+        if re.search(r"\b" + re.escape(word) + r"\w*\b", lowered):
             return term
     return None
 

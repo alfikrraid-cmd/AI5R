@@ -27,7 +27,10 @@ from dependencies import (
     get_mechanical_seal_stock_repository,
     get_pm_cm_evidence_repository,
     get_pm_occurrence_repository,
+    get_pm_schedule_repository,
     get_pump_gateway,
+    get_seal_gateway,
+    get_seal_pump_compatibility_gateway,
     get_whatsapp_intake_repository,
     get_whatsapp_outbound_client,
     get_work_order_gateway,
@@ -227,6 +230,9 @@ async def receive_whatsapp_webhook(
     ltsa_ai_pm_occurrence_repository=Depends(get_ltsa_ai_pm_occurrence_repository),
     cm_report_repository=Depends(get_cm_report_repository),
     pm_cm_evidence_repository=Depends(get_pm_cm_evidence_repository),
+    pm_schedule_repository=Depends(get_pm_schedule_repository),
+    seal_pump_compatibility_gateway=Depends(get_seal_pump_compatibility_gateway),
+    seal_gateway=Depends(get_seal_gateway),
 ) -> dict[str, Any]:
     # Same canonical gateways/services routers/copilot.py's own
     # ask_copilot_endpoint already depends on -- no new gateway, no
@@ -252,6 +258,9 @@ async def receive_whatsapp_webhook(
         pm_occurrence_repository=ltsa_ai_pm_occurrence_repository,
         cm_report_repository=cm_report_repository,
         pm_cm_evidence_repository=pm_cm_evidence_repository,
+        pm_schedule_repository=pm_schedule_repository,
+        seal_pump_compatibility_gateway=seal_pump_compatibility_gateway,
+        seal_gateway=seal_gateway,
     )
     raw_body = await request.body()
     if not _signature_valid(raw_body, x_hub_signature_256):

@@ -70,9 +70,36 @@ class FleetReliabilityService:
         self,
         pump_gateway: PumpGateway | None = None,
         ltsa_knowledge_service: LTSAKnowledgeService | None = None,
+        *,
+        condition_monitoring_reading_repository=None,
+        cm_report_repository=None,
+        pm_occurrence_repository=None,
+        pm_schedule_repository=None,
+        seal_pump_compatibility_gateway=None,
+        seal_gateway=None,
+        mechanical_seal_stock_repository=None,
+        work_order_gateway=None,
+        maintenance_history_gateway=None,
     ) -> None:
         self.pump_gateway = pump_gateway or PumpGateway()
         self.ltsa_knowledge_service = ltsa_knowledge_service or LTSAKnowledgeService()
+        # MWO-LTSA-FLEET-ANALYTICS-001 -- all optional, all None by
+        # default: every existing caller/test that builds this service
+        # with only pump_gateway/ltsa_knowledge_service (the pre-existing
+        # two-arg constructor) gets the exact pre-existing behavior,
+        # list_pump_knowledge_fast() falling back to list_pump_knowledge().
+        # Only the production singleton in dependencies.py supplies these,
+        # to actually collapse the fleet scan's per-pump gateway calls
+        # down to one batch fetch (build_fleet_data_batch()).
+        self.condition_monitoring_reading_repository = condition_monitoring_reading_repository
+        self.cm_report_repository = cm_report_repository
+        self.pm_occurrence_repository = pm_occurrence_repository
+        self.pm_schedule_repository = pm_schedule_repository
+        self.seal_pump_compatibility_gateway = seal_pump_compatibility_gateway
+        self.seal_gateway = seal_gateway
+        self.mechanical_seal_stock_repository = mechanical_seal_stock_repository
+        self.work_order_gateway = work_order_gateway
+        self.maintenance_history_gateway = maintenance_history_gateway
 
     def build(self, *, scope: frozenset[str] | None = None) -> FleetReliability:
         # MWO-LTSA-AUTH-DATA-SCOPE-FINAL-CLOSURE-001 -- scope is applied
@@ -88,7 +115,7 @@ class FleetReliabilityService:
         # detail (FleetExecutiveSummaryService) can fetch knowledge once
         # and derive both from it, instead of this method independently
         # re-fetching the same per-pump knowledge a second time.
-        return self.aggregate_from_knowledge(self.list_pump_knowledge(scope=scope))
+        return self.aggregate_from_knowledge(self.list_pump_knowledge_fast(scope=scope))
 
     def aggregate_from_knowledge(self, knowledge: tuple[LTSAKnowledge, ...]) -> FleetReliability:
         """Pure aggregation, zero I/O -- the same compute_executive_metrics/
@@ -105,6 +132,93 @@ class FleetReliabilityService:
         have to re-implement pump discovery themselves."""
         tags = self._list_pump_tags(scope)
         return tuple(self.ltsa_knowledge_service.build(tag) for tag in tags)
+
+    def list_pump_knowledge_from_batch(self, batch: "FleetDataBatch") -> tuple[LTSAKnowledge, ...]:
+        """MWO-LTSA-FLEET-ANALYTICS-001 -- pure, zero-I/O alternative to
+        list_pump_knowledge(): builds the SAME LTSAKnowledge shape from an
+        already-fetched FleetDataBatch (fleet_analytics_service.py) instead
+        of calling ltsa_knowledge_service.build(tag) once per pump. This is
+        the actual fix for "Pompa mana yang perlu perhatian hari ini?"'s
+        own multi-minute latency: every field below was already redundantly
+        refetched per pump by the OLD path; here every field is a plain
+        dict lookup into data the caller fetched exactly once. Field-for-
+        field equivalent to LTSAKnowledgeService.build()'s own shape except
+        drawings/condition_monitoring_schedules/work_orders (empty tuples
+        -- no existing RecommendationEngine rule reads them, so this never
+        changes fleet ranking output, only how the inputs were fetched)."""
+        knowledge: list[LTSAKnowledge] = []
+        for pump in batch.pumps:
+            tag = pump.get("tag_number")
+            if not tag:
+                continue
+            inventory = [row for row in batch.stock_rows if row.get("equipment_tag") == tag]
+            knowledge.append(
+                LTSAKnowledge(
+                    tag_number=tag,
+                    pump=pump,
+                    seal=list(batch.compatible_seals_by_tag.get(tag, ())),
+                    inventory=inventory,
+                    pm_history=list(batch.pm_by_tag.get(tag, ())),
+                    cm_history=list(batch.cm_by_tag.get(tag, ())),
+                    breakdown_history=list(batch.breakdown_by_tag.get(tag, ())),
+                    drawings=[],
+                    recommendation=(),
+                    pm_schedules=list(batch.pm_schedule_by_tag.get(tag, ())),
+                    condition_monitoring_schedules=[],
+                    condition_monitoring_readings=list(batch.cmon_by_tag.get(tag, ())),
+                )
+            )
+        return tuple(knowledge)
+
+    def _batch_sources_available(self) -> bool:
+        """MWO-LTSA-FLEET-ANALYTICS-001 -- true only when every REQUIRED
+        batch-fetch dependency (mirrors build_fleet_data_batch()'s own
+        required, non-optional keyword args) was supplied at construction.
+        work_order_gateway/maintenance_history_gateway stay optional here
+        too (breakdown_history coverage, not required for the batch path
+        itself to run)."""
+        return all(
+            [
+                self.condition_monitoring_reading_repository,
+                self.cm_report_repository,
+                self.pm_occurrence_repository,
+                self.pm_schedule_repository,
+                self.seal_pump_compatibility_gateway,
+                self.seal_gateway,
+                self.mechanical_seal_stock_repository,
+            ]
+        )
+
+    def list_pump_knowledge_fast(self, *, scope: frozenset[str] | None = None) -> tuple[LTSAKnowledge, ...]:
+        """MWO-LTSA-FLEET-ANALYTICS-001 -- the actual fix for "Pompa mana
+        yang perlu perhatian hari ini?"'s own multi-minute latency: when
+        this service was constructed with the batch-sourcing dependencies
+        (see dependencies.py's production singleton wiring), fetches every
+        data source EXACTLY ONCE via build_fleet_data_batch() and derives
+        per-pump knowledge from it with zero further I/O. Falls back to
+        the original list_pump_knowledge() (one gateway round trip per
+        pump) when those dependencies are absent, so every existing
+        caller/test that builds this service with only pump_gateway/
+        ltsa_knowledge_service keeps its exact current behavior -- this
+        method is purely additive, never a behavior change for them."""
+        if not self._batch_sources_available():
+            return self.list_pump_knowledge(scope=scope)
+        from .fleet_analytics_service import build_fleet_data_batch
+
+        batch = build_fleet_data_batch(
+            pump_gateway=self.pump_gateway,
+            condition_monitoring_reading_repository=self.condition_monitoring_reading_repository,
+            cm_report_repository=self.cm_report_repository,
+            pm_occurrence_repository=self.pm_occurrence_repository,
+            pm_schedule_repository=self.pm_schedule_repository,
+            seal_pump_compatibility_gateway=self.seal_pump_compatibility_gateway,
+            seal_gateway=self.seal_gateway,
+            mechanical_seal_stock_repository=self.mechanical_seal_stock_repository,
+            work_order_gateway=self.work_order_gateway,
+            maintenance_history_gateway=self.maintenance_history_gateway,
+            scope=scope,
+        )
+        return self.list_pump_knowledge_from_batch(batch)
 
     def _list_pump_tags(self, scope: frozenset[str] | None = None) -> tuple[str, ...]:
         # MWO-LTSA-037C runtime fix -- PumpGateway._call() only catches

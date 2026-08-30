@@ -41,6 +41,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from . import fleet_analytics_service as fas
 from . import maintenance_intelligence_service as mis
 from .condition_monitoring_measurement_fields import (
     detect_parameter_search_term,
@@ -161,9 +162,16 @@ def _detect_intent(question: str) -> str | None:
     # (collision with "current seal"/is_current_or_latest wording above).
     if has(
         "bocor", r"\bleak", r"\bcmon\b", "condition monitoring", "temuan",
-        "temperature", "suhu", "vibration", "getaran", "pressure", "tekanan",
+        "temperature", "temperatur", "suhu", "vibration", "getaran", "pressure", "tekanan",
     ):
         return "condition_monitoring"
+    # MWO-LTSA-FLEET-ANALYTICS-001 -- "overdue PM" is a fleet-wide,
+    # tag-less ranking/listing question (Phase 12), checked before the
+    # generic per-tag `pm` intent so it is never swallowed by it (a
+    # tag-less "overdue PM?" would otherwise fall through to _NO_ASSET_
+    # MESSAGE, since `pm` has no tag-less branch of its own).
+    if has("overdue", "terlambat", "jatuh tempo") and has(r"\bpm\b", "preventive", "maintenance", "perawatan"):
+        return "fleet_pm_overdue"
     if has(r"\bpm\b", "preventive"):
         return "pm"
     if has(r"\bcm\b", "corrective", "breakdown", "kerusakan", r"\brusak"):
@@ -260,6 +268,16 @@ def ask_copilot(
     pm_occurrence_repository,
     cm_report_repository,
     pm_cm_evidence_repository=None,
+    # MWO-LTSA-FLEET-ANALYTICS-001 -- optional, default None: only needed
+    # by the new fleet-wide temperature/vibration ranking, current/
+    # historical leak, stock-semantics, and overdue-PM query paths below,
+    # each of which gracefully falls back to its pre-existing behavior
+    # (or a plain DATA_GAP for a genuinely new capability) when any of
+    # these three are absent -- every pre-existing caller/test that
+    # doesn't supply them keeps its exact current behavior, unchanged.
+    pm_schedule_repository=None,
+    seal_pump_compatibility_gateway=None,
+    seal_gateway=None,
     language: str = "en",
 ) -> CopilotAnswer:
     intent = _detect_intent(question)
@@ -291,8 +309,35 @@ def ask_copilot(
         )
 
     if intent == "condition_monitoring" and tag is None:
-        return _handle_leak_frequency_fleet(
-            scope, condition_monitoring_reading_gateway=condition_monitoring_reading_gateway, pump_gateway=pump_gateway,
+        return _dispatch_fleet_condition_monitoring(
+            question, scope,
+            condition_monitoring_reading_gateway=condition_monitoring_reading_gateway,
+            pump_gateway=pump_gateway,
+            condition_monitoring_reading_repository=condition_monitoring_reading_repository,
+            cm_report_repository=cm_report_repository,
+            pm_occurrence_repository=pm_occurrence_repository,
+            pm_schedule_repository=pm_schedule_repository,
+            seal_pump_compatibility_gateway=seal_pump_compatibility_gateway,
+            seal_gateway=seal_gateway,
+            mechanical_seal_stock_repository=mechanical_seal_stock_repository,
+            work_order_gateway=work_order_gateway,
+            maintenance_history_gateway=maintenance_history_gateway,
+            language=language,
+        )
+
+    if intent == "fleet_pm_overdue":
+        return _handle_fleet_overdue_pm(
+            scope,
+            pump_gateway=pump_gateway,
+            condition_monitoring_reading_repository=condition_monitoring_reading_repository,
+            cm_report_repository=cm_report_repository,
+            pm_occurrence_repository=pm_occurrence_repository,
+            pm_schedule_repository=pm_schedule_repository,
+            seal_pump_compatibility_gateway=seal_pump_compatibility_gateway,
+            seal_gateway=seal_gateway,
+            mechanical_seal_stock_repository=mechanical_seal_stock_repository,
+            work_order_gateway=work_order_gateway,
+            maintenance_history_gateway=maintenance_history_gateway,
             language=language,
         )
 
@@ -314,6 +359,34 @@ def ask_copilot(
             return _handle_stock_by_seal_code(
                 seal_code, mechanical_seal_stock_repository=mechanical_seal_stock_repository, language=language
             )
+        # MWO-LTSA-FLEET-ANALYTICS-001 -- Phase 9/10/11's explicit,
+        # never-collapsed inventory states (ZERO_STOCK/NO_STOCK_RECORD/
+        # NO_COMPATIBLE_SEAL, distinguished per equipment+seal, never one
+        # generic "out of stock" bucket). Checked ONLY for the specific
+        # phrasings _detect_fleet_stock_semantic recognizes (explicit
+        # "record"/"catatan" wording, an explicit zero quantity, or "spare
+        # seal" negated) -- every other fleet-stock phrasing (including
+        # the pre-existing "ga ada stocknya"/"tidak ada stock"/"kosong"/
+        # "unknown" wording _handle_fleet_stock_status already answers
+        # correctly) is intentionally left on the unchanged path below, so
+        # no pre-existing regression test's exact response format changes.
+        semantic = _detect_fleet_stock_semantic(question)
+        if semantic is not None:
+            return _handle_fleet_stock_semantics(
+                semantic, scope,
+                pump_gateway=pump_gateway,
+                condition_monitoring_reading_repository=condition_monitoring_reading_repository,
+                cm_report_repository=cm_report_repository,
+                pm_occurrence_repository=pm_occurrence_repository,
+                pm_schedule_repository=pm_schedule_repository,
+                seal_pump_compatibility_gateway=seal_pump_compatibility_gateway,
+                seal_gateway=seal_gateway,
+                mechanical_seal_stock_repository=mechanical_seal_stock_repository,
+                work_order_gateway=work_order_gateway,
+                maintenance_history_gateway=maintenance_history_gateway,
+                language=language,
+            )
+
         # MWO-LTSA-AI-COPILOT-FLEET-STOCK-V1-017B -- a fleet-wide stock
         # question (no seal code named either) must not be rejected as
         # "needs a specific pump/asset" -- it IS the question.
@@ -1257,6 +1330,368 @@ def _render_cmon_detailed_history(
         )
         for record in shown
     )
+    return CopilotAnswer(answer, FACT, evidence)
+
+
+# -- MWO-LTSA-FLEET-ANALYTICS-001: fleet-wide parameter ranking / current
+# vs. historical leak / stock-semantics / overdue-PM ----------------------
+#
+# All four query shapes below read from ONE fleet_analytics_service.
+# FleetDataBatch, fetched exactly once per question (never per pump) via
+# _build_fleet_batch_or_none(). Every handler degrades to a plain
+# DATA_GAP (never an exception) when the batch dependencies are not
+# wired for a given caller -- see _build_fleet_batch_or_none's own
+# docstring for why this is safe/backward-compatible.
+
+
+def _build_fleet_batch_or_none(scope: frozenset[str] | None, **deps: Any) -> "fas.FleetDataBatch | None":
+    """None (never raises) when any REQUIRED batch-fetch dependency
+    (pump_gateway/condition_monitoring_reading_repository/cm_report_
+    repository/pm_occurrence_repository/pm_schedule_repository/seal_
+    pump_compatibility_gateway/seal_gateway/mechanical_seal_stock_
+    repository) is absent -- e.g. an older caller/test that only supplies
+    ask_copilot()'s pre-existing parameters, since pm_schedule_repository/
+    seal_pump_compatibility_gateway/seal_gateway all default to None.
+    Every new fleet-analytics handler treats a None batch as "this
+    capability isn't wired here yet", never a crash -- and, for the two
+    query shapes (leak/stock) that already had a pre-existing fleet-wide
+    answer, the caller falls back to that unchanged behavior instead."""
+    required = (
+        deps.get("pump_gateway"),
+        deps.get("condition_monitoring_reading_repository"),
+        deps.get("cm_report_repository"),
+        deps.get("pm_occurrence_repository"),
+        deps.get("pm_schedule_repository"),
+        deps.get("seal_pump_compatibility_gateway"),
+        deps.get("seal_gateway"),
+        deps.get("mechanical_seal_stock_repository"),
+    )
+    if any(dep is None for dep in required):
+        return None
+    try:
+        return fas.build_fleet_data_batch(
+            pump_gateway=deps["pump_gateway"],
+            condition_monitoring_reading_repository=deps["condition_monitoring_reading_repository"],
+            cm_report_repository=deps["cm_report_repository"],
+            pm_occurrence_repository=deps["pm_occurrence_repository"],
+            pm_schedule_repository=deps["pm_schedule_repository"],
+            seal_pump_compatibility_gateway=deps["seal_pump_compatibility_gateway"],
+            seal_gateway=deps["seal_gateway"],
+            mechanical_seal_stock_repository=deps["mechanical_seal_stock_repository"],
+            work_order_gateway=deps.get("work_order_gateway"),
+            maintenance_history_gateway=deps.get("maintenance_history_gateway"),
+            scope=scope,
+        )
+    except Exception:
+        return None
+
+
+def _fleet_analytics_unavailable_answer(language: str) -> CopilotAnswer:
+    if language == "id":
+        return CopilotAnswer("Data fleet analytics sedang tidak tersedia.", DATA_GAP, ())
+    return CopilotAnswer("Fleet analytics data is currently unavailable.", DATA_GAP, ())
+
+
+_HISTORICAL_LEAK_FREQUENCY_WORDS = ("sering", "frequent", "most often", "paling banyak")
+
+
+def _dispatch_fleet_condition_monitoring(
+    question: str,
+    scope: frozenset[str] | None,
+    *,
+    condition_monitoring_reading_gateway,
+    pump_gateway,
+    language: str = "en",
+    **batch_deps: Any,
+) -> CopilotAnswer:
+    """Fleet-wide (no tag) condition_monitoring intent, split into the
+    genuinely distinct query shapes Phase 4/6/7/8 each define -- "highest
+    temperature/vibration" (rank_by_parameter), "leaking now" (Phase 7,
+    current_leak_pumps), and "leaks most often" (Phase 8,
+    historical_leak_frequency) are three different questions the OLD,
+    single _handle_leak_frequency_fleet path answered identically (one
+    all-time top-1 pump, regardless of which was actually asked).
+    Falls back to that pre-existing handler, unchanged, whenever the new
+    batch dependencies are not wired for this caller (see
+    _build_fleet_batch_or_none) -- never a regression for an existing
+    caller/test that only supplies ask_copilot()'s pre-existing params."""
+    q = (question or "").lower()
+
+    def has(*words: str) -> bool:
+        return any(word in q for word in words)
+
+    is_leak_wording = has("bocor", "leak")
+    search_term = None if is_leak_wording else detect_parameter_search_term(question)
+
+    if search_term is not None:
+        batch = _build_fleet_batch_or_none(scope, pump_gateway=pump_gateway, **batch_deps)
+        if batch is None:
+            return _fleet_analytics_unavailable_answer(language)
+        return _handle_fleet_parameter_ranking(batch, search_term, language=language)
+
+    if is_leak_wording:
+        batch = _build_fleet_batch_or_none(scope, pump_gateway=pump_gateway, **batch_deps)
+        if batch is not None:
+            if has(*_HISTORICAL_LEAK_FREQUENCY_WORDS):
+                period = (
+                    parse_condition_monitoring_period(question)
+                    or parse_condition_monitoring_period("setahun terakhir")
+                )
+                return _handle_fleet_historical_leak_frequency(batch, period, language=language)
+            return _handle_fleet_current_leak(batch, language=language)
+        # Batch dependencies not wired for this caller -- preserve the
+        # exact pre-existing all-time-frequency behavior for this
+        # question rather than a new DATA_GAP.
+
+    return _handle_leak_frequency_fleet(
+        scope, condition_monitoring_reading_gateway=condition_monitoring_reading_gateway,
+        pump_gateway=pump_gateway, language=language,
+    )
+
+
+def _handle_fleet_parameter_ranking(
+    batch: "fas.FleetDataBatch", search_term: str, *, language: str = "en"
+) -> CopilotAnswer:
+    """Phase 4/5/6 -- generic fleet-wide parameter ranking (temperature,
+    vibration, pressure, ...), each pump's OWN latest CMON event only
+    (fas.rank_by_parameter's own "latest comparable measurement" rule,
+    never an all-time maximum). Renders the raw value/unit/measurement-
+    point/reading-date as FACT -- never a HIGH/ABNORMAL/CRITICAL label
+    (Phase 5: no canonical threshold/baseline source exists for this to
+    be an INTERPRETATION)."""
+    ranked, evaluated, with_data = fas.rank_by_parameter(batch, search_term, limit=fas.DEFAULT_RANKING_LIMIT)
+    label = parameter_display_label(search_term)
+    if not ranked:
+        if language == "id":
+            return CopilotAnswer(
+                f"Belum ada data {label} yang tercatat pada fleet ({evaluated} pompa dievaluasi).", DATA_GAP, ()
+            )
+        return CopilotAnswer(
+            f"No {label} data recorded across the fleet ({evaluated} pump(s) evaluated).", DATA_GAP, ()
+        )
+
+    lines = [
+        f"{i}. {row.equipment_tag} — {row.label}: {row.value} {row.unit} (Reading: {row.reading_date})"
+        for i, row in enumerate(ranked, start=1)
+    ]
+    if language == "id":
+        answer = (
+            f"Pompa dengan {label} tertinggi:\n" + "\n".join(lines)
+            + f"\n\nDievaluasi: {evaluated} pompa / Dengan data {label}: {with_data}"
+        )
+    else:
+        answer = (
+            f"Pumps with the highest {label}:\n" + "\n".join(lines)
+            + f"\n\nEvaluated: {evaluated} pump(s) / With {label} data: {with_data}"
+        )
+
+    evidence = tuple(
+        _evidence("ConditionMonitoringReadingRepository", row.equipment_tag, row.label, row.value) for row in ranked
+    )
+    return CopilotAnswer(answer, FACT, evidence)
+
+
+def _handle_fleet_current_leak(batch: "fas.FleetDataBatch", *, language: str = "en") -> CopilotAnswer:
+    """Phase 7 -- CURRENT/ACTIVE/LATEST leak evidence only, reusing the
+    SAME 30-day active-monitoring window RecommendationEngine's own
+    REC_ACTIVE_LEAK rule already uses (fas.current_leak_pumps) -- never a
+    second, conflicting definition of "current", and never historical
+    frequency."""
+    rows = fas.current_leak_pumps(batch)
+    if not rows:
+        if language == "id":
+            return CopilotAnswer("Tidak ada pompa dengan indikasi kebocoran mechanical seal saat ini.", FACT, ())
+        return CopilotAnswer("No pump currently shows mechanical seal leak evidence.", FACT, ())
+
+    display = rows[: fas.DEFAULT_RANKING_LIMIT]
+    if language == "id":
+        lines = [
+            f"- {row.equipment_tag} — {row.reading_date}: {row.finding or 'tidak ada catatan temuan'} "
+            f"(Status: {row.workflow_status or 'N/A'})"
+            for row in display
+        ]
+        answer = f"{len(rows)} pompa dengan indikasi kebocoran mechanical seal saat ini:\n" + "\n".join(lines)
+        if len(rows) > len(display):
+            answer += f"\n\nMasih ada {len(rows) - len(display)} pompa lain."
+    else:
+        lines = [
+            f"- {row.equipment_tag} — {row.reading_date}: {row.finding or 'no finding recorded'} "
+            f"(Status: {row.workflow_status or 'N/A'})"
+            for row in display
+        ]
+        answer = f"{len(rows)} pump(s) currently show mechanical seal leak evidence:\n" + "\n".join(lines)
+        if len(rows) > len(display):
+            answer += f"\n\n{len(rows) - len(display)} more pump(s) also affected."
+
+    evidence = tuple(
+        _evidence("ConditionMonitoringReadingRepository", row.equipment_tag, "finding", row.finding) for row in display
+    )
+    return CopilotAnswer(answer, FACT, evidence)
+
+
+def _handle_fleet_historical_leak_frequency(batch: "fas.FleetDataBatch", period, *, language: str = "en") -> CopilotAnswer:
+    """Phase 8 -- historical leak-event COUNT strictly within `period`,
+    never an all-time count and never a substitute for the current-leak
+    query above (fas.historical_leak_frequency)."""
+    ranked, matching = fas.historical_leak_frequency(batch, period, limit=fas.DEFAULT_RANKING_LIMIT)
+    period_label = period.label_id if language == "id" else period.label_en
+    if not ranked:
+        if language == "id":
+            return CopilotAnswer(
+                f"Tidak ada kebocoran mechanical seal yang tercatat pada periode {period_label}.", DATA_GAP, ()
+            )
+        return CopilotAnswer(f"No mechanical seal leak recorded in the period {period_label}.", DATA_GAP, ())
+
+    if language == "id":
+        lines = [f"{i}. {row.equipment_tag} — {row.count} kejadian kebocoran" for i, row in enumerate(ranked, start=1)]
+        answer = f"Pompa yang paling sering bocor ({period_label}):\n" + "\n".join(lines)
+    else:
+        lines = [f"{i}. {row.equipment_tag} — {row.count} leak event(s)" for i, row in enumerate(ranked, start=1)]
+        answer = f"Pumps that leaked most often ({period_label}):\n" + "\n".join(lines)
+
+    evidence = tuple(
+        _evidence("ConditionMonitoringReadingRepository", row.equipment_tag, "leak_event_count", row.count)
+        for row in ranked
+    )
+    return CopilotAnswer(answer, FACT, evidence)
+
+
+def _detect_fleet_stock_semantic(question: str) -> str | None:
+    """Phase 9/10/11 -- ONLY the specific phrasings that need the
+    explicit, never-collapsed ZERO_STOCK/NO_STOCK_RECORD/NO_COMPATIBLE_
+    SEAL states (fas.classify_fleet_stock): an explicit "record"/
+    "catatan" wording, an explicit zero quantity, or "spare seal"
+    negated. Every other fleet-stock phrasing (the pre-existing "ga ada
+    stocknya"/"tidak ada stock"/"kosong"/"unknown"/"lowest" wording
+    _handle_fleet_stock_status already answers) intentionally returns
+    None here, unchanged -- see _detect_fleet_stock_semantic's own
+    caller for why."""
+    q = (question or "").lower()
+
+    def has(*words: str) -> bool:
+        return any(word in q for word in words)
+
+    if has("record", "catatan"):
+        return "NO_STOCK_RECORD_ONLY"
+    if re.search(r"\b(?:stok|stock)[a-z\s]{0,20}\b0\b", q) or has(
+        "stok 0", "stock 0", "stok nol", "stock nol", "quantity 0", "qty 0"
+    ):
+        return "ZERO_STOCK_ONLY"
+    if has("spare seal", "spare part") and has(
+        "tidak punya", "tidak ada", "belum punya", "gak punya", "ga punya", "don't have", "doesn't have", "no spare"
+    ):
+        return "NO_SPARE_BROAD"
+    return None
+
+
+def _render_stock_semantic_rows(matches: list, label_id: str, label_en: str, language: str) -> CopilotAnswer:
+    if not matches:
+        if language == "id":
+            return CopilotAnswer(f"Tidak ada pompa yang {label_id}.", DATA_GAP, ())
+        return CopilotAnswer(f"No pumps found that have {label_en}.", DATA_GAP, ())
+    if language == "id":
+        lines = [f"- {r.equipment_tag} — {r.seal_code or 'N/A'}" for r in matches]
+        answer = f"{len(matches)} pompa yang {label_id}:\n" + "\n".join(lines)
+    else:
+        lines = [f"- {r.equipment_tag} — {r.seal_code or 'N/A'}" for r in matches]
+        answer = f"{len(matches)} pump(s) have {label_en}:\n" + "\n".join(lines)
+    evidence = tuple(_evidence("FleetAnalyticsStockClassification", r.equipment_tag, "state", r.state) for r in matches)
+    return CopilotAnswer(answer, FACT, evidence)
+
+
+def _handle_fleet_stock_semantics(
+    semantic: str, scope: frozenset[str] | None, *, pump_gateway, language: str = "en", **batch_deps: Any
+) -> CopilotAnswer:
+    """Phase 9/10/11 -- explicit, never-collapsed inventory states via
+    fas.classify_fleet_stock(): ZERO_STOCK/NO_STOCK_RECORD/NO_COMPATIBLE_
+    SEAL, one row per (equipment, compatible seal) pair, never one
+    generic "out of stock" bucket."""
+    batch = _build_fleet_batch_or_none(scope, pump_gateway=pump_gateway, **batch_deps)
+    if batch is None:
+        return _fleet_analytics_unavailable_answer(language)
+
+    rows = fas.classify_fleet_stock(batch)
+    if semantic == "ZERO_STOCK_ONLY":
+        matches = [r for r in rows if r.state == fas.STOCK_ZERO]
+        return _render_stock_semantic_rows(matches, "stok seal tercatat 0", "seal stock recorded as 0", language)
+    if semantic == "NO_STOCK_RECORD_ONLY":
+        matches = [r for r in rows if r.state == fas.STOCK_NO_RECORD]
+        return _render_stock_semantic_rows(
+            matches, "tidak punya catatan (record) stok seal", "no seal stock record", language
+        )
+
+    # NO_SPARE_BROAD -- "tidak punya spare seal": every reason a pump has
+    # no usable spare, grouped and labeled SEPARATELY (Phase 10's own
+    # explicit "preserve exact reason per equipment" rule) -- never
+    # collapsed into one undifferentiated list.
+    zero = [r for r in rows if r.state == fas.STOCK_ZERO]
+    no_record = [r for r in rows if r.state == fas.STOCK_NO_RECORD]
+    no_compat = [r for r in rows if r.state == fas.STOCK_NO_COMPATIBLE_SEAL]
+    if not (zero or no_record or no_compat):
+        if language == "id":
+            return CopilotAnswer("Setiap pompa memiliki spare seal yang tersedia.", FACT, ())
+        return CopilotAnswer("Every pump has an available spare seal.", FACT, ())
+
+    if language == "id":
+        sections = []
+        if zero:
+            sections.append("Stock 0:\n" + "\n".join(f"- {r.equipment_tag} ({r.seal_code})" for r in zero))
+        if no_record:
+            sections.append(
+                "Tidak ada record inventory:\n" + "\n".join(f"- {r.equipment_tag} ({r.seal_code})" for r in no_record)
+            )
+        if no_compat:
+            sections.append("Belum ada compatible seal:\n" + "\n".join(f"- {r.equipment_tag}" for r in no_compat))
+        answer = "Pompa yang tidak punya spare seal:\n\n" + "\n\n".join(sections)
+    else:
+        sections = []
+        if zero:
+            sections.append("Zero stock:\n" + "\n".join(f"- {r.equipment_tag} ({r.seal_code})" for r in zero))
+        if no_record:
+            sections.append(
+                "No inventory record:\n" + "\n".join(f"- {r.equipment_tag} ({r.seal_code})" for r in no_record)
+            )
+        if no_compat:
+            sections.append("No compatible seal mapped:\n" + "\n".join(f"- {r.equipment_tag}" for r in no_compat))
+        answer = "Pumps with no spare seal:\n\n" + "\n\n".join(sections)
+
+    evidence = tuple(
+        _evidence("FleetAnalyticsStockClassification", r.equipment_tag, "state", r.state)
+        for r in (zero + no_record + no_compat)
+    )
+    return CopilotAnswer(answer, FACT, evidence)
+
+
+def _handle_fleet_overdue_pm(
+    scope: frozenset[str] | None, *, pump_gateway, language: str = "en", **batch_deps: Any
+) -> CopilotAnswer:
+    """Phase 12 -- OVERDUE classified ONLY from real pm_schedule.next_due
+    evidence (fas.overdue_pm_pumps, the SAME EngineeringContextEngine.
+    _compute_pm_status logic PM-due recommendations already use). A pump
+    with no schedule row is UNSCHEDULED, never fabricated as overdue."""
+    batch = _build_fleet_batch_or_none(scope, pump_gateway=pump_gateway, **batch_deps)
+    if batch is None:
+        return _fleet_analytics_unavailable_answer(language)
+
+    overdue = fas.overdue_pm_pumps(batch)
+    if not overdue:
+        if language == "id":
+            return CopilotAnswer("Tidak ada pompa dengan PM overdue berdasarkan jadwal kanonik.", FACT, ())
+        return CopilotAnswer("No pump is overdue for PM according to canonical scheduling data.", FACT, ())
+
+    display = overdue[: fas.DEFAULT_RANKING_LIMIT]
+    if language == "id":
+        lines = [f"- {tag} — jatuh tempo: {next_due}" for tag, next_due in display]
+        answer = f"{len(overdue)} pompa overdue PM:\n" + "\n".join(lines)
+        if len(overdue) > len(display):
+            answer += f"\n\nMasih ada {len(overdue) - len(display)} pompa lain."
+    else:
+        lines = [f"- {tag} — due: {next_due}" for tag, next_due in display]
+        answer = f"{len(overdue)} pump(s) overdue for PM:\n" + "\n".join(lines)
+        if len(overdue) > len(display):
+            answer += f"\n\n{len(overdue) - len(display)} more pump(s) also overdue."
+
+    evidence = tuple(_evidence("PMScheduleRepository", tag, "next_due", next_due) for tag, next_due in display)
     return CopilotAnswer(answer, FACT, evidence)
 
 

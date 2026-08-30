@@ -138,7 +138,18 @@ class FleetExecutiveSummaryService:
         # latency, doubling every per-pump gateway round trip in the
         # fleet). aggregate_from_knowledge() is a pure, no-I/O function
         # over the SAME already-fetched knowledge -- no second fetch.
-        knowledge = self.fleet_reliability_service.list_pump_knowledge(scope=scope)
+        #
+        # MWO-LTSA-FLEET-ANALYTICS-001 -- list_pump_knowledge_fast() uses
+        # the O(1)-total-gateway-call batch path when the production
+        # singleton FleetReliabilityService was constructed with the
+        # batch-sourcing dependencies (dependencies.py), replacing what
+        # was still, until now, a one-gateway-round-trip-per-pump fetch
+        # for seal compatibility/seals/stock/PM/CM/CMON/PM-schedule. Falls
+        # back to the original per-pump list_pump_knowledge() when those
+        # dependencies are absent (e.g. a test building this service with
+        # only pump_gateway/ltsa_knowledge_service) -- identical output,
+        # only the fetch strategy differs.
+        knowledge = self.fleet_reliability_service.list_pump_knowledge_fast(scope=scope)
         reliability = self.fleet_reliability_service.aggregate_from_knowledge(knowledge)
 
         # MWO-LTSA-FLEET-ATTENTION-001 -- fleet ranking must reflect
