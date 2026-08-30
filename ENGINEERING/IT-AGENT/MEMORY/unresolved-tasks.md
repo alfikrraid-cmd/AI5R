@@ -49,6 +49,11 @@ real router/channel (mirrors this repo's own precedent), or (b) hold the
 merge until scope-threading is added now. Either way, review
 fix/ltsa-messaging-gateway-implementation (CI-verified green for its own
 tests) before deciding.
+Decision as of 2026-08-30 (AI5R IT Agent Foundation v1 release): HOLD.
+Not merged into release/ltsa-v1-rc1 at 40a38bf. Status =
+HOLD_SECURITY_SCOPE_CLOSURE -- remains blocked pending a dedicated MWO to
+close the area/MA scope-enforcement gap before this gateway is shipped or
+wired to any router/channel.
 
 ## 2026-08-30 — Investigate test_auth_admin_service.py DelegationDeniedError failure
 What's blocking: Needs its own investigation -- out of MWO-LTSA-039A's
