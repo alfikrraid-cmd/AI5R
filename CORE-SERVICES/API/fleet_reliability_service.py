@@ -81,10 +81,20 @@ class FleetReliabilityService:
         # names". `scope=None` (the default) is the exact pre-existing
         # behavior for every caller that does not pass it (unrestricted
         # roles, and every existing test).
-        tags = self._list_pump_tags(scope)
-        metrics = tuple(
-            compute_executive_metrics(self.ltsa_knowledge_service.build(tag)) for tag in tags
-        )
+        #
+        # MWO-LTSA-FLEET-ATTENTION-001 -- routed through list_pump_
+        # knowledge()/aggregate_from_knowledge() (pure refactor, identical
+        # result) so a caller that needs BOTH the aggregate AND per-pump
+        # detail (FleetExecutiveSummaryService) can fetch knowledge once
+        # and derive both from it, instead of this method independently
+        # re-fetching the same per-pump knowledge a second time.
+        return self.aggregate_from_knowledge(self.list_pump_knowledge(scope=scope))
+
+    def aggregate_from_knowledge(self, knowledge: tuple[LTSAKnowledge, ...]) -> FleetReliability:
+        """Pure aggregation, zero I/O -- the same compute_executive_metrics/
+        _aggregate build() itself already used, just callable directly over
+        already-fetched knowledge (MWO-LTSA-FLEET-ATTENTION-001)."""
+        metrics = tuple(compute_executive_metrics(pump) for pump in knowledge)
         return self._aggregate(metrics)
 
     def list_pump_knowledge(self, *, scope: frozenset[str] | None = None) -> tuple[LTSAKnowledge, ...]:

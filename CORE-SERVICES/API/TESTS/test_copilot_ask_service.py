@@ -737,11 +737,12 @@ def _fleet_priority_query(fleet_executive_summary_service, scope=None):
 
 
 class _FakeTopRisk:
-    def __init__(self, tag_number, title, priority, action):
+    def __init__(self, tag_number, title, priority, action, description="test evidence"):
         self.tag_number = tag_number
         self.title = title
         self.priority = priority
         self.action = action
+        self.description = description
 
 
 class _FakeFleetExecutiveSummary:
@@ -774,7 +775,10 @@ def test_fleet_priority_query_reuses_canonical_top_risks():
     assert "211-P-13AR" in answer.answer
     assert "Vibration trending high" in answer.answer
     assert "Schedule CM inspection" in answer.answer
-    assert "ATTENTION" in answer.answer
+    # MWO-LTSA-FLEET-ATTENTION-001 -- rewritten to the mission's concise
+    # operational format (numbered pump list + Source footer); fleet_status
+    # is no longer rendered inline in this answer.
+    assert "Source: LTSA canonical data" in answer.answer
     assert answer.evidence == (
         {"source": "FleetExecutiveSummaryService", "reference": "211-P-13AR", "field": "priority", "value": "120"},
     )

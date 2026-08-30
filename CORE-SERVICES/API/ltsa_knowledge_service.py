@@ -163,6 +163,13 @@ class LTSAKnowledgeService:
     def build(self, tag_number: str) -> LTSAKnowledge:
         compatible_seals = self._build_compatible_seals(tag_number)
         inventory = self._build_stock_inventory(tag_number)
+        # MWO-LTSA-FLEET-ATTENTION-001 -- work_order_gateway.list_work_
+        # orders() (an unfiltered, whole-table n8n gateway call) was
+        # previously invoked TWICE per build(tag) call -- once here and
+        # once again inside _build_breakdown_history, both filtering the
+        # SAME response independently. Fetched once, reused for both --
+        # identical result, one fewer n8n round trip per pump.
+        work_orders_response = self.work_order_gateway.list_work_orders()
 
         knowledge = LTSAKnowledge(
             tag_number=tag_number,
@@ -171,13 +178,13 @@ class LTSAKnowledgeService:
             inventory=inventory,
             pm_history=self._build_pm_history(tag_number),
             cm_history=self._build_cm_history(tag_number),
-            breakdown_history=self._build_breakdown_history(tag_number),
+            breakdown_history=self._build_breakdown_history(tag_number, work_orders_response),
             drawings=self._build_drawings(compatible_seals),
             recommendation=(),
             pm_schedules=self._build_pm_schedules(tag_number),
             condition_monitoring_schedules=self._build_condition_monitoring_schedules(tag_number),
             condition_monitoring_readings=self._build_condition_monitoring_readings(tag_number),
-            work_orders=self._build_work_orders(tag_number),
+            work_orders=self._build_work_orders(tag_number, work_orders_response),
         )
 
         return replace(knowledge, recommendation=self.recommendation_engine.recommend(knowledge))
@@ -257,11 +264,10 @@ class LTSAKnowledgeService:
             if record.get("asset_code") == tag_number
         ]
 
-    def _build_work_orders(self, tag_number: str) -> list[dict[str, Any]]:
-        response = self.work_order_gateway.list_work_orders()
+    def _build_work_orders(self, tag_number: str, work_orders_response: dict[str, Any]) -> list[dict[str, Any]]:
         return [
             record
-            for record in (response.get("data") or [])
+            for record in (work_orders_response.get("data") or [])
             if record.get("asset_code") == tag_number
         ]
 
@@ -287,13 +293,12 @@ class LTSAKnowledgeService:
             if record.get("asset_code") == tag_number
         ]
 
-    def _build_breakdown_history(self, tag_number: str) -> list[dict[str, Any]]:
+    def _build_breakdown_history(self, tag_number: str, work_orders_response: dict[str, Any]) -> list[dict[str, Any]]:
         history = mis.get_pump_history(
             tag_number, maintenance_history_gateway=self.maintenance_history_gateway
         )
         records = history.get("records") or []
 
-        work_orders_response = self.work_order_gateway.list_work_orders()
         work_order_types = {
             wo.get("work_order_code"): wo.get("work_type")
             for wo in (work_orders_response.get("data") or [])

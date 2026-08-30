@@ -11,8 +11,34 @@ from typing import Any, Protocol
 
 from .auth_service import AuthenticatedIdentity, resolve_area_scope
 from .pump_area_scope import is_asset_in_scope
+from .whatsapp_asset_context import AssetContextCache
+from .whatsapp_fleet_query_tracker import FleetQueryDeliveryTracker
 
 logger = logging.getLogger(__name__)
+
+# MWO-LTSA-STOCK-RESPONSE-STANDARD-001 -- one process-local cache for the
+# whole module, matching every other in-process singleton this codebase
+# already uses (dependencies.py's own gateway/repository singletons). See
+# whatsapp_asset_context.py's own docstring for why this is in-memory
+# rather than a new DB-backed repository.
+_asset_context_cache = AssetContextCache()
+
+# MWO-LTSA-FLEET-ATTENTION-001 -- same process-local singleton pattern.
+_fleet_query_delivery_tracker = FleetQueryDeliveryTracker()
+
+# Explicit fleet-wide phrasing ("pompa mana..."/"which pump(s)...") --
+# distinguishes a genuine multi-pump ranking question from an ambiguous,
+# single-pump-implying follow-up like "cek stock seal yang tersedia" that
+# should resolve against conversational context instead. Kept narrow and
+# literal (not a broad guess) -- OUT_OF_STOCK/UNKNOWN_STOCK/LOWEST_STOCK
+# predicate wording already unambiguously signals fleet scope on its own
+# (see _detect_fleet_stock_predicate) and is never affected by this check.
+_FLEET_SCOPE_WORDS = ("pompa mana", "pumps", "which pump", "seluruh fleet", "semua pompa")
+
+
+def _has_fleet_stock_wording(text: str) -> bool:
+    lowered = (text or "").lower()
+    return any(word in lowered for word in _FLEET_SCOPE_WORDS)
 
 
 def _correlation_id(value: str | None) -> str | None:
@@ -334,6 +360,13 @@ class LTSAAIQueryDependencies:
     # ask_copilot()'s own default-constructed n8n gateways instead.
     pm_occurrence_repository: Any
     cm_report_repository: Any
+    # MWO-LTSA-FLEET-ATTENTION-001 -- optional callable(text) -> None, sent
+    # an immediate acknowledgement before a fleet-wide analysis begins (see
+    # _handle_ltsa_ai_query's own fleet_priority branch). Defaults to None
+    # (no eager ack) so every pre-existing construction site/test keeps
+    # working unchanged -- only the two production WhatsApp routers wire a
+    # real one, bound to their own outbound_client.send_text(recipient, ...).
+    send_immediate_ack: Any = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -450,7 +483,9 @@ def _process_inbound_message(
         # pending row (see _handle_ltsa_ai_query's own comment) -- a
         # question a caller asks leaves no state for a later "Ya" to act
         # on, unlike PM/CMON's own two-step confirmation flow.
-        query_result = _handle_ltsa_ai_query(stripped, identity, pump_gateway, ltsa_ai_query_deps)
+        query_result = _handle_ltsa_ai_query(
+            stripped, identity, pump_gateway, ltsa_ai_query_deps, provider_message_id
+        )
         if query_result is not None:
             return query_result
         return _persist(
@@ -1224,6 +1259,7 @@ def _handle_ltsa_ai_query(
     identity: AuthenticatedIdentity,
     pump_gateway: PumpGatewayProtocol,
     ltsa_ai_query_deps: "LTSAAIQueryDependencies | None",
+    provider_message_id: str | None = None,
 ) -> IntakeResult | None:
     if ltsa_ai_query_deps is None:
         return None
@@ -1233,13 +1269,63 @@ def _handle_ltsa_ai_query(
     # in flight (mirrors this file's existing deferred-import discipline
     # elsewhere, e.g. the sys.path insert at module load for _INGESTION_DIR
     # in the sibling repository modules).
-    from .copilot_ask_service import _detect_intent as _detect_copilot_intent
+    from .copilot_ask_service import _detect_fleet_stock_predicate, _detect_intent as _detect_copilot_intent, _extract_seal_code
     from .copilot_orchestrator import orchestrate_copilot
 
-    if _detect_copilot_intent(text) is None:
+    intent = _detect_copilot_intent(text)
+    if intent is None:
         return None
 
+    # MWO-LTSA-FLEET-ATTENTION-001 -- "never silently fail" + "prevent
+    # duplicate acknowledgement/final responses during webhook retry".
+    # Fleet-wide analysis is the one query shape slow enough that Meta's
+    # own webhook delivery can time out and retry the identical
+    # provider_message_id before our first attempt has replied. This path
+    # never persists a pending row (read-only, see this function's own
+    # docstring below), so the existing _persist()-based DUPLICATE_DELIVERY
+    # check never sees these deliveries -- a dedicated, process-local
+    # tracker closes that specific gap for this specific query shape only.
+    if intent == "fleet_priority" and provider_message_id is not None:
+        if _fleet_query_delivery_tracker.is_duplicate(identity.user_id, provider_message_id):
+            # Same delivery seen before (a retry) -- returning reply=None
+            # with message="DUPLICATE_DELIVERY" reuses the exact suppression
+            # check routers/whatsapp_webhook.py's own _handle_inbound_message
+            # already applies before sending any outbound message.
+            return IntakeResult(status="ANSWERED", message="DUPLICATE_DELIVERY", reply=None)
+        _fleet_query_delivery_tracker.mark_seen(identity.user_id, provider_message_id)
+        if ltsa_ai_query_deps.send_immediate_ack is not None:
+            try:
+                ltsa_ai_query_deps.send_immediate_ack("Sedang menganalisis kondisi fleet LTSA...")
+            except Exception:
+                # Best-effort: a failed acknowledgement send must never
+                # block or fail the actual answer that follows.
+                logger.info("event=whatsapp_fleet_query_ack_send_failed")
+
     tag = _extract_ltsa_ai_query_tag(text)
+
+    # MWO-LTSA-STOCK-RESPONSE-STANDARD-001 -- explicit equipment in THIS
+    # message always wins (checked above, unchanged); only when the
+    # message names neither a tag nor a seal code, AND carries none of the
+    # existing genuinely fleet-wide stock predicate words (kosong/habis/
+    # paling sedikit/unknown -- ask_copilot()'s own established, tested
+    # fleet-stock-status intent, left untouched), does a tag-less inventory
+    # question resolve against this sender's own last-discussed-equipment
+    # context instead of falling through to that fleet-wide answer. "Never
+    # silently fail": no context means a direct, targeted follow-up
+    # question, not a guess and not a fleet dump for what was really a
+    # single-pump follow-up.
+    if intent == "inventory" and tag is None and _extract_seal_code(text) is None:
+        if _detect_fleet_stock_predicate(text) == "AVAILABLE_STOCK" and not _has_fleet_stock_wording(text):
+            context_tag = _asset_context_cache.recall(identity.user_id)
+            if context_tag is not None:
+                tag = context_tag
+            else:
+                return IntakeResult(
+                    status="ANSWERED",
+                    message="LTSA_AI_QUERY_NO_CONTEXT",
+                    reply="Stock seal untuk pompa mana?",
+                )
+
     scope = resolve_area_scope(identity)
 
     if tag is not None:
@@ -1257,6 +1343,10 @@ def _handle_ltsa_ai_query(
         known = isinstance(pump, dict) and pump.get("tag_number") == tag
         if not known or not is_asset_in_scope(tag, scope, pump_gateway):
             return IntakeResult(status="REJECTED", message="LTSA_AI_QUERY_OUT_OF_SCOPE", reply=f"Tag pompa {tag} tidak ditemukan.")
+        # Remembered AFTER the scope/existence check passes -- an
+        # out-of-scope or unknown tag is never planted as a future
+        # question's silent context.
+        _asset_context_cache.remember(identity.user_id, tag)
 
     # MWO-LTSA-WHATSAPP-ID-LANGUAGE-001 -- WhatsApp is the one channel that
     # requests Indonesian output from the SAME LTSA AI/copilot; the

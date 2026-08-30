@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import hmac
 import logging
@@ -143,6 +144,25 @@ def _handle_inbound_message(
     # (quotes) a specific prior message; when present it names the exact
     # AI5R outbound message being answered.
     context_message_id = (message.get("context") or {}).get("id")
+
+    # MWO-LTSA-FLEET-ATTENTION-001 -- bound to THIS message's own
+    # recipient (ltsa_ai_query_deps itself is constructed once per
+    # request, shared across every message in a batched webhook payload,
+    # so the ack target can only be fixed here, per message). Best-effort,
+    # synchronous (unlike the final reply, never backgrounded) -- a fleet
+    # query's own acknowledgement needs to reach the user BEFORE the slow
+    # computation runs, not after the request already returned.
+    per_message_deps = ltsa_ai_query_deps
+    try:
+        ack_recipient = normalize_sender_identifier(sender_identifier)
+    except ValueError:
+        ack_recipient = None
+    if ack_recipient:
+        per_message_deps = dataclasses.replace(
+            ltsa_ai_query_deps,
+            send_immediate_ack=lambda text, _r=ack_recipient: outbound_client.send_text(_r, text),
+        )
+
     result = process_inbound_message(
         provider="whatsapp_cloud",
         provider_message_id=provider_message_id,
@@ -154,7 +174,7 @@ def _handle_inbound_message(
         context_message_id=context_message_id,
         cmon_repository=cmon_repository,
         pm_repository=pm_repository,
-        ltsa_ai_query_deps=ltsa_ai_query_deps,
+        ltsa_ai_query_deps=per_message_deps,
     )
 
     # A duplicate webhook delivery of the same provider_message_id must not
