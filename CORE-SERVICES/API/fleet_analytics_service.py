@@ -99,8 +99,20 @@ def build_fleet_data_batch(
 
     cmon_by_tag: dict[str, tuple[dict[str, Any], ...]] = {}
     try:
-        rows = condition_monitoring_reading_repository.list_all(scope=scope, limit=20000)
-        cmon_by_tag = {k: tuple(v) for k, v in _group_by(list(rows or []), "asset_code").items()}
+        # condition_monitoring_reading_repository.list_all() returns a
+        # dict ({"success", "data", "count", "total", ...} -- the same
+        # shape its own list_by_asset()-sibling "list ALL" methods use
+        # elsewhere in this codebase, e.g. cm_report_repository.
+        # list_cm_reports()), NOT a bare list -- unwrap it the same way
+        # every other dict-shaped "list ALL" call in this function
+        # already does. (Caught in production: an earlier version of
+        # this function treated the return value as a bare list, which
+        # silently produced an EMPTY cmon_by_tag on every real call --
+        # never a crash, since the dict itself is truthy/iterable-as-keys,
+        # just a wrong-shape produces zero rows.)
+        response = condition_monitoring_reading_repository.list_all(scope=scope, limit=20000)
+        rows = (response.get("data") or []) if response.get("success") else []
+        cmon_by_tag = {k: tuple(v) for k, v in _group_by(list(rows), "asset_code").items()}
     except Exception:
         gaps.append("cmon")
 

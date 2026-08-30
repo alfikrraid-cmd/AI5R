@@ -63,13 +63,19 @@ class FakePumpGateway:
 
 
 class FakeCMONRepository:
+    """Shaped to match the REAL condition_monitoring_reading_repository.
+    list_all()'s own dict return contract, verified directly against
+    production -- see test_fleet_analytics.py's own FakeCMONRepository
+    docstring for why a bare-list fake here would mask a real bug."""
+
     def __init__(self, rows):
         self._rows = rows
         self.calls = 0
 
     def list_all(self, *, scope=None, limit=20000, offset=0):
         self.calls += 1
-        return list(self._rows)
+        rows = list(self._rows)
+        return {"success": True, "message": "ok", "count": len(rows), "data": rows, "total": len(rows)}
 
 
 class FakePMOccurrenceRepository:

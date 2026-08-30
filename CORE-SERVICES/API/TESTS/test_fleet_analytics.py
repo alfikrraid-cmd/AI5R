@@ -27,13 +27,21 @@ class FakePumpGateway:
 
 
 class FakeCMONRepository:
+    """MWO-LTSA-FLEET-ANALYTICS-001 readiness closure -- shaped to match
+    the REAL condition_monitoring_reading_repository.list_all()'s own
+    return contract ({"success", "data", "count", "total", ...}, verified
+    directly against production), not a bare list -- a bare-list fake
+    here previously masked a real bug where build_fleet_data_batch()
+    silently produced an empty cmon_by_tag against real production data."""
+
     def __init__(self, rows):
         self._rows = rows
         self.calls = 0
 
     def list_all(self, *, scope=None, limit=20000, offset=0):
         self.calls += 1
-        return list(self._rows)
+        rows = list(self._rows)
+        return {"success": True, "message": "ok", "count": len(rows), "data": rows, "total": len(rows)}
 
 
 class FakePMOccurrenceRepository:
