@@ -15,8 +15,10 @@ from dependencies import (
     get_condition_monitoring_reading_repository,
     get_copilot_ai_client,
     get_equipment_timeline_service,
+    get_fleet_executive_summary_service,
     get_installation_gateway,
     get_installation_report_repository,
+    get_ltsa_ai_condition_monitoring_reading_repository,
     get_ltsa_knowledge_service,
     get_maintenance_history_gateway,
     get_mechanical_seal_stock_repository,
@@ -197,11 +199,17 @@ async def receive_whatsapp_webhook(
     condition_monitoring_reading_gateway=Depends(get_condition_monitoring_reading_gateway),
     installation_report_repository=Depends(get_installation_report_repository),
     mechanical_seal_stock_repository=Depends(get_mechanical_seal_stock_repository),
+    ltsa_ai_condition_monitoring_reading_repository=Depends(get_ltsa_ai_condition_monitoring_reading_repository),
+    fleet_executive_summary_service=Depends(get_fleet_executive_summary_service),
 ) -> dict[str, Any]:
     # Same canonical gateways/services routers/copilot.py's own
     # ask_copilot_endpoint already depends on -- no new gateway, no
     # duplicated business logic, WhatsApp calls the exact same LTSA AI
-    # service the dashboard does.
+    # service the dashboard does. ltsa_ai_condition_monitoring_reading_
+    # repository resolves the SAME repository singleton cmon_repository
+    # above already uses for the CMON WRITE flow (see get_ltsa_ai_
+    # condition_monitoring_reading_repository's own docstring for why it
+    # is a distinct dependency callable, not a second repository).
     ltsa_ai_query_deps = LTSAAIQueryDependencies(
         ai_client=ai_client,
         maintenance_history_gateway=maintenance_history_gateway,
@@ -212,6 +220,8 @@ async def receive_whatsapp_webhook(
         condition_monitoring_reading_gateway=condition_monitoring_reading_gateway,
         installation_report_repository=installation_report_repository,
         mechanical_seal_stock_repository=mechanical_seal_stock_repository,
+        condition_monitoring_reading_repository=ltsa_ai_condition_monitoring_reading_repository,
+        fleet_executive_summary_service=fleet_executive_summary_service,
     )
     raw_body = await request.body()
     if not _signature_valid(raw_body, x_hub_signature_256):

@@ -266,8 +266,15 @@ class LTSAAIQueryDependencies:
     # get_installation_report_repository/
     # get_mechanical_seal_stock_repository/get_copilot_ai_client) -- one
     # object so process_inbound_message's signature gains a single new
-    # optional parameter instead of nine. No new gateway, no new AI
-    # client, no duplicated business logic: WhatsApp calls the exact same
+    # optional parameter instead of nine (now eleven, closing the two
+    # gaps this MWO's own Phase 1/Phase 2 name: tag-scoped Condition
+    # Monitoring via condition_monitoring_reading_repository -- the same
+    # canonical repository the WhatsApp CMON WRITE flow already persists
+    # through, reused read-only via list_by_asset() -- and fleet
+    # priority/reliability via fleet_executive_summary_service, the same
+    # canonical service routers/fleet.py's own /api/ltsa/fleet/powerbi
+    # endpoint already serves). No new gateway, no new AI client, no
+    # duplicated business logic: WhatsApp calls the exact same
     # ask_copilot()/orchestrate_copilot() functions the dashboard's own
     # /api/ltsa/copilot/ask route calls.
     ai_client: Any
@@ -279,6 +286,8 @@ class LTSAAIQueryDependencies:
     condition_monitoring_reading_gateway: Any
     installation_report_repository: Any
     mechanical_seal_stock_repository: Any
+    condition_monitoring_reading_repository: Any
+    fleet_executive_summary_service: Any
 
 
 @dataclass(frozen=True, slots=True)
@@ -1105,8 +1114,25 @@ def _persist(repository: WhatsAppIntakeRepositoryProtocol, **payload: Any) -> In
     return IntakeResult(status=saved["state"], message="PENDING_CREATED", intake=saved, reply=payload.get("reply"))
 
 
+# A question about EXISTING data ("CMON terakhir <tag>?", "Kapan terakhir
+# PM <tag>?") is never a new reading/activity submission -- these are the
+# only markers that flip a PM/CM/CMON-headed message from the
+# transactional write below to LTSA AI query routing instead (checked
+# against the remainder of the text, never the head word itself, so a
+# genuine finding/activity report containing none of these is completely
+# unaffected).
+_QUERY_MARKER_PATTERN = re.compile(r"\?|\bterakhir\b|\bapa\b|\bbagaimana\b|\bkapan\b", re.IGNORECASE)
+
+
 def _detect_intent(text: str) -> str:
-    head = text.strip().split(maxsplit=1)[0].casefold() if text.strip() else ""
+    stripped = text.strip()
+    if not stripped:
+        return "UNSUPPORTED_INTENT"
+    parts = stripped.split(maxsplit=1)
+    head = parts[0].casefold()
+    rest = parts[1] if len(parts) > 1 else ""
+    if head in {"pm", "cm", "cmon", "condition"} and _QUERY_MARKER_PATTERN.search(rest):
+        return "UNSUPPORTED_INTENT"
     if head == "pm":
         return "PM"
     if head in {"cm", "cmon", "condition"}:
@@ -1201,6 +1227,8 @@ def _handle_ltsa_ai_query(
         condition_monitoring_reading_gateway=ltsa_ai_query_deps.condition_monitoring_reading_gateway,
         installation_report_repository=ltsa_ai_query_deps.installation_report_repository,
         mechanical_seal_stock_repository=ltsa_ai_query_deps.mechanical_seal_stock_repository,
+        condition_monitoring_reading_repository=ltsa_ai_query_deps.condition_monitoring_reading_repository,
+        fleet_executive_summary_service=ltsa_ai_query_deps.fleet_executive_summary_service,
     )
     # READ-ONLY by construction: every function reachable from here
     # (ask_copilot/orchestrate_copilot/TOOL_HANDLERS) only ever calls

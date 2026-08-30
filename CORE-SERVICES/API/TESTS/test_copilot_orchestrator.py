@@ -59,6 +59,11 @@ def _deps(**overrides):
         condition_monitoring_reading_gateway=None,
         installation_report_repository=None,
         mechanical_seal_stock_repository=None,
+        # MWO: CLOSE FINAL LTSA AI WHATSAPP QUERY GAPS -- closes the tag-
+        # scoped Condition Monitoring and fleet priority gaps; every
+        # existing test below exercises an intent that never reads them.
+        condition_monitoring_reading_repository=None,
+        fleet_executive_summary_service=None,
     )
     base.update(overrides)
     return base

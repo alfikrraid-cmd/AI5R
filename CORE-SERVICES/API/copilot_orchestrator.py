@@ -70,6 +70,7 @@ TOOL_CATALOG: dict[str, str] = {
     "drawing_document": "Engineering drawings/documents for this pump's compatible seals.",
     "installation": "Installation report history for this pump.",
     "recommendation": "Deterministic, rule-based engineering recommendations for this pump.",
+    "condition_monitoring": "Latest Condition Monitoring reading/finding for this pump.",
 }
 
 _VALID_KINDS = (FACT, INTERPRETATION, RECOMMENDATION, DATA_GAP)

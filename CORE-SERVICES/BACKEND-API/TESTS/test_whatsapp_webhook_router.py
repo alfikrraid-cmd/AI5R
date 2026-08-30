@@ -21,8 +21,10 @@ from dependencies import (
     get_condition_monitoring_reading_repository,
     get_copilot_ai_client,
     get_equipment_timeline_service,
+    get_fleet_executive_summary_service,
     get_installation_gateway,
     get_installation_report_repository,
+    get_ltsa_ai_condition_monitoring_reading_repository,
     get_ltsa_knowledge_service,
     get_maintenance_history_gateway,
     get_mechanical_seal_stock_repository,
@@ -450,6 +452,14 @@ def _default_ltsa_ai_query_deps():
         condition_monitoring_reading_gateway=_InertLTSAAIGateway(),
         installation_report_repository=_InertLTSAAIGateway(),
         mechanical_seal_stock_repository=_InertLTSAAIGateway(),
+        # Safe against BOTH crash modes: _handle_condition_monitoring
+        # rejects a non-list result (the inert stub's own {"success":
+        # False} shape) as DATA_GAP, and _handle_fleet_priority uses
+        # getattr(..., "top_risks", None) rather than assuming an
+        # attribute exists -- proven directly in copilot_ask_service's
+        # own test suite, not just asserted here.
+        condition_monitoring_reading_repository=_InertLTSAAIGateway(),
+        fleet_executive_summary_service=_InertLTSAAIGateway(),
     )
 
 
@@ -485,6 +495,13 @@ def _wire(
     app.dependency_overrides[get_condition_monitoring_reading_gateway] = lambda: deps.condition_monitoring_reading_gateway
     app.dependency_overrides[get_installation_report_repository] = lambda: deps.installation_report_repository
     app.dependency_overrides[get_mechanical_seal_stock_repository] = lambda: deps.mechanical_seal_stock_repository
+    # Distinct callable from get_condition_monitoring_reading_repository
+    # (overridden separately above via resolved_cmon) -- see
+    # dependencies.py's get_ltsa_ai_condition_monitoring_reading_
+    # repository docstring for why the write and query roles need
+    # independent test overrides despite sharing one production singleton.
+    app.dependency_overrides[get_ltsa_ai_condition_monitoring_reading_repository] = lambda: deps.condition_monitoring_reading_repository
+    app.dependency_overrides[get_fleet_executive_summary_service] = lambda: deps.fleet_executive_summary_service
     return outbound
 
 
@@ -2945,6 +2962,8 @@ def _poison_ltsa_ai_query_deps():
         condition_monitoring_reading_gateway=_PoisonLTSAAIGateway(),
         installation_report_repository=_PoisonLTSAAIGateway(),
         mechanical_seal_stock_repository=_PoisonLTSAAIGateway(),
+        condition_monitoring_reading_repository=_PoisonLTSAAIGateway(),
+        fleet_executive_summary_service=_PoisonLTSAAIGateway(),
     )
 
 
@@ -2965,7 +2984,16 @@ class _MalformedToolSelectionAIClient:
         return {"unexpected_field": "not a tools list"}
 
 
-def _query_deps(*, ai_client=None, pump_gateway=None, work_order_gateway=None, mechanical_seal_stock_repository=None, condition_monitoring_reading_gateway=None):
+def _query_deps(
+    *,
+    ai_client=None,
+    pump_gateway=None,
+    work_order_gateway=None,
+    mechanical_seal_stock_repository=None,
+    condition_monitoring_reading_gateway=None,
+    condition_monitoring_reading_repository=None,
+    fleet_executive_summary_service=None,
+):
     from API.whatsapp_intake_service import LTSAAIQueryDependencies
     return LTSAAIQueryDependencies(
         ai_client=ai_client,
@@ -2977,6 +3005,8 @@ def _query_deps(*, ai_client=None, pump_gateway=None, work_order_gateway=None, m
         condition_monitoring_reading_gateway=condition_monitoring_reading_gateway or _InertLTSAAIGateway(),
         installation_report_repository=_InertLTSAAIGateway(),
         mechanical_seal_stock_repository=mechanical_seal_stock_repository or _InertLTSAAIGateway(),
+        condition_monitoring_reading_repository=condition_monitoring_reading_repository or _InertLTSAAIGateway(),
+        fleet_executive_summary_service=fleet_executive_summary_service or _InertLTSAAIGateway(),
     )
 
 
@@ -3019,10 +3049,14 @@ def test_work_orders_query_answers_via_ltsa_ai_and_never_persists_pending_row(mo
 
 def test_tag_scoped_condition_monitoring_query_is_graceful_data_gap_not_a_crash(monkeypatch):
     # Regression for the pre-existing copilot_ask_service.py KeyError bug
-    # (TOOL_HANDLERS has no per-asset "condition_monitoring" entry) --
-    # this text contains "kebocoran" (leak), which is the exact word that
-    # would otherwise raise an unhandled KeyError and produce no reply at
-    # all instead of a truthful "I don't have that yet" answer.
+    # (TOOL_HANDLERS originally had no per-asset "condition_monitoring"
+    # entry) -- this text contains "kebocoran" (leak), which is the exact
+    # word that would otherwise raise an unhandled KeyError and produce no
+    # reply at all. condition_monitoring now has a real per-asset handler
+    # (MWO: CLOSE FINAL LTSA AI WHATSAPP QUERY GAPS), so with the default
+    # inert (non-list) repository stub this is a truthful "data
+    # unavailable" DATA_GAP, not a crash -- the property under test is
+    # "never crashes", not the specific wording.
     repo = FakeIntakeRepository({SENDER_A: _identity()})
     outbound = FakeOutboundClient()
     _wire(monkeypatch, repo, outbound, ltsa_ai_query_deps=_query_deps())
@@ -3031,7 +3065,7 @@ def test_tag_scoped_condition_monitoring_query_is_graceful_data_gap_not_a_crash(
 
     assert response.status_code == 200
     reply = outbound.calls[-1][1]
-    assert "don't yet have" in reply
+    assert "currently unavailable" in reply
     assert repo.rows == []
 
 
@@ -3167,3 +3201,300 @@ def test_repeated_identical_query_delivery_is_idempotent_and_read_only(monkeypat
     assert outbound.calls[0] == (SENDER_A, _PUMP_STATUS_ANSWER)
     assert outbound.calls[1] == (SENDER_A, _PUMP_STATUS_ANSWER)
     assert repo.rows == []
+
+
+# --- MWO: CLOSE FINAL LTSA AI WHATSAPP QUERY GAPS -------------------------
+#
+# Phase 1 (tag-scoped Condition Monitoring) and Phase 2 (fleet priority)
+# through the real webhook, proving both new capabilities reuse the exact
+# same canonical repository/service the CMON WRITE flow and the dashboard's
+# /api/ltsa/fleet/powerbi endpoint already use -- no new gateway, no
+# duplicated scoring/business logic.
+
+
+class _FakeQueryCMONRepository:
+    def __init__(self, readings_by_asset=None):
+        self._readings_by_asset = readings_by_asset or {}
+
+    def list_by_asset(self, asset_code):
+        return list(self._readings_by_asset.get(asset_code, []))
+
+
+class _FakeTopRisk:
+    def __init__(self, tag_number, title, priority, action):
+        self.tag_number = tag_number
+        self.title = title
+        self.priority = priority
+        self.action = action
+
+
+class _FakeFleetExecutiveSummary:
+    def __init__(self, *, fleet_status="ATTENTION", top_risks=()):
+        self.fleet_status = fleet_status
+        self.top_risks = top_risks
+
+
+class _FakeFleetExecutiveSummaryService:
+    def __init__(self, summary=None, *, raises=False):
+        self._summary = summary if summary is not None else _FakeFleetExecutiveSummary(fleet_status="NORMAL", top_risks=())
+        self._raises = raises
+        self.build_calls = []
+
+    def build(self, *, scope=None):
+        self.build_calls.append(scope)
+        if self._raises:
+            raise RuntimeError("simulated fleet reliability service failure")
+        return self._summary
+
+
+# --- CMON query scenarios (mission Phase 5, items 1-7) --------------------
+
+
+def test_cmon_query_returns_latest_reading_for_authorized_known_pump(monkeypatch):
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    cmon_query_repo = _FakeQueryCMONRepository({
+        "211-P-13AR": [
+            {"condition_monitoring_reading_code": "CMONR-1", "reading_date": "2026-08-30", "finding": "Kebocoran mechanical seal"},
+        ]
+    })
+    _wire(monkeypatch, repo, outbound, ltsa_ai_query_deps=_query_deps(condition_monitoring_reading_repository=cmon_query_repo))
+
+    response = _post(_message_envelope(message_id="wamid.cmonq1", text="Ada temuan terbaru di 211-P-13AR?"))
+
+    assert response.status_code == 200
+    reply = outbound.calls[-1][1]
+    assert "CMON terakhir: 2026-08-30" in reply
+    assert "Temuan: Kebocoran mechanical seal" in reply
+    assert repo.rows == []
+
+
+def test_cmon_query_multiple_records_selects_newest(monkeypatch):
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    cmon_query_repo = _FakeQueryCMONRepository({
+        "211-P-13AR": [
+            {"condition_monitoring_reading_code": "CMONR-NEWEST", "reading_date": "2026-08-30", "finding": "Newest finding"},
+            {"condition_monitoring_reading_code": "CMONR-OLDER", "reading_date": "2026-01-01", "finding": "Older finding"},
+        ]
+    })
+    _wire(monkeypatch, repo, outbound, ltsa_ai_query_deps=_query_deps(condition_monitoring_reading_repository=cmon_query_repo))
+
+    response = _post(_message_envelope(message_id="wamid.cmonq2", text="CMON terakhir 211-P-13AR apa?"))
+
+    reply = outbound.calls[-1][1]
+    assert "Newest finding" in reply
+    assert "Older finding" not in reply
+
+
+def test_cmon_query_no_data_is_clear_no_data_response(monkeypatch):
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    _wire(monkeypatch, repo, outbound, ltsa_ai_query_deps=_query_deps(condition_monitoring_reading_repository=_FakeQueryCMONRepository()))
+
+    response = _post(_message_envelope(message_id="wamid.cmonq3", text="Ada temuan terbaru di 211-P-13AR?"))
+
+    assert response.status_code == 200
+    reply = outbound.calls[-1][1]
+    # kind=FACT (a confirmed, truthful "nothing exists"), so the reply
+    # carries the usual Source footer -- only a DATA_GAP with no evidence
+    # suppresses it (_format_ltsa_ai_reply's own rule).
+    assert reply.startswith("Belum ada data Condition Monitoring untuk 211-P-13AR.")
+    assert repo.rows == []
+
+
+def test_cmon_query_unknown_pump_rejected_generic_message(monkeypatch):
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    _wire(monkeypatch, repo, outbound, ltsa_ai_query_deps=_query_deps())
+
+    response = _post(_message_envelope(message_id="wamid.cmonq4", text="Ada temuan terbaru di 999-P-99AR?"))
+
+    assert response.status_code == 200
+    assert outbound.calls[-1] == (SENDER_A, "Pump 999-P-99AR tidak ditemukan.")
+
+
+def test_cmon_query_out_of_scope_pump_rejected_same_generic_message(monkeypatch):
+    repo = FakeIntakeRepository({SENDER_A: _out_of_scope_identity()})
+    outbound = FakeOutboundClient()
+    _wire(monkeypatch, repo, outbound, ltsa_ai_query_deps=_query_deps())
+
+    response = _post(_message_envelope(message_id="wamid.cmonq5", text="Ada temuan terbaru di 211-P-13AR?"))
+
+    assert response.status_code == 200
+    assert outbound.calls[-1] == (SENDER_A, "Pump 211-P-13AR tidak ditemukan.")
+
+
+def test_cmon_query_missing_canonical_fields_never_invented(monkeypatch):
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    cmon_query_repo = _FakeQueryCMONRepository({"211-P-13AR": [{"condition_monitoring_reading_code": "CMONR-BARE"}]})
+    _wire(monkeypatch, repo, outbound, ltsa_ai_query_deps=_query_deps(condition_monitoring_reading_repository=cmon_query_repo))
+
+    response = _post(_message_envelope(message_id="wamid.cmonq6", text="Ada temuan terbaru di 211-P-13AR?"))
+
+    reply = outbound.calls[-1][1]
+    assert "CMON terakhir: tidak diketahui" in reply
+    assert "Temuan: tidak ada catatan" in reply
+    assert "Status:" not in reply
+    assert "Rekomendasi:" not in reply
+    assert "Sumber:" not in reply
+
+
+def test_cmon_query_never_persists_pending_row(monkeypatch):
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    cmon_query_repo = _FakeQueryCMONRepository({"211-P-13AR": [{"condition_monitoring_reading_code": "CMONR-1", "finding": "x"}]})
+    _wire(monkeypatch, repo, outbound, ltsa_ai_query_deps=_query_deps(condition_monitoring_reading_repository=cmon_query_repo))
+
+    _post(_message_envelope(message_id="wamid.cmonq7", text="Ada temuan terbaru di 211-P-13AR?"))
+
+    assert repo.rows == []
+
+
+# --- Fleet priority scenarios (mission Phase 5, items 8-15) ----------------
+
+
+def test_fleet_priority_query_reuses_canonical_ranking(monkeypatch):
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    summary = _FakeFleetExecutiveSummary(
+        top_risks=(_FakeTopRisk("211-P-13AR", "Vibration trending high", 120, "Schedule CM inspection"),)
+    )
+    service = _FakeFleetExecutiveSummaryService(summary)
+    _wire(monkeypatch, repo, outbound, ltsa_ai_query_deps=_query_deps(fleet_executive_summary_service=service))
+
+    response = _post(_message_envelope(message_id="wamid.fleetq1", text="Pompa mana yang perlu perhatian hari ini?"))
+
+    assert response.status_code == 200
+    reply = outbound.calls[-1][1]
+    assert "211-P-13AR" in reply
+    assert "Vibration trending high" in reply
+    assert repo.rows == []
+
+
+def test_fleet_priority_ranking_order_preserved_never_recomputed(monkeypatch):
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    summary = _FakeFleetExecutiveSummary(
+        top_risks=(
+            _FakeTopRisk("211-P-13AR", "Low priority risk", 10, "Monitor"),
+            _FakeTopRisk("210-P-05AR", "High priority risk", 200, "Escalate"),
+        )
+    )
+    service = _FakeFleetExecutiveSummaryService(summary)
+    _wire(monkeypatch, repo, outbound, ltsa_ai_query_deps=_query_deps(fleet_executive_summary_service=service))
+
+    response = _post(_message_envelope(message_id="wamid.fleetq2", text="Pompa paling kritis apa?"))
+
+    reply = outbound.calls[-1][1]
+    assert reply.index("211-P-13AR") < reply.index("210-P-05AR")
+
+
+def test_fleet_priority_query_authorization_scope_applied_before_result(monkeypatch):
+    repo = FakeIntakeRepository({SENDER_A: _out_of_scope_identity()})  # AREA=HSC
+    outbound = FakeOutboundClient()
+    service = _FakeFleetExecutiveSummaryService()
+    _wire(monkeypatch, repo, outbound, ltsa_ai_query_deps=_query_deps(fleet_executive_summary_service=service))
+
+    _post(_message_envelope(message_id="wamid.fleetq3", text="Pompa paling kritis di area saya?"))
+
+    assert service.build_calls == [frozenset({"HSC"})]
+
+
+def test_fleet_priority_query_unrestricted_role_scope_is_none(monkeypatch):
+    repo = FakeIntakeRepository({SENDER_A: _identity()})  # TAP_ENGINEER, unrestricted
+    outbound = FakeOutboundClient()
+    service = _FakeFleetExecutiveSummaryService()
+    _wire(monkeypatch, repo, outbound, ltsa_ai_query_deps=_query_deps(fleet_executive_summary_service=service))
+
+    _post(_message_envelope(message_id="wamid.fleetq4", text="Pompa mana yang perlu perhatian hari ini?"))
+
+    assert service.build_calls == [None]
+
+
+def test_fleet_priority_no_actionable_assets_is_truthful_no_crash(monkeypatch):
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    service = _FakeFleetExecutiveSummaryService(_FakeFleetExecutiveSummary(fleet_status="NORMAL", top_risks=()))
+    _wire(monkeypatch, repo, outbound, ltsa_ai_query_deps=_query_deps(fleet_executive_summary_service=service))
+
+    response = _post(_message_envelope(message_id="wamid.fleetq5", text="Ada equipment yang perlu diperhatikan?"))
+
+    assert response.status_code == 200
+    assert "no pumps" in outbound.calls[-1][1].lower()
+
+
+def test_fleet_priority_empty_fleet_is_truthful_no_crash(monkeypatch):
+    # Same code path as "no actionable assets" (an empty fleet also has
+    # zero top_risks) -- kept as its own test since the mission lists them
+    # as distinct scenarios; copilot_ask_service's own unit tests already
+    # distinguish the FACT-kind/DATA_GAP-kind boundary in detail.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    service = _FakeFleetExecutiveSummaryService(_FakeFleetExecutiveSummary(fleet_status="UNKNOWN", top_risks=()))
+    _wire(monkeypatch, repo, outbound, ltsa_ai_query_deps=_query_deps(fleet_executive_summary_service=service))
+
+    response = _post(_message_envelope(message_id="wamid.fleetq6", text="Prioritas pompa hari ini"))
+
+    assert response.status_code == 200
+    assert "no pumps" in outbound.calls[-1][1].lower()
+
+
+def test_fleet_priority_service_failure_is_data_gap_not_a_crash(monkeypatch):
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    service = _FakeFleetExecutiveSummaryService(raises=True)
+    _wire(monkeypatch, repo, outbound, ltsa_ai_query_deps=_query_deps(fleet_executive_summary_service=service))
+
+    response = _post(_message_envelope(message_id="wamid.fleetq7", text="Pompa mana yang perlu perhatian hari ini?"))
+
+    assert response.status_code == 200
+    assert "unavailable" in outbound.calls[-1][1].lower()
+
+
+def test_fleet_priority_malformed_service_result_never_crashes(monkeypatch):
+    class _MalformedSummary:
+        fleet_status = "ATTENTION"
+        top_risks = None  # malformed: not a tuple
+
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    service = _FakeFleetExecutiveSummaryService(_MalformedSummary())
+    _wire(monkeypatch, repo, outbound, ltsa_ai_query_deps=_query_deps(fleet_executive_summary_service=service))
+
+    response = _post(_message_envelope(message_id="wamid.fleetq8", text="Pompa mana yang perlu perhatian hari ini?"))
+
+    assert response.status_code == 200
+    assert "no pumps" in outbound.calls[-1][1].lower()
+
+
+# --- Routing: the critical CMON write-vs-query ambiguity -------------------
+
+
+def test_cmon_write_vs_query_ambiguity_resolved_correctly(monkeypatch):
+    # The mission's own critical test: two messages both headed by "CMON"
+    # must route to opposite paths -- a finding report is a transactional
+    # write, a question about existing data is a read-only LTSA AI query.
+    repo = FakeIntakeRepository({SENDER_A: _identity()})
+    outbound = FakeOutboundClient()
+    cmon_write_repo = FakeConditionMonitoringReadingRepository()
+    cmon_query_repo = _FakeQueryCMONRepository({
+        "211-P-13AR": [{"condition_monitoring_reading_code": "CMONR-1", "reading_date": "2026-08-30", "finding": "Kebocoran mechanical seal"}],
+    })
+    _wire(
+        monkeypatch, repo, outbound, cmon_repository=cmon_write_repo,
+        ltsa_ai_query_deps=_query_deps(condition_monitoring_reading_repository=cmon_query_repo),
+    )
+
+    write_response = _post(_message_envelope(message_id="wamid.ambigwrite", text="CMON 211-P-13AR: mechanical seal bocor"))
+    assert write_response.status_code == 200
+    assert repo.rows[0]["detected_domain"] == "CONDITION_MONITORING"
+    assert repo.rows[0]["state"] in {"NEEDS_INFORMATION", "READY_FOR_CONFIRMATION"}
+
+    query_response = _post(_message_envelope(message_id="wamid.ambigquery", text="CMON terakhir 211-P-13AR?"))
+    assert query_response.status_code == 200
+    reply = outbound.calls[-1][1]
+    assert "CMON terakhir: 2026-08-30" in reply
+    # The query must not have created a SECOND pending row.
+    assert len(repo.rows) == 1

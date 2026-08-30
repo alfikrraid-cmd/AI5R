@@ -450,6 +450,19 @@ def get_condition_monitoring_reading_repository() -> ConditionMonitoringReadingR
     return _condition_monitoring_reading_repository
 
 
+def get_ltsa_ai_condition_monitoring_reading_repository() -> ConditionMonitoringReadingRepository:
+    # MWO: CLOSE FINAL LTSA AI WHATSAPP QUERY GAPS -- same singleton as
+    # get_condition_monitoring_reading_repository() above (never a second
+    # repository/connection); a distinct callable purely so a router
+    # needing BOTH the CMON WRITE dependency and the read-only LTSA AI
+    # query dependency in one function signature can override each
+    # independently in tests (FastAPI's dependency_overrides is keyed by
+    # callable, not by parameter name -- reusing one callable under two
+    # parameter names would make the two roles impossible to override
+    # separately).
+    return _condition_monitoring_reading_repository
+
+
 def get_pm_cm_evidence_repository() -> PMCMEvidenceRepository:
     return _pm_cm_evidence_repository
 

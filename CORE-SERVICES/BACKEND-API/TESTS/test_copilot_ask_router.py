@@ -18,9 +18,11 @@ for _path in (BACKEND_API_DIR, CORE_SERVICES_DIR):
 from main import app  # noqa: E402
 from dependencies import (  # noqa: E402
     get_condition_monitoring_reading_gateway,
+    get_condition_monitoring_reading_repository,
     get_copilot_ai_client,
     get_current_user,
     get_equipment_timeline_service,
+    get_fleet_executive_summary_service,
     get_installation_gateway,
     get_installation_report_repository,
     get_ltsa_knowledge_service,
@@ -121,6 +123,38 @@ class FakeConditionMonitoringReadingGateway:
         return {"success": True, "data": self._records}
 
 
+class FakeConditionMonitoringReadingRepository:
+    def __init__(self, readings_by_asset=None):
+        self._readings_by_asset = readings_by_asset or {}
+
+    def list_by_asset(self, asset_code):
+        return list(self._readings_by_asset.get(asset_code, []))
+
+
+class _FakeTopRisk:
+    def __init__(self, tag_number, title, priority, action):
+        self.tag_number = tag_number
+        self.title = title
+        self.priority = priority
+        self.action = action
+
+
+class _FakeFleetExecutiveSummary:
+    def __init__(self, *, fleet_status="NORMAL", top_risks=()):
+        self.fleet_status = fleet_status
+        self.top_risks = top_risks
+
+
+class FakeFleetExecutiveSummaryService:
+    def __init__(self, summary=None):
+        self._summary = summary if summary is not None else _FakeFleetExecutiveSummary()
+        self.build_calls = []
+
+    def build(self, *, scope=None):
+        self.build_calls.append(scope)
+        return self._summary
+
+
 class FakeLTSAKnowledgeService:
     def build(self, tag_number):
         recommendation = ()
@@ -174,6 +208,8 @@ def _as(identity: AuthenticatedIdentity):
     app.dependency_overrides[get_installation_report_repository] = lambda: FakeInstallationReportRepository()
     app.dependency_overrides[get_mechanical_seal_stock_repository] = lambda: FakeMechanicalSealStockRepository()
     app.dependency_overrides[get_condition_monitoring_reading_gateway] = lambda: FakeConditionMonitoringReadingGateway()
+    app.dependency_overrides[get_condition_monitoring_reading_repository] = lambda: FakeConditionMonitoringReadingRepository()
+    app.dependency_overrides[get_fleet_executive_summary_service] = lambda: FakeFleetExecutiveSummaryService()
 
 
 def _clear():
@@ -182,6 +218,7 @@ def _clear():
         get_work_order_gateway, get_installation_gateway, get_ltsa_knowledge_service,
         get_equipment_timeline_service, get_condition_monitoring_reading_gateway,
         get_installation_report_repository, get_mechanical_seal_stock_repository,
+        get_condition_monitoring_reading_repository, get_fleet_executive_summary_service,
     ):
         app.dependency_overrides.pop(dep, None)
 
@@ -227,6 +264,33 @@ class TestAreaScope:
         _as(_identity("TAP_ADMIN"))
         try:
             assert _ask("status", "600-P-1A").status_code == 200
+        finally:
+            _clear()
+
+    def test_fleet_priority_query_passes_caller_scope_into_canonical_build(self):
+        # Phase 2's own requirement: the canonical query itself must
+        # operate on authorized scope, not a global ranking filtered
+        # afterward -- proven here by asserting the EXACT scope this
+        # scoped identity resolves to is what reaches
+        # FleetExecutiveSummaryService.build(), through the real router,
+        # not a hand-constructed frozenset in a unit test.
+        _as(_identity("PERTAMINA_ENGINEER", data_scope_type="AREA", data_scope_value="HOC"))
+        service = FakeFleetExecutiveSummaryService()
+        app.dependency_overrides[get_fleet_executive_summary_service] = lambda: service
+        try:
+            response = _ask("pompa mana yang perlu perhatian hari ini?")
+            assert response.status_code == 200
+            assert service.build_calls == [frozenset({"HOC"})]
+        finally:
+            _clear()
+
+    def test_unrestricted_role_fleet_priority_scope_is_none(self):
+        _as(_identity("TAP_ADMIN"))
+        service = FakeFleetExecutiveSummaryService()
+        app.dependency_overrides[get_fleet_executive_summary_service] = lambda: service
+        try:
+            _ask("pompa mana yang perlu perhatian hari ini?")
+            assert service.build_calls == [None]
         finally:
             _clear()
 
@@ -276,6 +340,30 @@ class TestIntents:
     def test_missing_current_seal_evidence_is_data_gap_not_fabricated(self):
         body = _ask("what is the current seal?", "600-P-1A").json()  # no seal record faked for this tag
         assert body["kind"] == "DATA_GAP"
+
+    def test_tag_scoped_condition_monitoring_question(self):
+        app.dependency_overrides[get_condition_monitoring_reading_repository] = lambda: FakeConditionMonitoringReadingRepository(
+            {"940-P-2A": [{"condition_monitoring_reading_code": "CMONR-1", "reading_date": "2026-08-30", "finding": "Kebocoran mechanical seal"}]}
+        )
+        body = _ask("ada temuan terbaru?", "940-P-2A").json()
+        assert body["kind"] == "FACT"
+        assert "Kebocoran mechanical seal" in body["answer"]
+
+    def test_tag_scoped_condition_monitoring_no_data_is_truthful(self):
+        body = _ask("CMON terakhir apa?", "940-P-2A").json()  # default FakeConditionMonitoringReadingRepository: empty
+        assert body["kind"] == "FACT"
+        assert "Belum ada data" in body["answer"]
+
+    def test_fleet_priority_question_needs_no_asset(self):
+        app.dependency_overrides[get_fleet_executive_summary_service] = lambda: FakeFleetExecutiveSummaryService(
+            _FakeFleetExecutiveSummary(
+                fleet_status="ATTENTION",
+                top_risks=(_FakeTopRisk("940-P-2A", "Vibration trending high", 120, "Schedule CM inspection"),),
+            )
+        )
+        body = _ask("pompa mana yang perlu perhatian hari ini?").json()
+        assert body["kind"] == "RECOMMENDATION"
+        assert "940-P-2A" in body["answer"]
 
 
 class TestIdentitySafety:

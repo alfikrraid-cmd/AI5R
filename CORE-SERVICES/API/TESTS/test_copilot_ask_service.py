@@ -9,6 +9,8 @@ recognition capable of understanding semantic variants", not
 import sys
 from pathlib import Path
 
+import pytest
+
 CORE_SERVICES_DIR = Path(__file__).resolve().parents[2]
 if str(CORE_SERVICES_DIR) not in sys.path:
     sys.path.insert(0, str(CORE_SERVICES_DIR))
@@ -16,6 +18,7 @@ if str(CORE_SERVICES_DIR) not in sys.path:
 from API.copilot_ask_service import (  # noqa: E402
     DATA_GAP,
     FACT,
+    RECOMMENDATION,
     _detect_intent,
     _extract_seal_code,
     _handle_fleet_stock_status,
@@ -224,7 +227,36 @@ class _FakeMechanicalSealStockRepository:
         return {"success": True, "items": self._pools, "data": self._pools}
 
 
-def _ask(question, *, installation_records=(), cmon_records=(), stock_pools=()):
+class _FakeConditionMonitoringReadingRepository:
+    def __init__(self, readings_by_asset=None):
+        self._readings_by_asset = readings_by_asset or {}
+
+    def list_by_asset(self, asset_code):
+        return list(self._readings_by_asset.get(asset_code, []))
+
+
+class _FakeFleetExecutiveSummaryService:
+    def __init__(self, summary=None, *, raises=False):
+        self._summary = summary
+        self._raises = raises
+        self.build_calls = []
+
+    def build(self, *, scope=None):
+        self.build_calls.append(scope)
+        if self._raises:
+            raise RuntimeError("simulated fleet reliability service failure")
+        return self._summary
+
+
+def _ask(
+    question,
+    *,
+    installation_records=(),
+    cmon_records=(),
+    stock_pools=(),
+    condition_monitoring_reading_repository=None,
+    fleet_executive_summary_service=None,
+):
     return ask_copilot(
         question,
         None,
@@ -238,6 +270,9 @@ def _ask(question, *, installation_records=(), cmon_records=(), stock_pools=()):
         condition_monitoring_reading_gateway=_FakeCMONGateway(list(cmon_records)),
         installation_report_repository=_FakeInstallationReportRepository(list(installation_records)),
         mechanical_seal_stock_repository=_FakeMechanicalSealStockRepository(list(stock_pools)),
+        condition_monitoring_reading_repository=condition_monitoring_reading_repository
+        or _FakeConditionMonitoringReadingRepository(),
+        fleet_executive_summary_service=fleet_executive_summary_service or _FakeFleetExecutiveSummaryService(),
     )
 
 
@@ -366,11 +401,27 @@ def test_unsupported_topic_still_returns_couldnt_match_message():
     assert "couldn't match" in answer.answer.lower()
 
 
-def test_tag_scoped_condition_monitoring_question_is_data_gap_not_a_crash():
-    # condition_monitoring has a fleet-wide handler (tag is None) but no
-    # per-asset entry in TOOL_HANDLERS -- a tag-scoped question here must
-    # fall through to a graceful DATA_GAP, never raise KeyError.
+def test_tag_scoped_condition_monitoring_returns_latest_reading():
+    # MWO: CLOSE FINAL LTSA AI WHATSAPP QUERY GAPS -- Phase 1. Tag-scoped
+    # condition_monitoring now has a real per-asset tool
+    # (condition_monitoring_reading_repository.list_by_asset, already
+    # ordered newest-first by the repository's own query), closing the
+    # gap the prior MWO's KeyError-safety fix only made non-crashing.
     assert _detect_intent("apakah ada kebocoran di CMON 211-P-13AR?") == "condition_monitoring"
+    repo = _FakeConditionMonitoringReadingRepository({
+        "211-P-13AR": [
+            {
+                "condition_monitoring_reading_code": "CMONR-NEWEST",
+                "reading_date": "2026-08-30",
+                "finding": "Kebocoran mechanical seal",
+                "workflow_status": "SUBMITTED",
+                "technical_recommendation": None,
+                "source_reference": "WHATSAPP::wa-1",
+            },
+        ]
+    })
+    # _ask() hardcodes tag=None (fleet-wide only); call ask_copilot()
+    # directly for this tag-scoped case.
     answer = ask_copilot(
         "apakah ada kebocoran di CMON 211-P-13AR?",
         "211-P-13AR",
@@ -384,9 +435,118 @@ def test_tag_scoped_condition_monitoring_question_is_data_gap_not_a_crash():
         condition_monitoring_reading_gateway=_FakeCMONGateway([]),
         installation_report_repository=_FakeInstallationReportRepository([]),
         mechanical_seal_stock_repository=_FakeMechanicalSealStockRepository([]),
+        condition_monitoring_reading_repository=repo,
+        fleet_executive_summary_service=_FakeFleetExecutiveSummaryService(),
+    )
+    assert answer.kind == FACT
+    assert "CMON terakhir: 2026-08-30" in answer.answer
+    assert "Temuan: Kebocoran mechanical seal" in answer.answer
+    assert "Status: SUBMITTED" in answer.answer
+    assert "Rekomendasi:" not in answer.answer  # None -- never invented
+    assert "Sumber: WHATSAPP::wa-1" in answer.answer
+    assert answer.evidence == (
+        {"source": "ConditionMonitoringReadingRepository", "reference": "CMONR-NEWEST", "field": "finding", "value": "Kebocoran mechanical seal"},
+    )
+
+
+def test_tag_scoped_condition_monitoring_multiple_records_newest_selected():
+    repo = _FakeConditionMonitoringReadingRepository({
+        "211-P-13AR": [
+            {"condition_monitoring_reading_code": "CMONR-NEWEST", "reading_date": "2026-08-30", "finding": "Newest finding"},
+            {"condition_monitoring_reading_code": "CMONR-OLDER", "reading_date": "2026-01-01", "finding": "Older finding"},
+        ]
+    })
+    answer = ask_copilot(
+        "CMON terakhir 211-P-13AR apa?", "211-P-13AR", None,
+        pump_gateway=None, maintenance_history_gateway=None, work_order_gateway=None,
+        installation_gateway=None, ltsa_knowledge_service=None, equipment_timeline_service=None,
+        condition_monitoring_reading_gateway=_FakeCMONGateway([]),
+        installation_report_repository=_FakeInstallationReportRepository([]),
+        mechanical_seal_stock_repository=_FakeMechanicalSealStockRepository([]),
+        condition_monitoring_reading_repository=repo,
+        fleet_executive_summary_service=_FakeFleetExecutiveSummaryService(),
+    )
+    assert "Newest finding" in answer.answer
+    assert "Older finding" not in answer.answer
+
+
+def test_tag_scoped_condition_monitoring_no_data_is_truthful_fact_not_fabricated():
+    repo = _FakeConditionMonitoringReadingRepository({})
+    answer = ask_copilot(
+        "CMON terakhir 211-P-13AR apa?", "211-P-13AR", None,
+        pump_gateway=None, maintenance_history_gateway=None, work_order_gateway=None,
+        installation_gateway=None, ltsa_knowledge_service=None, equipment_timeline_service=None,
+        condition_monitoring_reading_gateway=_FakeCMONGateway([]),
+        installation_report_repository=_FakeInstallationReportRepository([]),
+        mechanical_seal_stock_repository=_FakeMechanicalSealStockRepository([]),
+        condition_monitoring_reading_repository=repo,
+        fleet_executive_summary_service=_FakeFleetExecutiveSummaryService(),
+    )
+    assert answer.answer == "Belum ada data Condition Monitoring untuk 211-P-13AR."
+    assert answer.kind == FACT
+    assert answer.evidence == ()
+
+
+def test_tag_scoped_condition_monitoring_missing_fields_never_invented():
+    repo = _FakeConditionMonitoringReadingRepository({
+        "211-P-13AR": [{"condition_monitoring_reading_code": "CMONR-BARE"}],
+    })
+    answer = ask_copilot(
+        "CMON terakhir 211-P-13AR apa?", "211-P-13AR", None,
+        pump_gateway=None, maintenance_history_gateway=None, work_order_gateway=None,
+        installation_gateway=None, ltsa_knowledge_service=None, equipment_timeline_service=None,
+        condition_monitoring_reading_gateway=_FakeCMONGateway([]),
+        installation_report_repository=_FakeInstallationReportRepository([]),
+        mechanical_seal_stock_repository=_FakeMechanicalSealStockRepository([]),
+        condition_monitoring_reading_repository=repo,
+        fleet_executive_summary_service=_FakeFleetExecutiveSummaryService(),
+    )
+    assert "CMON terakhir: tidak diketahui" in answer.answer
+    assert "Temuan: tidak ada catatan" in answer.answer
+    assert "Status:" not in answer.answer
+    assert "Rekomendasi:" not in answer.answer
+    assert "Sumber:" not in answer.answer
+
+
+def test_tag_scoped_condition_monitoring_repository_failure_is_data_gap_not_a_crash():
+    class _RaisingRepository:
+        def list_by_asset(self, asset_code):
+            raise RuntimeError("simulated DB failure")
+
+    answer = ask_copilot(
+        "CMON terakhir 211-P-13AR apa?", "211-P-13AR", None,
+        pump_gateway=None, maintenance_history_gateway=None, work_order_gateway=None,
+        installation_gateway=None, ltsa_knowledge_service=None, equipment_timeline_service=None,
+        condition_monitoring_reading_gateway=_FakeCMONGateway([]),
+        installation_report_repository=_FakeInstallationReportRepository([]),
+        mechanical_seal_stock_repository=_FakeMechanicalSealStockRepository([]),
+        condition_monitoring_reading_repository=_RaisingRepository(),
+        fleet_executive_summary_service=_FakeFleetExecutiveSummaryService(),
     )
     assert answer.kind == DATA_GAP
     assert answer.evidence == ()
+
+
+def test_tag_scoped_intent_with_no_registered_handler_is_graceful_data_gap_not_a_crash(monkeypatch):
+    # Generic regression for the fix behind TOOL_HANDLERS.get(intent):
+    # any FUTURE intent _detect_intent recognizes without a matching
+    # TOOL_HANDLERS entry must degrade to DATA_GAP, never KeyError --
+    # proven here without depending on condition_monitoring specifically,
+    # since that intent now has a real handler.
+    import API.copilot_ask_service as copilot_ask_service_module
+
+    monkeypatch.delitem(copilot_ask_service_module.TOOL_HANDLERS, "pump_history")
+    answer = ask_copilot(
+        "riwayat pompa 211-P-13AR", "211-P-13AR", None,
+        pump_gateway=None, maintenance_history_gateway=None, work_order_gateway=None,
+        installation_gateway=None, ltsa_knowledge_service=None, equipment_timeline_service=None,
+        condition_monitoring_reading_gateway=_FakeCMONGateway([]),
+        installation_report_repository=_FakeInstallationReportRepository([]),
+        mechanical_seal_stock_repository=_FakeMechanicalSealStockRepository([]),
+        condition_monitoring_reading_repository=_FakeConditionMonitoringReadingRepository(),
+        fleet_executive_summary_service=_FakeFleetExecutiveSummaryService(),
+    )
+    assert answer.kind == DATA_GAP
 
 
 # --- MWO-LTSA-AI-COPILOT-FLEET-STOCK-V1-017B: fleet-wide stock status -------------
@@ -510,6 +670,138 @@ def test_fleet_stock_data_unavailable_is_data_gap_not_fabricated():
         installation_gateway=None, ltsa_knowledge_service=None, equipment_timeline_service=None,
         condition_monitoring_reading_gateway=None, installation_report_repository=None,
         mechanical_seal_stock_repository=_FailingRepo(),
+        condition_monitoring_reading_repository=None,
+        fleet_executive_summary_service=None,
     )
     assert answer.kind == DATA_GAP
     assert "unavailable" in answer.answer.lower()
+
+
+# --- MWO: CLOSE FINAL LTSA AI WHATSAPP QUERY GAPS -- Phase 2: fleet priority ------
+#
+# _handle_fleet_priority reuses FleetExecutiveSummaryService.build(scope=...)
+# unchanged -- the exact same canonical ranking routers/fleet.py's own
+# /api/ltsa/fleet/powerbi endpoint already serves. No new scoring formula.
+
+
+def _fleet_priority_query(fleet_executive_summary_service, scope=None):
+    return ask_copilot(
+        "pompa mana yang perlu perhatian hari ini?", None, scope,
+        pump_gateway=None, maintenance_history_gateway=None, work_order_gateway=None,
+        installation_gateway=None, ltsa_knowledge_service=None, equipment_timeline_service=None,
+        condition_monitoring_reading_gateway=None, installation_report_repository=None,
+        mechanical_seal_stock_repository=None,
+        condition_monitoring_reading_repository=None,
+        fleet_executive_summary_service=fleet_executive_summary_service,
+    )
+
+
+class _FakeTopRisk:
+    def __init__(self, tag_number, title, priority, action):
+        self.tag_number = tag_number
+        self.title = title
+        self.priority = priority
+        self.action = action
+
+
+class _FakeFleetExecutiveSummary:
+    def __init__(self, *, fleet_status="ATTENTION", top_risks=()):
+        self.fleet_status = fleet_status
+        self.top_risks = top_risks
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "Pompa mana yang perlu perhatian hari ini?",
+        "Pompa paling kritis apa?",
+        "Ada equipment yang perlu diperhatikan?",
+        "Prioritas pompa hari ini",
+        "Pompa paling kritis di area saya?",
+    ],
+)
+def test_fleet_priority_wording_variants_all_route_to_fleet_priority_intent(question):
+    assert _detect_intent(question) == "fleet_priority"
+
+
+def test_fleet_priority_query_reuses_canonical_top_risks():
+    summary = _FakeFleetExecutiveSummary(
+        top_risks=(_FakeTopRisk("211-P-13AR", "Vibration trending high", 120, "Schedule CM inspection"),)
+    )
+    service = _FakeFleetExecutiveSummaryService(summary)
+    answer = _fleet_priority_query(service)
+    assert answer.kind == RECOMMENDATION
+    assert "211-P-13AR" in answer.answer
+    assert "Vibration trending high" in answer.answer
+    assert "Schedule CM inspection" in answer.answer
+    assert "ATTENTION" in answer.answer
+    assert answer.evidence == (
+        {"source": "FleetExecutiveSummaryService", "reference": "211-P-13AR", "field": "priority", "value": "120"},
+    )
+
+
+def test_fleet_priority_ranking_never_recomputed_only_passed_through():
+    # Proves no new scoring formula: the handler never sorts/filters
+    # top_risks itself -- whatever order/content the canonical service
+    # returns is what gets reported, verbatim.
+    summary = _FakeFleetExecutiveSummary(
+        top_risks=(
+            _FakeTopRisk("211-P-13AR", "Low priority risk", 10, "Monitor"),
+            _FakeTopRisk("210-P-05AR", "High priority risk", 200, "Escalate"),
+        )
+    )
+    service = _FakeFleetExecutiveSummaryService(summary)
+    answer = _fleet_priority_query(service)
+    assert answer.answer.index("211-P-13AR") < answer.answer.index("210-P-05AR")
+
+
+def test_fleet_priority_authorization_scope_passed_into_canonical_build():
+    # The canonical query itself operates on authorized scope (never a
+    # global ranking filtered/hidden after the fact) -- proven by
+    # asserting the exact scope this handler received is the exact scope
+    # forwarded into build(), not re-derived or dropped.
+    summary = _FakeFleetExecutiveSummary(top_risks=())
+    service = _FakeFleetExecutiveSummaryService(summary)
+    scope = frozenset({"HSC", "S_PAKNING", "HCC"})
+    _fleet_priority_query(service, scope=scope)
+    assert service.build_calls == [scope]
+
+
+def test_fleet_priority_no_actionable_assets_is_truthful_fact():
+    summary = _FakeFleetExecutiveSummary(fleet_status="NORMAL", top_risks=())
+    answer = _fleet_priority_query(_FakeFleetExecutiveSummaryService(summary))
+    assert answer.kind == FACT
+    assert "no pumps" in answer.answer.lower()
+
+
+def test_fleet_priority_empty_fleet_is_truthful_fact_not_a_crash():
+    summary = _FakeFleetExecutiveSummary(fleet_status="UNKNOWN", top_risks=())
+    answer = _fleet_priority_query(_FakeFleetExecutiveSummaryService(summary))
+    assert answer.kind == FACT
+    assert answer.evidence == ()
+
+
+def test_fleet_priority_service_failure_is_data_gap_not_a_crash():
+    answer = _fleet_priority_query(_FakeFleetExecutiveSummaryService(None, raises=True))
+    assert answer.kind == DATA_GAP
+    assert answer.evidence == ()
+
+
+def test_fleet_priority_malformed_service_result_never_crashes():
+    class _MalformedSummary:
+        fleet_status = "ATTENTION"
+        top_risks = None  # malformed: not a tuple
+
+    answer = _fleet_priority_query(_FakeFleetExecutiveSummaryService(_MalformedSummary()))
+    assert answer.kind == FACT
+    assert "no pumps" in answer.answer.lower()
+
+
+def test_fleet_priority_query_path_never_calls_any_write_method():
+    # Read-only by construction: _FakeFleetExecutiveSummaryService exposes
+    # only build() -- if the handler ever called anything else, this
+    # test's own AttributeError would fail it.
+    summary = _FakeFleetExecutiveSummary(top_risks=())
+    service = _FakeFleetExecutiveSummaryService(summary)
+    _fleet_priority_query(service)
+    assert service.build_calls == [None]

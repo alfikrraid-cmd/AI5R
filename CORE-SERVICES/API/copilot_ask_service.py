@@ -111,7 +111,7 @@ def _detect_intent(question: str) -> str | None:
         has(r"\bseal\b", r"\bsegel\b") and has("ganti", "diganti", "replace", "replacement")
     ):
         return "installation"
-    if has("bocor", r"\bleak", r"\bcmon\b", "condition monitoring"):
+    if has("bocor", r"\bleak", r"\bcmon\b", "condition monitoring", "temuan"):
         return "condition_monitoring"
     if has(r"\bpm\b", "preventive"):
         return "pm"
@@ -125,6 +125,8 @@ def _detect_intent(question: str) -> str | None:
         return "seal_compat"
     if has("drawing", "gambar", "document", "dokumen"):
         return "drawing_document"
+    if has("perhatian", "perhatikan", "paling kritis", r"\bkritis\b", "prioritas", "priority", "critical pump", "most critical", "needs attention"):
+        return "fleet_priority"
     if has("recommend", "rekomendasi", "saran"):
         return "recommendation"
     if has("history", "riwayat", "histori"):
@@ -202,6 +204,8 @@ def ask_copilot(
     condition_monitoring_reading_gateway,
     installation_report_repository,
     mechanical_seal_stock_repository,
+    condition_monitoring_reading_repository,
+    fleet_executive_summary_service,
 ) -> CopilotAnswer:
     intent = _detect_intent(question)
 
@@ -232,6 +236,13 @@ def ask_copilot(
         return _handle_leak_frequency_fleet(
             scope, condition_monitoring_reading_gateway=condition_monitoring_reading_gateway, pump_gateway=pump_gateway
         )
+
+    if intent == "fleet_priority":
+        # No per-tag variant exists (or would make sense) for a ranking
+        # question -- always fleet-wide, unlike work_orders/installation/
+        # condition_monitoring above which only take this branch when tag
+        # is None.
+        return _handle_fleet_priority(scope, fleet_executive_summary_service=fleet_executive_summary_service)
 
     if intent == "inventory" and tag is None:
         seal_code = _extract_seal_code(question)
@@ -271,6 +282,7 @@ def ask_copilot(
         condition_monitoring_reading_gateway=condition_monitoring_reading_gateway,
         installation_report_repository=installation_report_repository,
         mechanical_seal_stock_repository=mechanical_seal_stock_repository,
+        condition_monitoring_reading_repository=condition_monitoring_reading_repository,
     )
 
 
@@ -479,6 +491,56 @@ def _handle_latest_installation_fleet(
     return CopilotAnswer(answer, FACT, evidence)
 
 
+def _handle_condition_monitoring(tag: str, *, condition_monitoring_reading_repository, **_: Any) -> CopilotAnswer:
+    """Tag-scoped: "ada temuan terbaru di <tag>?" / "CMON terakhir <tag>
+    apa?". Reads via condition_monitoring_reading_repository (direct-DB,
+    the same canonical repository the WhatsApp/dashboard CMON WRITE flow
+    already persists through -- read-only here, list_by_asset() only,
+    never create_draft/update_draft/submit/etc.). Its own ORDER BY
+    reading_date DESC NULLS LAST, created_at DESC already selects the
+    newest reading as records[0] -- no re-sorting here. Only canonical
+    columns are surfaced (reading_date, finding, workflow_status,
+    technical_recommendation, source_reference); a field this table has
+    no value for is omitted, never invented."""
+    # Everything downstream (not just the repository call itself) is
+    # inside this try: a mis-shaped/unexpected result (e.g. a dict
+    # instead of a list, per-record dicts missing .get()) must degrade to
+    # DATA_GAP exactly like a genuine connection failure, never propagate
+    # as an unhandled 500 to the WhatsApp caller.
+    try:
+        records = condition_monitoring_reading_repository.list_by_asset(tag)
+        if not isinstance(records, list):
+            return CopilotAnswer(f"Condition Monitoring data for {tag} is currently unavailable.", DATA_GAP, ())
+        if not records:
+            return CopilotAnswer(f"Belum ada data Condition Monitoring untuk {tag}.", FACT, ())
+
+        latest = records[0]
+        lines = [tag, "", f"CMON terakhir: {latest.get('reading_date') or 'tidak diketahui'}"]
+        lines.append(f"Temuan: {latest.get('finding') or 'tidak ada catatan'}")
+        status = latest.get("workflow_status")
+        if status:
+            lines.append(f"Status: {status}")
+        recommendation = latest.get("technical_recommendation")
+        if recommendation:
+            lines.append(f"Rekomendasi: {recommendation}")
+        source_reference = latest.get("source_reference")
+        if source_reference:
+            lines.append(f"Sumber: {source_reference}")
+
+        answer = "\n".join(lines)
+        evidence = (
+            _evidence(
+                "ConditionMonitoringReadingRepository",
+                latest.get("condition_monitoring_reading_code") or tag,
+                "finding",
+                latest.get("finding"),
+            ),
+        )
+        return CopilotAnswer(answer, FACT, evidence)
+    except Exception:
+        return CopilotAnswer(f"Condition Monitoring data for {tag} is currently unavailable.", DATA_GAP, ())
+
+
 def _handle_leak_frequency_fleet(
     scope: frozenset[str] | None, *, condition_monitoring_reading_gateway, pump_gateway, **_: Any
 ) -> CopilotAnswer:
@@ -632,6 +694,42 @@ def _handle_recommendation(tag: str, *, ltsa_knowledge_service, **_: Any) -> Cop
     return CopilotAnswer(answer, RECOMMENDATION, evidence)
 
 
+def _handle_fleet_priority(scope: frozenset[str] | None, *, fleet_executive_summary_service, **_: Any) -> CopilotAnswer:
+    """Fleet-wide, tag-less by construction (there is no meaningful
+    per-pump "priority" tool -- ranking is inherently across many pumps):
+    "pompa mana yang perlu perhatian hari ini?" / "pompa paling kritis
+    apa?". Reuses FleetExecutiveSummaryService.build(scope=...) unchanged
+    -- the exact same canonical ranking routers/fleet.py's own
+    /api/ltsa/fleet/powerbi endpoint already serves, built from
+    FleetReliabilityService + RecommendationEngine, never a new scoring
+    formula. scope is applied INSIDE build() at pump discovery (see that
+    service's own docstring) -- an authorized caller's ranking is
+    genuinely recomputed from only their pumps, never a global ranking
+    filtered/hidden after the fact."""
+    # Everything downstream (not just build() itself) is inside this try:
+    # a mis-shaped/unexpected result must degrade to DATA_GAP exactly like
+    # a genuine service failure, never propagate as an unhandled 500 to
+    # the WhatsApp caller.
+    try:
+        summary = fleet_executive_summary_service.build(scope=scope)
+        top_risks = getattr(summary, "top_risks", None) or ()
+        if not top_risks:
+            return CopilotAnswer("No pumps currently need attention in your authorized scope.", FACT, ())
+
+        lines = [f"- {risk.tag_number}: {risk.title} (priority {risk.priority}) -- {risk.action}" for risk in top_risks]
+        fleet_status = getattr(summary, "fleet_status", None) or "UNKNOWN"
+        answer = (
+            f"{len(top_risks)} pump(s) needing attention in your authorized scope "
+            f"(fleet status: {fleet_status}):\n" + "\n".join(lines)
+        )
+        evidence = tuple(
+            _evidence("FleetExecutiveSummaryService", risk.tag_number, "priority", risk.priority) for risk in top_risks
+        )
+        return CopilotAnswer(answer, RECOMMENDATION, evidence)
+    except Exception:
+        return CopilotAnswer("Fleet priority data is currently unavailable.", DATA_GAP, ())
+
+
 # MWO-AI5R-LTSA-AI-ORCHESTRATION-001 -- exported (was module-private) so
 # copilot_orchestrator.py can expose these exact same functions as
 # AI-selectable TOOLS, without duplicating a single one of them. The
@@ -650,6 +748,7 @@ TOOL_HANDLERS = {
     "drawing_document": _handle_drawing_document,
     "installation": _handle_installation,
     "recommendation": _handle_recommendation,
+    "condition_monitoring": _handle_condition_monitoring,
 }
 
 
