@@ -20,6 +20,7 @@ from dependencies import (
     get_ltsa_knowledge_service,
     get_maintenance_history_gateway,
     get_mechanical_seal_stock_repository,
+    get_pm_cm_evidence_repository,
     get_pm_occurrence_repository,
     get_pump_gateway,
     get_whatsapp_intake_repository,
@@ -72,6 +73,7 @@ def receive_whatsapp_intake(
     fleet_executive_summary_service=Depends(get_fleet_executive_summary_service),
     ltsa_ai_pm_occurrence_repository=Depends(get_ltsa_ai_pm_occurrence_repository),
     cm_report_repository=Depends(get_cm_report_repository),
+    pm_cm_evidence_repository=Depends(get_pm_cm_evidence_repository),
 ) -> Payload:
     # ltsa_ai_condition_monitoring_reading_repository/ltsa_ai_pm_
     # occurrence_repository resolve the SAME repository singletons
@@ -93,6 +95,7 @@ def receive_whatsapp_intake(
         fleet_executive_summary_service=fleet_executive_summary_service,
         pm_occurrence_repository=ltsa_ai_pm_occurrence_repository,
         cm_report_repository=cm_report_repository,
+        pm_cm_evidence_repository=pm_cm_evidence_repository,
     )
     result = process_inbound_message(
         provider=payload.provider,

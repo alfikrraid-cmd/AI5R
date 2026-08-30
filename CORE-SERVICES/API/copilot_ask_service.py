@@ -42,6 +42,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from . import maintenance_intelligence_service as mis
+from .condition_monitoring_measurement_fields import render_reading_lines
+from .condition_monitoring_time_range import parse_condition_monitoring_period
 from .pump_area_scope import filter_records_by_asset_scope
 
 FACT = "FACT"
@@ -237,6 +239,7 @@ def ask_copilot(
     fleet_executive_summary_service,
     pm_occurrence_repository,
     cm_report_repository,
+    pm_cm_evidence_repository=None,
     language: str = "en",
 ) -> CopilotAnswer:
     intent = _detect_intent(question)
@@ -312,6 +315,7 @@ def ask_copilot(
         return CopilotAnswer(_NO_PER_ASSET_TOOL_MESSAGE[language], DATA_GAP, ())
     return handler(
         tag,
+        question=question,
         pump_gateway=pump_gateway,
         maintenance_history_gateway=maintenance_history_gateway,
         work_order_gateway=work_order_gateway,
@@ -324,6 +328,7 @@ def ask_copilot(
         condition_monitoring_reading_repository=condition_monitoring_reading_repository,
         pm_occurrence_repository=pm_occurrence_repository,
         cm_report_repository=cm_report_repository,
+        pm_cm_evidence_repository=pm_cm_evidence_repository,
         language=language,
     )
 
@@ -820,24 +825,70 @@ def _handle_latest_installation_fleet(
     return CopilotAnswer(answer, FACT, evidence)
 
 
+# MWO-LTSA-CMON-DETAILED-HISTORY-001 -- how many CMON events a WhatsApp
+# reply renders in full before switching to "N more" (Phase 9's own
+# bounded-rendering requirement). No existing default history window/
+# limit is defined anywhere in this codebase for CMON (confirmed by
+# repository archaeology before writing this) -- this is a RENDER limit
+# only (never a data-fetch filter: the full matching set is always
+# queried/counted first), matching the mission's own literal example
+# ("Menampilkan 10 terbaru").
+CMON_HISTORY_RENDER_LIMIT = 10
+
+_CMON_HISTORY_WORDS = ("riwayat", "history", "histori", "hasil", "data cmon", "data condition monitoring")
+
+
+def _is_cmon_history_request(question: str) -> bool:
+    lowered = (question or "").casefold()
+    return any(word in lowered for word in _CMON_HISTORY_WORDS)
+
+
+def _cmon_leak_flagged(record: dict[str, Any]) -> bool:
+    return record.get("mechanical_seal_leak_de") is True or record.get("mechanical_seal_leak_nde") is True
+
+
+def _cmon_leak_confirmed_absent(record: dict[str, Any]) -> bool:
+    # Both sides explicitly recorded False -- a real "no leak" fact, never
+    # inferred from a missing/NULL value (tri-state, MWO's own Phase 6
+    # rule: NULL/unknown and confirmed-normal are not the same thing).
+    return record.get("mechanical_seal_leak_de") is False and record.get("mechanical_seal_leak_nde") is False
+
+
 def _handle_condition_monitoring(
-    tag: str, *, condition_monitoring_reading_repository, language: str = "en", **_: Any
+    tag: str,
+    *,
+    condition_monitoring_reading_repository,
+    question: str = "",
+    pm_cm_evidence_repository=None,
+    language: str = "en",
+    **_: Any,
 ) -> CopilotAnswer:
-    """Tag-scoped: "ada temuan terbaru di <tag>?" / "CMON terakhir <tag>
-    apa?". Reads via condition_monitoring_reading_repository (direct-DB,
-    the same canonical repository the WhatsApp/dashboard CMON WRITE flow
-    already persists through -- read-only here, list_by_asset() only,
-    never create_draft/update_draft/submit/etc.). Its own ORDER BY
-    reading_date DESC NULLS LAST, created_at DESC already selects the
-    newest reading as records[0] -- no re-sorting here. Only canonical
-    columns are surfaced (reading_date, finding, workflow_status,
-    technical_recommendation, source_reference); a field this table has
-    no value for is omitted, never invented."""
-    # Everything downstream (not just the repository call itself) is
-    # inside this try: a mis-shaped/unexpected result (e.g. a dict
-    # instead of a list, per-record dicts missing .get()) must degrade to
-    # DATA_GAP exactly like a genuine connection failure, never propagate
-    # as an unhandled 500 to the WhatsApp caller.
+    """Tag-scoped CMON query, three semantics (MWO-LTSA-CMON-DETAILED-
+    HISTORY-001):
+      LATEST  -- "CMON terakhir/terbaru <tag>" (no history/range wording):
+                 unchanged single-record narrative, byte-identical to the
+                 pre-existing behavior.
+      HISTORY -- "riwayat/history CMON <tag>" or "hasil/data CMON <tag>"
+                 with no explicit period: every matching event (bounded
+                 only at render time, never at fetch time), detailed
+                 per-event readings.
+      TIME-RANGE -- an explicit period ("setahun terakhir", "3 bulan
+                 terakhir", "sejak Januari 2026", "tahun 2026", parsed by
+                 condition_monitoring_time_range.py): same detailed
+                 rendering, filtered to the interpreted [start, end].
+
+    Reads via condition_monitoring_reading_repository (direct-DB, the
+    same canonical repository the WhatsApp/dashboard CMON WRITE flow
+    already persists through, and the SAME repository LTSAKnowledgeService
+    uses to populate knowledge.condition_monitoring_readings for
+    RecommendationEngine's own historical-leak-evidence rule -- one
+    canonical source, not two; see this MWO's own root-cause note: the
+    previous single-record-only LATEST rendering was the actual gap, not
+    a divergent data source). list_by_asset()'s own ORDER BY reading_date
+    DESC NULLS LAST, created_at DESC is reused unchanged for both the
+    LATEST (records[0]) and detailed (already-sorted, newest-first)
+    paths. Only canonical columns are surfaced; a field this table has no
+    value for is rendered N/A, never invented."""
     try:
         records = condition_monitoring_reading_repository.list_by_asset(tag)
         if not isinstance(records, list):
@@ -849,46 +900,211 @@ def _handle_condition_monitoring(
                 return CopilotAnswer(f"Belum ada data Condition Monitoring untuk {tag}.", FACT, ())
             return CopilotAnswer(f"No Condition Monitoring data found for {tag}.", FACT, ())
 
-        latest = records[0]
-        if language == "id":
-            lines = [tag, "", f"CMON terakhir: {latest.get('reading_date') or 'tidak diketahui'}"]
-            lines.append(f"Temuan: {latest.get('finding') or 'tidak ada catatan'}")
-            status = latest.get("workflow_status")
-            if status:
-                lines.append(f"Status: {status}")
-            recommendation = latest.get("technical_recommendation")
-            if recommendation:
-                lines.append(f"Rekomendasi: {recommendation}")
-            source_reference = latest.get("source_reference")
-            if source_reference:
-                lines.append(f"Sumber: {source_reference}")
-        else:
-            lines = [tag, "", f"Latest CMON: {latest.get('reading_date') or 'unknown'}"]
-            lines.append(f"Finding: {latest.get('finding') or 'no record'}")
-            status = latest.get("workflow_status")
-            if status:
-                lines.append(f"Status: {status}")
-            recommendation = latest.get("technical_recommendation")
-            if recommendation:
-                lines.append(f"Recommendation: {recommendation}")
-            source_reference = latest.get("source_reference")
-            if source_reference:
-                lines.append(f"Source: {source_reference}")
-
-        answer = "\n".join(lines)
-        evidence = (
-            _evidence(
-                "ConditionMonitoringReadingRepository",
-                latest.get("condition_monitoring_reading_code") or tag,
-                "finding",
-                latest.get("finding"),
-            ),
+        period = parse_condition_monitoring_period(question)
+        if period is None and not _is_cmon_history_request(question):
+            return _render_cmon_latest(tag, records, language=language)
+        return _render_cmon_detailed_history(
+            tag, records, period,
+            pm_cm_evidence_repository=pm_cm_evidence_repository,
+            language=language,
         )
-        return CopilotAnswer(answer, FACT, evidence)
     except Exception:
         if language == "id":
             return CopilotAnswer(f"Data Condition Monitoring untuk {tag} sedang tidak tersedia.", DATA_GAP, ())
         return CopilotAnswer(f"Condition Monitoring data for {tag} is currently unavailable.", DATA_GAP, ())
+
+
+def _render_cmon_latest(tag: str, records: list[dict[str, Any]], *, language: str = "en") -> CopilotAnswer:
+    # Byte-identical to the pre-MWO-LTSA-CMON-DETAILED-HISTORY-001
+    # rendering -- regression-safety for every existing LATEST-query test.
+    latest = records[0]
+    if language == "id":
+        lines = [tag, "", f"CMON terakhir: {latest.get('reading_date') or 'tidak diketahui'}"]
+        lines.append(f"Temuan: {latest.get('finding') or 'tidak ada catatan'}")
+        status = latest.get("workflow_status")
+        if status:
+            lines.append(f"Status: {status}")
+        recommendation = latest.get("technical_recommendation")
+        if recommendation:
+            lines.append(f"Rekomendasi: {recommendation}")
+        source_reference = latest.get("source_reference")
+        if source_reference:
+            lines.append(f"Sumber: {source_reference}")
+    else:
+        lines = [tag, "", f"Latest CMON: {latest.get('reading_date') or 'unknown'}"]
+        lines.append(f"Finding: {latest.get('finding') or 'no record'}")
+        status = latest.get("workflow_status")
+        if status:
+            lines.append(f"Status: {status}")
+        recommendation = latest.get("technical_recommendation")
+        if recommendation:
+            lines.append(f"Recommendation: {recommendation}")
+        source_reference = latest.get("source_reference")
+        if source_reference:
+            lines.append(f"Source: {source_reference}")
+
+    answer = "\n".join(lines)
+    evidence = (
+        _evidence(
+            "ConditionMonitoringReadingRepository",
+            latest.get("condition_monitoring_reading_code") or tag,
+            "finding",
+            latest.get("finding"),
+        ),
+    )
+    return CopilotAnswer(answer, FACT, evidence)
+
+
+def _parse_reading_date(value: Any) -> Any:
+    if not value:
+        return None
+    try:
+        from datetime import date as _date
+        return _date.fromisoformat(str(value)[:10])
+    except ValueError:
+        return None
+
+
+def _render_cmon_detailed_history(
+    tag: str,
+    records: list[dict[str, Any]],
+    period,
+    *,
+    pm_cm_evidence_repository=None,
+    language: str = "en",
+) -> CopilotAnswer:
+    if period is not None:
+        matching = [
+            r for r in records
+            if (d := _parse_reading_date(r.get("reading_date"))) is not None and period.start <= d <= period.end
+        ]
+    else:
+        matching = list(records)
+
+    period_line = None
+    if period is not None:
+        label = period.label_id if language == "id" else period.label_en
+        header = f"CMON {tag} — {label}"
+        period_line = f"Periode: {period.start.isoformat()} – {period.end.isoformat()}"
+    else:
+        header = f"CMON {tag} — Riwayat" if language == "id" else f"CMON {tag} — History"
+
+    if not matching:
+        if period is not None:
+            if language == "id":
+                answer = f"Tidak ditemukan data CMON {tag} pada periode {period.start.isoformat()} – {period.end.isoformat()}."
+            else:
+                answer = f"No CMON data found for {tag} in the period {period.start.isoformat()} – {period.end.isoformat()}."
+        else:
+            if language == "id":
+                answer = f"Tidak ditemukan data CMON {tag}."
+            else:
+                answer = f"No CMON data found for {tag}."
+        return CopilotAnswer(answer, FACT, ())
+
+    event_count = len(matching)
+    shown = matching[:CMON_HISTORY_RENDER_LIMIT]
+    reading_count = sum(len(render_reading_lines(r)) for r in matching)
+    leak_count = sum(1 for r in matching if _cmon_leak_flagged(r))
+    abnormal_count = leak_count
+    normal_count = sum(1 for r in matching if _cmon_leak_confirmed_absent(r) and not _cmon_leak_flagged(r))
+    latest_date = matching[0].get("reading_date")
+
+    lines = [header]
+    if period_line:
+        lines.append(period_line)
+    lines.append("")
+    if event_count > len(shown):
+        if language == "id":
+            lines.append(f"Ditemukan {event_count} CMON. Menampilkan {len(shown)} terbaru.")
+        else:
+            lines.append(f"Found {event_count} CMON record(s). Showing {len(shown)} most recent.")
+        lines.append("")
+
+    for index, record in enumerate(shown, start=1):
+        lines.append(f"{index}. {record.get('reading_date') or ('tidak diketahui' if language == 'id' else 'unknown')}")
+        status = record.get("workflow_status")
+        lines.append(f"   Status: {status or 'N/A'}")
+        lines.append("")
+        reading_lines = render_reading_lines(record)
+        lines.append("   Readings:" if language != "id" else "   Readings:")
+        if reading_lines:
+            for reading_line in reading_lines:
+                lines.append(f"   • {reading_line}")
+        else:
+            lines.append("   • N/A")
+        lines.append("")
+        finding_label = "Finding:" if language != "id" else "Finding:"
+        lines.append(f"   {finding_label}")
+        lines.append(f"   {record.get('finding') or 'N/A'}")
+        lines.append("")
+        # No canonical field distinct from `finding` exists for a
+        # separate "observation" concept (confirmed by schema archaeology
+        # -- CANONICAL_SCHEMA.sql's condition_monitoring_reading has no
+        # such column). Always N/A, never repurposing technical_comment
+        # (a review-stage field with its own distinct provenance) to fill
+        # this section -- that would misrepresent its source, the same
+        # fabrication this MWO explicitly forbids.
+        lines.append("   Observation:")
+        lines.append("   N/A")
+
+        if pm_cm_evidence_repository is not None:
+            try:
+                attachments = pm_cm_evidence_repository.list_for_record(
+                    "CONDITION_MONITORING_READING", record.get("condition_monitoring_reading_code")
+                )
+            except Exception:
+                attachments = None
+            if attachments:
+                lines.append("")
+                lines.append("   Dokumen:" if language == "id" else "   Document:")
+                for attachment in attachments:
+                    category = attachment.get("category")
+                    suffix = f" ({category})" if category else ""
+                    lines.append(f"   • {attachment.get('file_name') or 'N/A'}{suffix}")
+        lines.append("")
+
+    if language == "id":
+        lines.append("Ringkasan:")
+        lines.append(f"Total CMON: {event_count}")
+        lines.append(f"Normal: {normal_count}")
+        lines.append(f"Abnormal: {abnormal_count}")
+        lines.append(f"Mechanical seal leak: {leak_count}")
+        lines.append(f"CMON terakhir: {latest_date or 'tidak diketahui'}")
+        lines.append("")
+        lines.append("Sumber: Data kanonik LTSA")
+    else:
+        lines.append("Summary:")
+        lines.append(f"Total CMON: {event_count}")
+        lines.append(f"Normal: {normal_count}")
+        lines.append(f"Abnormal: {abnormal_count}")
+        lines.append(f"Mechanical seal leak: {leak_count}")
+        lines.append(f"Latest CMON: {latest_date or 'unknown'}")
+        lines.append("")
+        lines.append("Source: LTSA canonical data")
+
+    answer = "\n".join(lines).rstrip()
+    # MWO-LTSA-CMON-DETAILED-HISTORY-001 Phase 5 -- CMON_EVENT_COUNT
+    # (one entry per condition_monitoring_reading row -- an "inspection
+    # event") is kept explicitly distinct from CMON_READING_COUNT (the
+    # total count of individual non-null parameter VALUES across those
+    # same events -- one event commonly carries many readings). Exposed
+    # as evidence (machine-checkable, e.g. by this module's own tests)
+    # rather than prose, keeping the WhatsApp reply itself concise per
+    # this MWO's own Phase 9 bounded-rendering rule.
+    evidence = (
+        _evidence("ConditionMonitoringReadingRepository", tag, "cmon_event_count", event_count),
+        _evidence("ConditionMonitoringReadingRepository", tag, "cmon_reading_count", reading_count),
+    ) + tuple(
+        _evidence(
+            "ConditionMonitoringReadingRepository",
+            record.get("condition_monitoring_reading_code") or tag,
+            "finding",
+            record.get("finding"),
+        )
+        for record in shown
+    )
+    return CopilotAnswer(answer, FACT, evidence)
 
 
 def _handle_leak_frequency_fleet(

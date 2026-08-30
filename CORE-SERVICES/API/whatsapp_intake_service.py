@@ -367,6 +367,14 @@ class LTSAAIQueryDependencies:
     # working unchanged -- only the two production WhatsApp routers wire a
     # real one, bound to their own outbound_client.send_text(recipient, ...).
     send_immediate_ack: Any = None
+    # MWO-LTSA-CMON-DETAILED-HISTORY-001 -- the same canonical PMCMEvidence
+    # Repository singleton dependencies.py already wires
+    # (get_pm_cm_evidence_repository), so a detailed CMON history answer
+    # can expose each event's real attachment metadata (Phase 8). Optional/
+    # defaults to None so every pre-existing construction site/test keeps
+    # working unchanged -- ask_copilot() itself already treats a None here
+    # as "no attachment lookup", never an error.
+    pm_cm_evidence_repository: Any = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1370,6 +1378,7 @@ def _handle_ltsa_ai_query(
         fleet_executive_summary_service=ltsa_ai_query_deps.fleet_executive_summary_service,
         pm_occurrence_repository=ltsa_ai_query_deps.pm_occurrence_repository,
         cm_report_repository=ltsa_ai_query_deps.cm_report_repository,
+        pm_cm_evidence_repository=ltsa_ai_query_deps.pm_cm_evidence_repository,
         language="id",
     )
     # READ-ONLY by construction: every function reachable from here

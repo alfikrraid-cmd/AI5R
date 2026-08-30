@@ -25,6 +25,7 @@ from dependencies import (
     get_ltsa_knowledge_service,
     get_maintenance_history_gateway,
     get_mechanical_seal_stock_repository,
+    get_pm_cm_evidence_repository,
     get_pm_occurrence_repository,
     get_pump_gateway,
     get_whatsapp_intake_repository,
@@ -225,6 +226,7 @@ async def receive_whatsapp_webhook(
     fleet_executive_summary_service=Depends(get_fleet_executive_summary_service),
     ltsa_ai_pm_occurrence_repository=Depends(get_ltsa_ai_pm_occurrence_repository),
     cm_report_repository=Depends(get_cm_report_repository),
+    pm_cm_evidence_repository=Depends(get_pm_cm_evidence_repository),
 ) -> dict[str, Any]:
     # Same canonical gateways/services routers/copilot.py's own
     # ask_copilot_endpoint already depends on -- no new gateway, no
@@ -249,6 +251,7 @@ async def receive_whatsapp_webhook(
         fleet_executive_summary_service=fleet_executive_summary_service,
         pm_occurrence_repository=ltsa_ai_pm_occurrence_repository,
         cm_report_repository=cm_report_repository,
+        pm_cm_evidence_repository=pm_cm_evidence_repository,
     )
     raw_body = await request.body()
     if not _signature_valid(raw_body, x_hub_signature_256):

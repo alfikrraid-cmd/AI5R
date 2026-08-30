@@ -20,6 +20,7 @@ from dependencies import (
     get_ltsa_knowledge_service,
     get_maintenance_history_gateway,
     get_mechanical_seal_stock_repository,
+    get_pm_cm_evidence_repository,
     get_pm_occurrence_repository,
     get_product_name,
     get_pump_gateway,
@@ -95,6 +96,7 @@ def ask_copilot_endpoint(
     fleet_executive_summary_service=Depends(get_fleet_executive_summary_service),
     pm_occurrence_repository=Depends(get_pm_occurrence_repository),
     cm_report_repository=Depends(get_cm_report_repository),
+    pm_cm_evidence_repository=Depends(get_pm_cm_evidence_repository),
     ai_client=Depends(get_copilot_ai_client),
     current_user: AuthenticatedIdentity = Depends(get_current_user),
 ) -> Payload:
@@ -134,6 +136,7 @@ def ask_copilot_endpoint(
         fleet_executive_summary_service=fleet_executive_summary_service,
         pm_occurrence_repository=pm_occurrence_repository,
         cm_report_repository=cm_report_repository,
+        pm_cm_evidence_repository=pm_cm_evidence_repository,
     )
 
     # tools_used is additive/optional -- existing frontend (CopilotPanel/
