@@ -1256,6 +1256,37 @@ def _extract_ltsa_ai_query_tag(text: str) -> str | None:
     return _normalize_pump_tag_text(text)
 
 
+# MWO-LTSA-FLEET-ANALYTICS-001 -- generalized from MWO-LTSA-FLEET-
+# ATTENTION-001's own fleet_priority-only check: every expensive, tag-less
+# fleet-wide analytics query -- fleet priority/attention, temperature/
+# vibration ranking, current leak, historical leak frequency (all
+# copilot_ask_service.py's own "condition_monitoring" intent when
+# tag-less), fleet stock semantics ("inventory" intent, tag-less, no seal
+# code named), and overdue PM ("fleet_pm_overdue") -- shares the SAME "at
+# most one ack, at most one final answer" mechanism this MWO already
+# proved for fleet_priority alone. These are the REAL intent identifiers
+# copilot_ask_service._detect_intent already returns, reused unchanged --
+# no second/duplicated set of intent constants. Module-level (not nested
+# in _handle_ltsa_ai_query) so it is directly unit-testable.
+def _is_expensive_fleet_query(intent: str, tag: str | None, text: str) -> bool:
+    """True only for a genuinely fleet-wide (tag-less) analytics query
+    that reads via fleet_analytics_service's batch fetch (or, for
+    fleet_priority, FleetReliabilityService's own batch-or-fallback path)
+    -- never for an ordinary single-equipment read (tag is not None) and
+    never for a fast seal-code-keyed inventory lookup (tag-less but NOT a
+    fleet scan -- one Stock V1 pool lookup, unrelated to
+    build_fleet_data_batch)."""
+    if tag is not None:
+        return False
+    if intent in ("fleet_priority", "fleet_pm_overdue", "condition_monitoring"):
+        return True
+    if intent == "inventory":
+        from .copilot_ask_service import _extract_seal_code
+
+        return _extract_seal_code(text) is None
+    return False
+
+
 def _format_ltsa_ai_reply(answer: Any) -> str:
     # Phase 9's grounded response contract: the tool/AI-produced answer
     # text is already the compact, WhatsApp-appropriate summary (every
@@ -1294,16 +1325,36 @@ def _handle_ltsa_ai_query(
     if intent is None:
         return None
 
-    # MWO-LTSA-FLEET-ATTENTION-001 -- "never silently fail" + "prevent
-    # duplicate acknowledgement/final responses during webhook retry".
-    # Fleet-wide analysis is the one query shape slow enough that Meta's
-    # own webhook delivery can time out and retry the identical
+    tag = _extract_ltsa_ai_query_tag(text)
+
+    # MWO-LTSA-FLEET-ANALYTICS-001 -- generalized from MWO-LTSA-FLEET-
+    # ATTENTION-001's own fleet_priority-only check: every expensive,
+    # tag-less fleet-wide analytics query -- fleet priority/attention,
+    # temperature/vibration ranking, current leak, historical leak
+    # frequency (all copilot_ask_service.py's own "condition_monitoring"
+    # intent when tag-less), fleet stock semantics ("inventory" intent,
+    # tag-less, no seal code named), and overdue PM ("fleet_pm_overdue")
+    # -- shares the SAME "at most one ack, at most one final answer"
+    # mechanism this MWO already proved for fleet_priority alone. These
+    # are the REAL intent identifiers copilot_ask_service._detect_intent
+    # already returns, reused unchanged -- no second/duplicated set of
+    # intent constants. Deliberately excludes: any tagged (single-
+    # equipment) question, and a seal-code-keyed inventory lookup ("stok
+    # seal T48MP berapa?") -- both are the genuinely fast, ordinary reads
+    # this mechanism is not meant to wrap (see _is_expensive_fleet_query's
+    # own docstring).
+    #
+    # "never silently fail" + "prevent duplicate acknowledgement/final
+    # responses during webhook retry": each of these query shapes is now
+    # slow enough (fleet_analytics_service.build_fleet_data_batch()) that
+    # Meta's own webhook delivery can time out and retry the identical
     # provider_message_id before our first attempt has replied. This path
     # never persists a pending row (read-only, see this function's own
     # docstring below), so the existing _persist()-based DUPLICATE_DELIVERY
-    # check never sees these deliveries -- a dedicated, process-local
-    # tracker closes that specific gap for this specific query shape only.
-    if intent == "fleet_priority" and provider_message_id is not None:
+    # check never sees these deliveries -- the SAME dedicated, process-
+    # local tracker (FleetQueryDeliveryTracker) closes that gap for every
+    # one of these query shapes, not just fleet_priority.
+    if _is_expensive_fleet_query(intent, tag, text) and provider_message_id is not None:
         if _fleet_query_delivery_tracker.is_duplicate(identity.user_id, provider_message_id):
             # Same delivery seen before (a retry) -- returning reply=None
             # with message="DUPLICATE_DELIVERY" reuses the exact suppression
@@ -1318,8 +1369,6 @@ def _handle_ltsa_ai_query(
                 # Best-effort: a failed acknowledgement send must never
                 # block or fail the actual answer that follows.
                 logger.info("event=whatsapp_fleet_query_ack_send_failed")
-
-    tag = _extract_ltsa_ai_query_tag(text)
 
     # MWO-LTSA-STOCK-RESPONSE-STANDARD-001 -- explicit equipment in THIS
     # message always wins (checked above, unchanged); only when the

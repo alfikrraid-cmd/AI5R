@@ -276,3 +276,37 @@ def test_list_pump_knowledge_reuses_list_pump_tags_no_duplicate_pump_discovery()
     body_start = source.index("def list_pump_knowledge")
     body = source[body_start : body_start + 700]
     assert "_list_pump_tags" in body
+
+
+# -- MWO-LTSA-FLEET-ANALYTICS-001 readiness closure: document-gateway audit --
+
+
+def test_recommendation_engine_never_reads_drawings_field():
+    """Phase 4's own audit question: does any RecommendationEngine rule
+    require document data in a way that would force list_pump_knowledge_
+    from_batch()'s always-empty `drawings` field back to a per-pump
+    fallback? Answer: no -- proven here by inspecting the real
+    recommendation_engine.py source for any `knowledge.drawings` /
+    `.drawings` reference, not assumed. If a future rule starts reading
+    drawings, THIS test fails first, rather than silently reintroducing
+    an N+1 document-gateway fallback inside list_pump_knowledge_from_batch."""
+    source = (
+        Path(__file__).resolve().parents[1].joinpath("recommendation_engine.py").read_text(encoding="utf-8")
+    )
+    assert "drawings" not in source
+
+
+def test_recommendation_engine_field_reads_are_a_known_closed_set():
+    """The complete set of LTSAKnowledge fields RecommendationEngine.
+    recommend() reads, confirmed by source inspection -- documents
+    exactly why list_pump_knowledge_from_batch() only needs to populate
+    tag_number/condition_monitoring_readings/cm_history/breakdown_history/
+    inventory correctly (drawings/condition_monitoring_schedules/
+    work_orders can safely stay empty tuples)."""
+    import re
+
+    source = (
+        Path(__file__).resolve().parents[1].joinpath("recommendation_engine.py").read_text(encoding="utf-8")
+    )
+    fields_read = set(re.findall(r"knowledge\.(\w+)", source))
+    assert fields_read == {"tag_number", "condition_monitoring_readings", "cm_history", "breakdown_history", "inventory"}

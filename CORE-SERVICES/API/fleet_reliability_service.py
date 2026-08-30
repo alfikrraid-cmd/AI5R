@@ -143,9 +143,25 @@ class FleetReliabilityService:
         refetched per pump by the OLD path; here every field is a plain
         dict lookup into data the caller fetched exactly once. Field-for-
         field equivalent to LTSAKnowledgeService.build()'s own shape except
-        drawings/condition_monitoring_schedules/work_orders (empty tuples
-        -- no existing RecommendationEngine rule reads them, so this never
-        changes fleet ranking output, only how the inputs were fetched)."""
+        drawings/condition_monitoring_schedules/work_orders (empty tuples).
+
+        MWO-LTSA-FLEET-ANALYTICS-001 readiness closure -- explicitly
+        including the disclosed "document gateway is not part of
+        FleetDataBatch" limitation: `drawings` (populated per-pump by
+        LTSAKnowledgeService._build_drawings() via seal_engineering_
+        document_gateway) is always empty here. Verified (not assumed)
+        that this is safe: `knowledge.drawings` does not appear anywhere
+        in recommendation_engine.py -- the complete set of LTSAKnowledge
+        fields RecommendationEngine.recommend() actually reads is
+        {tag_number, condition_monitoring_readings, cm_history,
+        breakdown_history, inventory} (test_fleet_reliability_service.py
+        ::test_recommendation_engine_never_reads_drawings_field proves
+        this by inspecting the real recommendation_engine module source,
+        so a future rule addition that starts reading drawings would fail
+        that test rather than silently reintroducing per-pump fallback
+        here). No document data is therefore needed for fleet-priority
+        ranking, and the document gateway is correctly left out of
+        FleetDataBatch -- not a gap to close, a verified non-requirement."""
         knowledge: list[LTSAKnowledge] = []
         for pump in batch.pumps:
             tag = pump.get("tag_number")
