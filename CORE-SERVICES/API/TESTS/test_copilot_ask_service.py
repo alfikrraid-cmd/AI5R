@@ -366,6 +366,29 @@ def test_unsupported_topic_still_returns_couldnt_match_message():
     assert "couldn't match" in answer.answer.lower()
 
 
+def test_tag_scoped_condition_monitoring_question_is_data_gap_not_a_crash():
+    # condition_monitoring has a fleet-wide handler (tag is None) but no
+    # per-asset entry in TOOL_HANDLERS -- a tag-scoped question here must
+    # fall through to a graceful DATA_GAP, never raise KeyError.
+    assert _detect_intent("apakah ada kebocoran di CMON 211-P-13AR?") == "condition_monitoring"
+    answer = ask_copilot(
+        "apakah ada kebocoran di CMON 211-P-13AR?",
+        "211-P-13AR",
+        None,
+        pump_gateway=None,
+        maintenance_history_gateway=None,
+        work_order_gateway=None,
+        installation_gateway=None,
+        ltsa_knowledge_service=None,
+        equipment_timeline_service=None,
+        condition_monitoring_reading_gateway=_FakeCMONGateway([]),
+        installation_report_repository=_FakeInstallationReportRepository([]),
+        mechanical_seal_stock_repository=_FakeMechanicalSealStockRepository([]),
+    )
+    assert answer.kind == DATA_GAP
+    assert answer.evidence == ()
+
+
 # --- MWO-LTSA-AI-COPILOT-FLEET-STOCK-V1-017B: fleet-wide stock status -------------
 
 _POOL_OUT = {"stock_pool_id": "POOL-OUT", "seal_type": "T48MP", "quantity_available": 0, "applications": [{"equipment_tag": "211-P-01A"}]}

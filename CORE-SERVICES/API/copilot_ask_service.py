@@ -58,6 +58,12 @@ _NO_ASSET_MESSAGE = (
     "This question needs a specific pump/asset. Select an asset, or ask a "
     "fleet-wide question such as \"active work orders\"."
 )
+_NO_PER_ASSET_TOOL_MESSAGE = (
+    "I don't yet have a per-asset answer for that topic. Try a fleet-wide "
+    "question instead, or ask about pump status, pump history, PM/CM, work "
+    "orders, seal/compatibility, inventory/stock, drawing/document, or "
+    "recommendation."
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -246,7 +252,14 @@ def ask_copilot(
     if tag is None:
         return CopilotAnswer(_NO_ASSET_MESSAGE, DATA_GAP, ())
 
-    handler = TOOL_HANDLERS[intent]
+    handler = TOOL_HANDLERS.get(intent)
+    if handler is None:
+        # _detect_intent recognizes more intents (e.g. "condition_monitoring")
+        # than TOOL_HANDLERS has per-asset tools for -- those intents only
+        # have a fleet-wide handler above (guarded by `tag is None`), so a
+        # tag-scoped question here would otherwise raise an unhandled
+        # KeyError instead of a graceful DATA_GAP answer.
+        return CopilotAnswer(_NO_PER_ASSET_TOOL_MESSAGE, DATA_GAP, ())
     return handler(
         tag,
         pump_gateway=pump_gateway,
