@@ -235,6 +235,8 @@ def ask_copilot(
     mechanical_seal_stock_repository,
     condition_monitoring_reading_repository,
     fleet_executive_summary_service,
+    pm_occurrence_repository,
+    cm_report_repository,
     language: str = "en",
 ) -> CopilotAnswer:
     intent = _detect_intent(question)
@@ -320,6 +322,8 @@ def ask_copilot(
         installation_report_repository=installation_report_repository,
         mechanical_seal_stock_repository=mechanical_seal_stock_repository,
         condition_monitoring_reading_repository=condition_monitoring_reading_repository,
+        pm_occurrence_repository=pm_occurrence_repository,
+        cm_report_repository=cm_report_repository,
         language=language,
     )
 
@@ -431,48 +435,93 @@ def _handle_global_work_orders(
     return CopilotAnswer(answer, FACT, evidence)
 
 
-def _handle_pm(tag: str, *, language: str = "en", **_: Any) -> CopilotAnswer:
-    result = mis.get_pump_last_pm(tag)
-    if not result.get("success"):
+def _handle_pm(tag: str, *, pm_occurrence_repository, language: str = "en", **_: Any) -> CopilotAnswer:
+    # MWO-LTSA-EQUIPMENT-360-001 -- reads via pm_occurrence_repository
+    # (direct-DB, the SAME canonical repository the WhatsApp PM WRITE
+    # flow already persists through), replacing the previous
+    # mis.get_pump_last_pm(tag) call -- that function received no
+    # gateway kwargs at all here, so it always constructed its OWN
+    # default PMOccurrenceGateway/WorkOrderGateway/MaintenanceHistory
+    # Gateway (n8n), a genuinely SEPARATE data path from what WhatsApp's
+    # own canonical write just persisted. This is the root cause this
+    # MWO's own audit traced for the "PM terakhir" contradiction: same
+    # equipment, same database, two disconnected retrieval paths. Its own
+    # ORDER BY occurrence_date DESC NULLS LAST, created_at DESC already
+    # selects the newest occurrence as records[0] -- no re-sorting here.
+    # workflow_status is surfaced truthfully (DRAFT stays DRAFT), never
+    # silently promoted to a confirmed fact.
+    try:
+        records = pm_occurrence_repository.list_by_asset(tag)
+        if not isinstance(records, list):
+            if language == "id":
+                return CopilotAnswer(f"Riwayat PM untuk {tag} sedang tidak tersedia.", DATA_GAP, ())
+            return CopilotAnswer(f"PM history for {tag} is currently unavailable.", DATA_GAP, ())
+        if not records:
+            if language == "id":
+                return CopilotAnswer(f"Tidak ada catatan Preventive Maintenance (PM) untuk {tag}.", FACT, ())
+            return CopilotAnswer(f"No preventive maintenance (PM) record found for {tag}.", FACT, ())
+
+        last_pm = records[0]
+        status = last_pm.get("workflow_status") or last_pm.get("status")
+        if language == "id":
+            answer = f"PM terakhir {tag} pada {last_pm.get('occurrence_date') or 'tanggal tidak diketahui'}"
+            if status:
+                answer += f" (status: {status})"
+            answer += f", sumber: {last_pm.get('provenance') or 'N/A'}."
+        else:
+            answer = f"{tag}'s last PM was on {last_pm.get('occurrence_date') or 'an unknown date'}"
+            if status:
+                answer += f" (status: {status})"
+            answer += f", source: {last_pm.get('provenance') or 'N/A'}."
+        evidence = (
+            _evidence("PMOccurrenceRepository", last_pm.get("pm_occurrence_code") or tag, "occurrence_date", last_pm.get("occurrence_date")),
+        )
+        return CopilotAnswer(answer, FACT, evidence)
+    except Exception:
         if language == "id":
             return CopilotAnswer(f"Riwayat PM untuk {tag} sedang tidak tersedia.", DATA_GAP, ())
         return CopilotAnswer(f"PM history for {tag} is currently unavailable.", DATA_GAP, ())
-    last_pm = result.get("last_pm")
-    if not last_pm:
+
+
+def _handle_cm(tag: str, *, cm_report_repository, language: str = "en", **_: Any) -> CopilotAnswer:
+    # MWO-LTSA-EQUIPMENT-360-001 -- reads via cm_report_repository
+    # (direct-DB, the SAME canonical repository routers/cm_report.py's
+    # own dashboard endpoint already depends on), replacing the previous
+    # mis.get_pump_last_cm(tag) call -- that function received no gateway
+    # kwarg here either, so it always constructed its own default
+    # CMReportGateway (n8n), a separate path from the direct-DB
+    # cm_report table. list_cm_reports() is already ORDER BY
+    # COALESCE(failure_date, created_at) DESC -- filtering by asset_code
+    # preserves that ordering, so the first match is still the newest.
+    try:
+        response = cm_report_repository.list_cm_reports()
+        if not response.get("success"):
+            if language == "id":
+                return CopilotAnswer(f"Riwayat CM untuk {tag} sedang tidak tersedia.", DATA_GAP, ())
+            return CopilotAnswer(f"CM history for {tag} is currently unavailable.", DATA_GAP, ())
+        records = [r for r in (response.get("data") or []) if r.get("asset_code") == tag]
+        if not records:
+            if language == "id":
+                return CopilotAnswer(f"Tidak ada catatan Corrective Maintenance (CM) untuk {tag}.", FACT, ())
+            return CopilotAnswer(f"No corrective maintenance (CM) record found for {tag}.", FACT, ())
+
+        last_cm = records[0]
         if language == "id":
-            return CopilotAnswer(f"Tidak ada catatan Preventive Maintenance (PM) untuk {tag}.", FACT, ())
-        return CopilotAnswer(f"No preventive maintenance (PM) record found for {tag}.", FACT, ())
-    if language == "id":
-        answer = f"PM terakhir {tag} pada {last_pm.get('performed_at') or 'tanggal tidak diketahui'} (sumber: {last_pm.get('source') or 'N/A'})."
-    else:
-        answer = f"{tag}'s last PM was on {last_pm.get('performed_at') or 'an unknown date'} (source: {last_pm.get('source') or 'N/A'})."
-    evidence = (_evidence("PMHistory", tag, "performed_at", last_pm.get("performed_at")),)
-    return CopilotAnswer(answer, FACT, evidence)
-
-
-def _handle_cm(tag: str, *, language: str = "en", **_: Any) -> CopilotAnswer:
-    result = mis.get_pump_last_cm(tag)
-    if not result.get("success"):
+            answer = (
+                f"CM report terakhir {tag} adalah {last_cm.get('cm_report_code') or 'N/A'}, "
+                f"severity {last_cm.get('severity') or 'N/A'}, status {last_cm.get('status') or 'N/A'}."
+            )
+        else:
+            answer = (
+                f"{tag}'s last CM report is {last_cm.get('cm_report_code') or 'N/A'}, "
+                f"severity {last_cm.get('severity') or 'N/A'}, status {last_cm.get('status') or 'N/A'}."
+            )
+        evidence = (_evidence("CMReportRepository", last_cm.get("cm_report_code") or tag, "severity", last_cm.get("severity")),)
+        return CopilotAnswer(answer, FACT, evidence)
+    except Exception:
         if language == "id":
             return CopilotAnswer(f"Riwayat CM untuk {tag} sedang tidak tersedia.", DATA_GAP, ())
         return CopilotAnswer(f"CM history for {tag} is currently unavailable.", DATA_GAP, ())
-    last_cm = result.get("last_cm")
-    if not last_cm:
-        if language == "id":
-            return CopilotAnswer(f"Tidak ada catatan Corrective Maintenance (CM) untuk {tag}.", FACT, ())
-        return CopilotAnswer(f"No corrective maintenance (CM) record found for {tag}.", FACT, ())
-    if language == "id":
-        answer = (
-            f"CM report terakhir {tag} adalah {last_cm.get('cm_report_code') or 'N/A'}, "
-            f"severity {last_cm.get('severity') or 'N/A'}, status {last_cm.get('status') or 'N/A'}."
-        )
-    else:
-        answer = (
-            f"{tag}'s last CM report is {last_cm.get('cm_report_code') or 'N/A'}, "
-            f"severity {last_cm.get('severity') or 'N/A'}, status {last_cm.get('status') or 'N/A'}."
-        )
-    evidence = (_evidence("CMReport", last_cm.get("cm_report_code") or tag, "severity", last_cm.get("severity")),)
-    return CopilotAnswer(answer, FACT, evidence)
 
 
 def _handle_current_seal(tag: str, *, equipment_timeline_service, language: str = "en", **_: Any) -> CopilotAnswer:
@@ -532,21 +581,46 @@ def _handle_seal_compat(tag: str, *, ltsa_knowledge_service, language: str = "en
         return CopilotAnswer(f"Compatible seal data for {tag} is currently unavailable.", DATA_GAP, ())
 
 
-def _handle_inventory(tag: str, *, ltsa_knowledge_service, language: str = "en", **_: Any) -> CopilotAnswer:
+def _handle_inventory(tag: str, *, mechanical_seal_stock_repository, language: str = "en", **_: Any) -> CopilotAnswer:
+    # MWO-LTSA-EQUIPMENT-360-001 -- reads via mechanical_seal_stock_
+    # repository (Stock V1, direct-DB), replacing the previous
+    # ltsa_knowledge_service.build(tag).inventory call -- LTSAKnowledge
+    # Service constructs its OWN internal SealStockGateway (n8n, the
+    # LEGACY seal_stock source) when not given one, a genuinely different
+    # data path from Stock V1 -- the SAME "ONLY stock authority Copilot
+    # reads from" _handle_stock_by_seal_code/_handle_fleet_stock_status
+    # already established (MWO-LTSA-AI-COPILOT-NATURAL-LANGUAGE-ROUTING-
+    # 017A). A tag-scoped stock question must resolve through the exact
+    # same authority a seal-code-keyed or fleet-wide stock question does,
+    # never a second, disconnected number for "the same" stock.
+    # flatten_stock_v1_fleet_rows reuses Stock V1's own real
+    # (equipment_tag, pool) application mapping unmodified -- never
+    # infers a pump's stock from a pool it has no real application row
+    # for.
     try:
-        knowledge = ltsa_knowledge_service.build(tag)
-        inventory = knowledge.inventory or []
-        if not inventory:
+        response = mechanical_seal_stock_repository.list_pools(limit=200)
+        if not response.get("success"):
+            if language == "id":
+                return CopilotAnswer(f"Data stok suku cadang untuk {tag} sedang tidak tersedia.", DATA_GAP, ())
+            return CopilotAnswer(f"Spare-part stock data for {tag} is currently unavailable.", DATA_GAP, ())
+
+        rows = mis.flatten_stock_v1_fleet_rows(response.get("data") or [])
+        matches = [row for row in rows if row["equipment_tag"] == tag]
+        if not matches:
             if language == "id":
                 return CopilotAnswer(f"Tidak ada catatan stok suku cadang untuk seal kompatibel {tag}.", FACT, ())
             return CopilotAnswer(f"No spare-part stock records are registered for {tag}'s compatible seals.", FACT, ())
+
         if language == "id":
-            lines = [f"- {i.get('seal_code')}: qty tersedia {i.get('quantity_on_hand') if i.get('quantity_on_hand') is not None else 'N/A'} ({i.get('location') or 'N/A'})" for i in inventory]
+            lines = [f"- {row['seal_type'] or 'N/A'}: {_quantity_available_phrase(row['quantity_available'], language)}" for row in matches]
             answer = f"Stok suku cadang untuk {tag}:\n" + "\n".join(lines)
         else:
-            lines = [f"- {i.get('seal_code')}: qty on hand {i.get('quantity_on_hand') if i.get('quantity_on_hand') is not None else 'N/A'} ({i.get('location') or 'N/A'})" for i in inventory]
+            lines = [f"- {row['seal_type'] or 'N/A'}: {_quantity_available_phrase(row['quantity_available'], language)}" for row in matches]
             answer = f"Spare-part stock for {tag}:\n" + "\n".join(lines)
-        evidence = tuple(_evidence("MechanicalSealStockV1", i.get("stock_pool_id") or tag, "quantity_on_hand", i.get("quantity_on_hand")) for i in inventory)
+        evidence = tuple(
+            _evidence("MechanicalSealStockV1", row["stock_pool_id"] or tag, "quantity_available", row["quantity_available"])
+            for row in matches
+        )
         return CopilotAnswer(answer, FACT, evidence)
     except Exception:
         if language == "id":

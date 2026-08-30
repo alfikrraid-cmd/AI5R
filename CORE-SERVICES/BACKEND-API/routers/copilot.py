@@ -8,6 +8,7 @@ from API.auth_service import AuthenticatedIdentity, resolve_area_scope
 from API.pump_area_scope import is_area_in_scope
 from API.copilot_orchestrator import orchestrate_copilot
 from dependencies import (
+    get_cm_report_repository,
     get_condition_monitoring_reading_gateway,
     get_condition_monitoring_reading_repository,
     get_copilot_ai_client,
@@ -19,6 +20,7 @@ from dependencies import (
     get_ltsa_knowledge_service,
     get_maintenance_history_gateway,
     get_mechanical_seal_stock_repository,
+    get_pm_occurrence_repository,
     get_product_name,
     get_pump_gateway,
     get_work_order_gateway,
@@ -91,6 +93,8 @@ def ask_copilot_endpoint(
     mechanical_seal_stock_repository=Depends(get_mechanical_seal_stock_repository),
     condition_monitoring_reading_repository=Depends(get_condition_monitoring_reading_repository),
     fleet_executive_summary_service=Depends(get_fleet_executive_summary_service),
+    pm_occurrence_repository=Depends(get_pm_occurrence_repository),
+    cm_report_repository=Depends(get_cm_report_repository),
     ai_client=Depends(get_copilot_ai_client),
     current_user: AuthenticatedIdentity = Depends(get_current_user),
 ) -> Payload:
@@ -128,6 +132,8 @@ def ask_copilot_endpoint(
         mechanical_seal_stock_repository=mechanical_seal_stock_repository,
         condition_monitoring_reading_repository=condition_monitoring_reading_repository,
         fleet_executive_summary_service=fleet_executive_summary_service,
+        pm_occurrence_repository=pm_occurrence_repository,
+        cm_report_repository=cm_report_repository,
     )
 
     # tools_used is additive/optional -- existing frontend (CopilotPanel/

@@ -327,6 +327,13 @@ class LTSAAIQueryDependencies:
     mechanical_seal_stock_repository: Any
     condition_monitoring_reading_repository: Any
     fleet_executive_summary_service: Any
+    # MWO-LTSA-EQUIPMENT-360-001 -- the SAME canonical direct-DB
+    # repositories the WhatsApp PM/CM WRITE flows and the dashboard's own
+    # cm_report router already use, closing the "PM terakhir"/"CM
+    # terakhir" LTSA AI read-query gap that previously fell through to
+    # ask_copilot()'s own default-constructed n8n gateways instead.
+    pm_occurrence_repository: Any
+    cm_report_repository: Any
 
 
 @dataclass(frozen=True, slots=True)
@@ -1271,6 +1278,8 @@ def _handle_ltsa_ai_query(
         mechanical_seal_stock_repository=ltsa_ai_query_deps.mechanical_seal_stock_repository,
         condition_monitoring_reading_repository=ltsa_ai_query_deps.condition_monitoring_reading_repository,
         fleet_executive_summary_service=ltsa_ai_query_deps.fleet_executive_summary_service,
+        pm_occurrence_repository=ltsa_ai_query_deps.pm_occurrence_repository,
+        cm_report_repository=ltsa_ai_query_deps.cm_report_repository,
         language="id",
     )
     # READ-ONLY by construction: every function reachable from here

@@ -248,6 +248,23 @@ class _FakeFleetExecutiveSummaryService:
         return self._summary
 
 
+class _FakePMOccurrenceRepository:
+    def __init__(self, occurrences_by_asset=None):
+        self._occurrences_by_asset = occurrences_by_asset or {}
+
+    def list_by_asset(self, asset_code):
+        return list(self._occurrences_by_asset.get(asset_code, []))
+
+
+class _FakeCMReportRepository:
+    def __init__(self, records=None, *, success=True):
+        self._records = records if records is not None else []
+        self._success = success
+
+    def list_cm_reports(self, **_kwargs):
+        return {"success": self._success, "data": self._records}
+
+
 def _ask(
     question,
     *,
@@ -256,6 +273,8 @@ def _ask(
     stock_pools=(),
     condition_monitoring_reading_repository=None,
     fleet_executive_summary_service=None,
+    pm_occurrence_repository=None,
+    cm_report_repository=None,
 ):
     return ask_copilot(
         question,
@@ -273,6 +292,8 @@ def _ask(
         condition_monitoring_reading_repository=condition_monitoring_reading_repository
         or _FakeConditionMonitoringReadingRepository(),
         fleet_executive_summary_service=fleet_executive_summary_service or _FakeFleetExecutiveSummaryService(),
+        pm_occurrence_repository=pm_occurrence_repository or _FakePMOccurrenceRepository(),
+        cm_report_repository=cm_report_repository or _FakeCMReportRepository(),
     )
 
 
@@ -437,6 +458,8 @@ def test_tag_scoped_condition_monitoring_returns_latest_reading():
         mechanical_seal_stock_repository=_FakeMechanicalSealStockRepository([]),
         condition_monitoring_reading_repository=repo,
         fleet_executive_summary_service=_FakeFleetExecutiveSummaryService(),
+        pm_occurrence_repository=_FakePMOccurrenceRepository(),
+        cm_report_repository=_FakeCMReportRepository(),
         language="id",
     )
     assert answer.kind == FACT
@@ -466,6 +489,8 @@ def test_tag_scoped_condition_monitoring_multiple_records_newest_selected():
         mechanical_seal_stock_repository=_FakeMechanicalSealStockRepository([]),
         condition_monitoring_reading_repository=repo,
         fleet_executive_summary_service=_FakeFleetExecutiveSummaryService(),
+        pm_occurrence_repository=_FakePMOccurrenceRepository(),
+        cm_report_repository=_FakeCMReportRepository(),
     )
     assert "Newest finding" in answer.answer
     assert "Older finding" not in answer.answer
@@ -482,6 +507,8 @@ def test_tag_scoped_condition_monitoring_no_data_is_truthful_fact_not_fabricated
         mechanical_seal_stock_repository=_FakeMechanicalSealStockRepository([]),
         condition_monitoring_reading_repository=repo,
         fleet_executive_summary_service=_FakeFleetExecutiveSummaryService(),
+        pm_occurrence_repository=_FakePMOccurrenceRepository(),
+        cm_report_repository=_FakeCMReportRepository(),
         language="id",
     )
     assert answer.answer == "Belum ada data Condition Monitoring untuk 211-P-13AR."
@@ -502,6 +529,8 @@ def test_tag_scoped_condition_monitoring_missing_fields_never_invented():
         mechanical_seal_stock_repository=_FakeMechanicalSealStockRepository([]),
         condition_monitoring_reading_repository=repo,
         fleet_executive_summary_service=_FakeFleetExecutiveSummaryService(),
+        pm_occurrence_repository=_FakePMOccurrenceRepository(),
+        cm_report_repository=_FakeCMReportRepository(),
         language="id",
     )
     assert "CMON terakhir: tidak diketahui" in answer.answer
@@ -525,6 +554,8 @@ def test_tag_scoped_condition_monitoring_repository_failure_is_data_gap_not_a_cr
         mechanical_seal_stock_repository=_FakeMechanicalSealStockRepository([]),
         condition_monitoring_reading_repository=_RaisingRepository(),
         fleet_executive_summary_service=_FakeFleetExecutiveSummaryService(),
+        pm_occurrence_repository=_FakePMOccurrenceRepository(),
+        cm_report_repository=_FakeCMReportRepository(),
     )
     assert answer.kind == DATA_GAP
     assert answer.evidence == ()
@@ -548,6 +579,8 @@ def test_tag_scoped_intent_with_no_registered_handler_is_graceful_data_gap_not_a
         mechanical_seal_stock_repository=_FakeMechanicalSealStockRepository([]),
         condition_monitoring_reading_repository=_FakeConditionMonitoringReadingRepository(),
         fleet_executive_summary_service=_FakeFleetExecutiveSummaryService(),
+        pm_occurrence_repository=_FakePMOccurrenceRepository(),
+        cm_report_repository=_FakeCMReportRepository(),
     )
     assert answer.kind == DATA_GAP
 
@@ -675,6 +708,8 @@ def test_fleet_stock_data_unavailable_is_data_gap_not_fabricated():
         mechanical_seal_stock_repository=_FailingRepo(),
         condition_monitoring_reading_repository=None,
         fleet_executive_summary_service=None,
+        pm_occurrence_repository=None,
+        cm_report_repository=None,
     )
     assert answer.kind == DATA_GAP
     assert "unavailable" in answer.answer.lower()
@@ -696,6 +731,8 @@ def _fleet_priority_query(fleet_executive_summary_service, scope=None):
         mechanical_seal_stock_repository=None,
         condition_monitoring_reading_repository=None,
         fleet_executive_summary_service=fleet_executive_summary_service,
+        pm_occurrence_repository=None,
+        cm_report_repository=None,
     )
 
 

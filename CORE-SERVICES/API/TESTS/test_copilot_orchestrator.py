@@ -64,6 +64,11 @@ def _deps(**overrides):
         # existing test below exercises an intent that never reads them.
         condition_monitoring_reading_repository=None,
         fleet_executive_summary_service=None,
+        # MWO-LTSA-EQUIPMENT-360-001 -- canonical direct-DB PM/CM read
+        # sources; every existing test below exercises an intent that
+        # never reads them.
+        pm_occurrence_repository=None,
+        cm_report_repository=None,
     )
     base.update(overrides)
     return base
