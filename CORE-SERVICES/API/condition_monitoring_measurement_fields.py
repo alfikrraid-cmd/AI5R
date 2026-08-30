@@ -14,6 +14,7 @@ columns, not a second, divergent vocabulary.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -104,6 +105,112 @@ def render_reading_lines(record: dict[str, Any]) -> list[str]:
     return lines
 
 
+# MWO-LTSA-EQUIPMENT-360-CANONICAL-001 -- generic parameter-level lookup
+# (Phase 6): a user word ("temperature"/"suhu"/"vibration"/"getaran"/
+# "pressure"/"tekanan") maps to a SEARCH TERM matched against each field's
+# own label (e.g. "temp" matches every "...Temp" field -- Mechanical Seal
+# Temp, Flushing Temp, Bearing Temp, Suction Temp, etc., all genuinely
+# temperature fields per this module's own MEASUREMENT_PAIR_FIELDS/
+# MEASUREMENT_SINGLE_FIELDS list). New canonical parameters therefore work
+# automatically as their label already contains the matched term -- no new
+# intent handler needed per parameter, per this MWO's own explicit
+# requirement. "current"/"arus" is deliberately NOT included here: it
+# collides with this module's sibling _detect_intent's own pre-existing
+# "current"/is_current_or_latest wording ("current seal", "seal saat
+# ini") -- adding it would misroute an unrelated current-seal question
+# into a Motor Current parameter lookup. Motor Current remains reachable
+# only via its own field label match if a caller passes "motor current"
+# directly, never via the single ambiguous word "current".
+_PARAMETER_SEARCH_TERMS: dict[str, str] = {
+    "temperature": "temp",
+    "suhu": "temp",
+    "vibration": "vibration",
+    "getaran": "vibration",
+    "pressure": "pressure",
+    "tekanan": "pressure",
+    "motor current": "current",
+}
+
+
+_SEARCH_TERM_DISPLAY_LABEL = {
+    "temp": "Temperature",
+    "vibration": "Vibration",
+    "pressure": "Pressure",
+    "current": "Motor Current",
+}
+
+
+def parameter_display_label(term: str) -> str:
+    """The GENERIC label for a search term (e.g. "temp" -> "Temperature")
+    -- used as the response header, since the specific matched field
+    (Bearing Temp, Mechanical Seal Temp, ...) varies per record and must
+    never be presented as if it were the only/defining one."""
+    return _SEARCH_TERM_DISPLAY_LABEL.get(term, term.capitalize())
+
+
+def detect_parameter_search_term(text: str) -> str | None:
+    """Returns the search term (e.g. "temp") for the first recognized
+    parameter word found in `text`, or None if no parameter word is
+    present. Word-boundary matched, case-insensitive."""
+    lowered = (text or "").casefold()
+    for word, term in _PARAMETER_SEARCH_TERMS.items():
+        if re.search(r"\b" + re.escape(word) + r"\b", lowered):
+            return term
+    return None
+
+
+def fields_matching_search_term(term: str) -> list[MeasurementPairField | MeasurementSingleField]:
+    """Every canonical field (pair or single) whose own label contains
+    `term` -- the SAME MEASUREMENT_PAIR_FIELDS/MEASUREMENT_SINGLE_FIELDS
+    list used everywhere else in this module, no separate parameter
+    registry to drift out of sync."""
+    lowered_term = term.casefold()
+    matches: list[MeasurementPairField | MeasurementSingleField] = [
+        field for field in MEASUREMENT_PAIR_FIELDS if lowered_term in field.label.casefold()
+    ]
+    matches += [field for field in MEASUREMENT_SINGLE_FIELDS if lowered_term in field.label.casefold()]
+    return matches
+
+
+def render_parameter_lines(record: dict[str, Any], fields: list[Any]) -> list[str]:
+    """Same non-null-only rendering discipline as render_reading_lines,
+    restricted to the given (already parameter-filtered) field list."""
+    lines: list[str] = []
+    for field in fields:
+        if isinstance(field, MeasurementPairField):
+            de_value = record.get(field.de_column)
+            nde_value = record.get(field.nde_column)
+            if de_value is not None:
+                lines.append(f"{field.label} DE: {de_value} {field.unit}")
+            if nde_value is not None:
+                lines.append(f"{field.label} NDE: {nde_value} {field.unit}")
+        else:
+            value = record.get(field.column)
+            if value is not None:
+                lines.append(f"{field.label}: {value} {field.unit}")
+    return lines
+
+
+def parameter_values(record: dict[str, Any], fields: list[Any]) -> list[tuple[str, float, str]]:
+    """(label, numeric_value, unit) for every non-null value of the given
+    fields on this one record -- the raw numbers a deterministic min/max/
+    trend calculation needs, never text formatting."""
+    values: list[tuple[str, float, str]] = []
+    for field in fields:
+        if isinstance(field, MeasurementPairField):
+            de_value = record.get(field.de_column)
+            nde_value = record.get(field.nde_column)
+            if de_value is not None:
+                values.append((f"{field.label} DE", de_value, field.unit))
+            if nde_value is not None:
+                values.append((f"{field.label} NDE", nde_value, field.unit))
+        else:
+            value = record.get(field.column)
+            if value is not None:
+                values.append((field.label, value, field.unit))
+    return values
+
+
 __all__ = [
     "MeasurementPairField",
     "MeasurementSingleField",
@@ -112,4 +219,8 @@ __all__ = [
     "LEAK_FIELD_DE",
     "LEAK_FIELD_NDE",
     "render_reading_lines",
+    "detect_parameter_search_term",
+    "fields_matching_search_term",
+    "render_parameter_lines",
+    "parameter_values",
 ]

@@ -34,6 +34,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from . import maintenance_intelligence_service as mis
+from .ltsa_knowledge_service import LTSAKnowledge
+from .recommendation_engine import RecommendationEngine
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,6 +55,21 @@ class Equipment360:
     compatible_seals: tuple[dict[str, Any], ...]
     seal_stock: tuple[dict[str, Any], ...]
     drawings: tuple[dict[str, Any], ...]
+    # MWO-LTSA-EQUIPMENT-360-CANONICAL-001 -- additive fields.
+    # cmon_latest_attachments: pm_cm_evidence metadata (no bytes) for the
+    # latest CMON event only, never the whole history (avoids an N+1 pass
+    # across every historical event just to check for attachments).
+    # recommendation: RecommendationEngine's own output, built from the
+    # SAME already-fetched cm_history/condition_monitoring_readings/seal_
+    # stock this aggregate already carries -- the same canonical facts
+    # Equipment360 and the direct CMON/CM handlers already agree on (see
+    # this MWO's own Phase 9 consistency proof), not a second, divergent
+    # scoring pass. KNOWN LIMITATION: pm_schedules is not fetched by this
+    # aggregate, so REC_PM_OVERDUE never fires here (maintenance-timing
+    # recommendations are out of this MWO's scope; CM/leak-based facts,
+    # this mission's own actual consistency concern, are fully covered).
+    cmon_latest_attachments: tuple[dict[str, Any], ...]
+    recommendation: tuple[Any, ...]
     data_gaps: tuple[str, ...]
 
 
@@ -66,6 +83,7 @@ def get_equipment_360(
     equipment_timeline_service,
     ltsa_knowledge_service,
     mechanical_seal_stock_repository,
+    pm_cm_evidence_repository=None,
 ) -> Equipment360:
     gaps: list[str] = []
 
@@ -179,6 +197,47 @@ def get_equipment_360(
     except Exception:
         gaps.append("seal_stock")
 
+    # Attachment metadata for the latest CMON event only (Phase 12) --
+    # pm_cm_evidence_repository.list_for_record(), the same canonical,
+    # already-established repository the WhatsApp CMON detailed-history
+    # answer uses (no bytes fetched, metadata only). Optional/None-safe:
+    # a caller that doesn't wire this dependency simply gets an empty
+    # tuple, never an error.
+    cmon_latest_attachments: tuple[dict[str, Any], ...] = ()
+    if pm_cm_evidence_repository is not None and cmon_latest is not None:
+        try:
+            attachments = pm_cm_evidence_repository.list_for_record(
+                "CONDITION_MONITORING_READING", cmon_latest.get("condition_monitoring_reading_code")
+            )
+            cmon_latest_attachments = tuple(attachments or ())
+        except Exception:
+            gaps.append("cmon_attachments")
+
+    # Recommendation facts (Phase 3/9) -- RecommendationEngine over the
+    # SAME already-fetched cm_history/condition_monitoring_readings/
+    # seal_stock this aggregate already carries. cm_summary.leak_flag
+    # reuses maintenance_intelligence_service's own canonical windowing
+    # rule (leak_flag_from_readings) so active-vs-historical leak
+    # evidence agrees with the direct CMON handler's own fleet-attention
+    # ranking logic -- one canonical determination, not a third one.
+    recommendation: tuple[Any, ...] = ()
+    try:
+        knowledge = LTSAKnowledge(
+            tag_number=tag, pump=None, seal=list(compatible_seals), inventory=list(seal_stock),
+            pm_history=list(pm_history), cm_history=list(cm_history), breakdown_history=[],
+            drawings=list(drawings), recommendation=(), pm_schedules=[],
+            condition_monitoring_schedules=[], condition_monitoring_readings=list(cmon_history),
+        )
+        leak = mis.leak_flag_from_readings(list(cmon_history))
+        summary = {
+            "cm_summary": {"leak_flag": leak["flagged"], "latest_abnormal_values": None},
+            "pm_summary": {"status": None},
+            "evidence": [],
+        }
+        recommendation = RecommendationEngine().recommend(knowledge, summary)
+    except Exception:
+        gaps.append("recommendation")
+
     return Equipment360(
         equipment_tag=tag,
         status=status,
@@ -195,6 +254,8 @@ def get_equipment_360(
         compatible_seals=compatible_seals,
         seal_stock=seal_stock,
         drawings=drawings,
+        cmon_latest_attachments=cmon_latest_attachments,
+        recommendation=recommendation,
         data_gaps=tuple(gaps),
     )
 

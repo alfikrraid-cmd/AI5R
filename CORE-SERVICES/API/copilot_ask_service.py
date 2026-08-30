@@ -42,7 +42,14 @@ from dataclasses import dataclass
 from typing import Any
 
 from . import maintenance_intelligence_service as mis
-from .condition_monitoring_measurement_fields import render_reading_lines
+from .condition_monitoring_measurement_fields import (
+    detect_parameter_search_term,
+    fields_matching_search_term,
+    parameter_display_label,
+    parameter_values,
+    render_parameter_lines,
+    render_reading_lines,
+)
 from .condition_monitoring_time_range import parse_condition_monitoring_period
 from .pump_area_scope import filter_records_by_asset_scope
 
@@ -142,7 +149,20 @@ def _detect_intent(question: str) -> str | None:
         has(r"\bseal\b", r"\bsegel\b") and has("ganti", "diganti", "replace", "replacement")
     ):
         return "installation"
-    if has("bocor", r"\bleak", r"\bcmon\b", "condition monitoring", "temuan"):
+    # MWO-LTSA-EQUIPMENT-360-CANONICAL-001 -- generic CMON parameter
+    # wording (temperature/suhu, vibration/getaran, pressure/tekanan)
+    # routes to the SAME condition_monitoring intent/handler as
+    # "cmon"/"bocor" -- the parameter data lives in the exact same
+    # condition_monitoring_reading table, so no new intent/handler is
+    # needed; _handle_condition_monitoring itself re-derives which
+    # parameter was asked for from the raw question text. "current"/
+    # "arus" (motor current) is deliberately excluded here -- seal
+    # condition_monitoring_measurement_fields.py's own docstring for why
+    # (collision with "current seal"/is_current_or_latest wording above).
+    if has(
+        "bocor", r"\bleak", r"\bcmon\b", "condition monitoring", "temuan",
+        "temperature", "suhu", "vibration", "getaran", "pressure", "tekanan",
+    ):
         return "condition_monitoring"
     if has(r"\bpm\b", "preventive"):
         return "pm"
@@ -901,7 +921,26 @@ def _handle_condition_monitoring(
             return CopilotAnswer(f"No Condition Monitoring data found for {tag}.", FACT, ())
 
         period = parse_condition_monitoring_period(question)
-        if period is None and not _is_cmon_history_request(question):
+        is_history_request = period is not None or _is_cmon_history_request(question)
+
+        # MWO-LTSA-EQUIPMENT-360-CANONICAL-001 Phase 6 -- a parameter word
+        # (temperature/suhu/vibration/getaran/pressure/tekanan) scopes the
+        # SAME LATEST/HISTORY/TIME-RANGE semantics above to one parameter
+        # group, reusing the SAME already-fetched records -- no second
+        # query, no new intent handler.
+        search_term = detect_parameter_search_term(question)
+        if search_term is not None:
+            fields = fields_matching_search_term(search_term)
+            if not fields:
+                if language == "id":
+                    return CopilotAnswer(f"Data parameter tersebut tidak tersedia untuk {tag}.", DATA_GAP, ())
+                return CopilotAnswer(f"That parameter is not available for {tag}.", DATA_GAP, ())
+            return _render_cmon_parameter(
+                tag, records, period, fields, search_term,
+                history=is_history_request, language=language,
+            )
+
+        if not is_history_request:
             return _render_cmon_latest(tag, records, language=language)
         return _render_cmon_detailed_history(
             tag, records, period,
@@ -951,6 +990,120 @@ def _render_cmon_latest(tag: str, records: list[dict[str, Any]], *, language: st
             "finding",
             latest.get("finding"),
         ),
+    )
+    return CopilotAnswer(answer, FACT, evidence)
+
+
+def _render_cmon_parameter(
+    tag: str,
+    records: list[dict[str, Any]],
+    period,
+    fields: list[Any],
+    search_term: str,
+    *,
+    history: bool,
+    language: str = "en",
+) -> CopilotAnswer:
+    """MWO-LTSA-EQUIPMENT-360-CANONICAL-001 Phase 6 -- generic parameter-
+    level CMON retrieval (temperature/vibration/pressure/...), LATEST or
+    HISTORY/TIME-RANGE, reusing the exact same already-fetched records
+    _handle_condition_monitoring's own LATEST/HISTORY paths use. Every
+    value rendered is read straight from the canonical record; deterministic
+    latest/min/max/delta in HISTORY mode are computed only from those same
+    real values -- no LLM, no estimation."""
+    if period is not None:
+        matching = [
+            r for r in records
+            if (d := _parse_reading_date(r.get("reading_date"))) is not None and period.start <= d <= period.end
+        ]
+    else:
+        matching = list(records)
+
+    if not matching:
+        if period is not None:
+            if language == "id":
+                answer = f"Tidak ditemukan data CMON {tag} pada periode {period.start.isoformat()} – {period.end.isoformat()}."
+            else:
+                answer = f"No CMON data found for {tag} in the period {period.start.isoformat()} – {period.end.isoformat()}."
+        else:
+            answer = f"Tidak ditemukan data CMON {tag}." if language == "id" else f"No CMON data found for {tag}."
+        return CopilotAnswer(answer, FACT, ())
+
+    if not history:
+        # Most recent record that actually carries a value for this
+        # parameter -- never assumed to be matching[0] (the newest EVENT
+        # overall may not have this specific parameter recorded, while an
+        # only-slightly-older one does; never silently reports "no data"
+        # when a real, slightly older value exists).
+        record = next((r for r in matching if parameter_values(r, fields)), None)
+        if record is None:
+            if language == "id":
+                return CopilotAnswer(f"Belum ada nilai terekam untuk parameter tersebut pada {tag}.", FACT, ())
+            return CopilotAnswer(f"No recorded value exists for that parameter on {tag}.", FACT, ())
+
+        lines = render_parameter_lines(record, fields)
+        header_label = parameter_display_label(search_term)
+        reading_date = record.get("reading_date") or ("tidak diketahui" if language == "id" else "unknown")
+        answer = "\n".join([f"{header_label} {tag}", f"Reading: {reading_date}", "", *lines])
+        evidence = tuple(
+            _evidence("ConditionMonitoringReadingRepository", record.get("condition_monitoring_reading_code") or tag, name, value)
+            for name, value, _unit in parameter_values(record, fields)
+        )
+        return CopilotAnswer(answer, FACT, evidence)
+
+    # HISTORY / TIME-RANGE parameter mode -- chronological listing +
+    # deterministic latest/min/max/delta per parameter label.
+    shown = matching[:CMON_HISTORY_RENDER_LIMIT]
+    header_prefix = f"{parameter_display_label(search_term)} {tag}"
+    if period is not None:
+        period_label = period.label_id if language == "id" else period.label_en
+        header = f"{header_prefix} — {period_label}"
+    else:
+        header = f"{header_prefix} — Riwayat" if language == "id" else f"{header_prefix} — History"
+
+    lines = [header]
+    if period is not None:
+        lines.append(f"Periode: {period.start.isoformat()} – {period.end.isoformat()}")
+    lines.append("")
+    if len(matching) > len(shown):
+        if language == "id":
+            lines.append(f"Ditemukan {len(matching)} CMON. Menampilkan {len(shown)} terbaru.")
+        else:
+            lines.append(f"Found {len(matching)} CMON record(s). Showing {len(shown)} most recent.")
+        lines.append("")
+
+    series_by_label: dict[str, list[tuple[Any, float, str]]] = {}
+    for record in shown:
+        reading_date = record.get("reading_date") or ("tidak diketahui" if language == "id" else "unknown")
+        values = parameter_values(record, fields)
+        if values:
+            lines.append(f"{reading_date}:")
+            for name, value, unit in values:
+                lines.append(f"   {name}: {value} {unit}")
+                series_by_label.setdefault(name, []).append((record.get("reading_date"), value, unit))
+        else:
+            lines.append(f"{reading_date}: N/A")
+        lines.append("")
+
+    # Deterministic summary -- only over records actually carrying a real
+    # value, only real arithmetic, never an LLM estimate.
+    summary_header = "Ringkasan:" if language == "id" else "Summary:"
+    lines.append(summary_header)
+    for name, series in series_by_label.items():
+        values_only = [v for _d, v, _u in series]
+        unit = series[0][2]
+        latest_value = series[0][1]  # shown is already newest-first
+        lines.append(
+            f"{name}: latest {latest_value} {unit}, min {min(values_only)} {unit}, max {max(values_only)} {unit}"
+        )
+    lines.append("")
+    lines.append("Source: LTSA canonical data" if language != "id" else "Sumber: Data kanonik LTSA")
+
+    answer = "\n".join(lines).rstrip()
+    evidence = tuple(
+        _evidence("ConditionMonitoringReadingRepository", record.get("condition_monitoring_reading_code") or tag, name, value)
+        for record in shown
+        for name, value, _unit in parameter_values(record, fields)
     )
     return CopilotAnswer(answer, FACT, evidence)
 
