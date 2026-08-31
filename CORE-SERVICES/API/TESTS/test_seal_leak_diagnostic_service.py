@@ -355,6 +355,19 @@ def test_diagnose_through_ltsa_knowledge_service_with_production_shaped_reposito
         def list_condition_monitoring_schedules(self):
             return {"success": True, "data": []}
 
+    class MechanicalSealStockRepository:
+        def list_for_equipment(self, equipment_tag):
+            return [
+                {
+                    "stock_pool_id": "POOL-PROD",
+                    "seal_type": "SC-PROD",
+                    "quantity_available": 5,
+                    "quantity_on_hand": 6,
+                    "nominal_size": "60",
+                    "size_unit": "mm",
+                }
+            ]
+
     repo = DictListRepository()
     knowledge_service = LTSAKnowledgeService(
         pump_gateway=PumpGateway(),
@@ -374,6 +387,7 @@ def test_diagnose_through_ltsa_knowledge_service_with_production_shaped_reposito
         pm_schedule_repository=repo,
         cm_report_repository=repo,
         condition_monitoring_schedule_repository=repo,
+        mechanical_seal_stock_repository=MechanicalSealStockRepository(),
     )
 
     d = diagnose(tag, ltsa_knowledge_service=knowledge_service, today=TODAY)

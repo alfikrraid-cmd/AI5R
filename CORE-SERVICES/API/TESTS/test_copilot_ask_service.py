@@ -413,8 +413,8 @@ def test_null_quantity_never_reported_as_zero():
     answer = _ask("pompa mana yang stock sealnya unknown?", stock_pools=_ALL_POOLS)
     assert answer.kind == FACT
     assert "211-P-02A" in answer.answer
-    assert "211-P-02A â€” T6014DP â€” unknown" in answer.answer
-    assert "211-P-02A â€” T6014DP â€” 0" not in answer.answer
+    assert "211-P-02A - T6014DP - unknown" in answer.answer
+    assert "211-P-02A - T6014DP - 0" not in answer.answer
 
 
 def test_out_of_stock_predicate_variants_and_more_examples():
@@ -573,7 +573,7 @@ def test_diagnostic_intent_examples_route_to_seal_leak_diagnostic():
         answer, calls = _diagnostic_answer(question)
         assert calls == ["110-P-12B"]
         assert answer.kind == INTERPRETATION
-        assert answer.answer.startswith("Mechanical Seal Diagnostic â€” 110-P-12B")
+        assert answer.answer.startswith("Mechanical Seal Diagnostic - 110-P-12B")
         assert "Root cause not confirmed." in answer.answer
         assert "root cause confirmed" not in answer.answer.lower()
 
@@ -602,6 +602,6 @@ def test_diagnostic_renderer_preserves_data_gap_and_spare_readiness():
 
 def test_high_confidence_never_renders_confirmed_root_cause():
     answer, _calls = _diagnostic_answer("Apa penyebab seal 110p12b bocor?")
-    assert "â€” HIGH" in answer.answer
+    assert "- HIGH" in answer.answer
     assert "Root cause not confirmed." in answer.answer
     assert "confirmed root cause" not in answer.answer.lower()

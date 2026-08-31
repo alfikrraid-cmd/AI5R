@@ -603,7 +603,7 @@ def _handle_fleet_stock_status(
         )
 
     lines = [
-        f"- {row['equipment_tag']} — {row['seal_type'] or 'N/A'} — "
+        f"- {row['equipment_tag']} - {row['seal_type'] or 'N/A'} - "
         f"{row['quantity_available'] if row['quantity_available'] is not None else 'unknown'}"
         for row in matches
     ]
@@ -648,7 +648,7 @@ def _format_fact_block(title: str, evidence: dict[str, Any]) -> str:
 
 def _render_seal_leak_diagnostic(diagnosis: SealLeakDiagnosis) -> str:
     lines: list[str] = [
-        f"Mechanical Seal Diagnostic — {diagnosis.equipment}",
+        f"Mechanical Seal Diagnostic - {diagnosis.equipment}",
         "",
         "Status:",
         f"{diagnosis.diagnostic_status} ({diagnosis.confidence})",
@@ -669,7 +669,7 @@ def _render_seal_leak_diagnostic(diagnosis: SealLeakDiagnosis) -> str:
             missing = "; ".join(hypothesis.missing_or_contradicting_evidence)
             suffix = f" Missing/contradicting: {missing}" if missing else ""
             lines.extend([
-                f"{index}. {hypothesis.cause} — {hypothesis.confidence}",
+                f"{index}. {hypothesis.cause} - {hypothesis.confidence}",
                 f"   Evidence: {evidence}{suffix}",
             ])
     else:

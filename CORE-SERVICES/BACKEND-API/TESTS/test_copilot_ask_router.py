@@ -317,13 +317,13 @@ class TestIntents:
         FakeSealLeakDiagnosticService.calls = []
         body = _ask("Kenapa 110p12b bocor?").json()
         assert body["kind"] == "INTERPRETATION"
-        assert body["answer"].startswith("Mechanical Seal Diagnostic — 110-P-12B")
+        assert body["answer"].startswith("Mechanical Seal Diagnostic - 110-P-12B")
         assert FakeSealLeakDiagnosticService.calls == ["110-P-12B"]
 
     def test_diagnostic_asset_context_is_normalized_before_scope_and_service_call(self):
         FakeSealLeakDiagnosticService.calls = []
         body = _ask("Analisa seal bocor", "110p12b").json()
-        assert body["answer"].startswith("Mechanical Seal Diagnostic — 110-P-12B")
+        assert body["answer"].startswith("Mechanical Seal Diagnostic - 110-P-12B")
         assert FakeSealLeakDiagnosticService.calls == ["110-P-12B"]
 
 
