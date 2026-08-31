@@ -5,6 +5,12 @@ seal() contracts verified by reading the actual source (not assumed).
 """
 
 from datetime import date, timedelta
+import sys
+from pathlib import Path
+
+CORE_SERVICES_PATH = Path(__file__).resolve().parents[2]
+if str(CORE_SERVICES_PATH) not in sys.path:
+    sys.path.insert(0, str(CORE_SERVICES_PATH))
 
 from API.ltsa_knowledge_service import LTSAKnowledge
 from API.seal_leak_diagnostic_service import (
@@ -267,7 +273,7 @@ def test_diagnose_accepts_ltsa_knowledge_production_inventory_shape():
     k = _knowledge(
         condition_monitoring_readings=[_cmon(RECENT, mechanical_seal_leak_de=True)],
         seal=[{"seal_code": "SC-PROD", "part_name": "Production compatible seal"}],
-        inventory=[{"seal_type": "SC-PROD", "quantity_available": 3, "stock_location": "WH"}],
+        inventory=[{"seal_code": "SC-PROD", "quantity_on_hand": 3, "reorder_point": 1, "location": "WH"}],
     )
     d = _diagnose(k)
     assert d.inventory_evidence[0].seal_code == "SC-PROD"
@@ -323,6 +329,21 @@ def test_diagnose_through_ltsa_knowledge_service_with_production_shaped_reposito
         def list_condition_monitoring_readings(self):
             return {"success": True, "data": []}
 
+    class MechanicalSealStockRepository:
+        def list_for_equipment(self, equipment_tag):
+            return [
+                {
+                    "seal_code": "SC-PROD",
+                    "seal_type": "SC-PROD",
+                    "nominal_size": None,
+                    "size_unit": None,
+                    "quantity_on_hand": 5,
+                    "quantity_available": 5,
+                    "stock_location": "WH",
+                    "equipment_tag": equipment_tag,
+                }
+            ]
+
     class PMOccurrenceRepository:
         def list_by_asset(self, asset_code):
             return []
@@ -348,19 +369,6 @@ def test_diagnose_through_ltsa_knowledge_service_with_production_shaped_reposito
 
         def list_condition_monitoring_schedules(self):
             return {"success": True, "data": []}
-
-    class MechanicalSealStockRepository:
-        def list_for_equipment(self, equipment_tag):
-            return [
-                {
-                    "stock_pool_id": "POOL-PROD",
-                    "seal_type": "SC-PROD",
-                    "quantity_available": 5,
-                    "quantity_on_hand": 6,
-                    "nominal_size": "60",
-                    "size_unit": "mm",
-                }
-            ]
 
     repo = DictListRepository()
     knowledge_service = LTSAKnowledgeService(
@@ -390,3 +398,5 @@ def test_diagnose_through_ltsa_knowledge_service_with_production_shaped_reposito
     assert d.inventory_evidence[0].seal_code == "SC-PROD"
     assert d.inventory_evidence[0].quantity == 5
     assert d.inventory_evidence[0].state == STOCK_AVAILABLE
+
+

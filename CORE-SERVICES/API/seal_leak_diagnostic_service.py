@@ -187,21 +187,24 @@ def _classify_stock(compatible_seals: list[dict[str, Any]], inventory_rows: list
         return (StockReadinessRow(None, None, None, None, STOCK_NO_COMPATIBLE_SEAL),)
     by_seal_type: dict[str, dict[str, Any]] = {}
     for row in inventory_rows:
-        key = (row.get("seal_type") or "").upper()
+        key = (row.get("seal_type") or row.get("seal_code") or "").upper()
         if key:
             by_seal_type[key] = row
     results: list[StockReadinessRow] = []
     for seal in compatible_seals:
         code = seal.get("seal_code")
         row = by_seal_type.get((code or "").upper())
-        if row is None or row.get("quantity_available") is None:
+        quantity = row.get("quantity_available") if row is not None and "quantity_available" in row else (
+            row.get("quantity_on_hand") if row is not None else None
+        )
+        if row is None or quantity is None:
             results.append(StockReadinessRow(code, seal.get("part_name"), None, None, STOCK_NO_RECORD))
-        elif row["quantity_available"] == 0:
+        elif quantity == 0:
             size = f"{row.get('nominal_size')} {row.get('size_unit')}".strip() if row.get("nominal_size") else None
-            results.append(StockReadinessRow(code, row.get("seal_type"), size, 0, STOCK_ZERO))
+            results.append(StockReadinessRow(code, row.get("seal_type") or row.get("seal_code"), size, 0, STOCK_ZERO))
         else:
             size = f"{row.get('nominal_size')} {row.get('size_unit')}".strip() if row.get("nominal_size") else None
-            results.append(StockReadinessRow(code, row.get("seal_type"), size, row["quantity_available"], STOCK_AVAILABLE))
+            results.append(StockReadinessRow(code, row.get("seal_type") or row.get("seal_code"), size, quantity, STOCK_AVAILABLE))
     return tuple(results)
 
 
@@ -407,19 +410,18 @@ def diagnose(
         missing_evidence=tuple(missing_evidence), confidence=confidence, conclusion=conclusion,
     )
 
-
 class SealLeakDiagnosticService:
-    def __init__(self, *, ltsa_knowledge_service, equipment_timeline_service=None):
+    def __init__(self, *, ltsa_knowledge_service, equipment_timeline_service=None) -> None:
         self._ltsa_knowledge_service = ltsa_knowledge_service
         self._equipment_timeline_service = equipment_timeline_service
 
-    def diagnose(self, tag: str) -> SealLeakDiagnosis:
+    def diagnose(self, tag: str, *, today: date | None = None) -> SealLeakDiagnosis:
         return diagnose(
             tag,
             ltsa_knowledge_service=self._ltsa_knowledge_service,
             equipment_timeline_service=self._equipment_timeline_service,
+            today=today,
         )
-
 
 __all__ = [
     "SealLeakDiagnosis", "Hypothesis", "StockReadinessRow", "SealLeakDiagnosticService", "diagnose",
