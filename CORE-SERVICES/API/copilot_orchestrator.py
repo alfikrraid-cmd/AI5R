@@ -71,6 +71,7 @@ TOOL_CATALOG: dict[str, str] = {
     "installation": "Installation report history for this pump.",
     "recommendation": "Deterministic, rule-based engineering recommendations for this pump.",
     "condition_monitoring": "Latest Condition Monitoring reading/finding for this pump.",
+    "seal_leak_diagnostic": "Evidence-based mechanical seal leak diagnosis for one tag-locked pump.",
 }
 
 _VALID_KINDS = (FACT, INTERPRETATION, RECOMMENDATION, DATA_GAP)

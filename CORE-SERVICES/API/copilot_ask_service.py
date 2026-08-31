@@ -43,6 +43,11 @@ from typing import Any
 
 from . import fleet_analytics_service as fas
 from . import maintenance_intelligence_service as mis
+from .seal_leak_diagnostic_service import (
+    DATA_GAP as DIAGNOSTIC_DATA_GAP,
+    SealLeakDiagnosis,
+    SealLeakDiagnosticService,
+)
 from .condition_monitoring_measurement_fields import (
     detect_parameter_search_term,
     fields_matching_search_term,
@@ -143,6 +148,16 @@ def _detect_intent(question: str) -> str | None:
     is_install_or_replace_wording = has(
         "install", "pasang", "dipasang", "pemasangan", "ganti", "diganti", "replace", "replacement"
     )
+    is_diagnostic_question = has(
+        "kenapa", "mengapa", "analisa", "analisis",
+        "diagnosa", "diagnose", "diagnostic",
+        "penyebab", "cause", "why",
+    )
+
+    # Seal-leak diagnosis is intentionally more specific than generic CMON.
+    # It still requires a tag at execution time; this only selects the tool.
+    if has("bocor", r"\bleak") and is_diagnostic_question:
+        return "seal_leak_diagnostic"
 
     if has(r"\bseal\b", r"\bsegel\b") and is_current_or_latest and not is_install_or_replace_wording:
         return "current_seal"
@@ -263,6 +278,7 @@ def ask_copilot(
     condition_monitoring_reading_gateway,
     installation_report_repository,
     mechanical_seal_stock_repository,
+    seal_leak_diagnostic_service=None,
     condition_monitoring_reading_repository,
     fleet_executive_summary_service,
     pm_occurrence_repository,
@@ -320,6 +336,7 @@ def ask_copilot(
             seal_pump_compatibility_gateway=seal_pump_compatibility_gateway,
             seal_gateway=seal_gateway,
             mechanical_seal_stock_repository=mechanical_seal_stock_repository,
+        seal_leak_diagnostic_service=seal_leak_diagnostic_service,
             work_order_gateway=work_order_gateway,
             maintenance_history_gateway=maintenance_history_gateway,
             language=language,
@@ -1884,6 +1901,138 @@ def _handle_fleet_stock_status(
     return CopilotAnswer(answer, FACT, evidence)
 
 
+
+def _format_diagnostic_value(value):
+    if value == DIAGNOSTIC_DATA_GAP:
+        return "DATA_GAP"
+    if value is None:
+        return "N/A"
+    if isinstance(value, bool):
+        return "ya" if value else "tidak"
+    if isinstance(value, dict):
+        parts = [
+            f"{key}={_format_diagnostic_value(item)}"
+            for key, item in value.items()
+            if item is not None
+        ]
+        return ", ".join(parts) if parts else "N/A"
+    if isinstance(value, (list, tuple)):
+        return ", ".join(_format_diagnostic_value(item) for item in value) if value else "N/A"
+    return str(value)
+
+
+def _format_diagnostic_fact(title, evidence):
+    if evidence.get("status") == DIAGNOSTIC_DATA_GAP:
+        return f"- {title}: DATA_GAP"
+    rendered = "; ".join(
+        f"{key}={_format_diagnostic_value(value)}"
+        for key, value in evidence.items()
+        if key != "status" and value is not None
+    )
+    return f"- {title}: {rendered or evidence.get('status') or 'N/A'}"
+
+
+def _render_seal_leak_diagnostic(diagnosis: SealLeakDiagnosis) -> str:
+    lines = [
+        f"Analisis kebocoran mechanical seal {diagnosis.equipment}",
+        "",
+        f"Status: {diagnosis.diagnostic_status}",
+        f"Confidence: {diagnosis.confidence}",
+        "",
+        "Evidence:",
+        _format_diagnostic_fact("Leak", diagnosis.leak_evidence),
+        _format_diagnostic_fact("Temperature", diagnosis.temperature_evidence),
+        _format_diagnostic_fact("Vibration", diagnosis.vibration_evidence),
+        _format_diagnostic_fact("Operating", diagnosis.operating_evidence),
+        _format_diagnostic_fact("Maintenance", diagnosis.maintenance_evidence),
+        _format_diagnostic_fact("Seal", diagnosis.seal_evidence),
+        "",
+        "Kemungkinan penyebab:",
+    ]
+
+    if diagnosis.hypotheses:
+        for index, hypothesis in enumerate(diagnosis.hypotheses, start=1):
+            lines.append(
+                f"{index}. {hypothesis.cause} ({hypothesis.confidence})"
+            )
+    else:
+        lines.append("- Belum cukup evidence untuk menentukan kemungkinan penyebab.")
+
+    lines.extend(["", "Pemeriksaan yang disarankan:"])
+    if diagnosis.recommended_checks:
+        lines.extend(f"- {item}" for item in diagnosis.recommended_checks)
+    else:
+        lines.append("- Belum ada rekomendasi dari evidence saat ini.")
+
+    lines.extend(["", "Kesiapan spare:"])
+    if diagnosis.inventory_evidence:
+        for row in diagnosis.inventory_evidence:
+            qty = "N/A" if row.quantity is None else str(row.quantity)
+            lines.append(
+                f"- {row.seal_code or 'N/A'}: {row.state}, qty={qty}"
+            )
+    else:
+        lines.append("- DATA_GAP")
+
+    lines.extend([
+        "",
+        "Kesimpulan: root cause belum terkonfirmasi; hasil di atas adalah diagnosis berbasis evidence canonical yang tersedia.",
+    ])
+    return "\n".join(lines)
+
+
+def _handle_seal_leak_diagnostic(
+    tag: str,
+    *,
+    seal_leak_diagnostic_service=None,
+    ltsa_knowledge_service=None,
+    equipment_timeline_service=None,
+    **_,
+):
+    if not tag:
+        return CopilotAnswer(
+            "Sebutkan tag pompa yang ingin dianalisis.",
+            DATA_GAP,
+            (),
+        )
+
+    service = seal_leak_diagnostic_service
+    if service is None:
+        service = SealLeakDiagnosticService(
+            ltsa_knowledge_service=ltsa_knowledge_service,
+            equipment_timeline_service=equipment_timeline_service,
+        )
+
+    diagnosis = service.diagnose(tag)
+
+    kind = (
+        DATA_GAP
+        if diagnosis.conclusion in ("INSUFFICIENT_EVIDENCE", "NO_LEAK_EVIDENCE")
+        else INTERPRETATION
+    )
+
+    evidence = (
+        _evidence(
+            "SealLeakDiagnosticService",
+            diagnosis.equipment,
+            "diagnostic_status",
+            diagnosis.diagnostic_status,
+        ),
+        _evidence(
+            "SealLeakDiagnosticService",
+            diagnosis.equipment,
+            "confidence",
+            diagnosis.confidence,
+        ),
+    )
+
+    return CopilotAnswer(
+        _render_seal_leak_diagnostic(diagnosis),
+        kind,
+        evidence,
+    )
+
+
 def _handle_recommendation(tag: str, *, ltsa_knowledge_service, language: str = "en", **_: Any) -> CopilotAnswer:
     try:
         knowledge = ltsa_knowledge_service.build(tag)
@@ -2006,6 +2155,7 @@ TOOL_HANDLERS = {
     "installation": _handle_installation,
     "recommendation": _handle_recommendation,
     "condition_monitoring": _handle_condition_monitoring,
+    "seal_leak_diagnostic": _handle_seal_leak_diagnostic,
 }
 
 

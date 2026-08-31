@@ -56,6 +56,7 @@ from API.pump_gateway import PumpGateway
 from API.whatsapp_outbound_client import WhatsAppOutboundClient
 from API.seal_engineering_document_gateway import SealEngineeringDocumentGateway
 from API.seal_gateway import SealGateway
+from API.seal_leak_diagnostic_service import SealLeakDiagnosticService
 from API.seal_master_data_repository import SealMasterDataRepository
 from API.seal_pump_compatibility_gateway import SealPumpCompatibilityGateway
 from API.seal_stock_gateway import SealStockGateway
@@ -276,6 +277,11 @@ _equipment_timeline_service = EquipmentTimelineService(
     mechanical_seal_stock_repository=_mechanical_seal_stock_repository,
 )
 
+_seal_leak_diagnostic_service = SealLeakDiagnosticService(
+    ltsa_knowledge_service=_ltsa_knowledge_service,
+    equipment_timeline_service=_equipment_timeline_service,
+)
+
 # MWO-LTSA-037C -- built from the same singleton PumpGateway and
 # LTSAKnowledgeService above, not fresh ones -- no second aggregate.
 #
@@ -422,6 +428,10 @@ def get_ltsa_knowledge_service() -> LTSAKnowledgeService:
 
 def get_equipment_timeline_service() -> EquipmentTimelineService:
     return _equipment_timeline_service
+
+
+def get_seal_leak_diagnostic_service() -> SealLeakDiagnosticService:
+    return _seal_leak_diagnostic_service
 
 
 def get_fleet_reliability_service() -> FleetReliabilityService:
