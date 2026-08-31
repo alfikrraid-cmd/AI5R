@@ -26,6 +26,7 @@ from dependencies import (
     get_product_name,
     get_pump_gateway,
     get_seal_gateway,
+    get_seal_leak_diagnostic_service,
     get_seal_pump_compatibility_gateway,
     get_work_order_gateway,
     require_permission,
@@ -37,16 +38,29 @@ from API.maintenance_copilot import summarize_maintenance_situation as _summariz
 # MWO-LTSA-AUTH-001
 router = APIRouter(dependencies=[Depends(require_permission("maintenance.read"))])
 _PUMP_TAG_PATTERN = re.compile(
-    r"(?<![A-Za-z0-9/-])\d+-P-\d+[A-Z](?![A-Za-z0-9/-])"
+    r"(?<![A-Za-z0-9/-])(\d+)-?P-?(\d+)([A-Z])(?![A-Za-z0-9/-])",
+    re.IGNORECASE,
 )
 _MULTIPLE_TAGS_MESSAGE = (
     "I found multiple pump tags in that question. Select one pump and ask again."
 )
 
 
+def _normalize_pump_tag(raw: str) -> str | None:
+    match = _PUMP_TAG_PATTERN.fullmatch((raw or "").strip())
+    if not match:
+        return None
+    return f"{match.group(1)}-P-{match.group(2)}{match.group(3).upper()}"
+
+
 def _extract_pump_tag_candidates(question: str) -> tuple[str, ...]:
-    """Extract only canonical, exact-form pump tags; never normalize or guess."""
-    return tuple(dict.fromkeys(_PUMP_TAG_PATTERN.findall(question or "")))
+    """Extract explicit pump tags and normalize compact forms such as 110p12b."""
+    return tuple(
+        dict.fromkeys(
+            f"{match.group(1)}-P-{match.group(2)}{match.group(3).upper()}"
+            for match in _PUMP_TAG_PATTERN.finditer(question or "")
+        )
+    )
 
 
 def _require_tag_in_scope(tag: str, pump_gateway, scope: frozenset[str] | None) -> None:
@@ -103,11 +117,14 @@ def ask_copilot_endpoint(
     pm_schedule_repository=Depends(get_pm_schedule_repository),
     seal_pump_compatibility_gateway=Depends(get_seal_pump_compatibility_gateway),
     seal_gateway=Depends(get_seal_gateway),
+    seal_leak_diagnostic_service=Depends(get_seal_leak_diagnostic_service),
     ai_client=Depends(get_copilot_ai_client),
     current_user: AuthenticatedIdentity = Depends(get_current_user),
 ) -> Payload:
     scope = resolve_area_scope(current_user)
     tag = (payload.asset_context or "").strip() or None
+    if tag is not None:
+        tag = _normalize_pump_tag(tag) or tag
 
     if tag is not None:
         _require_tag_in_scope(tag, pump_gateway, scope)
@@ -146,6 +163,7 @@ def ask_copilot_endpoint(
         pm_schedule_repository=pm_schedule_repository,
         seal_pump_compatibility_gateway=seal_pump_compatibility_gateway,
         seal_gateway=seal_gateway,
+        seal_leak_diagnostic_service=seal_leak_diagnostic_service,
     )
 
     # tools_used is additive/optional -- existing frontend (CopilotPanel/

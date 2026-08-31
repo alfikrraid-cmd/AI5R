@@ -53,6 +53,8 @@ from .condition_monitoring_measurement_fields import (
 )
 from .condition_monitoring_time_range import parse_condition_monitoring_period
 from .pump_area_scope import filter_records_by_asset_scope
+from .seal_leak_diagnostic_service import DATA_GAP as DIAGNOSTIC_DATA_GAP
+from .seal_leak_diagnostic_service import SealLeakDiagnosis
 
 FACT = "FACT"
 INTERPRETATION = "INTERPRETATION"
@@ -133,7 +135,7 @@ def _evidence(source: str, reference: str, field: str, value: Any) -> dict[str, 
 # addition below is a real, common wording variant of a domain this
 # router already had a handler for (or, for `condition_monitoring`, a
 # domain this MWO adds) -- semantic routing, not a literal-string match.
-def _detect_intent(question: str) -> str | None:
+def _detect_intent(question: str, *, tag: str | None = None) -> str | None:
     q = (question or "").lower()
 
     def has(*words: str) -> bool:
@@ -143,6 +145,13 @@ def _detect_intent(question: str) -> str | None:
     is_install_or_replace_wording = has(
         "install", "pasang", "dipasang", "pemasangan", "ganti", "diganti", "replace", "replacement"
     )
+    is_fleet_question = has(r"pompa\s+mana", r"pump\s+mana", r"which\s+pump")
+    is_diagnostic_question = has("kenapa", "mengapa", "analisa", "analisis", "diagnosa", "diagnose", "diagnostic", "penyebab", "cause", "why")
+
+    if re.search(r"^\s*pm\b", q):
+        return "pm"
+    if re.search(r"^\s*cm\b", q):
+        return "cm"
 
     if has(r"\bseal\b", r"\bsegel\b") and is_current_or_latest and not is_install_or_replace_wording:
         return "current_seal"
@@ -160,6 +169,8 @@ def _detect_intent(question: str) -> str | None:
     # "arus" (motor current) is deliberately excluded here -- seal
     # condition_monitoring_measurement_fields.py's own docstring for why
     # (collision with "current seal"/is_current_or_latest wording above).
+    if has("bocor", r"\bleak") and tag is not None and is_diagnostic_question and not is_fleet_question:
+        return "seal_leak_diagnostic"
     if has(
         "bocor", r"\bleak", r"\bcmon\b", "condition monitoring", "temuan",
         "temperature", "temperatur", "suhu", "vibration", "getaran", "pressure", "tekanan",
@@ -278,9 +289,10 @@ def ask_copilot(
     pm_schedule_repository=None,
     seal_pump_compatibility_gateway=None,
     seal_gateway=None,
+    seal_leak_diagnostic_service=None,
     language: str = "en",
 ) -> CopilotAnswer:
-    intent = _detect_intent(question)
+    intent = _detect_intent(question, tag=tag)
 
     if intent is None:
         return CopilotAnswer(_NO_INTENT_MESSAGE[language], DATA_GAP, ())
@@ -422,6 +434,7 @@ def ask_copilot(
         pm_occurrence_repository=pm_occurrence_repository,
         cm_report_repository=cm_report_repository,
         pm_cm_evidence_repository=pm_cm_evidence_repository,
+        seal_leak_diagnostic_service=seal_leak_diagnostic_service,
         language=language,
     )
 
@@ -1862,14 +1875,14 @@ def _handle_fleet_stock_status(
 
     if language == "id":
         lines = [
-            f"- {row['equipment_tag']} — {row['seal_type'] or 'N/A'} — "
+            f"- {row['equipment_tag']} - {row['seal_type'] or 'N/A'} - "
             f"{row['quantity_available'] if row['quantity_available'] is not None else 'tidak diketahui'}"
             for row in matches
         ]
         answer = f"{len(matches)} pompa {label}:\n" + "\n".join(lines)
     else:
         lines = [
-            f"- {row['equipment_tag']} — {row['seal_type'] or 'N/A'} — "
+            f"- {row['equipment_tag']} - {row['seal_type'] or 'N/A'} - "
             f"{row['quantity_available'] if row['quantity_available'] is not None else 'unknown'}"
             for row in matches
         ]
@@ -1958,7 +1971,7 @@ def _handle_fleet_priority(
         if language == "id":
             lines = ["Pompa yang perlu perhatian hari ini:", ""]
             for index, risk in enumerate(top_risk_pumps, start=1):
-                lines.append(f"{index}. {risk.tag_number} — {risk.title}")
+                lines.append(f"{index}. {risk.tag_number} - {risk.title}")
                 lines.append(f"   {risk.description}")
                 lines.append(f"   Tindakan: {risk.action}")
                 lines.append("")
@@ -1969,7 +1982,7 @@ def _handle_fleet_priority(
         else:
             lines = ["Pumps needing attention today:", ""]
             for index, risk in enumerate(top_risk_pumps, start=1):
-                lines.append(f"{index}. {risk.tag_number} — {risk.title}")
+                lines.append(f"{index}. {risk.tag_number} - {risk.title}")
                 lines.append(f"   {risk.description}")
                 lines.append(f"   Action: {risk.action}")
                 lines.append("")
@@ -1987,6 +2000,112 @@ def _handle_fleet_priority(
         if language == "id":
             return CopilotAnswer("Data prioritas fleet sedang tidak tersedia.", DATA_GAP, ())
         return CopilotAnswer("Fleet priority data is currently unavailable.", DATA_GAP, ())
+
+
+def _format_diagnostic_value(value: Any) -> str:
+    if value == DIAGNOSTIC_DATA_GAP:
+        return "DATA_GAP"
+    if value is None:
+        return "N/A"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, dict):
+        parts = [f"{key}={_format_diagnostic_value(item)}" for key, item in value.items() if item is not None]
+        return ", ".join(parts) if parts else "N/A"
+    if isinstance(value, (list, tuple)):
+        return ", ".join(_format_diagnostic_value(item) for item in value) if value else "N/A"
+    return str(value)
+
+
+def _format_fact_block(title: str, evidence: dict[str, Any]) -> str:
+    if evidence.get("status") == DIAGNOSTIC_DATA_GAP:
+        return f"- {title}: DATA_GAP"
+    rendered = "; ".join(
+        f"{key}={_format_diagnostic_value(value)}"
+        for key, value in evidence.items()
+        if key != "status" and value is not None
+    )
+    return f"- {title}: {rendered or evidence.get('status') or 'N/A'}"
+
+
+def _render_seal_leak_diagnostic(diagnosis: SealLeakDiagnosis) -> str:
+    lines: list[str] = [
+        f"Mechanical Seal Diagnostic - {diagnosis.equipment}",
+        "",
+        "Status:",
+        f"{diagnosis.diagnostic_status} ({diagnosis.confidence})",
+        "",
+        "Evidence:",
+        _format_fact_block("Leak", diagnosis.leak_evidence),
+        _format_fact_block("Temperature", diagnosis.temperature_evidence),
+        _format_fact_block("Vibration", diagnosis.vibration_evidence),
+        _format_fact_block("Operating", diagnosis.operating_evidence),
+        _format_fact_block("Maintenance", diagnosis.maintenance_evidence),
+        _format_fact_block("Seal identity", diagnosis.seal_evidence),
+        "",
+        "Probable causes:",
+    ]
+    if diagnosis.hypotheses:
+        for index, hypothesis in enumerate(diagnosis.hypotheses, start=1):
+            evidence = "; ".join(hypothesis.supporting_evidence) if hypothesis.supporting_evidence else "INSUFFICIENT_EVIDENCE"
+            missing = "; ".join(hypothesis.missing_or_contradicting_evidence)
+            suffix = f" Missing/contradicting: {missing}" if missing else ""
+            lines.extend([
+                f"{index}. {hypothesis.cause} - {hypothesis.confidence}",
+                f"   Evidence: {evidence}{suffix}",
+            ])
+    else:
+        lines.append("No leak evidence found; no probable cause is inferred.")
+
+    lines.extend(["", "Recommended checks:"])
+    lines.extend(f"- {check}" for check in diagnosis.recommended_checks) if diagnosis.recommended_checks else lines.append("- None from current evidence.")
+
+    lines.extend(["", "Data needed to confirm:"])
+    lines.extend(f"- {item}" for item in diagnosis.missing_evidence) if diagnosis.missing_evidence else lines.append("- Physical inspection evidence and verified failure findings.")
+
+    lines.extend(["", "Spare readiness:"])
+    if diagnosis.inventory_evidence:
+        for row in diagnosis.inventory_evidence:
+            code = row.seal_code or "N/A"
+            qty = "DATA_GAP" if row.quantity is None else str(row.quantity)
+            lines.append(f"- {code}: {row.state}, qty={qty}")
+    else:
+        lines.append("- DATA_GAP")
+
+    lines.extend(["", "Conclusion:", "Root cause not confirmed."])
+    return "\n".join(lines)
+
+
+def _diagnostic_evidence(diagnosis: SealLeakDiagnosis) -> tuple[dict[str, Any], ...]:
+    rows = [
+        _evidence("SealLeakDiagnosticService", diagnosis.equipment, "diagnostic_status", diagnosis.diagnostic_status),
+        _evidence("SealLeakDiagnosticService", diagnosis.equipment, "confidence", diagnosis.confidence),
+        _evidence("ConditionMonitoringReading", diagnosis.equipment, "current_leak_flag", diagnosis.leak_evidence.get("current_leak_flag")),
+        _evidence("ConditionMonitoringReading", diagnosis.equipment, "historical_leak_count", diagnosis.leak_evidence.get("historical_leak_count")),
+    ]
+    latest = diagnosis.leak_evidence.get("latest_leak_finding")
+    if isinstance(latest, dict):
+        rows.append(_evidence("ConditionMonitoringReading", latest.get("source") or diagnosis.equipment, "finding", latest.get("finding")))
+    return tuple(rows)
+
+
+def _handle_seal_leak_diagnostic(
+    tag: str,
+    *,
+    seal_leak_diagnostic_service=None,
+    ltsa_knowledge_service=None,
+    equipment_timeline_service=None,
+    **_: Any,
+) -> CopilotAnswer:
+    if seal_leak_diagnostic_service is None:
+        from .seal_leak_diagnostic_service import SealLeakDiagnosticService
+        seal_leak_diagnostic_service = SealLeakDiagnosticService(
+            ltsa_knowledge_service=ltsa_knowledge_service,
+            equipment_timeline_service=equipment_timeline_service,
+        )
+    diagnosis = seal_leak_diagnostic_service.diagnose(tag)
+    kind = DATA_GAP if diagnosis.conclusion in ("INSUFFICIENT_EVIDENCE", "NO_LEAK_EVIDENCE") else INTERPRETATION
+    return CopilotAnswer(_render_seal_leak_diagnostic(diagnosis), kind, _diagnostic_evidence(diagnosis))
 
 
 # MWO-AI5R-LTSA-AI-ORCHESTRATION-001 -- exported (was module-private) so
@@ -2008,6 +2127,7 @@ TOOL_HANDLERS = {
     "installation": _handle_installation,
     "recommendation": _handle_recommendation,
     "condition_monitoring": _handle_condition_monitoring,
+    "seal_leak_diagnostic": _handle_seal_leak_diagnostic,
 }
 
 

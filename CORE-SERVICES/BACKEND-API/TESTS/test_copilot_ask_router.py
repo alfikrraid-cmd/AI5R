@@ -31,6 +31,7 @@ from dependencies import (  # noqa: E402
     get_mechanical_seal_stock_repository,
     get_pm_occurrence_repository,
     get_pump_gateway,
+    get_seal_leak_diagnostic_service,
     get_work_order_gateway,
 )
 from API.auth_service import ROLE_PERMISSIONS, AuthenticatedIdentity  # noqa: E402
@@ -44,6 +45,7 @@ _PUMPS = {
     "940-P-2A": {"tag_number": "940-P-2A", "area": "HOC", "status": "RUNNING"},
     "940-P-2B": {"tag_number": "940-P-2B", "area": "HOC", "status": "STANDBY"},
     "600-P-1A": {"tag_number": "600-P-1A", "area": "UTL", "status": "RUNNING"},
+    "110-P-12B": {"tag_number": "110-P-12B", "area": "HOC", "status": "RUNNING"},
 }
 
 # One current seal per tag, deliberately distinct, to prove the endpoint
@@ -200,6 +202,44 @@ class FakeEquipmentTimelineService:
         return _CURRENT_SEALS.get(tag_number)
 
 
+class FakeSealLeakDiagnosticService:
+    calls = []
+
+    def diagnose(self, tag_number):
+        from API.seal_leak_diagnostic_service import (
+            HIGH,
+            Hypothesis,
+            SealLeakDiagnosis,
+            StockReadinessRow,
+            STOCK_AVAILABLE,
+        )
+
+        self.__class__.calls.append(tag_number)
+        return SealLeakDiagnosis(
+            equipment=tag_number,
+            diagnostic_status="LEAK_CONFIRMED_DIAGNOSTIC_REQUIRED",
+            confidence=HIGH,
+            conclusion="LIKELY_SEAL_FAILURE",
+            leak_evidence={"current_leak_flag": True, "historical_leak_count": 1},
+            temperature_evidence={"status": "DATA_GAP"},
+            vibration_evidence={"status": "DATA_GAP"},
+            operating_evidence={"status": "DATA_GAP"},
+            maintenance_evidence={"status": "HAS_FAILURE_HISTORY"},
+            seal_evidence={"confirmed_installed_seal": "DATA_GAP"},
+            hypotheses=(
+                Hypothesis(
+                    cause="Mechanical seal face or secondary sealing damage",
+                    confidence=HIGH,
+                    supporting_evidence=("Active leak evidence",),
+                    missing_or_contradicting_evidence=("Physical inspection evidence",),
+                ),
+            ),
+            recommended_checks=("Inspect seal faces",),
+            missing_evidence=("Physical inspection evidence",),
+            inventory_evidence=(StockReadinessRow("SC-110", "Compatible Seal", None, 1, STOCK_AVAILABLE),),
+        )
+
+
 def _identity(role: str, *, data_scope_type=None, data_scope_value=None, permissions=None) -> AuthenticatedIdentity:
     return AuthenticatedIdentity(
         user_id="u1", email="u1@example.test", organization_id="org-1",
@@ -225,6 +265,7 @@ def _as(identity: AuthenticatedIdentity):
     app.dependency_overrides[get_installation_gateway] = lambda: FakeInstallationGateway()
     app.dependency_overrides[get_ltsa_knowledge_service] = lambda: FakeLTSAKnowledgeService()
     app.dependency_overrides[get_equipment_timeline_service] = lambda: FakeEquipmentTimelineService()
+    app.dependency_overrides[get_seal_leak_diagnostic_service] = lambda: FakeSealLeakDiagnosticService()
     app.dependency_overrides[get_installation_report_repository] = lambda: FakeInstallationReportRepository()
     app.dependency_overrides[get_mechanical_seal_stock_repository] = lambda: FakeMechanicalSealStockRepository()
     app.dependency_overrides[get_condition_monitoring_reading_gateway] = lambda: FakeConditionMonitoringReadingGateway()
@@ -238,7 +279,7 @@ def _clear():
     for dep in (
         get_current_user, get_copilot_ai_client, get_pump_gateway, get_maintenance_history_gateway,
         get_work_order_gateway, get_installation_gateway, get_ltsa_knowledge_service,
-        get_equipment_timeline_service, get_condition_monitoring_reading_gateway,
+        get_equipment_timeline_service, get_seal_leak_diagnostic_service, get_condition_monitoring_reading_gateway,
         get_installation_report_repository, get_mechanical_seal_stock_repository,
         get_condition_monitoring_reading_repository, get_fleet_executive_summary_service,
         get_pm_occurrence_repository, get_cm_report_repository,
@@ -389,6 +430,19 @@ class TestIntents:
         body = _ask("pompa mana yang perlu perhatian hari ini?").json()
         assert body["kind"] == "RECOMMENDATION"
         assert "940-P-2A" in body["answer"]
+
+    def test_diagnostic_question_normalizes_embedded_tag_and_locks_entity(self):
+        FakeSealLeakDiagnosticService.calls = []
+        body = _ask("Kenapa 110p12b bocor?").json()
+        assert body["kind"] == "INTERPRETATION"
+        assert body["answer"].startswith("Mechanical Seal Diagnostic - 110-P-12B")
+        assert FakeSealLeakDiagnosticService.calls == ["110-P-12B"]
+
+    def test_diagnostic_asset_context_is_normalized_before_scope_and_service_call(self):
+        FakeSealLeakDiagnosticService.calls = []
+        body = _ask("Analisa seal bocor", "110p12b").json()
+        assert body["answer"].startswith("Mechanical Seal Diagnostic - 110-P-12B")
+        assert FakeSealLeakDiagnosticService.calls == ["110-P-12B"]
 
 
 class TestIdentitySafety:

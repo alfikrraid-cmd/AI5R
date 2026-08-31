@@ -408,8 +408,21 @@ def diagnose(
     )
 
 
+class SealLeakDiagnosticService:
+    def __init__(self, *, ltsa_knowledge_service, equipment_timeline_service=None):
+        self._ltsa_knowledge_service = ltsa_knowledge_service
+        self._equipment_timeline_service = equipment_timeline_service
+
+    def diagnose(self, tag: str) -> SealLeakDiagnosis:
+        return diagnose(
+            tag,
+            ltsa_knowledge_service=self._ltsa_knowledge_service,
+            equipment_timeline_service=self._equipment_timeline_service,
+        )
+
+
 __all__ = [
-    "SealLeakDiagnosis", "Hypothesis", "StockReadinessRow", "diagnose",
+    "SealLeakDiagnosis", "Hypothesis", "StockReadinessRow", "SealLeakDiagnosticService", "diagnose",
     "HIGH", "MEDIUM", "LOW", "INSUFFICIENT_EVIDENCE", "DATA_GAP",
     "STATUS_LEAK_CURRENT", "STATUS_LEAK_HISTORICAL", "STATUS_NO_LEAK",
     "STOCK_AVAILABLE", "STOCK_ZERO", "STOCK_NO_RECORD", "STOCK_NO_COMPATIBLE_SEAL",

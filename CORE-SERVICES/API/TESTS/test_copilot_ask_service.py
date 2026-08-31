@@ -18,12 +18,14 @@ if str(CORE_SERVICES_DIR) not in sys.path:
 from API.copilot_ask_service import (  # noqa: E402
     DATA_GAP,
     FACT,
+    INTERPRETATION,
     RECOMMENDATION,
     _detect_intent,
     _extract_seal_code,
     _handle_fleet_stock_status,
     ask_copilot,
 )
+from API.ltsa_knowledge_service import LTSAKnowledge  # noqa: E402
 from API.maintenance_intelligence_service import (  # noqa: E402
     flatten_stock_v1_fleet_rows,
     select_fleet_stock_by_predicate,
@@ -31,6 +33,7 @@ from API.maintenance_intelligence_service import (  # noqa: E402
     select_most_frequent_leak_pump,
     select_stock_v1_pools_by_seal_code,
 )
+from API.seal_leak_diagnostic_service import SealLeakDiagnosticService  # noqa: E402
 
 
 # --- Indonesian variants -----------------------------------------------------
@@ -268,9 +271,12 @@ class _FakeCMReportRepository:
 def _ask(
     question,
     *,
+    tag=None,
     installation_records=(),
     cmon_records=(),
     stock_pools=(),
+    ltsa_knowledge_service=None,
+    seal_leak_diagnostic_service=None,
     condition_monitoring_reading_repository=None,
     fleet_executive_summary_service=None,
     pm_occurrence_repository=None,
@@ -278,13 +284,13 @@ def _ask(
 ):
     return ask_copilot(
         question,
-        None,
+        tag,
         None,
         pump_gateway=None,
         maintenance_history_gateway=None,
         work_order_gateway=None,
         installation_gateway=None,
-        ltsa_knowledge_service=None,
+        ltsa_knowledge_service=ltsa_knowledge_service,
         equipment_timeline_service=None,
         condition_monitoring_reading_gateway=_FakeCMONGateway(list(cmon_records)),
         installation_report_repository=_FakeInstallationReportRepository(list(installation_records)),
@@ -294,6 +300,7 @@ def _ask(
         fleet_executive_summary_service=fleet_executive_summary_service or _FakeFleetExecutiveSummaryService(),
         pm_occurrence_repository=pm_occurrence_repository or _FakePMOccurrenceRepository(),
         cm_report_repository=cm_report_repository or _FakeCMReportRepository(),
+        seal_leak_diagnostic_service=seal_leak_diagnostic_service,
     )
 
 
@@ -630,8 +637,8 @@ def test_null_quantity_never_reported_as_zero():
     answer = _ask("pompa mana yang stock sealnya unknown?", stock_pools=_ALL_POOLS)
     assert answer.kind == FACT
     assert "211-P-02A" in answer.answer
-    assert "211-P-02A — T6014DP — unknown" in answer.answer
-    assert "211-P-02A — T6014DP — 0" not in answer.answer
+    assert "211-P-02A - T6014DP - unknown" in answer.answer
+    assert "211-P-02A - T6014DP - 0" not in answer.answer
 
 
 def test_out_of_stock_predicate_variants_and_more_examples():
@@ -811,6 +818,106 @@ def test_fleet_priority_authorization_scope_passed_into_canonical_build():
     assert service.build_calls == [scope]
 
 
+class _DiagnosticKnowledgeService:
+    def __init__(self, *, leak=True, stock_quantity=2):
+        self.leak = leak
+        self.stock_quantity = stock_quantity
+        self.calls = []
+
+    def build(self, tag):
+        self.calls.append(tag)
+        reading_date = "2026-08-30"
+        if self.leak:
+            readings = [
+                {
+                    "condition_monitoring_reading_code": "CMONR-1",
+                    "asset_code": tag,
+                    "reading_date": reading_date,
+                    "mechanical_seal_leak_de": True,
+                    "temperature": None,
+                    "vibration": None,
+                    "finding": "Kebocoran mechanical seal",
+                }
+            ]
+        else:
+            readings = [{"condition_monitoring_reading_code": "CMONR-2", "asset_code": tag, "reading_date": reading_date}]
+        return LTSAKnowledge(
+            tag_number=tag,
+            pump={"tag_number": tag, "status": "RUNNING"},
+            seal=[{"seal_code": "SC-110", "part_name": "Compatible Seal"}],
+            inventory=[{"seal_code": "SC-110", "quantity_on_hand": self.stock_quantity, "location": "WH"}],
+            pm_history=[],
+            cm_history=[{"cm_report_code": "CM-1", "failure_category": "SEAL_FAILURE", "asset_code": tag}],
+            breakdown_history=[{"maintenance_record_code": "MH-1"}, {"maintenance_record_code": "MH-2"}],
+            drawings=[],
+            recommendation=(),
+            pm_schedules=[],
+            condition_monitoring_schedules=[],
+            condition_monitoring_readings=readings,
+        )
+
+
+class _DiagnosticTimelineService:
+    def build_current_seal(self, tag):
+        return None
+
+
+def _diagnostic_answer(question, *, tag="110-P-12B", leak=True, stock_quantity=2):
+    knowledge = _DiagnosticKnowledgeService(leak=leak, stock_quantity=stock_quantity)
+    service = SealLeakDiagnosticService(
+        ltsa_knowledge_service=knowledge,
+        equipment_timeline_service=_DiagnosticTimelineService(),
+    )
+    answer = _ask(
+        question,
+        tag=tag,
+        ltsa_knowledge_service=knowledge,
+        seal_leak_diagnostic_service=service,
+    )
+    return answer, knowledge.calls
+
+
+def test_diagnostic_intent_examples_route_to_seal_leak_diagnostic():
+    examples = [
+        "Kenapa 110p12b bocor?",
+        "Analisa kebocoran 110-P-12B",
+        "Analisa seal bocor 110p12b",
+        "Apa penyebab seal 110p12b bocor?",
+        "Kenapa mechanical seal 110p12b sering bocor?",
+        "Diagnosa kebocoran 110p12b",
+    ]
+    for question in examples:
+        assert _detect_intent(question, tag="110-P-12B") == "seal_leak_diagnostic"
+        answer, calls = _diagnostic_answer(question)
+        assert calls == ["110-P-12B"]
+        assert answer.kind == INTERPRETATION
+        assert answer.answer.startswith("Mechanical Seal Diagnostic - 110-P-12B")
+        assert "Root cause not confirmed." in answer.answer
+        assert "root cause confirmed" not in answer.answer.lower()
+
+
+def test_diagnostic_intent_does_not_steal_write_or_fleet_or_pm_intents():
+    assert _detect_intent("CM 110p12b: mechanical seal bocor", tag="110-P-12B") == "cm"
+    assert _detect_intent("PM 110p12b", tag="110-P-12B") == "pm"
+    assert _detect_intent("Pompa mana yang sealnya bocor sekarang?", tag=None) == "condition_monitoring"
+    assert _detect_intent("Pompa mana yang paling sering bocor setahun terakhir?", tag=None) == "condition_monitoring"
+
+
+def test_diagnostic_no_leak_evidence_does_not_manufacture_hypotheses():
+    answer, _calls = _diagnostic_answer("Kenapa 110p12b bocor?", leak=False)
+    assert answer.kind == DATA_GAP
+    assert "No leak evidence found; no probable cause is inferred." in answer.answer
+    assert "1." not in answer.answer
+
+
+def test_diagnostic_renderer_preserves_data_gap_and_spare_readiness():
+    answer, _calls = _diagnostic_answer("Analisa seal bocor 110p12b", stock_quantity=None)
+    assert "Temperature: DATA_GAP" in answer.answer
+    assert "Vibration: DATA_GAP" in answer.answer
+    assert "confirmed_installed_seal=DATA_GAP" in answer.answer
+    assert "SC-110: NO_STOCK_RECORD, qty=DATA_GAP" in answer.answer
+
+
 def test_fleet_priority_no_actionable_assets_is_truthful_fact():
     summary = _FakeFleetExecutiveSummary(fleet_status="NORMAL", top_risks=())
     answer = _fleet_priority_query(_FakeFleetExecutiveSummaryService(summary))
@@ -849,3 +956,10 @@ def test_fleet_priority_query_path_never_calls_any_write_method():
     service = _FakeFleetExecutiveSummaryService(summary)
     _fleet_priority_query(service)
     assert service.build_calls == [None]
+
+
+def test_high_confidence_never_renders_confirmed_root_cause():
+    answer, _calls = _diagnostic_answer("Apa penyebab seal 110p12b bocor?")
+    assert "- HIGH" in answer.answer
+    assert "Root cause not confirmed." in answer.answer
+    assert "confirmed root cause" not in answer.answer.lower()
