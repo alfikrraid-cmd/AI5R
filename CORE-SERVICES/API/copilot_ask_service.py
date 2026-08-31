@@ -1577,6 +1577,8 @@ def _detect_fleet_stock_semantic(question: str) -> str | None:
         "stok 0", "stock 0", "stok nol", "stock nol", "quantity 0", "qty 0"
     ):
         return "ZERO_STOCK_ONLY"
+    if has("tidak ada stock seal", "tidak ada stok seal", "ga ada stock seal", "gak ada stock seal"):
+        return "NO_SPARE_BROAD"
     if has("spare seal", "spare part") and has(
         "tidak punya", "tidak ada", "belum punya", "gak punya", "ga punya", "don't have", "doesn't have", "no spare"
     ):

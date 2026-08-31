@@ -212,6 +212,20 @@ def test_vibration_ranking_excludes_pumps_with_no_vibration_data_but_counts_them
     assert "With Vibration data: 2" in answer.answer
 
 
+def test_vibration_synonym_getarannya_routes_and_answers_identically():
+    fixture = _Fixture(
+        pumps=[_pump("PUMP-A"), _pump("PUMP-B")],
+        cmon_rows=[
+            _cmon("PUMP-A", RECENT, vertical_vibration_de=8.2),
+            _cmon("PUMP-B", RECENT, vertical_vibration_de=3.1),
+        ],
+    )
+    answer = fixture.ask("Pompa mana yang getarannya paling tinggi?")
+    assert answer.kind == FACT
+    assert "PUMP-A" in answer.answer
+    assert "8.2" in answer.answer
+
+
 # -- D. Current leak ------------------------------------------------------------
 
 
@@ -227,6 +241,21 @@ def test_current_leak_returns_only_pumps_with_active_leak_evidence():
     assert answer.kind == FACT
     assert "PUMP-A" in answer.answer
     assert "PUMP-B" not in answer.answer
+
+
+def test_plain_bocor_query_uses_current_leak_not_historical_frequency():
+    fixture = _Fixture(
+        pumps=[_pump("PUMP-OLD"), _pump("PUMP-CURRENT")],
+        cmon_rows=[
+            _cmon("PUMP-OLD", OUTSIDE_WINDOW, mechanical_seal_leak_de=True),
+            _cmon("PUMP-OLD", OUTSIDE_WINDOW, mechanical_seal_leak_de=True),
+            _cmon("PUMP-CURRENT", RECENT, mechanical_seal_leak_de=True, finding="Active leak"),
+        ],
+    )
+    answer = fixture.ask("Pompa mana yang bocor?")
+    assert answer.kind == FACT
+    assert "PUMP-CURRENT" in answer.answer
+    assert "PUMP-OLD" not in answer.answer
 
 
 # -- E. Historical leak frequency (1yr, count only inside period) -------------
@@ -345,6 +374,37 @@ def test_no_spare_seal_query_preserves_all_three_distinct_reasons():
         ],
     )
     answer = fixture.ask("Pompa mana yang tidak punya spare seal?")
+    assert answer.kind == FACT
+    assert "PUMP-ZERO" in answer.answer
+    assert "PUMP-NO-RECORD" in answer.answer
+    assert "PUMP-NO-COMPAT" in answer.answer
+    assert "PUMP-OK" not in answer.answer
+    assert "Zero stock:" in answer.answer
+    assert "No inventory record:" in answer.answer
+    assert "No compatible seal mapped:" in answer.answer
+
+
+def test_tidak_ada_stock_sealnya_preserves_all_three_distinct_reasons():
+    fixture = _Fixture(
+        pumps=[_pump("PUMP-ZERO"), _pump("PUMP-NO-RECORD"), _pump("PUMP-NO-COMPAT"), _pump("PUMP-OK")],
+        compatibilities=[
+            {"pump_tag_number": "PUMP-ZERO", "seal_code": "T48MP"},
+            {"pump_tag_number": "PUMP-NO-RECORD", "seal_code": "SC-999"},
+            {"pump_tag_number": "PUMP-OK", "seal_code": "T48MP"},
+        ],
+        seals=[{"seal_code": "T48MP", "seal_name": "T48MP Seal"}, {"seal_code": "SC-999", "seal_name": "SC-999 Seal"}],
+        stock_pools=[
+            {
+                "stock_pool_id": "POOL-1", "seal_type": "T48MP", "quantity_available": 0,
+                "applications": [{"equipment_tag": "PUMP-ZERO"}],
+            },
+            {
+                "stock_pool_id": "POOL-2", "seal_type": "T48MP", "quantity_available": 5,
+                "applications": [{"equipment_tag": "PUMP-OK"}],
+            },
+        ],
+    )
+    answer = fixture.ask("Pompa mana yang tidak ada stock sealnya?")
     assert answer.kind == FACT
     assert "PUMP-ZERO" in answer.answer
     assert "PUMP-NO-RECORD" in answer.answer
