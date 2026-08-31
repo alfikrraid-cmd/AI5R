@@ -237,6 +237,41 @@ def get_pump_condition_monitoring_flag(
     }
 
 
+def leak_flag_from_readings(
+    readings: list[dict[str, Any]],
+    *,
+    window_days: int = DEFAULT_CONDITION_MONITORING_WINDOW_DAYS,
+    today: date | None = None,
+) -> dict[str, Any]:
+    today = today or date.today()
+    cutoff = today - timedelta(days=window_days)
+
+    def _within_window(reading: dict[str, Any]) -> bool:
+        raw_date = reading.get("reading_date")
+        if not raw_date:
+            return False
+        try:
+            parsed = date.fromisoformat(str(raw_date)[:10])
+        except ValueError:
+            return False
+        return parsed >= cutoff
+
+    recent_readings = [reading for reading in readings if _within_window(reading)]
+    flagged_readings = [
+        reading
+        for reading in recent_readings
+        if reading.get("mechanical_seal_leak_de") is True or reading.get("mechanical_seal_leak_nde") is True
+    ]
+    flagged_sorted = sorted(
+        flagged_readings, key=lambda reading: reading.get("reading_date") or "", reverse=True
+    )
+    return {
+        "flagged": len(flagged_readings) > 0,
+        "window_days": window_days,
+        "latest_flagged_reading": flagged_sorted[0] if flagged_sorted else None,
+    }
+
+
 def get_pump_spare_parts(
     tag_number: str,
     seal_pump_compatibility_gateway: SealPumpCompatibilityGateway | None = None,

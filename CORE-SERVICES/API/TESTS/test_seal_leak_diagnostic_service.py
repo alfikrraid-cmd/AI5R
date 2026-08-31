@@ -5,6 +5,12 @@ seal() contracts verified by reading the actual source (not assumed).
 """
 
 from datetime import date, timedelta
+import sys
+from pathlib import Path
+
+CORE_SERVICES_PATH = Path(__file__).resolve().parents[2]
+if str(CORE_SERVICES_PATH) not in sys.path:
+    sys.path.insert(0, str(CORE_SERVICES_PATH))
 
 from API.ltsa_knowledge_service import LTSAKnowledge
 from API.seal_leak_diagnostic_service import (
@@ -261,3 +267,118 @@ def test_fixtures_mirror_real_ltsaknowledge_and_current_seal_contracts():
     from API.equipment_timeline_service import EquipmentTimelineService
     assert callable(getattr(LTSAKnowledgeService, "build"))
     assert callable(getattr(EquipmentTimelineService, "build_current_seal"))
+
+
+def test_diagnose_accepts_ltsa_knowledge_production_inventory_shape():
+    k = _knowledge(
+        condition_monitoring_readings=[_cmon(RECENT, mechanical_seal_leak_de=True)],
+        seal=[{"seal_code": "SC-PROD", "part_name": "Production compatible seal"}],
+        inventory=[{"seal_code": "SC-PROD", "quantity_on_hand": 3, "reorder_point": 1, "location": "WH"}],
+    )
+    d = _diagnose(k)
+    assert d.inventory_evidence[0].seal_code == "SC-PROD"
+    assert d.inventory_evidence[0].quantity == 3
+    assert d.inventory_evidence[0].state == STOCK_AVAILABLE
+
+
+def test_diagnose_through_ltsa_knowledge_service_with_production_shaped_repository_returns():
+    from API.ltsa_knowledge_service import LTSAKnowledgeService
+
+    tag = "110-P-12B"
+
+    class PumpGateway:
+        def get_pump(self, tag_number):
+            return {"success": True, "data": {"tag_number": tag_number, "status": "RUNNING"}}
+
+    class MaintenanceHistoryGateway:
+        def list_maintenance_history(self):
+            return {"success": True, "data": []}
+
+    class WorkOrderGateway:
+        def list_work_orders(self):
+            return {"success": True, "data": []}
+
+    class SealPumpCompatibilityGateway:
+        def list_seal_pump_compatibilities(self):
+            return {"success": True, "data": [{"pump_tag_number": tag, "seal_code": "SC-PROD"}]}
+
+    class SealGateway:
+        def list_seals(self):
+            return {"success": True, "data": [{"seal_code": "SC-PROD", "seal_name": "Production Seal"}]}
+
+    class SealStockGateway:
+        def list_seal_stocks(self):
+            return {"success": True, "data": [{"seal_code": "SC-PROD", "quantity_on_hand": 5, "reorder_point": 1, "location": "WH"}]}
+
+    class EmptyGateway:
+        def list_pm_occurrences(self):
+            return {"success": True, "data": []}
+
+        def list_cm_reports(self):
+            return {"success": True, "data": []}
+
+        def list_seal_engineering_documents(self):
+            return {"success": True, "data": []}
+
+        def list_pm_schedules(self):
+            return {"success": True, "data": []}
+
+        def list_condition_monitoring_schedules(self):
+            return {"success": True, "data": []}
+
+        def list_condition_monitoring_readings(self):
+            return {"success": True, "data": []}
+
+    class PMOccurrenceRepository:
+        def list_by_asset(self, asset_code):
+            return []
+
+    class ConditionMonitoringReadingRepository:
+        def list_by_asset(self, asset_code):
+            return [
+                {
+                    "condition_monitoring_reading_code": "CMONR-PROD",
+                    "asset_code": asset_code,
+                    "reading_date": RECENT,
+                    "mechanical_seal_leak_de": True,
+                    "finding": "Mechanical seal leak DE",
+                }
+            ]
+
+    class DictListRepository:
+        def list_pm_schedules(self):
+            return {"success": True, "data": []}
+
+        def list_cm_reports(self):
+            return {"success": True, "data": [{"cm_report_code": "CM-PROD", "asset_code": tag, "failure_category": "SEAL_FAILURE"}]}
+
+        def list_condition_monitoring_schedules(self):
+            return {"success": True, "data": []}
+
+    repo = DictListRepository()
+    knowledge_service = LTSAKnowledgeService(
+        pump_gateway=PumpGateway(),
+        maintenance_history_gateway=MaintenanceHistoryGateway(),
+        pm_occurrence_gateway=EmptyGateway(),
+        cm_report_gateway=EmptyGateway(),
+        seal_gateway=SealGateway(),
+        seal_stock_gateway=SealStockGateway(),
+        seal_pump_compatibility_gateway=SealPumpCompatibilityGateway(),
+        work_order_gateway=WorkOrderGateway(),
+        seal_engineering_document_gateway=EmptyGateway(),
+        pm_schedule_gateway=EmptyGateway(),
+        condition_monitoring_schedule_gateway=EmptyGateway(),
+        condition_monitoring_reading_gateway=EmptyGateway(),
+        pm_occurrence_repository=PMOccurrenceRepository(),
+        condition_monitoring_reading_repository=ConditionMonitoringReadingRepository(),
+        pm_schedule_repository=repo,
+        cm_report_repository=repo,
+        condition_monitoring_schedule_repository=repo,
+    )
+
+    d = diagnose(tag, ltsa_knowledge_service=knowledge_service, today=TODAY)
+    assert d.equipment == tag
+    assert d.leak_evidence["current_leak_flag"] is True
+    assert d.inventory_evidence[0].seal_code == "SC-PROD"
+    assert d.inventory_evidence[0].quantity == 5
+    assert d.inventory_evidence[0].state == STOCK_AVAILABLE

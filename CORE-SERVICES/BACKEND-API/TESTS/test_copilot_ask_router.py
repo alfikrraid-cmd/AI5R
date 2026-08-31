@@ -27,12 +27,14 @@ from dependencies import (  # noqa: E402
     get_maintenance_history_gateway,
     get_mechanical_seal_stock_repository,
     get_pump_gateway,
+    get_seal_leak_diagnostic_service,
     get_work_order_gateway,
 )
 from API.auth_service import ROLE_PERMISSIONS, AuthenticatedIdentity  # noqa: E402
 from API.ltsa_knowledge_service import LTSAKnowledge  # noqa: E402
 from API.equipment_timeline_service import PumpLifecycleCurrentSeal  # noqa: E402
 from API.recommendation_engine import Evidence, Recommendation  # noqa: E402
+from API.seal_leak_diagnostic_service import SealLeakDiagnosticService  # noqa: E402
 
 client = TestClient(app)
 
@@ -40,6 +42,7 @@ _PUMPS = {
     "940-P-2A": {"tag_number": "940-P-2A", "area": "HOC", "status": "RUNNING"},
     "940-P-2B": {"tag_number": "940-P-2B", "area": "HOC", "status": "STANDBY"},
     "600-P-1A": {"tag_number": "600-P-1A", "area": "UTL", "status": "RUNNING"},
+    "110-P-12B": {"tag_number": "110-P-12B", "area": "HOC", "status": "RUNNING"},
 }
 
 # One current seal per tag, deliberately distinct, to prove the endpoint
@@ -133,17 +136,48 @@ class FakeLTSAKnowledgeService:
                     confidence=1.0, action="Inspect now.",
                 ),
             )
+        readings = []
+        seal = []
+        inventory = []
+        cm_history = []
+        breakdown_history = []
+        if tag_number == "110-P-12B":
+            readings = [{
+                "condition_monitoring_reading_code": "CMONR-110",
+                "asset_code": tag_number,
+                "reading_date": "2026-08-30",
+                "mechanical_seal_leak_de": True,
+                "finding": "Mechanical seal leak DE",
+            }]
+            seal = [{"seal_code": "SC-110", "part_name": "Compatible Seal"}]
+            inventory = [{"seal_code": "SC-110", "quantity_on_hand": 1, "location": "WH"}]
+            cm_history = [{"cm_report_code": "CM-110", "asset_code": tag_number, "failure_category": "SEAL_FAILURE"}]
+            breakdown_history = [{"maintenance_record_code": "MH-1"}, {"maintenance_record_code": "MH-2"}]
         return LTSAKnowledge(
-            tag_number=tag_number, pump=_PUMPS.get(tag_number), seal=[], inventory=[],
-            pm_history=[], cm_history=[], breakdown_history=[], drawings=[],
+            tag_number=tag_number, pump=_PUMPS.get(tag_number), seal=seal, inventory=inventory,
+            pm_history=[], cm_history=cm_history, breakdown_history=breakdown_history, drawings=[],
             recommendation=recommendation, pm_schedules=[], condition_monitoring_schedules=[],
-            condition_monitoring_readings=[],
+            condition_monitoring_readings=readings,
         )
 
 
 class FakeEquipmentTimelineService:
     def build_current_seal(self, tag_number):
         return _CURRENT_SEALS.get(tag_number)
+
+
+class FakeSealLeakDiagnosticService(SealLeakDiagnosticService):
+    calls = []
+
+    def __init__(self):
+        super().__init__(
+            ltsa_knowledge_service=FakeLTSAKnowledgeService(),
+            equipment_timeline_service=FakeEquipmentTimelineService(),
+        )
+
+    def diagnose(self, tag, **kwargs):
+        self.calls.append(tag)
+        return super().diagnose(tag, **kwargs)
 
 
 def _identity(role: str, *, data_scope_type=None, data_scope_value=None, permissions=None) -> AuthenticatedIdentity:
@@ -173,6 +207,7 @@ def _as(identity: AuthenticatedIdentity):
     app.dependency_overrides[get_equipment_timeline_service] = lambda: FakeEquipmentTimelineService()
     app.dependency_overrides[get_installation_report_repository] = lambda: FakeInstallationReportRepository()
     app.dependency_overrides[get_mechanical_seal_stock_repository] = lambda: FakeMechanicalSealStockRepository()
+    app.dependency_overrides[get_seal_leak_diagnostic_service] = lambda: FakeSealLeakDiagnosticService()
     app.dependency_overrides[get_condition_monitoring_reading_gateway] = lambda: FakeConditionMonitoringReadingGateway()
 
 
@@ -181,7 +216,7 @@ def _clear():
         get_current_user, get_copilot_ai_client, get_pump_gateway, get_maintenance_history_gateway,
         get_work_order_gateway, get_installation_gateway, get_ltsa_knowledge_service,
         get_equipment_timeline_service, get_condition_monitoring_reading_gateway,
-        get_installation_report_repository, get_mechanical_seal_stock_repository,
+        get_installation_report_repository, get_mechanical_seal_stock_repository, get_seal_leak_diagnostic_service,
     ):
         app.dependency_overrides.pop(dep, None)
 
@@ -276,6 +311,20 @@ class TestIntents:
     def test_missing_current_seal_evidence_is_data_gap_not_fabricated(self):
         body = _ask("what is the current seal?", "600-P-1A").json()  # no seal record faked for this tag
         assert body["kind"] == "DATA_GAP"
+
+
+    def test_diagnostic_question_normalizes_embedded_tag_and_locks_entity(self):
+        FakeSealLeakDiagnosticService.calls = []
+        body = _ask("Kenapa 110p12b bocor?").json()
+        assert body["kind"] == "INTERPRETATION"
+        assert body["answer"].startswith("Mechanical Seal Diagnostic — 110-P-12B")
+        assert FakeSealLeakDiagnosticService.calls == ["110-P-12B"]
+
+    def test_diagnostic_asset_context_is_normalized_before_scope_and_service_call(self):
+        FakeSealLeakDiagnosticService.calls = []
+        body = _ask("Analisa seal bocor", "110p12b").json()
+        assert body["answer"].startswith("Mechanical Seal Diagnostic — 110-P-12B")
+        assert FakeSealLeakDiagnosticService.calls == ["110-P-12B"]
 
 
 class TestIdentitySafety:
