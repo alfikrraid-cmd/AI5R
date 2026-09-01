@@ -189,7 +189,10 @@ def _detect_intent(question: str, *, tag: str | None = None) -> str | None:
         return "cm"
     if has("work order", "workorder", r"\bwo\b", "kerja"):
         return "work_orders"
-    if has("stock", "stok", "inventory", "inventaris", "spare part", "sparepart", "spare seal", "suku cadang", "tersedia"):
+    if has(
+        "stock", "stok", "inventory", "inventaris", "spare part", "sparepart", "spare seal",
+        "suku cadang", "tersedia", r"\bready\b", "kesiapan",
+    ):
         return "inventory"
     if has(r"\bseal\b", r"\bsegel\b", "compatib", "cocok"):
         return "seal_compat"
