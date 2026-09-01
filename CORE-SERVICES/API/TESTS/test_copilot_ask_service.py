@@ -96,6 +96,18 @@ def test_leak_wording_routes_to_condition_monitoring_never_cm():
     assert _detect_intent("which pump leaks most often?") == "condition_monitoring"
 
 
+@pytest.mark.parametrize(
+    "question",
+    [
+        "Kenapa mechanical seal 211p13ar bocor?",
+        "Kenapa seal 211-P-13AR bocor?",
+        "Penyebab kebocoran seal 211p13ar?",
+    ],
+)
+def test_explicit_single_equipment_diagnostic_outranks_fleet_leak_intent(question):
+    assert _detect_intent(question, tag="211-P-13AR") == "seal_leak_diagnostic"
+
+
 def test_breakdown_wording_still_routes_to_cm_not_condition_monitoring():
     # Regression: "Do not confuse Condition Monitoring with Corrective
     # Maintenance" -- kerusakan/breakdown must stay on the CM path.
@@ -110,6 +122,18 @@ def test_stock_question_with_seal_code_routes_to_inventory_not_seal_compat():
     assert _detect_intent("stock seal T48MP ada berapa?") == "inventory"
     assert _detect_intent("seal T48MP tersedia?") == "inventory"
     assert _detect_intent("stock mechanical seal T48MP") == "inventory"
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "Ada stock seal untuk 211p13ar?",
+        "Stock seal 211-P-13AR ada?",
+        "Berapa stock seal 211p13ar?",
+    ],
+)
+def test_explicit_single_equipment_stock_uses_inventory_intent(question):
+    assert _detect_intent(question, tag="211-P-13AR") == "inventory"
 
 
 def test_extract_seal_code_finds_a_real_code_not_a_time_word():
@@ -390,6 +414,42 @@ def test_stock_query_zero_quantity_reports_out_of_stock():
     )
     assert answer.kind == FACT
     assert "out of stock" in answer.answer.lower()
+
+
+def test_single_equipment_stock_query_reads_stock_v1_application_quantity():
+    answer = _ask(
+        "Ada stock seal untuk 211p13ar?",
+        tag="211-P-13AR",
+        stock_pools=[
+            {
+                "stock_pool_id": "POOL-13AR",
+                "seal_type": "T6014DP",
+                "quantity_available": 3,
+                "stock_location": "WH-A",
+                "nominal_size": 60,
+                "size_unit": "MM",
+                "applications": [{"equipment_tag": "211-P-13AR"}],
+            },
+            {
+                "stock_pool_id": "POOL-OTHER",
+                "seal_type": "T48MP",
+                "quantity_available": 9,
+                "applications": [{"equipment_tag": "211-P-14A"}],
+            },
+        ],
+    )
+    assert answer.kind == FACT
+    assert "Mechanical Seal Stock" in answer.answer
+    assert "211-P-13AR" in answer.answer
+    assert "T6014DP" in answer.answer
+    assert "60 MM" in answer.answer
+    assert "3 unit" in answer.answer
+    assert "WH-A" in answer.answer
+    assert "Installed seal: Not confirmed" in answer.answer
+    assert "POOL-OTHER" not in answer.answer
+    assert answer.evidence == (
+        {"source": "MechanicalSealStockV1", "reference": "POOL-13AR", "field": "quantity_available", "value": "3"},
+    )
 
 
 def test_stock_query_multiple_pools_reported_separately_never_summed():

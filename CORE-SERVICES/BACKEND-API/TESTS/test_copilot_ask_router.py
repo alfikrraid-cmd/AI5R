@@ -7,6 +7,7 @@ data is missing (DATA_GAP instead of a guess).
 import sys
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 BACKEND_API_DIR = Path(__file__).resolve().parents[1]
@@ -30,8 +31,11 @@ from dependencies import (  # noqa: E402
     get_maintenance_history_gateway,
     get_mechanical_seal_stock_repository,
     get_pm_occurrence_repository,
+    get_pm_schedule_repository,
     get_pump_gateway,
     get_seal_leak_diagnostic_service,
+    get_seal_gateway,
+    get_seal_pump_compatibility_gateway,
     get_work_order_gateway,
 )
 from API.auth_service import ROLE_PERMISSIONS, AuthenticatedIdentity  # noqa: E402
@@ -46,6 +50,7 @@ _PUMPS = {
     "940-P-2B": {"tag_number": "940-P-2B", "area": "HOC", "status": "STANDBY"},
     "600-P-1A": {"tag_number": "600-P-1A", "area": "UTL", "status": "RUNNING"},
     "110-P-12B": {"tag_number": "110-P-12B", "area": "HOC", "status": "RUNNING"},
+    "211-P-13AR": {"tag_number": "211-P-13AR", "area": "HOC", "status": "RUNNING"},
 }
 
 # One current seal per tag, deliberately distinct, to prove the endpoint
@@ -112,10 +117,13 @@ class FakeInstallationReportRepository:
 
 
 class FakeMechanicalSealStockRepository:
+    calls = 0
+
     def __init__(self, records=None):
         self._records = records if records is not None else []
 
     def list_pools(self, **_kwargs):
+        self.__class__.calls += 1
         return {"success": True, "items": self._records, "data": self._records}
 
 
@@ -150,6 +158,21 @@ class FakeCMReportRepository:
 
     def list_cm_reports(self, **_kwargs):
         return {"success": self._success, "data": self._records}
+
+
+class FakePMScheduleRepository:
+    def list_schedules(self, **_kwargs):
+        return {"success": True, "data": []}
+
+
+class FakeSealPumpCompatibilityGateway:
+    def list_compatibility(self):
+        return {"success": True, "data": []}
+
+
+class FakeSealGateway:
+    def list_seals(self):
+        return {"success": True, "data": []}
 
 
 class _FakeTopRisk:
@@ -273,6 +296,9 @@ def _as(identity: AuthenticatedIdentity):
     app.dependency_overrides[get_fleet_executive_summary_service] = lambda: FakeFleetExecutiveSummaryService()
     app.dependency_overrides[get_pm_occurrence_repository] = lambda: FakePMOccurrenceRepository()
     app.dependency_overrides[get_cm_report_repository] = lambda: FakeCMReportRepository()
+    app.dependency_overrides[get_pm_schedule_repository] = lambda: FakePMScheduleRepository()
+    app.dependency_overrides[get_seal_pump_compatibility_gateway] = lambda: FakeSealPumpCompatibilityGateway()
+    app.dependency_overrides[get_seal_gateway] = lambda: FakeSealGateway()
 
 
 def _clear():
@@ -282,7 +308,8 @@ def _clear():
         get_equipment_timeline_service, get_seal_leak_diagnostic_service, get_condition_monitoring_reading_gateway,
         get_installation_report_repository, get_mechanical_seal_stock_repository,
         get_condition_monitoring_reading_repository, get_fleet_executive_summary_service,
-        get_pm_occurrence_repository, get_cm_report_repository,
+        get_pm_occurrence_repository, get_cm_report_repository, get_pm_schedule_repository,
+        get_seal_pump_compatibility_gateway, get_seal_gateway,
     ):
         app.dependency_overrides.pop(dep, None)
 
@@ -437,6 +464,81 @@ class TestIntents:
         assert body["kind"] == "INTERPRETATION"
         assert body["answer"].startswith("Mechanical Seal Diagnostic - 110-P-12B")
         assert FakeSealLeakDiagnosticService.calls == ["110-P-12B"]
+
+    @pytest.mark.parametrize(
+        "question",
+        [
+            "Kenapa mechanical seal 211p13ar bocor?",
+            "Kenapa seal 211-P-13AR bocor?",
+            "Penyebab kebocoran seal 211p13ar?",
+            "Analisa kebocoran mechanical seal 211p13ar",
+        ],
+    )
+    def test_multi_letter_suffix_diagnostic_question_locks_single_equipment(self, question):
+        FakeSealLeakDiagnosticService.calls = []
+        body = _ask(question).json()
+        assert body["kind"] == "INTERPRETATION"
+        assert body["answer"].startswith("Mechanical Seal Diagnostic - 211-P-13AR")
+        assert "Root cause not confirmed." in body["answer"]
+        assert "confirmed_installed_seal=DATA_GAP" in body["answer"]
+        assert FakeSealLeakDiagnosticService.calls == ["211-P-13AR"]
+
+    @pytest.mark.parametrize(
+        "question",
+        [
+            "Ada stock seal untuk 211p13ar?",
+            "Stock seal 211-P-13AR ada?",
+            "Spare seal untuk 211p13ar?",
+            "Berapa stock seal 211p13ar?",
+        ],
+    )
+    def test_multi_letter_suffix_stock_question_uses_single_equipment_stock_v1(self, question):
+        FakeMechanicalSealStockRepository.calls = 0
+        app.dependency_overrides[get_mechanical_seal_stock_repository] = lambda: FakeMechanicalSealStockRepository(
+            [
+                {
+                    "stock_pool_id": "POOL-13AR",
+                    "seal_type": "T6014DP",
+                    "quantity_available": 2,
+                    "stock_location": "WH-A",
+                    "nominal_size": 60,
+                    "size_unit": "MM",
+                    "applications": [{"equipment_tag": "211-P-13AR"}],
+                },
+                {
+                    "stock_pool_id": "POOL-OTHER",
+                    "seal_type": "T48MP",
+                    "quantity_available": 8,
+                    "applications": [{"equipment_tag": "940-P-2A"}],
+                },
+            ]
+        )
+        body = _ask(question).json()
+        assert body["kind"] == "FACT"
+        assert "Mechanical Seal Stock" in body["answer"]
+        assert "211-P-13AR" in body["answer"]
+        assert "T6014DP" in body["answer"]
+        assert "60 MM" in body["answer"]
+        assert "2 unit" in body["answer"]
+        assert "WH-A" in body["answer"]
+        assert "Installed seal: Not confirmed" in body["answer"]
+        assert "940-P-2A" not in body["answer"]
+        assert body["evidence"] == [
+            {"source": "MechanicalSealStockV1", "reference": "POOL-13AR", "field": "quantity_available", "value": "2"}
+        ]
+        assert FakeMechanicalSealStockRepository.calls == 1
+
+    def test_fleet_current_leak_question_remains_fleet_when_no_single_entity(self):
+        FakeSealLeakDiagnosticService.calls = []
+        body = _ask("Pompa mana yang bocor?").json()
+        assert body["kind"] == "FACT"
+        assert "pump currently shows mechanical seal leak evidence" in body["answer"]
+        assert FakeSealLeakDiagnosticService.calls == []
+
+    def test_fleet_stock_zero_question_remains_fleet_when_no_single_entity(self):
+        body = _ask("Pompa mana yang stock sealnya 0?").json()
+        assert body["kind"] == "DATA_GAP"
+        assert "seal stock recorded as 0" in body["answer"]
 
     def test_diagnostic_asset_context_is_normalized_before_scope_and_service_call(self):
         FakeSealLeakDiagnosticService.calls = []

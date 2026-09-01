@@ -38,7 +38,7 @@ from API.maintenance_copilot import summarize_maintenance_situation as _summariz
 # MWO-LTSA-AUTH-001
 router = APIRouter(dependencies=[Depends(require_permission("maintenance.read"))])
 _PUMP_TAG_PATTERN = re.compile(
-    r"(?<![A-Za-z0-9/-])(\d+)-?P-?(\d+)([A-Z])(?![A-Za-z0-9/-])",
+    r"(?<![A-Za-z0-9/-])(\d+)-?P-?(\d+)([A-Z]{1,3})(?![A-Za-z0-9/-])",
     re.IGNORECASE,
 )
 _MULTIPLE_TAGS_MESSAGE = (
