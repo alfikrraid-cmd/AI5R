@@ -395,8 +395,26 @@ class IntakeResult:
     reply: str | None = None
 
 
+def _canonicalize_indonesian_digits(digits: str) -> str:
+    # MWO-LTSA-WHATSAPP-PHONE-CANONICALIZATION-001 -- rewrites the
+    # Indonesian domestic trunk form (leading "0", e.g. "0812...") to the
+    # "62"-prefixed international form BEFORE hashing, so "0812...",
+    # "62812...", and "+62812..." (already digits-only "62812..." once
+    # non-digits are stripped) all collapse onto the exact same canonical
+    # identity/hash. Deliberately narrow: only rewritten when the digits
+    # already look like an Indonesian mobile number in local form (leading
+    # "0" immediately followed by "8", the shared prefix of every
+    # Indonesian mobile carrier range) -- an arbitrary 0-prefixed number
+    # for another country (e.g. a domestic trunk-prefixed landline) is
+    # left untouched rather than guessed at.
+    if len(digits) >= 9 and digits[0] == "0" and digits[1] == "8":
+        return "62" + digits[1:]
+    return digits
+
+
 def normalize_sender_identifier(value: str) -> str:
     digits = re.sub(r"\D", "", value or "")
+    digits = _canonicalize_indonesian_digits(digits)
     if not digits or len(digits) < 8 or len(digits) > 15:
         raise ValueError("Invalid sender identifier")
     return f"+{digits}"

@@ -51,6 +51,38 @@ class WhatsAppIntakeRepository:
             data_scope_value=row.get("data_scope_value"),
         )
 
+    # MWO-LTSA-WHATSAPP-ADMIN-REGISTRATION-001 -- reads/writes for the
+    # admin-controlled registration lifecycle (whatsapp_registration_
+    # service.py). Deliberately separate from find_identity_by_sender_hash
+    # above: that method is the request-time auth lookup and only ever
+    # resolves ACTIVE identities joined to an ACTIVE user/membership; the
+    # methods below are the admin-side PENDING/ACTIVE lifecycle writes and
+    # intentionally return/operate on a row regardless of status.
+    def find_sender_identity_by_hash(self, sender_hash: str) -> dict | None:
+        rows = _json_query(
+            "SELECT sender_e164_sha256, user_id, provider, status "
+            "FROM whatsapp_sender_identity "
+            f"WHERE sender_e164_sha256 = {_sql(sender_hash)}",
+            self._runner,
+        )
+        return rows[0] if rows else None
+
+    def create_pending_sender_identity(self, *, sender_hash: str, user_id: str, provider: str) -> None:
+        # verified_at explicitly NULL -- migration 030's own column
+        # default (NOW()) would otherwise mark an unverified PENDING row
+        # as already verified.
+        self._runner.execute_script(
+            "INSERT INTO whatsapp_sender_identity "
+            "(sender_e164_sha256, user_id, provider, status, verified_at) VALUES ("
+            f"{_sql(sender_hash)}, {_sql(user_id)}, {_sql(provider)}, 'PENDING', NULL);\n"
+        )
+
+    def activate_sender_identity(self, *, sender_hash: str, user_id: str) -> None:
+        self._runner.execute_script(
+            "UPDATE whatsapp_sender_identity SET status = 'ACTIVE', verified_at = NOW(), updated_at = NOW() "
+            f"WHERE sender_e164_sha256 = {_sql(sender_hash)} AND user_id = {_sql(user_id)};\n"
+        )
+
     def find_pending_by_delivery_key(self, provider: str, provider_message_id: str, sender_user_id: str) -> dict | None:
         rows = _json_query(
             "SELECT * FROM whatsapp_intake_pending "

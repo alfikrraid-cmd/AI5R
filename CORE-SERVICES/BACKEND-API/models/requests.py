@@ -57,6 +57,20 @@ class AdminResetPasswordRequest(BaseModel):
     new_password: str
 
 
+# MWO-LTSA-WHATSAPP-ADMIN-REGISTRATION-001 -- Admin-controlled WhatsApp
+# sender registration. `provider` defaults to the only provider this
+# codebase currently integrates (whatsapp_cloud, see whatsapp_intake
+# router) -- explicit here rather than hardcoded in the service so a
+# future second provider needs no request-shape change.
+class AdminRegisterWhatsAppRequest(BaseModel):
+    phone_number: str
+    provider: str = "whatsapp_cloud"
+
+
+class AdminActivateWhatsAppRequest(BaseModel):
+    sender_e164_sha256: str
+
+
 # MWO-LTSA-SEAL-INVENTORY-IDENTIFIERS-001 -- manual completion of
 # seal_registry.kimap_pertamina/gpn_john_crane. Both fields are always
 # submitted together (the caller sends the seal's whole desired

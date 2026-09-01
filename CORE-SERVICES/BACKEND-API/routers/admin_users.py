@@ -10,9 +10,25 @@ from API.auth_admin_service import (
 )
 from API.auth_password import hash_password
 from API.auth_service import ROLE_PERMISSIONS, can_delegate_role, normalize_username
-from dependencies import get_auth_repository, get_current_user
+from API.whatsapp_registration_service import (
+    IdentityNotPendingError,
+    PhoneAlreadyBoundError,
+    TargetMembershipInactiveError,
+    TargetUserInactiveError,
+    TargetUserNotFoundError,
+    activate_whatsapp_identity,
+    register_whatsapp_identity,
+)
+from dependencies import (
+    get_auth_repository,
+    get_current_user,
+    get_record_change_history_repository,
+    get_whatsapp_intake_repository,
+)
 from models.requests import (
+    AdminActivateWhatsAppRequest,
     AdminCreateUserRequest,
+    AdminRegisterWhatsAppRequest,
     AdminResetPasswordRequest,
     AdminUpdateMembershipRoleRequest,
     AdminUpdateUserStatusRequest,
@@ -235,3 +251,67 @@ def reset_password(
     )
     # Never echo the new password (or its hash) back, per Hard Rule 24.
     return {"id": user_id, "status": "password_reset"}
+
+
+# MWO-LTSA-WHATSAPP-ADMIN-REGISTRATION-001 -- admin-controlled WhatsApp
+# sender registration. Same admin.users gate as every other route on this
+# router; never authorizes based on WhatsApp-supplied input (the router
+# never even sees an inbound WhatsApp message -- this is purely an admin
+# action linking a phone to an EXISTING user). Registration/activation
+# never assign or change role/scope -- those remain organization_
+# memberships' own source of truth (see update_membership_role above).
+@router.post("/api/admin/users/{user_id}/whatsapp/register")
+def register_whatsapp_number(
+    user_id: str,
+    payload: AdminRegisterWhatsAppRequest,
+    current_user=Depends(get_current_user),
+    auth_repository=Depends(get_auth_repository),
+    whatsapp_repository=Depends(get_whatsapp_intake_repository),
+    history_repository=Depends(get_record_change_history_repository),
+) -> Payload:
+    _require_admin_users(current_user)
+    try:
+        result = register_whatsapp_identity(
+            target_user_id=user_id,
+            phone_number=payload.phone_number,
+            provider=payload.provider,
+            actor_id=current_user.user_id,
+            auth_repository=auth_repository,
+            whatsapp_repository=whatsapp_repository,
+            history_repository=history_repository,
+        )
+    except (TargetUserNotFoundError, TargetMembershipInactiveError) as error:
+        raise HTTPException(status_code=404, detail=str(error))
+    except TargetUserInactiveError as error:
+        raise HTTPException(status_code=409, detail=str(error))
+    except PhoneAlreadyBoundError as error:
+        raise HTTPException(status_code=409, detail=str(error))
+    except ValueError as error:
+        # normalize_sender_identifier's own ValueError (invalid phone
+        # shape) -- a client input error, not a server error.
+        raise HTTPException(status_code=422, detail=str(error))
+    return {"data": result}
+
+
+@router.post("/api/admin/users/{user_id}/whatsapp/activate")
+def activate_whatsapp_number(
+    user_id: str,
+    payload: AdminActivateWhatsAppRequest,
+    current_user=Depends(get_current_user),
+    whatsapp_repository=Depends(get_whatsapp_intake_repository),
+    history_repository=Depends(get_record_change_history_repository),
+) -> Payload:
+    _require_admin_users(current_user)
+    try:
+        result = activate_whatsapp_identity(
+            target_user_id=user_id,
+            sender_e164_sha256=payload.sender_e164_sha256,
+            actor_id=current_user.user_id,
+            whatsapp_repository=whatsapp_repository,
+            history_repository=history_repository,
+        )
+    except TargetUserNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error))
+    except IdentityNotPendingError as error:
+        raise HTTPException(status_code=409, detail=str(error))
+    return {"data": result}
