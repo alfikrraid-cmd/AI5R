@@ -110,6 +110,25 @@ def _require_admin_users(current_user) -> None:
         raise HTTPException(status_code=403, detail="Missing permission: admin.users")
 
 
+def _require_same_organization_as_target(current_user, auth_repository, user_id: str) -> None:
+    # MWO-LTSA-WHATSAPP-ORG-BOUNDARY-001 -- same canonical organization
+    # context every other admin_users.py route already uses (see
+    # update_user_status/reset_password above): the target's SINGLE
+    # canonical membership (auth_repository.find_active_membership_for_
+    # user's own "earliest-created ACTIVE membership" rule -- the same
+    # one-membership resolution login()/get_current_user() apply to the
+    # ACTOR). A target with no active membership at all is intentionally
+    # NOT rejected here -- that is whatsapp_registration_service's own
+    # TargetMembershipInactiveError (404), not an org-boundary 403; this
+    # check only ever fires when an active membership actually exists in
+    # a DIFFERENT organization. SUPERUSER bypasses (_is_same_organization
+    # itself already grants SUPERUSER, the same global semantics every
+    # other route on this router already relies on).
+    membership = auth_repository.find_active_membership_for_user(user_id)
+    if membership is not None:
+        _require_same_organization(current_user, membership.organization_id)
+
+
 def _target_role_or_404(auth_repository, user_id: str, organization_id: str) -> str:
     membership = auth_repository.find_membership(user_id, organization_id)
     if membership is None:
@@ -270,6 +289,7 @@ def register_whatsapp_number(
     history_repository=Depends(get_record_change_history_repository),
 ) -> Payload:
     _require_admin_users(current_user)
+    _require_same_organization_as_target(current_user, auth_repository, user_id)
     try:
         result = register_whatsapp_identity(
             target_user_id=user_id,
@@ -298,10 +318,12 @@ def activate_whatsapp_number(
     user_id: str,
     payload: AdminActivateWhatsAppRequest,
     current_user=Depends(get_current_user),
+    auth_repository=Depends(get_auth_repository),
     whatsapp_repository=Depends(get_whatsapp_intake_repository),
     history_repository=Depends(get_record_change_history_repository),
 ) -> Payload:
     _require_admin_users(current_user)
+    _require_same_organization_as_target(current_user, auth_repository, user_id)
     try:
         result = activate_whatsapp_identity(
             target_user_id=user_id,

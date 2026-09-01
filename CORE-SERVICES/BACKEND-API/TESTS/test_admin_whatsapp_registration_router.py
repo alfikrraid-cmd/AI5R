@@ -40,16 +40,31 @@ class _User:
         self.status = status
 
 
+class FakeMembership:
+    def __init__(self, organization_id, status="ACTIVE"):
+        self.organization_id = organization_id
+        self.status = status
+
+
 class FakeAuthRepository:
-    def __init__(self):
+    # memberships: dict[user_id, list[FakeMembership]] -- list ORDER
+    # matters: index 0 is the earliest-created membership, matching
+    # find_active_membership_for_user's real "ORDER BY created_at ASC
+    # LIMIT 1" canonical-membership convention (auth_repository.py) --
+    # a multi-membership target's LATER memberships (even if ACTIVE, even
+    # in the actor's own org) must never be used to authorize.
+    def __init__(self, *, memberships=None):
         self.users = {"user-1": _User()}
-        self.active_memberships = {"user-1"}
+        self.memberships = memberships if memberships is not None else {"user-1": [FakeMembership("org-tap")]}
 
     def find_user_by_id(self, user_id):
         return self.users.get(user_id)
 
     def find_active_membership_for_user(self, user_id):
-        return object() if user_id in self.active_memberships else None
+        for membership in self.memberships.get(user_id, []):
+            if membership.status == "ACTIVE":
+                return membership
+        return None
 
 
 class FakeWhatsAppRepository:
@@ -139,3 +154,62 @@ class TestRegisterThenActivateFlow:
         _override(role="TAP_ADMIN")
         response = client.post("/api/admin/users/user-1/whatsapp/register", json={"phone_number": "abc"})
         assert response.status_code == 422
+
+
+class TestOrganizationBoundary:
+    # Actor identity is always organization_id="org-tap" (see _identity()).
+
+    def test_tap_admin_same_org_active_memberships_registers_successfully(self):
+        auth_repo = FakeAuthRepository(memberships={"user-1": [FakeMembership("org-tap")]})
+        _override(role="TAP_ADMIN", auth_repo=auth_repo)
+        response = client.post("/api/admin/users/user-1/whatsapp/register", json={"phone_number": "081234567890"})
+        assert response.status_code == 200
+
+    def test_tap_admin_cross_org_register_is_forbidden(self):
+        auth_repo = FakeAuthRepository(memberships={"user-1": [FakeMembership("org-other")]})
+        _override(role="TAP_ADMIN", auth_repo=auth_repo)
+        response = client.post("/api/admin/users/user-1/whatsapp/register", json={"phone_number": "081234567890"})
+        assert response.status_code == 403
+
+    def test_tap_admin_cross_org_activate_is_forbidden(self):
+        auth_repo = FakeAuthRepository(memberships={"user-1": [FakeMembership("org-tap")]})
+        wa_repo = FakeWhatsAppRepository()
+        history_repo = FakeHistoryRepository()
+        _override(role="TAP_ADMIN", auth_repo=auth_repo, wa_repo=wa_repo, history_repo=history_repo)
+        registered = client.post("/api/admin/users/user-1/whatsapp/register", json={"phone_number": "081234567890"})
+        assert registered.status_code == 200
+        sender_hash = registered.json()["data"]["sender_e164_sha256"]
+
+        # Actor's own org membership is unchanged; target's canonical
+        # organization changes to a different one before activation.
+        auth_repo.memberships["user-1"] = [FakeMembership("org-other")]
+        response = client.post("/api/admin/users/user-1/whatsapp/activate", json={"sender_e164_sha256": sender_hash})
+        assert response.status_code == 403
+
+    def test_tap_admin_target_inactive_membership_is_rejected(self):
+        auth_repo = FakeAuthRepository(memberships={"user-1": [FakeMembership("org-tap", status="DISABLED")]})
+        _override(role="TAP_ADMIN", auth_repo=auth_repo)
+        response = client.post("/api/admin/users/user-1/whatsapp/register", json={"phone_number": "081234567890"})
+        # No active membership at all -- org-boundary check is skipped
+        # (nothing to compare against); whatsapp_registration_service's
+        # own TargetMembershipInactiveError rejects it (404), same as
+        # every other "target has no active membership" path already
+        # established in this router (see reset_password above).
+        assert response.status_code == 404
+
+    def test_superuser_bypasses_organization_boundary(self):
+        auth_repo = FakeAuthRepository(memberships={"user-1": [FakeMembership("org-other")]})
+        _override(role="SUPERUSER", auth_repo=auth_repo)
+        response = client.post("/api/admin/users/user-1/whatsapp/register", json={"phone_number": "081234567890"})
+        assert response.status_code == 200
+
+    def test_multi_membership_target_uses_only_canonical_membership_no_leakage(self):
+        # Canonical (earliest-created) membership is org-other; a LATER
+        # active membership in the actor's own org-tap must NOT be used
+        # to authorize the actor -- proves no cross-membership leakage.
+        auth_repo = FakeAuthRepository(
+            memberships={"user-1": [FakeMembership("org-other"), FakeMembership("org-tap")]}
+        )
+        _override(role="TAP_ADMIN", auth_repo=auth_repo)
+        response = client.post("/api/admin/users/user-1/whatsapp/register", json={"phone_number": "081234567890"})
+        assert response.status_code == 403
