@@ -10,9 +10,9 @@ instance -- "reuse before create", the same discipline every other
 CORE-SERVICES module in this repository follows.
 
 IDENTITY SAFETY (Hard Rules, this MWO):
-  - A tag is never invented, defaulted, or guessed from question text --
-    the caller (router) supplies an already scope-checked `tag`, resolved
-    from asset_context/workspace selection, never parsed out of free text.
+  - An explicit tag is normalized deterministically from the current
+    message when the caller has not supplied one; existence and scope are
+    still validated by the caller before any production data read.
   - "current seal" is answered ONLY via EquipmentTimelineService.
     build_current_seal(tag) -- the same authoritative per-tag source
     routers/pumps.py's own /knowledge endpoint already uses for
@@ -42,6 +42,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from . import fleet_analytics_service as fas
+from .equipment_tag import normalize_equipment_tag_text
 from . import maintenance_intelligence_service as mis
 from .condition_monitoring_measurement_fields import (
     detect_parameter_search_term,
@@ -295,6 +296,11 @@ def ask_copilot(
     seal_leak_diagnostic_service=None,
     language: str = "en",
 ) -> CopilotAnswer:
+    # Resolve an explicit current-message entity before intent dispatch. This
+    # keeps a parser miss from turning a single-equipment query into a fleet
+    # query, while fleet questions without an exact tag remain tag-less.
+    if tag is None:
+        tag = normalize_equipment_tag_text(question)
     intent = _detect_intent(question, tag=tag)
 
     if intent is None:

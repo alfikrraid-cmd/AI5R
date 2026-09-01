@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-import re
-
 from fastapi import APIRouter, Depends, HTTPException
 
 from API.auth_service import AuthenticatedIdentity, resolve_area_scope
+from API.equipment_tag import (
+    EQUIPMENT_TAG_PATTERN,
+    extract_equipment_tag_candidates,
+    normalize_equipment_tag_match,
+)
 from API.pump_area_scope import is_area_in_scope
 from API.copilot_orchestrator import orchestrate_copilot
 from dependencies import (
@@ -37,30 +40,19 @@ from API.maintenance_copilot import summarize_maintenance_situation as _summariz
 
 # MWO-LTSA-AUTH-001
 router = APIRouter(dependencies=[Depends(require_permission("maintenance.read"))])
-_PUMP_TAG_PATTERN = re.compile(
-    r"(?<![A-Za-z0-9/-])(\d+)-?P-?(\d+)([A-Z]{1,3})(?![A-Za-z0-9/-])",
-    re.IGNORECASE,
-)
 _MULTIPLE_TAGS_MESSAGE = (
     "I found multiple pump tags in that question. Select one pump and ask again."
 )
 
 
 def _normalize_pump_tag(raw: str) -> str | None:
-    match = _PUMP_TAG_PATTERN.fullmatch((raw or "").strip())
-    if not match:
-        return None
-    return f"{match.group(1)}-P-{match.group(2)}{match.group(3).upper()}"
+    match = EQUIPMENT_TAG_PATTERN.fullmatch((raw or "").strip())
+    return normalize_equipment_tag_match(match) if match else None
 
 
 def _extract_pump_tag_candidates(question: str) -> tuple[str, ...]:
     """Extract explicit pump tags and normalize compact forms such as 110p12b."""
-    return tuple(
-        dict.fromkeys(
-            f"{match.group(1)}-P-{match.group(2)}{match.group(3).upper()}"
-            for match in _PUMP_TAG_PATTERN.finditer(question or "")
-        )
-    )
+    return extract_equipment_tag_candidates(question)
 
 
 def _require_tag_in_scope(tag: str, pump_gateway, scope: frozenset[str] | None) -> None:

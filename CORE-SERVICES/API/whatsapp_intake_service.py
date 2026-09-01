@@ -10,6 +10,11 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Protocol
 
 from .auth_service import AuthenticatedIdentity, resolve_area_scope
+from .equipment_tag import (
+    EQUIPMENT_TAG_PATTERN as _TAG_PATTERN,
+    normalize_equipment_tag_match as _normalize_equipment_tag_match,
+    normalize_equipment_tag_text,
+)
 from .pump_area_scope import is_asset_in_scope
 from .whatsapp_asset_context import AssetContextCache
 from .whatsapp_fleet_query_tracker import FleetQueryDeliveryTracker
@@ -164,9 +169,6 @@ TERMINAL_STATES = frozenset({"CANCELLED", "REJECTED", "EXPIRED"})
 # _validate_payload's/_handle_ltsa_ai_query's own existing pump_gateway
 # check, unchanged, so normalization can never bypass authorization or
 # fabricate an asset that isn't real.
-_TAG_PATTERN = re.compile(
-    r"\b(\d{3})[\s-]*[Pp][\s-]*(\d+)(?:[\s-]*(AR|BR|[A-Za-z]))?\b", re.IGNORECASE
-)
 _NUMBER_AFTER = r"\s*[:=]?\s*(-?\d+(?:\.\d+)?)"
 
 
@@ -174,11 +176,7 @@ def _normalize_pump_tag_match(match: "re.Match[str]") -> str:
     """Reshapes an already-matched _TAG_PATTERN span into the canonical
     LTSA spelling (AREA-P-NUMBER[SUFFIX], suffix upper-cased) -- pure
     spelling normalization, no registry lookup, no existence claim."""
-    area, number, suffix = match.group(1), match.group(2), match.group(3)
-    canonical = f"{area}-P-{number}"
-    if suffix:
-        canonical += suffix.upper()
-    return canonical
+    return _normalize_equipment_tag_match(match)
 
 
 def _normalize_pump_tag_text(text: str) -> str | None:
@@ -187,8 +185,7 @@ def _normalize_pump_tag_text(text: str) -> str | None:
     confirms the tag is a REAL registered pump -- callers that need that
     guarantee (extraction call sites in this module) still go through the
     existing pump_gateway.get_pump()-based checks downstream, unchanged."""
-    match = _TAG_PATTERN.search(text or "")
-    return _normalize_pump_tag_match(match) if match else None
+    return normalize_equipment_tag_text(text)
 
 # MWO-025J2 -- LTSA's configured business timezone for "hari ini"/"today"
 # resolution (both at original intake and at confirmation-time date
