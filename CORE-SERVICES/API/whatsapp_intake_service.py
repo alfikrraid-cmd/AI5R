@@ -1382,7 +1382,7 @@ def _handle_ltsa_ai_query(
         _fleet_query_delivery_tracker.mark_seen(identity.user_id, provider_message_id)
         if ltsa_ai_query_deps.send_immediate_ack is not None:
             try:
-                ltsa_ai_query_deps.send_immediate_ack("Sedang menganalisis kondisi fleet LTSA...")
+                ltsa_ai_query_deps.send_immediate_ack("Tunggu sebentar ya, saya cek datanya...")
             except Exception:
                 # Best-effort: a failed acknowledgement send must never
                 # block or fail the actual answer that follows.

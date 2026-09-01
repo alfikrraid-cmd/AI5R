@@ -247,7 +247,7 @@ def test_retrying_same_message_id_never_duplicates_the_final_answer():
     assert retry.reply is None
 
     # Exactly one acknowledgement + one real answer, never two of either.
-    assert fixture.ack_recorder.messages == ["Sedang menganalisis kondisi fleet LTSA..."]
+    assert fixture.ack_recorder.messages == ["Tunggu sebentar ya, saya cek datanya..."]
 
 
 def test_a_genuinely_new_message_id_after_a_retry_still_gets_answered():
