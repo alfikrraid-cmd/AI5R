@@ -6,10 +6,10 @@ WhatsApp conversational-context resolution ("cek stock seal yang
 tersedia" after "bagaimana kondisi <tag>?").
 """
 
-from API.copilot_ask_service import DATA_GAP, FACT, ask_copilot
+from API.copilot_ask_service import DATA_GAP, FACT, _detect_intent, ask_copilot
 from API.equipment_timeline_service import PumpLifecycleCurrentSeal
 from API.whatsapp_intake_service import LTSAAIQueryDependencies, _asset_context_cache, process_inbound_message
-from API.whatsapp_intake_service import _normalize_pump_tag_text
+from API.whatsapp_intake_service import _normalize_pump_tag_text, hash_sender_identifier, normalize_sender_identifier
 
 TAG = "211-P-13AR"
 
@@ -244,6 +244,82 @@ def test_stock_context_follow_up_inherits_valid_equipment_context():
     assert second.status == "ANSWERED"
     assert TAG in second.reply
     assert "T6014DP" in second.reply
+
+
+# -- SENDER-IDENTITY-INDEPENDENT CANONICAL FACTS ------------------------------
+#
+# "Same canonical equipment + same semantic intent + same authorized scope
+# => same factual answer." Sender identity may ALLOW/DENY access (a gate),
+# never select a different intent, tag, or retrieval path.
+
+
+def test_all_stock_paraphrases_detect_the_same_inventory_intent_and_tag():
+    equipment_tag = "211-P-10A"
+    for text in (
+        "Ada stock seal 211p10a?",
+        "Stock 211p10a ada?",
+        "Stok seal 211-p-10a berapa?",
+        "Seal 211P10A ready?",
+        "Ada spare seal untuk 211p10a?",
+    ):
+        assert _detect_intent(text) == "inventory"
+        assert _normalize_pump_tag_text(text) == equipment_tag
+
+
+def test_two_senders_with_equivalent_scope_get_identical_canonical_facts():
+    # TAP_ENGINEER and JOHN_CRANE_ENGINEER are both unrestricted
+    # (_UNRESTRICTED_ROLES) -- "Semua area" for both, an equivalent READ
+    # scope even though they are different roles/organizations/users.
+    from API.auth_service import AuthenticatedIdentity
+
+    identity_a = AuthenticatedIdentity(
+        user_id="sender-a", email="a@tap.internal", organization_id="org-tap",
+        organization_code="TAP", role="TAP_ENGINEER",
+        permissions=frozenset({"maintenance.read"}), data_scope_type=None, data_scope_value=None,
+    )
+    identity_b = AuthenticatedIdentity(
+        user_id="sender-b", email="b@tap.internal", organization_id="org-tap",
+        organization_code="TAP", role="JOHN_CRANE_ENGINEER",
+        permissions=frozenset({"maintenance.read"}), data_scope_type=None, data_scope_value=None,
+    )
+    phone_a, phone_b = "+6281111111111", "+6282222222222"
+
+    class FakeMultiSenderRepository:
+        def __init__(self, identities_by_phone):
+            self._by_hash = {
+                hash_sender_identifier(normalize_sender_identifier(phone)): identity
+                for phone, identity in identities_by_phone.items()
+            }
+
+        def find_identity_by_sender_hash(self, sender_hash):
+            return self._by_hash.get(sender_hash)
+
+        def find_pending_by_delivery_key(self, provider, provider_message_id, sender_user_id):
+            return None
+
+        def find_actionable_pending_list(self, sender_user_id):
+            return []
+
+    repository = FakeMultiSenderRepository({phone_a: identity_a, phone_b: identity_b})
+    pump_gateway = FakePumpGateway()
+    stock_repository = FakeMechanicalSealStockRepository([_pool("T6014DP", 4)])
+    deps = _query_deps(stock_repository)
+
+    result_a = process_inbound_message(
+        provider="whatsapp_cloud", provider_message_id="MSG-A", sender_identifier=phone_a,
+        text=f"Ada stock seal untuk {TAG}?", repository=repository, pump_gateway=pump_gateway,
+        ltsa_ai_query_deps=deps,
+    )
+    result_b = process_inbound_message(
+        provider="whatsapp_cloud", provider_message_id="MSG-B", sender_identifier=phone_b,
+        text=f"Stock {TAG} ada?", repository=repository, pump_gateway=pump_gateway,
+        ltsa_ai_query_deps=deps,
+    )
+
+    assert result_a.status == "ANSWERED"
+    assert result_b.status == "ANSWERED"
+    assert result_a.reply == result_b.reply
+    assert "T6014DP" in result_a.reply
 
 
 def test_stock_context_override_explicit_new_equipment_wins():
