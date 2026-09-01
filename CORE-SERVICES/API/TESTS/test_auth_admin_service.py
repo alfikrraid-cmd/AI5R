@@ -32,9 +32,20 @@ class TestAuthorizeUserManagement:
         with pytest.raises(DelegationDeniedError):
             authorize_user_management("TAP_ADMIN", "SUPERUSER")
 
-    def test_tap_admin_cannot_manage_john_crane_engineer(self):
-        with pytest.raises(DelegationDeniedError):
-            authorize_user_management("TAP_ADMIN", "JOHN_CRANE_ENGINEER")
+    def test_tap_admin_may_manage_john_crane_engineer(self):
+        # Commit 62bebce5 ("fix(auth): make TAP admin user management
+        # usable", 2026-08-25) deliberately reversed the earlier
+        # MWO-LTSA-AUTH-003A-FINAL exclusion of JOHN_CRANE_ENGINEER from
+        # TAP_ADMIN's DELEGATION_SCOPE -- see auth_service.py's own
+        # current DELEGATION_SCOPE comment and auth_admin_service.py's
+        # own authorize_user_management docstring, both updated in that
+        # same commit. TAP_ADMIN still can never manage SUPERUSER/
+        # TAP_ADMIN (see test above), and the organization-boundary check
+        # (admin_users.py's _require_same_organization, added in that
+        # same commit) independently constrains this to same-org JC
+        # accounts only -- this test covers delegation scope only, not
+        # the org boundary (see test_admin_users_router.py for that).
+        authorize_user_management("TAP_ADMIN", "JOHN_CRANE_ENGINEER")  # must not raise
 
     def test_tap_engineer_cannot_manage_anyone(self):
         with pytest.raises(DelegationDeniedError):
