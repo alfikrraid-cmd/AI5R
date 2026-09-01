@@ -25,6 +25,7 @@ from API.condition_monitoring_reading_repository import ConditionMonitoringReadi
 from API.condition_monitoring_schedule_gateway import ConditionMonitoringScheduleGateway
 from API.engineering_context_engine import EngineeringContextEngine
 from API.equipment_timeline_service import EquipmentTimelineService
+from API.equipment_360_service import get_equipment_360
 from API.basic_fleet_overview_service import BasicFleetOverviewService
 from API.fleet_executive_summary import FleetExecutiveSummaryService
 from API.fleet_reliability_service import FleetReliabilityService
@@ -282,6 +283,20 @@ _seal_leak_diagnostic_service = SealLeakDiagnosticService(
     equipment_timeline_service=_equipment_timeline_service,
 )
 
+
+def _get_equipment_360(tag: str):
+    return get_equipment_360(
+        tag,
+        pump_gateway=_pump_gateway,
+        pm_occurrence_repository=_pm_occurrence_repository,
+        cm_report_repository=_cm_report_repository,
+        condition_monitoring_reading_repository=_condition_monitoring_reading_repository,
+        equipment_timeline_service=_equipment_timeline_service,
+        ltsa_knowledge_service=_ltsa_knowledge_service,
+        mechanical_seal_stock_repository=_mechanical_seal_stock_repository,
+        pm_cm_evidence_repository=_pm_cm_evidence_repository,
+    )
+
 # MWO-LTSA-037C -- built from the same singleton PumpGateway and
 # LTSAKnowledgeService above, not fresh ones -- no second aggregate.
 #
@@ -428,6 +443,10 @@ def get_ltsa_knowledge_service() -> LTSAKnowledgeService:
 
 def get_equipment_timeline_service() -> EquipmentTimelineService:
     return _equipment_timeline_service
+
+
+def get_equipment_360_service():
+    return _get_equipment_360
 
 
 def get_seal_leak_diagnostic_service() -> SealLeakDiagnosticService:

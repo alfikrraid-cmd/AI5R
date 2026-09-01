@@ -293,8 +293,14 @@ def ask_copilot(
     seal_pump_compatibility_gateway=None,
     seal_gateway=None,
     seal_leak_diagnostic_service=None,
+    equipment_360_service=None,
     language: str = "en",
 ) -> CopilotAnswer:
+    if tag is not None and _is_bare_equipment_tag_read(question, tag):
+        return _handle_equipment_360_summary(
+            tag, equipment_360_service=equipment_360_service, language=language
+        )
+
     intent = _detect_intent(question, tag=tag)
 
     if intent is None:
@@ -440,6 +446,55 @@ def ask_copilot(
         seal_leak_diagnostic_service=seal_leak_diagnostic_service,
         language=language,
     )
+
+
+def _is_bare_equipment_tag_read(question: str, tag: str) -> bool:
+    """Recognize only a tag and its allowed separators, never a partial tag."""
+    compact_question = re.sub(r"[\s-]+", "", (question or "")).casefold()
+    compact_tag = re.sub(r"[\s-]+", "", tag).casefold()
+    return bool(compact_question) and compact_question == compact_tag
+
+
+def _handle_equipment_360_summary(
+    tag: str, *, equipment_360_service=None, language: str = "en", **_: Any
+) -> CopilotAnswer:
+    if equipment_360_service is None:
+        return CopilotAnswer(
+            f"Equipment 360 data for {tag} is currently unavailable.", DATA_GAP, ()
+        )
+    try:
+        equipment = equipment_360_service(tag)
+    except Exception:
+        return CopilotAnswer(
+            f"Equipment 360 data for {tag} is currently unavailable.", DATA_GAP, ()
+        )
+    if equipment is None:
+        return CopilotAnswer(f"Equipment {tag} was not found.", DATA_GAP, ())
+
+    lines = [f"Equipment 360: {equipment.equipment_tag}"]
+    for label, value in (
+        ("Status", equipment.status),
+        ("Area", equipment.area),
+        ("Location", equipment.location),
+    ):
+        if value is not None:
+            lines.append(f"{label}: {value}")
+    if equipment.pm_latest is not None:
+        lines.append("PM: recorded")
+    if equipment.cm_latest is not None:
+        lines.append("CM: recorded")
+    if equipment.cmon_latest is not None:
+        lines.append("CMON: recorded")
+    if equipment.current_seal is not None:
+        lines.append(f"Installed seal: {equipment.current_seal.seal_code or 'N/A'}")
+    if equipment.compatible_seals:
+        lines.append(f"Compatible seals: {len(equipment.compatible_seals)}")
+    if equipment.seal_stock:
+        lines.append(f"Spare stock records: {len(equipment.seal_stock)}")
+    if equipment.data_gaps:
+        lines.append("Data gaps: " + ", ".join(equipment.data_gaps))
+    evidence = (_evidence("Equipment360", equipment.equipment_tag, "equipment_tag", equipment.equipment_tag),)
+    return CopilotAnswer("\n".join(lines), FACT, evidence)
 
 
 def _handle_pump_status(tag: str, *, pump_gateway, language: str = "en", **_: Any) -> CopilotAnswer:

@@ -14,6 +14,7 @@ from dependencies import (
     get_copilot_ai_client,
     get_current_user,
     get_equipment_timeline_service,
+    get_equipment_360_service,
     get_fleet_executive_summary_service,
     get_installation_gateway,
     get_installation_report_repository,
@@ -38,7 +39,7 @@ from API.maintenance_copilot import summarize_maintenance_situation as _summariz
 # MWO-LTSA-AUTH-001
 router = APIRouter(dependencies=[Depends(require_permission("maintenance.read"))])
 _PUMP_TAG_PATTERN = re.compile(
-    r"(?<![A-Za-z0-9/-])(\d+)-?P-?(\d+)([A-Z]{1,3})(?![A-Za-z0-9/-])",
+    r"(?<![A-Za-z0-9/-])(\d+)\s*-?\s*P\s*-?\s*(\d+)\s*([A-Z]{1,3})(?![A-Za-z0-9/-])",
     re.IGNORECASE,
 )
 _MULTIPLE_TAGS_MESSAGE = (
@@ -106,6 +107,7 @@ def ask_copilot_endpoint(
     installation_gateway=Depends(get_installation_gateway),
     ltsa_knowledge_service=Depends(get_ltsa_knowledge_service),
     equipment_timeline_service=Depends(get_equipment_timeline_service),
+    equipment_360_service=Depends(get_equipment_360_service),
     condition_monitoring_reading_gateway=Depends(get_condition_monitoring_reading_gateway),
     installation_report_repository=Depends(get_installation_report_repository),
     mechanical_seal_stock_repository=Depends(get_mechanical_seal_stock_repository),
@@ -152,6 +154,7 @@ def ask_copilot_endpoint(
         installation_gateway=installation_gateway,
         ltsa_knowledge_service=ltsa_knowledge_service,
         equipment_timeline_service=equipment_timeline_service,
+        equipment_360_service=equipment_360_service,
         condition_monitoring_reading_gateway=condition_monitoring_reading_gateway,
         installation_report_repository=installation_report_repository,
         mechanical_seal_stock_repository=mechanical_seal_stock_repository,

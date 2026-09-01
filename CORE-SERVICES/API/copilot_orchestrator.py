@@ -52,6 +52,7 @@ from .copilot_ask_service import (
     CopilotAnswer,
     TOOL_HANDLERS,
     ask_copilot,
+    _is_bare_equipment_tag_read,
 )
 
 MAX_TOOLS_PER_REQUEST = 5
@@ -139,6 +140,9 @@ def orchestrate_copilot(
     # keyword-only default); only _synthesize's own system-prompt
     # selection needs it read out explicitly here.
     language = service_deps.get("language", "en")
+
+    if tag is not None and _is_bare_equipment_tag_read(question, tag):
+        return ask_copilot(question, tag, scope, **service_deps), []
 
     if ai_client is None or tag is None:
         # No AI client configured (dependencies.get_copilot_ai_client()

@@ -12,6 +12,7 @@ from dependencies import (
     get_condition_monitoring_reading_repository,
     get_copilot_ai_client,
     get_equipment_timeline_service,
+    get_equipment_360_service,
     get_fleet_executive_summary_service,
     get_installation_gateway,
     get_installation_report_repository,
@@ -69,6 +70,7 @@ def receive_whatsapp_intake(
     installation_gateway=Depends(get_installation_gateway),
     ltsa_knowledge_service=Depends(get_ltsa_knowledge_service),
     equipment_timeline_service=Depends(get_equipment_timeline_service),
+    equipment_360_service=Depends(get_equipment_360_service),
     condition_monitoring_reading_gateway=Depends(get_condition_monitoring_reading_gateway),
     installation_report_repository=Depends(get_installation_report_repository),
     mechanical_seal_stock_repository=Depends(get_mechanical_seal_stock_repository),
@@ -105,6 +107,7 @@ def receive_whatsapp_intake(
         pm_schedule_repository=pm_schedule_repository,
         seal_pump_compatibility_gateway=seal_pump_compatibility_gateway,
         seal_gateway=seal_gateway,
+        equipment_360_service=equipment_360_service,
     )
     result = process_inbound_message(
         provider=payload.provider,

@@ -370,6 +370,7 @@ class LTSAAIQueryDependencies:
     pm_schedule_repository: Any = None
     seal_pump_compatibility_gateway: Any = None
     seal_gateway: Any = None
+    equipment_360_service: Any = None
     # MWO-LTSA-FLEET-ATTENTION-001 -- optional callable(text) -> None, sent
     # an immediate acknowledgement before a fleet-wide analysis begins (see
     # _handle_ltsa_ai_query's own fleet_priority branch). Defaults to None
@@ -1336,14 +1337,14 @@ def _handle_ltsa_ai_query(
     # in flight (mirrors this file's existing deferred-import discipline
     # elsewhere, e.g. the sys.path insert at module load for _INGESTION_DIR
     # in the sibling repository modules).
-    from .copilot_ask_service import _detect_fleet_stock_predicate, _detect_intent as _detect_copilot_intent, _extract_seal_code
+    from .copilot_ask_service import _detect_fleet_stock_predicate, _detect_intent as _detect_copilot_intent, _extract_seal_code, _is_bare_equipment_tag_read
     from .copilot_orchestrator import orchestrate_copilot
 
     intent = _detect_copilot_intent(text)
-    if intent is None:
-        return None
-
     tag = _extract_ltsa_ai_query_tag(text)
+    is_bare_tag_read = tag is not None and _is_bare_equipment_tag_read(text, tag)
+    if intent is None and not is_bare_tag_read:
+        return None
 
     # MWO-LTSA-FLEET-ANALYTICS-001 -- generalized from MWO-LTSA-FLEET-
     # ATTENTION-001's own fleet_priority-only check: every expensive,
@@ -1459,6 +1460,7 @@ def _handle_ltsa_ai_query(
         pm_schedule_repository=ltsa_ai_query_deps.pm_schedule_repository,
         seal_pump_compatibility_gateway=ltsa_ai_query_deps.seal_pump_compatibility_gateway,
         seal_gateway=ltsa_ai_query_deps.seal_gateway,
+        equipment_360_service=ltsa_ai_query_deps.equipment_360_service,
         language="id",
     )
     # READ-ONLY by construction: every function reachable from here
