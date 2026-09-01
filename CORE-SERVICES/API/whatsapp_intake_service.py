@@ -382,6 +382,7 @@ class LTSAAIQueryDependencies:
     # working unchanged -- ask_copilot() itself already treats a None here
     # as "no attachment lookup", never an error.
     pm_cm_evidence_repository: Any = None
+    equipment_360_service: Any = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1453,6 +1454,7 @@ def _handle_ltsa_ai_query(
         pm_occurrence_repository=ltsa_ai_query_deps.pm_occurrence_repository,
         cm_report_repository=ltsa_ai_query_deps.cm_report_repository,
         pm_cm_evidence_repository=ltsa_ai_query_deps.pm_cm_evidence_repository,
+        equipment_360_service=ltsa_ai_query_deps.equipment_360_service,
         pm_schedule_repository=ltsa_ai_query_deps.pm_schedule_repository,
         seal_pump_compatibility_gateway=ltsa_ai_query_deps.seal_pump_compatibility_gateway,
         seal_gateway=ltsa_ai_query_deps.seal_gateway,

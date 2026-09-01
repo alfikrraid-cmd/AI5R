@@ -51,6 +51,7 @@ from .copilot_ask_service import (
     RECOMMENDATION,
     CopilotAnswer,
     TOOL_HANDLERS,
+    _detect_intent,
     ask_copilot,
 )
 
@@ -139,6 +140,12 @@ def orchestrate_copilot(
     # keyword-only default); only _synthesize's own system-prompt
     # selection needs it read out explicitly here.
     language = service_deps.get("language", "en")
+
+    # A bare exact equipment tag is an unambiguous canonical READ. Keep it
+    # deterministic even when an AI provider is configured so it cannot be
+    # reinterpreted as a fleet question or a different tool.
+    if tag is not None and _detect_intent(question, tag=tag) == "equipment_360":
+        return ask_copilot(question, tag, scope, **service_deps), []
 
     if ai_client is None or tag is None:
         # No AI client configured (dependencies.get_copilot_ai_client()

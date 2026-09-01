@@ -2,13 +2,14 @@ import sys
 from pathlib import Path
 
 import pytest
+from types import SimpleNamespace
 
 CORE_SERVICES = Path(__file__).resolve().parents[2]
 if str(CORE_SERVICES) not in sys.path:
     sys.path.insert(0, str(CORE_SERVICES))
 
 from API.auth_service import AuthenticatedIdentity
-from API.copilot_ask_service import FACT, _detect_intent, ask_copilot
+from API.copilot_ask_service import DATA_GAP, FACT, _detect_intent, ask_copilot
 from API.equipment_tag import normalize_equipment_tag_text
 from API.whatsapp_intake_service import LTSAAIQueryDependencies, process_inbound_message
 
@@ -88,9 +89,44 @@ def test_explicit_cmon_tag_is_locked_before_fleet_dispatch():
     assert TAG in answer.answer
 
 
+class _Equipment360Service:
+    def __init__(self):
+        self.calls = []
+
+    def __call__(self, tag, **_deps):
+        self.calls.append(tag)
+        return SimpleNamespace(
+            status="Active", area="FRAKSINASI", location="Unit 2", cmon_latest=None,
+            pm_latest=None, cm_latest=None, compatible_seals=(), seal_stock=(),
+            current_seal=None, data_gaps=("current_seal",),
+        )
+
+
+@pytest.mark.parametrize("raw", ["211P10A", "211p10a", "211-P-10A", "211 p 10 a", "211-P-13AR", "211p13ar"])
+def test_bare_exact_tag_routes_to_canonical_equipment_360(raw):
+    service = _Equipment360Service()
+    deps = _ask_deps(_CMONRepository())
+    deps.update(pump_gateway=_PumpGateway(), equipment_360_service=service)
+    answer = ask_copilot(raw, None, None, **deps)
+    assert answer.kind == FACT
+    assert service.calls == [normalize_equipment_tag_text(raw)]
+    assert "Equipment 360" in answer.answer
+
+
+@pytest.mark.parametrize("raw", ["211p10", "211-P-10", "211 p 10"])
+def test_bare_partial_tag_is_controlled_not_found(raw):
+    service = _Equipment360Service()
+    deps = _ask_deps(_CMONRepository())
+    deps.update(pump_gateway=_PumpGateway(), equipment_360_service=service)
+    answer = ask_copilot(raw, None, None, **deps)
+    assert answer.kind == DATA_GAP
+    assert "211-P-10" in answer.answer
+    assert service.calls == []
+
+
 class _PumpGateway:
     def get_pump(self, tag):
-        if tag in {TAG, "211-P-10A"}:
+        if tag in {TAG, "211-P-10A", "211-P-13AR"}:
             return {"success": True, "data": {"tag_number": tag, "area": "FRAKSINASI"}}
         return {"success": False, "data": None}
 

@@ -25,6 +25,7 @@ from API.condition_monitoring_reading_repository import ConditionMonitoringReadi
 from API.condition_monitoring_schedule_gateway import ConditionMonitoringScheduleGateway
 from API.engineering_context_engine import EngineeringContextEngine
 from API.equipment_timeline_service import EquipmentTimelineService
+from API.equipment_360_service import get_equipment_360
 from API.basic_fleet_overview_service import BasicFleetOverviewService
 from API.fleet_executive_summary import FleetExecutiveSummaryService
 from API.fleet_reliability_service import FleetReliabilityService
@@ -428,6 +429,11 @@ def get_ltsa_knowledge_service() -> LTSAKnowledgeService:
 
 def get_equipment_timeline_service() -> EquipmentTimelineService:
     return _equipment_timeline_service
+
+
+def get_equipment_360_service():
+    """Return the canonical Equipment 360 read aggregator."""
+    return get_equipment_360
 
 
 def get_seal_leak_diagnostic_service() -> SealLeakDiagnosticService:

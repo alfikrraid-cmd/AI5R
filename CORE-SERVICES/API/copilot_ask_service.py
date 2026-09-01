@@ -42,7 +42,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from . import fleet_analytics_service as fas
-from .equipment_tag import normalize_equipment_tag_text
+from .equipment_tag import EQUIPMENT_TAG_PATTERN, normalize_equipment_tag_text
 from . import maintenance_intelligence_service as mis
 from .condition_monitoring_measurement_fields import (
     detect_parameter_search_term,
@@ -138,6 +138,9 @@ def _evidence(source: str, reference: str, field: str, value: Any) -> dict[str, 
 # domain this MWO adds) -- semantic routing, not a literal-string match.
 def _detect_intent(question: str, *, tag: str | None = None) -> str | None:
     q = (question or "").lower()
+
+    if tag is not None and EQUIPMENT_TAG_PATTERN.fullmatch((question or "").strip()):
+        return "equipment_360"
 
     def has(*words: str) -> bool:
         return any(re.search(word, q) for word in words)
@@ -283,6 +286,7 @@ def ask_copilot(
     pm_occurrence_repository,
     cm_report_repository,
     pm_cm_evidence_repository=None,
+    equipment_360_service=None,
     # MWO-LTSA-FLEET-ANALYTICS-001 -- optional, default None: only needed
     # by the new fleet-wide temperature/vibration ranking, current/
     # historical leak, stock-semantics, and overdue-PM query paths below,
@@ -419,6 +423,21 @@ def ask_copilot(
     if tag is None:
         return CopilotAnswer(_NO_ASSET_MESSAGE[language], DATA_GAP, ())
 
+    if intent == "equipment_360":
+        return _handle_equipment_360(
+            tag,
+            equipment_360_service=equipment_360_service,
+            pump_gateway=pump_gateway,
+            pm_occurrence_repository=pm_occurrence_repository,
+            cm_report_repository=cm_report_repository,
+            condition_monitoring_reading_repository=condition_monitoring_reading_repository,
+            equipment_timeline_service=equipment_timeline_service,
+            ltsa_knowledge_service=ltsa_knowledge_service,
+            mechanical_seal_stock_repository=mechanical_seal_stock_repository,
+            pm_cm_evidence_repository=pm_cm_evidence_repository,
+            language=language,
+        )
+
     handler = TOOL_HANDLERS.get(intent)
     if handler is None:
         # _detect_intent recognizes more intents (e.g. "condition_monitoring")
@@ -443,6 +462,7 @@ def ask_copilot(
         pm_occurrence_repository=pm_occurrence_repository,
         cm_report_repository=cm_report_repository,
         pm_cm_evidence_repository=pm_cm_evidence_repository,
+        equipment_360_service=equipment_360_service,
         seal_leak_diagnostic_service=seal_leak_diagnostic_service,
         language=language,
     )
@@ -469,6 +489,64 @@ def _handle_pump_status(tag: str, *, pump_gateway, language: str = "en", **_: An
         )
     evidence = (_evidence("PumpGateway", tag, "status", pump.get("status")),)
     return CopilotAnswer(answer, FACT, evidence)
+
+
+def _handle_equipment_360(
+    tag: str,
+    *,
+    equipment_360_service,
+    pump_gateway,
+    pm_occurrence_repository,
+    cm_report_repository,
+    condition_monitoring_reading_repository,
+    equipment_timeline_service,
+    ltsa_knowledge_service,
+    mechanical_seal_stock_repository,
+    pm_cm_evidence_repository=None,
+    language: str = "en",
+    **_: Any,
+) -> CopilotAnswer:
+    if equipment_360_service is None:
+        return CopilotAnswer(_NO_PER_ASSET_TOOL_MESSAGE[language], DATA_GAP, ())
+    if pump_gateway is not None:
+        try:
+            identity = pump_gateway.get_pump(tag)
+        except Exception:
+            identity = None
+        if not isinstance(identity, dict) or not identity.get("success") or not isinstance(identity.get("data"), dict):
+            return CopilotAnswer(f"Tag pompa {tag} tidak ditemukan." if language == "id" else f"Pump {tag} was not found.", DATA_GAP, ())
+    try:
+        model = equipment_360_service(
+            tag,
+            pump_gateway=pump_gateway,
+            pm_occurrence_repository=pm_occurrence_repository,
+            cm_report_repository=cm_report_repository,
+            condition_monitoring_reading_repository=condition_monitoring_reading_repository,
+            equipment_timeline_service=equipment_timeline_service,
+            ltsa_knowledge_service=ltsa_knowledge_service,
+            mechanical_seal_stock_repository=mechanical_seal_stock_repository,
+            pm_cm_evidence_repository=pm_cm_evidence_repository,
+        )
+    except Exception:
+        return CopilotAnswer(f"Equipment 360 untuk {tag} sedang tidak tersedia.", DATA_GAP, ())
+
+    status = model.status or "N/A"
+    area = model.area or "N/A"
+    location = model.location or "N/A"
+    lines = [
+        f"Equipment 360 {tag}: status={status}, area={area}, lokasi={location}.",
+        f"CMON terakhir: {model.cmon_latest.get('reading_date') if model.cmon_latest else 'N/A'}",
+        f"Seal kompatibel: {len(model.compatible_seals)} item; stok: {len(model.seal_stock)} item.",
+    ]
+    if model.current_seal is None:
+        lines.append("Seal terpasang: DATA_GAP (belum ada bukti instalasi terkonfirmasi).")
+    if model.data_gaps:
+        lines.append("Data gap: " + ", ".join(model.data_gaps) + ".")
+    evidence = (
+        _evidence("Equipment360", tag, "status", model.status),
+        _evidence("Equipment360", tag, "area", model.area),
+    )
+    return CopilotAnswer("\n".join(lines), FACT, evidence)
 
 
 def _handle_pump_history(tag: str, *, maintenance_history_gateway, language: str = "en", **_: Any) -> CopilotAnswer:
@@ -2137,6 +2215,7 @@ TOOL_HANDLERS = {
     "recommendation": _handle_recommendation,
     "condition_monitoring": _handle_condition_monitoring,
     "seal_leak_diagnostic": _handle_seal_leak_diagnostic,
+    "equipment_360": _handle_equipment_360,
 }
 
 
