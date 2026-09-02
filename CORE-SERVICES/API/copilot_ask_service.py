@@ -44,6 +44,8 @@ from typing import Any
 from . import fleet_analytics_service as fas
 from . import maintenance_intelligence_service as mis
 from .condition_monitoring_measurement_fields import (
+    MEASUREMENT_PAIR_FIELDS,
+    MEASUREMENT_SINGLE_FIELDS,
     detect_parameter_search_term,
     fields_matching_search_term,
     parameter_display_label,
@@ -175,6 +177,8 @@ def _detect_intent(question: str, *, tag: str | None = None) -> str | None:
         "bocor", r"\bleak", r"\bcmon\b", "condition monitoring", "temuan",
         "temperature", "temperatur", "temp", "suhu", "vibration", "vibrasi", "getaran", "pressure", "tekanan",
     ):
+        return "condition_monitoring"
+    if tag is not None and is_current_or_latest and has(r"\breadings?\b", "parameter"):
         return "condition_monitoring"
     # MWO-LTSA-FLEET-ANALYTICS-001 -- "overdue PM" is a fleet-wide,
     # tag-less ranking/listing question (Phase 12), checked before the
@@ -1007,6 +1011,13 @@ def _is_cmon_history_request(question: str) -> bool:
     return any(word in lowered for word in _CMON_HISTORY_WORDS)
 
 
+def _is_all_latest_cmon_parameters_request(question: str) -> bool:
+    lowered = (question or "").casefold()
+    has_latest = any(word in lowered for word in ("terakhir", "terbaru", "latest", "most recent"))
+    has_parameter_word = re.search(r"\breadings?\b", lowered) is not None or "parameter" in lowered
+    return has_latest and has_parameter_word
+
+
 def _cmon_leak_flagged(record: dict[str, Any]) -> bool:
     return record.get("mechanical_seal_leak_de") is True or record.get("mechanical_seal_leak_nde") is True
 
@@ -1084,6 +1095,9 @@ def _handle_condition_monitoring(
                 history=is_history_request, language=language,
             )
 
+        if _is_all_latest_cmon_parameters_request(question):
+            return _render_cmon_all_latest_parameters(tag, records, language=language)
+
         if not is_history_request:
             return _render_cmon_latest(tag, records, language=language)
         return _render_cmon_detailed_history(
@@ -1136,6 +1150,45 @@ def _render_cmon_latest(tag: str, records: list[dict[str, Any]], *, language: st
         ),
     )
     return CopilotAnswer(answer, FACT, evidence)
+
+
+def _render_cmon_all_latest_parameters(
+    tag: str,
+    records: list[dict[str, Any]],
+    *,
+    language: str = "en",
+) -> CopilotAnswer:
+    lines = [f"Parameter terakhir {tag}" if language == "id" else f"Latest parameters {tag}", ""]
+    evidence: list[dict[str, Any]] = []
+
+    def append_latest(label: str, column: str, unit: str) -> None:
+        record = next((r for r in records if r.get(column) is not None), None)
+        if record is None:
+            return
+        value = record.get(column)
+        reading_date = record.get("reading_date") or ("tidak diketahui" if language == "id" else "unknown")
+        lines.append(f"{label}: {value} {unit} ({reading_date})")
+        evidence.append(
+            _evidence(
+                "ConditionMonitoringReadingRepository",
+                record.get("condition_monitoring_reading_code") or tag,
+                label,
+                value,
+            )
+        )
+
+    for field in MEASUREMENT_PAIR_FIELDS:
+        append_latest(f"{field.label} DE", field.de_column, field.unit)
+        append_latest(f"{field.label} NDE", field.nde_column, field.unit)
+    for field in MEASUREMENT_SINGLE_FIELDS:
+        append_latest(field.label, field.column, field.unit)
+
+    if not evidence:
+        if language == "id":
+            return CopilotAnswer(f"Belum ada nilai parameter aktual yang terekam untuk {tag}.", DATA_GAP, ())
+        return CopilotAnswer(f"No actual parameter values are recorded for {tag}.", DATA_GAP, ())
+
+    return CopilotAnswer("\n".join(lines), FACT, tuple(evidence))
 
 
 def _render_cmon_parameter(
@@ -1197,7 +1250,13 @@ def _render_cmon_parameter(
 
     # HISTORY / TIME-RANGE parameter mode -- chronological listing +
     # deterministic latest/min/max/delta per parameter label.
-    shown = matching[:CMON_HISTORY_RENDER_LIMIT]
+    value_records = [record for record in matching if parameter_values(record, fields)]
+    if not value_records:
+        if language == "id":
+            return CopilotAnswer(f"Belum ada nilai terekam untuk parameter tersebut pada {tag}.", DATA_GAP, ())
+        return CopilotAnswer(f"No recorded value exists for that parameter on {tag}.", DATA_GAP, ())
+
+    shown = value_records[:CMON_HISTORY_RENDER_LIMIT]
     header_prefix = f"{parameter_display_label(search_term)} {tag}"
     if period is not None:
         period_label = period.label_id if language == "id" else period.label_en
@@ -1209,11 +1268,11 @@ def _render_cmon_parameter(
     if period is not None:
         lines.append(f"Periode: {period.start.isoformat()} – {period.end.isoformat()}")
     lines.append("")
-    if len(matching) > len(shown):
+    if len(value_records) > len(shown):
         if language == "id":
-            lines.append(f"Ditemukan {len(matching)} CMON. Menampilkan {len(shown)} terbaru.")
+            lines.append(f"Ditemukan {len(value_records)} CMON dengan nilai aktual. Menampilkan {len(shown)} terbaru.")
         else:
-            lines.append(f"Found {len(matching)} CMON record(s). Showing {len(shown)} most recent.")
+            lines.append(f"Found {len(value_records)} CMON record(s) with actual values. Showing {len(shown)} most recent.")
         lines.append("")
 
     series_by_label: dict[str, list[tuple[Any, float, str]]] = {}
@@ -1225,8 +1284,6 @@ def _render_cmon_parameter(
             for name, value, unit in values:
                 lines.append(f"   {name}: {value} {unit}")
                 series_by_label.setdefault(name, []).append((record.get("reading_date"), value, unit))
-        else:
-            lines.append(f"{reading_date}: N/A")
         lines.append("")
 
     # Deterministic summary -- only over records actually carrying a real

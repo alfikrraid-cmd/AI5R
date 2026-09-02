@@ -151,6 +151,18 @@ def test_temperature_latest_skips_records_missing_the_parameter():
     assert OLD in answer.answer
 
 
+def test_temperature_paraphrases_without_actual_values_are_data_gap():
+    records = {TAG_A: [_reading(TAG_A, "C1", RECENT, finding="temperature checked, value N/A")]}
+    for question in (
+        "Suhu 110p12b terakhir berapa?",
+        "Temperaturnya 110p12b terbaru?",
+        "Temperature 110p12b terakhir berapa?",
+    ):
+        answer = _ask(question, TAG_A, records)
+        assert answer.kind == DATA_GAP
+        assert "N/A" not in answer.answer
+
+
 # -- F. Temperature history ------------------------------------------------
 
 
@@ -172,6 +184,35 @@ def test_temperature_history_returns_chronological_readings_in_range():
     assert "max" in answer.answer.lower()
 
 
+def test_parameter_history_contains_only_records_with_actual_requested_values():
+    newer_without_value = (TODAY - timedelta(days=20)).isoformat()
+    older_with_value = (TODAY - timedelta(days=90)).isoformat()
+    records = {
+        TAG_A: [
+            _reading(TAG_A, "C2", newer_without_value, finding="temperature N/A"),
+            _reading(TAG_A, "C1", older_with_value, bearing_temp_de=60.0),
+        ]
+    }
+    answer = _ask("Temperature 110p12b setahun terakhir", TAG_A, records)
+    assert answer.kind == FACT
+    assert older_with_value in answer.answer
+    assert "60.0" in answer.answer
+    assert newer_without_value not in answer.answer
+    assert "N/A" not in answer.answer
+
+
+def test_na_only_parameter_history_returns_data_gap():
+    records = {
+        TAG_A: [
+            _reading(TAG_A, "C2", (TODAY - timedelta(days=20)).isoformat(), finding="temperature N/A"),
+            _reading(TAG_A, "C1", (TODAY - timedelta(days=90)).isoformat()),
+        ]
+    }
+    answer = _ask("Temperature 110p12b setahun terakhir", TAG_A, records)
+    assert answer.kind == DATA_GAP
+    assert "N/A" not in answer.answer
+
+
 # -- G. Vibration latest, generic mechanism reused --------------------------
 
 
@@ -182,6 +223,49 @@ def test_vibration_latest_uses_the_same_generic_parameter_mechanism():
     assert "2.3 mm/s" in answer.answer
     assert "1.1 mm/s" in answer.answer
     assert "Vibration" in answer.answer
+
+
+def test_vibration_paraphrases_without_actual_values_are_data_gap():
+    records = {TAG_A: [_reading(TAG_A, "C1", RECENT, finding="vibration inspected, value N/A")]}
+    for question in (
+        "Vibrasi 110p12b terakhir",
+        "Getarannya 110p12b terbaru?",
+        "Vibration 110p12b terakhir",
+    ):
+        answer = _ask(question, TAG_A, records)
+        assert answer.kind == DATA_GAP
+        assert "N/A" not in answer.answer
+
+
+def test_all_latest_readings_intents_select_newest_actual_value_per_parameter():
+    newest = RECENT
+    mid = (TODAY - timedelta(days=40)).isoformat()
+    oldest = (TODAY - timedelta(days=80)).isoformat()
+    records = {
+        TAG_A: [
+            _reading(TAG_A, "C3", newest, bearing_temp_de=70.0),
+            _reading(TAG_A, "C2", mid, vertical_vibration_de=2.2),
+            _reading(TAG_A, "C1", oldest, bearing_temp_de=55.0, vertical_vibration_de=1.0, suction_pressure=4.5),
+        ]
+    }
+    for question in (
+        "tampilkan semua reading terakhir 110p12b",
+        "semua reading terakhir 110p12b",
+        "reading terakhir 110p12b",
+        "parameter terakhir 110p12b",
+        "parameter terbaru 110p12b",
+    ):
+        answer = _ask(question, TAG_A, records)
+        assert answer.kind == FACT
+        assert "Bearing Temp DE: 70.0 °C" in answer.answer
+        assert f"70.0 °C ({newest})" in answer.answer
+        assert "Vertical Vibration DE: 2.2 mm/s" in answer.answer
+        assert f"2.2 mm/s ({mid})" in answer.answer
+        assert "Suction Pressure: 4.5 bar" in answer.answer
+        assert f"4.5 bar ({oldest})" in answer.answer
+        assert "1.0 mm/s" not in answer.answer
+        assert "55.0 °C" not in answer.answer
+        assert "N/A" not in answer.answer
 
 
 # -- H. Unknown parameter -----------------------------------------------------
