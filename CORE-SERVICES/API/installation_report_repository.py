@@ -18,8 +18,7 @@ general-purpose "list every installation report" read that did not exist
 anywhere yet (every existing direct-DB installation query is scoped to one
 installation_code/pump_tag, not a fleet-wide list).
 
-Read-only: this module contains no INSERT/UPDATE/DELETE/DDL statement
-anywhere. list_installations()'s return shape is deliberately identical to
+list_installations()'s return shape is deliberately identical to
 InstallationGateway.list_installations()'s own ({"success", "data"}) so
 callers that already expect that shape (copilot_ask_service.py's fleet
 installation handler) need no change beyond which object is injected.
@@ -31,10 +30,24 @@ existing tag-scoped installation intent/handler and the
 the pre-existing InstallationGateway/n8n path unchanged -- fixing that
 broader path is a separate concern this MWO does not touch ("DO NOT
 redesign the intent router", "smallest safe correction").
+
+MWO-LTSA-INSTALLATION-REPORT-HISTORICAL-ATTRIBUTION-001 -- adds the three
+read/write primitives installation_report_attribution_service.py's guard
+logic needs (find_by_installation_code / count_canonical_pump_matches /
+set_pump_tag_number_if_unset). This is document-level equipment
+ATTRIBUTION only -- a plain pump_tag_number backfill from a report's own
+already-recorded source_document_name -- never seal_unit_id/
+installation_event_id/linked_by/link_reason, which stay exclusively
+installation_fitment_service.py's job (physical fitment/lifecycle
+linkage, a different, later, optional step). set_pump_tag_number_if_unset
+is a guarded UPDATE ... WHERE pump_tag_number IS NULL, the same
+one-guarded-write shape installation_fitment_service.link_installation_report
+already established for this exact table.
 """
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -43,7 +56,7 @@ _INGESTION_DIR = Path(__file__).resolve().parents[2] / "PRODUCTS" / "LTSA-BRAIN"
 if str(_INGESTION_DIR) not in sys.path:
     sys.path.insert(0, str(_INGESTION_DIR))
 
-from ltsa_pump_inventory_db_upsert import _json_query  # noqa: E402
+from ltsa_pump_inventory_db_upsert import _json_query, _sql  # noqa: E402
 
 if TYPE_CHECKING:
     from ltsa_pump_inventory_db_upsert import DatabaseRunner
@@ -68,6 +81,42 @@ class InstallationReportRepository:
             "data": rows,
             "count": len(rows),
         }
+
+    def find_by_installation_code(self, installation_code: str) -> dict[str, Any] | None:
+        rows = _json_query(
+            f"SELECT installation_code, pump_tag_number, source_document_name "
+            f"FROM installation_report WHERE installation_code = {_sql(installation_code)}",
+            self._runner,
+        )
+        return rows[0] if rows else None
+
+    def count_canonical_pump_matches(self, pump_tag_number: str) -> int:
+        rows = _json_query(
+            f"SELECT count(*) AS n FROM ltsa_pumps WHERE tag_number = {_sql(pump_tag_number)}",
+            self._runner,
+        )
+        return int(rows[0]["n"]) if rows else 0
+
+    def set_pump_tag_number_if_unset(self, *, installation_code: str, pump_tag_number: str) -> dict[str, Any] | None:
+        # Guarded, atomic: affects a row only if pump_tag_number is still
+        # NULL at write time, mirroring installation_fitment_service.
+        # link_installation_report()'s own guarded-UPDATE-with-RETURNING
+        # shape for this same table. Never touches seal_unit_id/
+        # installation_event_id/linked_by/link_reason/report_date/any
+        # other column -- pure single-field attribution.
+        script = f"""
+WITH updated AS (
+    UPDATE installation_report SET
+        pump_tag_number = {_sql(pump_tag_number)},
+        updated_at = NOW()
+    WHERE installation_code = {_sql(installation_code)} AND pump_tag_number IS NULL
+    RETURNING installation_code, pump_tag_number
+)
+SELECT COALESCE((SELECT json_agg(row_to_json(u))::text FROM updated u), '[]');
+"""
+        raw = self._runner.query_scalar(script.strip())
+        rows = json.loads(raw or "[]")
+        return rows[0] if rows else None
 
 
 __all__ = ["InstallationReportRepository"]
