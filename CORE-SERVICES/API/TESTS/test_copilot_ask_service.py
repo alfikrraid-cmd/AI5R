@@ -628,6 +628,101 @@ def test_tag_scoped_condition_monitoring_repository_failure_is_data_gap_not_a_cr
     assert answer.evidence == ()
 
 
+def _ask_tagged_cmon_parameter(question, repo, tag="110-P-12B"):
+    return ask_copilot(
+        question, tag, None,
+        pump_gateway=None, maintenance_history_gateway=None, work_order_gateway=None,
+        installation_gateway=None, ltsa_knowledge_service=None, equipment_timeline_service=None,
+        condition_monitoring_reading_gateway=_FakeCMONGateway([]),
+        installation_report_repository=_FakeInstallationReportRepository([]),
+        mechanical_seal_stock_repository=_FakeMechanicalSealStockRepository([]),
+        condition_monitoring_reading_repository=repo,
+        fleet_executive_summary_service=_FakeFleetExecutiveSummaryService(),
+        pm_occurrence_repository=_FakePMOccurrenceRepository(),
+        cm_report_repository=_FakeCMReportRepository(),
+        language="id",
+    )
+
+
+def test_latest_parameter_searches_history_not_only_latest_cmon_event():
+    repo = _FakeConditionMonitoringReadingRepository({
+        "110-P-12B": [
+            {"condition_monitoring_reading_code": "CMONR-LATEST", "reading_date": "2026-08-30", "finding": "latest event has no temperature"},
+            {
+                "condition_monitoring_reading_code": "CMONR-TEMP",
+                "reading_date": "2026-07-21",
+                "mechseal_temp_de": 88.0,
+                "flushing_temp_de": 63.0,
+                "suction_temp": 176.0,
+            },
+        ]
+    })
+
+    answer = _ask_tagged_cmon_parameter("Temperature 110p12b terakhir berapa?", repo)
+
+    assert answer.kind == FACT
+    assert "Temperature 110-P-12B" in answer.answer
+    assert "Reading: 2026-07-21" in answer.answer
+    assert "Mechanical Seal Temp DE: 88.0" in answer.answer
+    assert "Flushing Temp DE: 63.0" in answer.answer
+    assert "Suction Temp: 176.0" in answer.answer
+    assert "CMONR-TEMP" in {e["reference"] for e in answer.evidence}
+    assert "CMONR-LATEST" not in {e["reference"] for e in answer.evidence}
+
+
+def test_latest_vibration_uses_latest_record_with_vibration_values():
+    repo = _FakeConditionMonitoringReadingRepository({
+        "110-P-12B": [
+            {"condition_monitoring_reading_code": "CMONR-LATEST", "reading_date": "2026-08-30", "mechseal_temp_de": 90.0},
+            {
+                "condition_monitoring_reading_code": "CMONR-VIB",
+                "reading_date": "2026-07-21",
+                "vertical_vibration_de": 2.4,
+                "horizontal_vibration_nde": 3.1,
+            },
+        ]
+    })
+
+    answer = _ask_tagged_cmon_parameter("Vibrasi 110p12b terakhir", repo)
+
+    assert answer.kind == FACT
+    assert "Vibration 110-P-12B" in answer.answer
+    assert "Reading: 2026-07-21" in answer.answer
+    assert "Vertical Vibration DE: 2.4" in answer.answer
+    assert "Horizontal Vibration NDE: 3.1" in answer.answer
+
+
+def test_latest_parameter_no_reading_is_data_gap_not_fabricated():
+    repo = _FakeConditionMonitoringReadingRepository({
+        "110-P-12B": [
+            {"condition_monitoring_reading_code": "CMONR-LATEST", "reading_date": "2026-08-30", "finding": "no numeric parameter"},
+        ]
+    })
+
+    answer = _ask_tagged_cmon_parameter("Pressure 110p12b terakhir", repo)
+
+    assert answer.kind == DATA_GAP
+    assert "Belum ada nilai terekam" in answer.answer
+    assert "bar" not in answer.answer
+    assert answer.evidence == ()
+
+
+@pytest.mark.parametrize("question", [
+    "Vibrasi 110p12b terakhir",
+    "Vibrasi terakhir 110p12b",
+    "Vibrasi terakhir untuk 110p12b",
+    "Vibration 110p12b terakhir",
+    "Vibration terakhir 110p12b",
+    "Temperature 110p12b terakhir",
+    "Temperature terakhir 110p12b",
+    "Suhu 110p12b terakhir",
+    "Suhu terakhir 110p12b",
+    "Temp 110p12b terakhir",
+])
+def test_parameter_paraphrases_route_to_condition_monitoring(question):
+    assert _detect_intent(question, tag="110-P-12B") == "condition_monitoring"
+
+
 def test_tag_scoped_intent_with_no_registered_handler_is_graceful_data_gap_not_a_crash(monkeypatch):
     # Generic regression for the fix behind TOOL_HANDLERS.get(intent):
     # any FUTURE intent _detect_intent recognizes without a matching

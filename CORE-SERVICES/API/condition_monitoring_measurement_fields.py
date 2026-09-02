@@ -123,6 +123,7 @@ def render_reading_lines(record: dict[str, Any]) -> list[str]:
 # directly, never via the single ambiguous word "current".
 _PARAMETER_SEARCH_TERMS: dict[str, str] = {
     "temperature": "temp",
+    "temp": "temp",
     "suhu": "temp",
     # MWO-LTSA-FLEET-ANALYTICS-001 -- "temperatur" (no final "e") is the
     # common Indonesian technical spelling ("temperaturnya paling
@@ -131,6 +132,7 @@ _PARAMETER_SEARCH_TERMS: dict[str, str] = {
     # below.
     "temperatur": "temp",
     "vibration": "vibration",
+    "vibrasi": "vibration",
     "getaran": "vibration",
     "pressure": "pressure",
     "tekanan": "pressure",

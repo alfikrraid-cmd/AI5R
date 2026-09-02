@@ -173,7 +173,7 @@ def _detect_intent(question: str, *, tag: str | None = None) -> str | None:
         return "seal_leak_diagnostic"
     if has(
         "bocor", r"\bleak", r"\bcmon\b", "condition monitoring", "temuan",
-        "temperature", "temperatur", "suhu", "vibration", "getaran", "pressure", "tekanan",
+        "temperature", "temperatur", "temp", "suhu", "vibration", "vibrasi", "getaran", "pressure", "tekanan",
     ):
         return "condition_monitoring"
     # MWO-LTSA-FLEET-ANALYTICS-001 -- "overdue PM" is a fleet-wide,
@@ -1182,8 +1182,8 @@ def _render_cmon_parameter(
         record = next((r for r in matching if parameter_values(r, fields)), None)
         if record is None:
             if language == "id":
-                return CopilotAnswer(f"Belum ada nilai terekam untuk parameter tersebut pada {tag}.", FACT, ())
-            return CopilotAnswer(f"No recorded value exists for that parameter on {tag}.", FACT, ())
+                return CopilotAnswer(f"Belum ada nilai terekam untuk parameter tersebut pada {tag}.", DATA_GAP, ())
+            return CopilotAnswer(f"No recorded value exists for that parameter on {tag}.", DATA_GAP, ())
 
         lines = render_parameter_lines(record, fields)
         header_label = parameter_display_label(search_term)
