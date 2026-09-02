@@ -178,7 +178,14 @@ def _detect_intent(question: str, *, tag: str | None = None) -> str | None:
         "temperature", "temperatur", "temp", "suhu", "vibration", "vibrasi", "getaran", "pressure", "tekanan",
     ):
         return "condition_monitoring"
-    if tag is not None and is_current_or_latest and has(r"\breadings?\b", "parameter"):
+    # MWO-LTSA-EQUIPMENT-360-CMON-DATA-WORD-001 -- generic "data terbaru
+    # <tag>" carries the same intent as "parameter/reading terbaru <tag>":
+    # a tagged, latest-scoped question with no more specific keyword above
+    # must not fall through to the no-intent DATA_GAP just because it used
+    # "data" instead of "parameter"/"reading" -- confirmed root cause of a
+    # real production UAT gap where CMON readings that do exist were
+    # omitted for this exact wording.
+    if tag is not None and is_current_or_latest and has(r"\breadings?\b", "parameter", r"\bdata\b"):
         return "condition_monitoring"
     # MWO-LTSA-FLEET-ANALYTICS-001 -- "overdue PM" is a fleet-wide,
     # tag-less ranking/listing question (Phase 12), checked before the
@@ -1014,7 +1021,12 @@ def _is_cmon_history_request(question: str) -> bool:
 def _is_all_latest_cmon_parameters_request(question: str) -> bool:
     lowered = (question or "").casefold()
     has_latest = any(word in lowered for word in ("terakhir", "terbaru", "latest", "most recent"))
-    has_parameter_word = re.search(r"\breadings?\b", lowered) is not None or "parameter" in lowered
+    # Same "data" == "parameter"/"reading" equivalence as _detect_intent's
+    # condition_monitoring routing above -- otherwise a generic "data
+    # terbaru <tag>" that does reach this handler would render only the
+    # single-latest narrative instead of all available latest parameters,
+    # still diverging from "parameter/reading terbaru <tag>"'s answer.
+    has_parameter_word = re.search(r"\breadings?\b", lowered) is not None or "parameter" in lowered or "data" in lowered
     return has_latest and has_parameter_word
 
 
@@ -1095,7 +1107,15 @@ def _handle_condition_monitoring(
                 history=is_history_request, language=language,
             )
 
-        if _is_all_latest_cmon_parameters_request(question):
+        # MWO-LTSA-EQUIPMENT-360-CMON-DATA-WORD-001 -- gated on `not
+        # is_history_request`: adding generic "data" as an all-latest-
+        # parameters trigger (above) means a history/time-range question
+        # that happens to contain "data" (e.g. "Data CMON <tag> 2 tahun
+        # terakhir", itself one of _CMON_HISTORY_WORDS) must still reach
+        # the detailed-history renderer below, never the single-snapshot
+        # all-latest one -- a request for a period is never "give me the
+        # single newest value per parameter right now".
+        if _is_all_latest_cmon_parameters_request(question) and not is_history_request:
             return _render_cmon_all_latest_parameters(tag, records, language=language)
 
         if not is_history_request:

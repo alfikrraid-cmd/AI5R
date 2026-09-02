@@ -254,6 +254,14 @@ def test_all_latest_readings_intents_select_newest_actual_value_per_parameter():
         "reading terakhir 110p12b",
         "parameter terakhir 110p12b",
         "parameter terbaru 110p12b",
+        # MWO-LTSA-EQUIPMENT-360-CMON-DATA-WORD-001 -- generic "data"
+        # wording, compact and dashed tag form, must be fully equivalent
+        # to the "parameter"/"reading" wording above: same intent routing,
+        # same all-vs-single-latest rendering, same canonical entity.
+        "Tampilkan semua pembacaan parameter terbaru untuk 110-P-12B",
+        "Tampilkan semua pembacaan parameter terbaru untuk 110P12B",
+        "Tampilkan data terbaru 110-P-12B",
+        "Tampilkan data terbaru 110P12B",
     ):
         answer = _ask(question, TAG_A, records)
         assert answer.kind == FACT
@@ -266,6 +274,29 @@ def test_all_latest_readings_intents_select_newest_actual_value_per_parameter():
         assert "1.0 mm/s" not in answer.answer
         assert "55.0 °C" not in answer.answer
         assert "N/A" not in answer.answer
+
+
+def test_generic_data_terbaru_wording_is_data_gap_when_no_cmon_records_exist():
+    # The "data" trigger word only changes ROUTING, never fabricates: a
+    # tag with genuinely no CMON records must still report DATA_GAP for
+    # the exact same generic wording that now correctly reaches the CMON
+    # handler.
+    answer = _ask("Tampilkan data terbaru 110P12B", TAG_A, {TAG_A: []})
+    assert answer.kind == FACT  # "no records yet" is a known FACT, not a data gap (matches existing _handle_condition_monitoring behavior for an empty list)
+    assert "Belum ada data Condition Monitoring" in answer.answer or "No Condition Monitoring data" in answer.answer
+
+
+def test_generic_data_terbaru_wording_locks_to_requested_equipment_only():
+    records = {
+        TAG_A: [_reading(TAG_A, "C1", RECENT, bearing_temp_de=62.4)],
+        TAG_B: [_reading(TAG_B, "C1", RECENT, bearing_temp_de=99.9)],
+    }
+    for question in ("Tampilkan data terbaru 110-P-12B", "Tampilkan data terbaru 110P12B"):
+        answer = _ask(question, TAG_A, records)
+        assert answer.kind == FACT
+        assert "62.4" in answer.answer
+        assert "99.9" not in answer.answer
+        assert TAG_B not in answer.answer
 
 
 # -- H. Unknown parameter -----------------------------------------------------
