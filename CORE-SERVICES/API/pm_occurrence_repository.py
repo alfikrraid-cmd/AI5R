@@ -130,6 +130,27 @@ class PMOccurrenceRepository:
         # createPMOccurrence) never passes either, so its INSERTs are
         # unchanged.
         code = _new_code()
+        # MWO-LTSA-HISTORICAL-PM-RECOVERY-001 -- historical_pm_cmon_
+        # promotion_service.promote_pm_occurrence_candidate()'s own
+        # documented contract (and build_unscheduled_reference()'s own
+        # docstring, ltsa_hoc_pm_cm_upsert.py) says a historical import's
+        # pm_schedule_code is the self-disclosing "UNSCHEDULED::<source>"
+        # placeholder and "never inserted into pm_schedule" -- but this
+        # INSERT's own EXISTS guard below required a REAL pm_schedule row
+        # unconditionally, so no historical promotion could ever succeed
+        # against an empty pm_schedule table (confirmed: 0 rows in
+        # production; not a hypothetical). The guard's real purpose --
+        # requiring a genuine schedule for a genuinely scheduled
+        # occurrence -- only ever applied to the live TAP Engineer UI path
+        # (PM.jsx), which never uses this literal prefix and is completely
+        # unaffected: this only widens the WHERE for the placeholder
+        # convention already designed to bypass it.
+        _requires_real_schedule = not pm_schedule_code.startswith("UNSCHEDULED::")
+        _schedule_guard = (
+            f"AND EXISTS (SELECT 1 FROM pm_schedule WHERE pm_schedule_code = {_sql(pm_schedule_code)}) "
+            if _requires_real_schedule
+            else ""
+        )
         rows = json.loads(
             self._runner.query_scalar(
                 "WITH ins AS ("
@@ -153,7 +174,7 @@ class PMOccurrenceRepository:
                 f"{_sql(occurrence_date)}, {_sql(json.dumps(activities) if activities is not None else None)}::jsonb, "
                 f"{_sql(remarks)}, {_sql(DRAFT)}, {_sql(provenance)}, {_sql(created_by)}, {_sql(created_by)}, "
                 f"{_sql(source_reference)} WHERE EXISTS (SELECT 1 FROM ltsa_pumps WHERE tag_number = {_sql(asset_code)}) "
-                f"AND EXISTS (SELECT 1 FROM pm_schedule WHERE pm_schedule_code = {_sql(pm_schedule_code)}) "
+                f"{_schedule_guard}"
                 f"RETURNING {_SELECT_COLUMNS}"
                 # MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016 -- "Actual PM
                 # record is created -> Schedule becomes COMPLETED -> Schedule

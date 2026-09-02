@@ -39,6 +39,46 @@ def test_create_draft_never_wraps_a_bare_insert_in_a_select_from_subquery():
     assert "INSERT INTO pm_occurrence" in sql
 
 
+def test_create_draft_still_requires_a_real_schedule_for_a_real_schedule_code():
+    # MWO-LTSA-HISTORICAL-PM-RECOVERY-001 regression: the live TAP
+    # Engineer UI path (a real, non-"UNSCHEDULED::"-prefixed schedule
+    # code) must keep requiring a genuine pm_schedule row, byte-identical
+    # to before this MWO.
+    runner = FakeRunner(scalar_response=json.dumps([{"pm_occurrence_code": "PMOCC-1"}]))
+    repo = PMOccurrenceRepository(runner)
+
+    repo.create_draft(
+        pm_schedule_code="PMS-1", asset_code="211-P-18A", asset_type="PUMP",
+        occurrence_date="2026-08-01", activities=None, remarks=None, created_by="actor-1",
+    )
+
+    sql = runner.scalar_calls[0]
+    assert "EXISTS (SELECT 1 FROM pm_schedule WHERE pm_schedule_code = 'PMS-1')" in sql
+
+
+def test_create_draft_skips_schedule_exists_guard_for_unscheduled_historical_placeholder():
+    # The self-disclosing "UNSCHEDULED::<source>" placeholder
+    # (build_unscheduled_reference, ltsa_hoc_pm_cm_upsert.py) is
+    # documented to never have a matching pm_schedule row -- the EXISTS
+    # guard must not block it, or historical promotion can never succeed
+    # against an empty pm_schedule table (0 rows in production, not
+    # hypothetical).
+    runner = FakeRunner(scalar_response=json.dumps([{"pm_occurrence_code": "PMOCC-1"}]))
+    repo = PMOccurrenceRepository(runner)
+
+    repo.create_draft(
+        pm_schedule_code="UNSCHEDULED::HOC JANUARI 2026", asset_code="211-P-18A", asset_type="PUMP",
+        occurrence_date="2026-01-06", activities=None, remarks=None, created_by="actor-1",
+        provenance="HISTORICAL_IMPORT", source_reference="document_field_extraction:DFE-1",
+    )
+
+    sql = runner.scalar_calls[0]
+    assert "EXISTS (SELECT 1 FROM pm_schedule" not in sql
+    # The pump-existence guard must still be present -- only the
+    # schedule guard is conditional.
+    assert "EXISTS (SELECT 1 FROM ltsa_pumps WHERE tag_number = '211-P-18A')" in sql
+
+
 def test_create_draft_sets_created_by_and_updated_by_to_the_same_actor():
     runner = FakeRunner(scalar_response=json.dumps([{"pm_occurrence_code": "PMOCC-1"}]))
     repo = PMOccurrenceRepository(runner)
