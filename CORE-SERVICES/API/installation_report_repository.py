@@ -118,5 +118,91 @@ SELECT COALESCE((SELECT json_agg(row_to_json(u))::text FROM updated u), '[]');
         rows = json.loads(raw or "[]")
         return rows[0] if rows else None
 
+    def backfill_pump_tags_batch_atomic(self, mappings: list[dict[str, str]]) -> list[dict[str, Any]]:
+        # MWO-LTSA-INSTALLATION-ATTRIBUTION-ATOMIC-BATCH-001 -- true
+        # all-or-nothing across N rows in ONE call, no DatabaseRunner
+        # change. DatabaseRunner's direct-connect mode already sends an
+        # entire multi-statement script as one Postgres simple-query
+        # message with autocommit=True -- Postgres itself treats that as
+        # one implicit transaction unless the script's own BEGIN/COMMIT
+        # says otherwise (the exact same "one script, one atomic outcome"
+        # guarantee create_draft()/link_installation_report() already
+        # rely on for a single guarded write; this reuses it for N).
+        #
+        # Shape: BEGIN -> precheck DO block (RAISE EXCEPTION if any of
+        # the N targets is missing/already-linked/unknown-pump/ambiguous
+        # -- aborts before any UPDATE runs) -> ONE UPDATE ... FROM
+        # (VALUES ...) covering all N rows, still individually guarded by
+        # WHERE pump_tag_number IS NULL -> postcheck DO block (RAISE
+        # EXCEPTION unless exactly len(mappings) rows ended up linked --
+        # catches a same-millisecond race the precheck couldn't see) ->
+        # COMMIT -> final SELECT of the resulting rows. Any RAISE
+        # EXCEPTION anywhere before COMMIT aborts the whole script; the
+        # trailing COMMIT/SELECT never execute; psycopg2 raises the
+        # server error back to the caller. Postcondition is always
+        # exactly 0-of-N or N-of-N linked, never partial.
+        if not mappings:
+            return []
+
+        codes = [m["installation_code"] for m in mappings]
+        values_sql = ", ".join(
+            f"({_sql(m['installation_code'])}, {_sql(m['pump_tag_number'])})" for m in mappings
+        )
+        codes_sql = ", ".join(_sql(c) for c in codes)
+        n = len(mappings)
+
+        script = f"""
+BEGIN;
+
+DO $$
+DECLARE
+  v_bad_count INT;
+BEGIN
+  SELECT count(*) INTO v_bad_count
+  FROM (VALUES {values_sql}) AS m(installation_code, target_tag)
+  LEFT JOIN installation_report r ON r.installation_code = m.installation_code
+  LEFT JOIN (SELECT tag_number, count(*) AS c FROM ltsa_pumps GROUP BY tag_number) p
+    ON p.tag_number = m.target_tag
+  WHERE r.installation_code IS NULL
+     OR r.pump_tag_number IS NOT NULL
+     OR p.tag_number IS NULL
+     OR p.c <> 1;
+  IF v_bad_count > 0 THEN
+    RAISE EXCEPTION 'installation attribution precheck failed for % of {n} targets', v_bad_count;
+  END IF;
+END $$;
+
+UPDATE installation_report SET
+    pump_tag_number = m.target_tag,
+    updated_at = NOW()
+FROM (VALUES {values_sql}) AS m(installation_code, target_tag)
+WHERE installation_report.installation_code = m.installation_code
+  AND installation_report.pump_tag_number IS NULL;
+
+DO $$
+DECLARE
+  v_linked_count INT;
+BEGIN
+  SELECT count(*) INTO v_linked_count FROM installation_report
+  WHERE installation_code IN ({codes_sql}) AND pump_tag_number IS NOT NULL;
+  IF v_linked_count <> {n} THEN
+    RAISE EXCEPTION 'installation attribution postcheck failed: % of {n} linked', v_linked_count;
+  END IF;
+END $$;
+
+COMMIT;
+
+SELECT COALESCE((SELECT json_agg(row_to_json(t))::text FROM (
+    SELECT installation_code, pump_tag_number FROM installation_report
+    WHERE installation_code IN ({codes_sql}) ORDER BY installation_code
+) t), '[]');
+"""
+        # Not _json_query: that helper wraps its input as a single SELECT
+        # subquery, which cannot hold a BEGIN/DO/UPDATE/COMMIT script.
+        # query_scalar() sends the script verbatim, exactly like
+        # set_pump_tag_number_if_unset()/create_draft() already do.
+        raw = self._runner.query_scalar(script.strip())
+        return json.loads(raw or "[]")
+
 
 __all__ = ["InstallationReportRepository"]

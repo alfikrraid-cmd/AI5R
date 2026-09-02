@@ -56,10 +56,18 @@ class ConflictingAttributionError(InstallationReportAttributionError):
     pass
 
 
+class AtomicBatchFailedError(InstallationReportAttributionError):
+    """The single-transaction batch script's own precheck/postcheck
+    DO block raised inside the database -- the whole batch was rolled
+    back by Postgres itself (nothing committed), never a partial
+    apply."""
+
+
 class AttributionRepositoryProtocol(Protocol):
     def find_by_installation_code(self, installation_code: str) -> dict[str, Any] | None: ...
     def count_canonical_pump_matches(self, pump_tag_number: str) -> int: ...
     def set_pump_tag_number_if_unset(self, *, installation_code: str, pump_tag_number: str) -> dict[str, Any] | None: ...
+    def backfill_pump_tags_batch_atomic(self, mappings: list[dict[str, str]]) -> list[dict[str, Any]]: ...
 
 
 def _validate_one(
@@ -150,42 +158,40 @@ def validate_pump_tag_backfill_batch(
 def apply_pump_tag_backfill_batch(
     repository: AttributionRepositoryProtocol, mappings: list[dict[str, str]]
 ) -> dict[str, Any]:
-    """Fail-closed batch apply. Validates every entry first (read-only,
-    zero writes); if any entry is not VALID, applies NOTHING and returns
-    the validation report untouched -- "all 42 succeed or zero change".
+    """True single-transaction batch apply -- "all N succeed or zero
+    change", not merely "all N succeed or stop partway".
 
-    DatabaseRunner has no cross-call transaction primitive (every write
-    here, like link_installation_report()'s own, is one guarded
-    single-row UPDATE over its own connection) -- there is no existing
-    multi-statement-transaction abstraction in this codebase to reuse,
-    and building one is a larger change than this MWO's own "smallest
-    safe mechanism" scope. Equivalent safety instead: the all-valid
-    precheck below guarantees nothing is attempted unless every row is
-    already known-safe, and each individual write stays guarded (WHERE
-    pump_tag_number IS NULL) so a same-millisecond race still cannot
-    silently overwrite -- it raises and this function stops immediately,
-    reporting exactly how many rows were actually applied before the
-    unexpected failure, rather than a false "all succeeded"."""
+    Two layers: (1) an application-level read-only precheck (unchanged,
+    validate_pump_tag_backfill_batch) as a cheap early exit before any
+    SQL is even built; (2) the actual write goes through
+    repository.backfill_pump_tags_batch_atomic(), ONE script containing
+    its own DB-side precheck (RAISE EXCEPTION aborts before any UPDATE
+    runs), the guarded multi-row UPDATE, a DB-side postcheck (RAISE
+    EXCEPTION unless exactly len(mappings) rows are linked), then COMMIT
+    -- sent as one call to the existing DatabaseRunner, so Postgres's own
+    simple-query-implicit-transaction guarantee makes the actual write
+    atomic. A same-millisecond race that changes state between layer 1
+    and layer 2 is still caught by layer 2's own DB-side checks and
+    rolled back by Postgres itself, never partially applied."""
     precheck = validate_pump_tag_backfill_batch(repository, mappings)
     if not precheck["all_valid"]:
         return {"applied": [], "precheck": precheck, "status": "REJECTED_PRECHECK_FAILED"}
 
-    applied: list[dict[str, Any]] = []
-    for m in mappings:
-        try:
-            applied.append(
-                backfill_installation_report_pump_tag(
-                    repository, installation_code=m["installation_code"], pump_tag_number=m["pump_tag_number"]
-                )
-            )
-        except InstallationReportAttributionError as error:
-            return {
-                "applied": applied,
-                "precheck": precheck,
-                "status": "PARTIAL_FAILURE_RACE",
-                "failed_at": m["installation_code"],
-                "error": str(error),
-            }
+    try:
+        applied = repository.backfill_pump_tags_batch_atomic(mappings)
+    except Exception as error:  # noqa: BLE001 -- the DB driver's own exception type varies; every path here means "the script's own DO block raised, Postgres rolled everything back"
+        return {
+            "applied": [],
+            "precheck": precheck,
+            "status": "REJECTED_ATOMIC_TRANSACTION_FAILED",
+            "error": str(error),
+        }
+    if len(applied) != len(mappings):
+        # Defensive: the script's own postcheck should already have
+        # raised before this could happen. Never reported as success.
+        raise AtomicBatchFailedError(
+            f"atomic batch returned {len(applied)} rows for {len(mappings)} mappings"
+        )
     return {"applied": applied, "precheck": precheck, "status": "APPLIED"}
 
 
@@ -195,6 +201,7 @@ __all__ = [
     "UnknownPumpTagError",
     "AmbiguousPumpTagError",
     "ConflictingAttributionError",
+    "AtomicBatchFailedError",
     "AttributionRepositoryProtocol",
     "validate_pump_tag_backfill",
     "backfill_installation_report_pump_tag",
