@@ -27,6 +27,13 @@ from API.historical_bulk_review_service import (
     bulk_review_candidates,
     validate_request_shape,
 )
+from API.historical_pm_promotion_batch_service import (
+    BatchTooLargeError as PromotionBatchTooLargeError,
+    DuplicateCandidateIdError as PromotionDuplicateCandidateIdError,
+    EmptyBatchError as PromotionEmptyBatchError,
+    promote_pm_batch,
+    validate_promotion_batch,
+)
 from API.historical_pm_cmon_staging_repository import InvalidStatusTransitionError
 from API.pump_area_scope import is_asset_in_scope
 from dependencies import (
@@ -92,25 +99,53 @@ def classify_candidate(candidate: dict) -> str:
 
 _RECOVERY_ELIGIBLE_DOMAIN = "HISTORICAL_PM_OCCURRENCE_CANDIDATE"
 _RECOVERY_ELIGIBLE_STATUS = "PENDING_REVIEW"
+_RECOVERY_PROMOTION_STATUSES = frozenset({"REVIEWED", "SAVED"})
 
 
-# MWO-LTSA-EXACT-540-RECOVERY-UI-001 -- server-derived, not frontend-
-# reimplemented: the ONLY place that decides "is this candidate part of
-# the selectively staged deterministic recovery batch" is here, reusing
-# the exact same fields historical_bulk_review_service.py's own
-# eligibility check already reads (detected_document_type, status,
-# extracted_fields->>'candidate_identity_v2'). candidate_identity_v2 is
-# written ONLY by historical_selective_staging_service.stage_verified_
+# MWO-LTSA-EXACT-540-RECOVERY-UI-001 / MWO-LTSA-RECOVERY-PROMOTION-001 --
+# server-derived, not frontend-reimplemented: the ONLY place that decides
+# "is this candidate part of the selectively staged deterministic
+# recovery batch" is here (domain + a real candidate_identity_v2), reused
+# by BOTH the review-eligibility check (PENDING_REVIEW only) and the
+# promotion-target derivation below (REVIEWED/SAVED only) so the two
+# never drift into subtly different business rules. candidate_identity_v2
+# is written ONLY by historical_selective_staging_service.stage_verified_
 # batch() (verified against production: every row carrying it belongs to
 # the single 540-candidate recovery manifest, zero exceptions) -- no
 # second table, no schema change, no new column.
-def _is_recovery_batch_eligible(candidate: dict) -> bool:
+def _is_recovery_candidate(candidate: dict) -> bool:
     if candidate.get("detected_document_type") != _RECOVERY_ELIGIBLE_DOMAIN:
-        return False
-    if candidate.get("status") != _RECOVERY_ELIGIBLE_STATUS:
         return False
     fields = candidate.get("extracted_fields") or {}
     return bool(fields.get("candidate_identity_v2"))
+
+
+def _is_recovery_batch_eligible(candidate: dict) -> bool:
+    return _is_recovery_candidate(candidate) and candidate.get("status") == _RECOVERY_ELIGIBLE_STATUS
+
+
+def _fetch_recovery_pending(staging_repository) -> list[dict]:
+    """Recovery-batch members still PENDING_REVIEW. Non-empty means the
+    batch is not yet fully reviewed -- promotion must block entirely
+    (never silently promote only the subset that happens to be REVIEWED/
+    SAVED already, which would defeat the whole-batch guarantee this
+    recovery mechanism exists for)."""
+    pending = staging_repository.list_by_status(_RECOVERY_ELIGIBLE_STATUS, _RECOVERY_ELIGIBLE_DOMAIN)
+    return [c for c in pending if _is_recovery_candidate(c)]
+
+
+def _fetch_recovery_promotion_targets(staging_repository) -> list[dict]:
+    """Server-authoritative recovery-batch membership for PROMOTION:
+    PM + a real candidate_identity_v2 + status in (REVIEWED, SAVED).
+    SAVED is included deliberately -- a prior successful (or partially
+    reconciled) promotion run is legitimate retry state belonging to
+    THIS batch, never a different one. Never derives from a client-
+    supplied id list, never a broad status-only predicate (CMON/Finding/
+    the other 2 old-pending PM never qualify regardless of status, since
+    they never carry candidate_identity_v2 at all)."""
+    reviewed = staging_repository.list_by_status("REVIEWED", _RECOVERY_ELIGIBLE_DOMAIN)
+    saved = staging_repository.list_by_status("SAVED", _RECOVERY_ELIGIBLE_DOMAIN)
+    return [c for c in (*reviewed, *saved) if _is_recovery_candidate(c)]
 
 
 def _with_classification(candidate: dict) -> dict:
@@ -407,5 +442,122 @@ def bulk_review_candidates_endpoint(
         "data": {
             "reviewed_count": len(result["reviewed"]),
             "candidate_ids": [r["document_field_extraction_id"] for r in result["reviewed"]],
+        }
+    }
+
+
+def _recovery_promotion_readiness(staging_repository, pm_occurrence_repository) -> dict:
+    """Read-only. Never mutates. The SAME server-derived membership and
+    the SAME fail-closed preflight (historical_pm_promotion_batch_
+    service.validate_promotion_batch(), the real function the POST
+    endpoint below also calls before ever writing) -- this never
+    reimplements a second, possibly-drifting eligibility/validity rule.
+    final_pm_projected only counts VALID (genuinely new) targets --
+    ALREADY_PROMOTED (SAVED, already-final) rows add no new row."""
+    still_pending = _fetch_recovery_pending(staging_repository)
+    targets = _fetch_recovery_promotion_targets(staging_repository)
+    candidate_ids = [c["document_field_extraction_id"] for c in targets]
+    reviewed_count = sum(1 for c in targets if c["status"] == "REVIEWED")
+    saved_count = sum(1 for c in targets if c["status"] == "SAVED")
+
+    current_pm = pm_occurrence_repository.list_all()
+    final_pm_current = len(current_pm)
+    final_pm_pumps_current = len({r["asset_code"] for r in current_pm})
+
+    if candidate_ids and not still_pending:
+        precheck = validate_promotion_batch(staging_repository, pm_occurrence_repository, candidate_ids)
+        promotion_ready = precheck["all_valid"]
+        new_count = precheck["counts"].get("VALID", 0)
+    else:
+        promotion_ready = False
+        new_count = 0
+
+    return {
+        "target_count": len(candidate_ids) + len(still_pending),
+        "reviewed_count": reviewed_count,
+        "saved_count": saved_count,
+        "pending_count": len(still_pending),
+        "promotion_ready": promotion_ready,
+        "final_pm_current": final_pm_current,
+        "final_pm_pumps_current": final_pm_pumps_current,
+        "final_pm_projected": final_pm_current + new_count,
+    }
+
+
+# MWO-LTSA-RECOVERY-PROMOTION-001 -- read-only readiness summary so the
+# frontend never has to speculatively call the mutating POST below (or
+# derive "is this ready" from raw candidate rows itself) just to decide
+# whether to show the Promote button / what counts to display in the
+# confirmation dialog.
+@router.get("/api/ltsa/historical-review/recovery/pm/status")
+def recovery_pm_promotion_status(
+    staging_repository=Depends(get_historical_pm_cmon_staging_repository),
+    pm_occurrence_repository=Depends(get_pm_occurrence_repository),
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
+) -> Payload:
+    return {"data": _recovery_promotion_readiness(staging_repository, pm_occurrence_repository)}
+
+
+# MWO-LTSA-RECOVERY-PROMOTION-001 -- the terminal promotion step for the
+# historical PM recovery batch. No request body at all: candidate_ids/
+# promoted_by/any status-or-type predicate can never be supplied by a
+# caller -- membership is entirely server-derived (_fetch_recovery_
+# promotion_targets, the exact same rule the read-only status endpoint
+# above uses) and the promoter is always the authenticated session
+# (current_user.user_id), never a payload field. Delegates every bit of
+# validation and the actual write to the EXISTING, already-tested atomic
+# batch service/repository -- this router never reimplements that SQL.
+@router.post("/api/ltsa/historical-review/recovery/pm/promote")
+def promote_recovery_pm_batch(
+    staging_repository=Depends(get_historical_pm_cmon_staging_repository),
+    pm_occurrence_repository=Depends(get_pm_occurrence_repository),
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
+) -> Payload:
+    still_pending = _fetch_recovery_pending(staging_repository)
+    if still_pending:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"{len(still_pending)} historical PM recovery candidate(s) are still PENDING_REVIEW -- "
+                "promotion is blocked until the entire batch is reviewed"
+            ),
+        )
+
+    targets = _fetch_recovery_promotion_targets(staging_repository)
+    candidate_ids = [c["document_field_extraction_id"] for c in targets]
+
+    if not candidate_ids:
+        raise HTTPException(
+            status_code=409,
+            detail="no historical PM recovery candidates are REVIEWED or SAVED -- nothing to promote",
+        )
+
+    actor_id = _actor_id(current_user)
+    schedule_code = build_unscheduled_reference("HISTORICAL-PM-RECOVERY-BATCH")
+
+    try:
+        result = promote_pm_batch(
+            staging_repository, pm_occurrence_repository, candidate_ids,
+            pm_schedule_code=schedule_code, promoted_by=actor_id,
+        )
+    except (PromotionEmptyBatchError, PromotionBatchTooLargeError, PromotionDuplicateCandidateIdError) as error:
+        raise HTTPException(status_code=422, detail=str(error))
+
+    if result["status"] == "REJECTED_PRECHECK_FAILED":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "historical PM recovery batch is not promotion-ready",
+                "counts": result["precheck"]["counts"],
+            },
+        )
+    if result["status"] == "REJECTED_ATOMIC_TRANSACTION_FAILED":
+        raise HTTPException(status_code=409, detail=result.get("error", "promotion transaction failed"))
+
+    return {
+        "data": {
+            "status": "PROMOTED",
+            "promoted_count": len(result["results"]),
+            "candidate_ids": [r["document_field_extraction_id"] for r in result["results"]],
         }
     }

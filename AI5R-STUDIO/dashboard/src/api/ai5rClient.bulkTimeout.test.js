@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { bulkReviewHistoricalReviewCandidates, getPumps } from "./ai5rClient";
+import { bulkReviewHistoricalReviewCandidates, promoteHistoricalPmRecoveryBatch, getPumps } from "./ai5rClient";
 
 // MWO-LTSA-BULK-TIMEOUT-UX-001 -- proves the ACTUAL configured timeout,
 // not just that a UI component calls the client function. A real
@@ -46,6 +46,18 @@ describe("bulk historical review request timeout", () => {
     const [, options] = global.fetch.mock.calls[0];
 
     await vi.advanceTimersByTimeAsync(75000);
+    expect(options.signal.aborted).toBe(true);
+  });
+
+  it("promoteHistoricalPmRecoveryBatch also survives past 60s (same long-operation timeout)", async () => {
+    const promise = promoteHistoricalPmRecoveryBatch();
+    promise.catch(() => {});
+    const [, options] = global.fetch.mock.calls[0];
+
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(options.signal.aborted).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(15000); // total 75s
     expect(options.signal.aborted).toBe(true);
   });
 

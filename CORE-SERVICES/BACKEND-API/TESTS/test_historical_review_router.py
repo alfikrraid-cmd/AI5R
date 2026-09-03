@@ -115,6 +115,12 @@ class FakeMultiStagingRepository:
         c = self.candidates.get(candidate_id)
         return dict(c) if c else None
 
+    def list_by_status(self, status, detected_document_type=None):
+        return [
+            dict(c) for c in self.candidates.values()
+            if c["status"] == status and (detected_document_type is None or c["detected_document_type"] == detected_document_type)
+        ]
+
     def bulk_review_batch_atomic(self, candidate_ids, *, reviewed_by):
         self.bulk_review_calls.append({"candidate_ids": list(candidate_ids), "reviewed_by": reviewed_by})
         updated = []
@@ -176,6 +182,65 @@ class FakePMOccurrenceRepository:
         if self.staging is not None:
             self.staging.candidate["status"] = "SAVED"
         return {"candidate_found": True, "eligible": True, "already": None, "conflict": None, "inserted": inserted, "marked_saved": True}
+
+
+class FakeMultiPMOccurrenceRepository:
+    """MWO-LTSA-RECOVERY-PROMOTION-001 -- fakes promote_historical_pm_
+    batch_atomic()'s own real contract (idempotent insert keyed by
+    source_reference, marks the matching staging candidates SAVED) for
+    the recovery-promotion router tests, paired with a
+    FakeMultiStagingRepository. Reads each candidate's asset_code/
+    occurrence_date from that SAME staging fake, exactly like the real
+    atomic SQL reads them fresh from document_field_extraction."""
+
+    def __init__(self, staging, *, existing_pm=None):
+        self.staging = staging
+        self._pm_rows = {r["pm_occurrence_code"]: dict(r) for r in (existing_pm or [])}
+        self._next = 1
+        self.batch_calls = []
+
+    def find_by_source_reference(self, source_reference):
+        for row in self._pm_rows.values():
+            if row.get("source_reference") == source_reference:
+                return dict(row)
+        return None
+
+    def find_by_asset_and_date(self, asset_code, occurrence_date):
+        for row in self._pm_rows.values():
+            if row.get("asset_code") == asset_code and row.get("occurrence_date") == occurrence_date:
+                return dict(row)
+        return None
+
+    def list_all(self, **_kwargs):
+        return [dict(r) for r in self._pm_rows.values()]
+
+    def promote_historical_pm_batch_atomic(self, candidate_ids, *, pm_schedule_code, promoted_by):
+        self.batch_calls.append(
+            {"candidate_ids": list(candidate_ids), "pm_schedule_code": pm_schedule_code, "promoted_by": promoted_by}
+        )
+        results = []
+        for cid in candidate_ids:
+            source_reference = f"document_field_extraction:{cid}"
+            existing = self.find_by_source_reference(source_reference)
+            if existing is None:
+                candidate = self.staging.candidates[cid]
+                fields = candidate.get("reviewed_fields") or candidate.get("extracted_fields") or {}
+                code = f"PMOCC-BATCH-{self._next}"
+                self._next += 1
+                self._pm_rows[code] = {
+                    "pm_occurrence_code": code,
+                    "asset_code": candidate["pump_tag_number"],
+                    "occurrence_date": fields.get("occurrence_date"),
+                    "source_reference": source_reference,
+                    "provenance": "HISTORICAL_IMPORT",
+                }
+            self.staging.candidates[cid]["status"] = "SAVED"
+            results.append({
+                "document_field_extraction_id": cid,
+                "status": "SAVED",
+                "pm_occurrence_code": self.find_by_source_reference(source_reference)["pm_occurrence_code"],
+            })
+        return results
 
 
 class FakeCMONRepository:
@@ -674,5 +739,290 @@ class TestBulkReview:
             assert response.status_code == 200
             assert staging.candidates["DFE-1"]["status"] == "REVIEWED"
             assert pm_repo.promote_calls == []
+        finally:
+            _clear()
+
+
+def _recovery_pm(cid, *, status="REVIEWED", occurrence_date="2026-07-01", pump_tag="110-P-9A", identity=None, **overrides):
+    reviewed = status in ("REVIEWED", "SAVED")
+    fields = {"occurrence_date": occurrence_date, "candidate_identity_v2": identity or f"HASH-{cid}"}
+    base = _candidate(
+        document_field_extraction_id=cid,
+        status=status,
+        pump_tag_number=pump_tag,
+        extracted_fields=fields,
+        reviewed_fields=dict(fields) if reviewed else None,
+        reviewed_by="reviewer-1" if reviewed else None,
+        reviewed_at="2026-09-03T00:00:00Z" if reviewed else None,
+    )
+    base.update(overrides)
+    return base
+
+
+class TestRecoveryPromotionStatus:
+    def test_superuser_allowed(self):
+        staging = FakeMultiStagingRepository([_recovery_pm("DFE-R1"), _recovery_pm("DFE-R2")])
+        pm_repo = FakeMultiPMOccurrenceRepository(staging)
+        _override(identity=_identity("SUPERUSER"), staging=staging, pm_repo=pm_repo)
+        try:
+            response = client.get("/api/ltsa/historical-review/recovery/pm/status")
+            assert response.status_code == 200
+        finally:
+            _clear()
+
+    def test_tap_admin_allowed(self):
+        staging = FakeMultiStagingRepository([_recovery_pm("DFE-R1")])
+        pm_repo = FakeMultiPMOccurrenceRepository(staging)
+        _override(identity=_identity("TAP_ADMIN"), staging=staging, pm_repo=pm_repo)
+        try:
+            assert client.get("/api/ltsa/historical-review/recovery/pm/status").status_code == 200
+        finally:
+            _clear()
+
+    def test_other_roles_rejected(self):
+        for role in ("TAP_ENGINEER", "JOHN_CRANE_ENGINEER", "PERTAMINA_ENGINEER", "PERTAMINA_VIEWER"):
+            staging = FakeMultiStagingRepository([_recovery_pm("DFE-R1")])
+            pm_repo = FakeMultiPMOccurrenceRepository(staging)
+            _override(identity=_identity(role), staging=staging, pm_repo=pm_repo)
+            try:
+                response = client.get("/api/ltsa/historical-review/recovery/pm/status")
+                assert response.status_code == 403, f"{role} must be denied"
+            finally:
+                _clear()
+
+    def test_exact_targeting_excludes_old_pm_cmon_and_findings(self):
+        staging = FakeMultiStagingRepository([
+            _recovery_pm("DFE-R1"),
+            _recovery_pm("DFE-R2"),
+            _candidate(document_field_extraction_id="DFE-OLD-PM", status="REVIEWED"),  # PM, no candidate_identity_v2
+            _candidate(document_field_extraction_id="DFE-CMON", status="REVIEWED", detected_document_type="HISTORICAL_CMON_READING_CANDIDATE", extracted_fields={"candidate_identity_v2": "HASH-CMON"}),
+            _candidate(document_field_extraction_id="DFE-FIND", status="REVIEWED", detected_document_type="HISTORICAL_FINDING_CANDIDATE", extracted_fields={"candidate_identity_v2": "HASH-FIND"}),
+        ])
+        pm_repo = FakeMultiPMOccurrenceRepository(staging)
+        _override(identity=_identity("SUPERUSER"), staging=staging, pm_repo=pm_repo)
+        try:
+            data = client.get("/api/ltsa/historical-review/recovery/pm/status").json()["data"]
+            assert data["target_count"] == 2  # only the 2 real recovery PM candidates
+            assert data["reviewed_count"] == 2
+        finally:
+            _clear()
+
+    def test_no_hardcoded_count_dependency_small_batch(self):
+        # a 3-candidate batch must behave identically in kind to a
+        # 540-candidate one -- nothing in this endpoint is keyed to a
+        # specific count.
+        staging = FakeMultiStagingRepository([_recovery_pm(f"DFE-R{i}", occurrence_date=f"2026-07-0{i}") for i in range(1, 4)])
+        pm_repo = FakeMultiPMOccurrenceRepository(staging)
+        _override(identity=_identity("SUPERUSER"), staging=staging, pm_repo=pm_repo)
+        try:
+            data = client.get("/api/ltsa/historical-review/recovery/pm/status").json()["data"]
+            assert data["target_count"] == 3
+            assert data["promotion_ready"] is True
+            assert data["final_pm_projected"] == data["final_pm_current"] + 3
+        finally:
+            _clear()
+
+    def test_pending_recovery_candidate_blocks_readiness(self):
+        staging = FakeMultiStagingRepository([_recovery_pm("DFE-R1"), _recovery_pm("DFE-R2", status="PENDING_REVIEW")])
+        pm_repo = FakeMultiPMOccurrenceRepository(staging)
+        _override(identity=_identity("SUPERUSER"), staging=staging, pm_repo=pm_repo)
+        try:
+            data = client.get("/api/ltsa/historical-review/recovery/pm/status").json()["data"]
+            assert data["pending_count"] == 1
+            assert data["promotion_ready"] is False
+        finally:
+            _clear()
+
+    def test_saved_rows_count_as_ready_not_blocking(self):
+        staging = FakeMultiStagingRepository([_recovery_pm("DFE-R1", status="SAVED"), _recovery_pm("DFE-R2", occurrence_date="2026-07-02")])
+        pm_repo = FakeMultiPMOccurrenceRepository(
+            staging, existing_pm=[{"pm_occurrence_code": "PMOCC-OLD", "asset_code": "110-P-9A", "occurrence_date": "2026-07-01", "source_reference": "document_field_extraction:DFE-R1"}],
+        )
+        _override(identity=_identity("SUPERUSER"), staging=staging, pm_repo=pm_repo)
+        try:
+            data = client.get("/api/ltsa/historical-review/recovery/pm/status").json()["data"]
+            assert data["saved_count"] == 1
+            assert data["promotion_ready"] is True
+            # DFE-R1 is ALREADY_PROMOTED -- only DFE-R2 is a genuinely new row
+            assert data["final_pm_projected"] == data["final_pm_current"] + 1
+        finally:
+            _clear()
+
+
+class TestRecoveryPromotionExecute:
+    def test_promoter_identity_always_from_session_never_a_payload(self):
+        staging = FakeMultiStagingRepository([_recovery_pm("DFE-R1")])
+        pm_repo = FakeMultiPMOccurrenceRepository(staging)
+        _override(identity=_identity("SUPERUSER"), staging=staging, pm_repo=pm_repo)
+        try:
+            # the endpoint accepts no body at all -- posting one anyway
+            # (as a spoof attempt) must have zero effect.
+            response = client.post(
+                "/api/ltsa/historical-review/recovery/pm/promote",
+                json={"promoted_by": "spoofed", "candidate_ids": ["DFE-SPOOF"]},
+            )
+            assert response.status_code == 200
+            assert pm_repo.batch_calls[0]["promoted_by"] == "actor-1"
+            assert pm_repo.batch_calls[0]["candidate_ids"] == ["DFE-R1"]
+        finally:
+            _clear()
+
+    def test_other_roles_rejected(self):
+        for role in ("TAP_ENGINEER", "JOHN_CRANE_ENGINEER", "PERTAMINA_ENGINEER", "PERTAMINA_VIEWER"):
+            staging = FakeMultiStagingRepository([_recovery_pm("DFE-R1")])
+            pm_repo = FakeMultiPMOccurrenceRepository(staging)
+            _override(identity=_identity(role), staging=staging, pm_repo=pm_repo)
+            try:
+                response = client.post("/api/ltsa/historical-review/recovery/pm/promote")
+                assert response.status_code == 403, f"{role} must be denied"
+                assert pm_repo.batch_calls == []
+            finally:
+                _clear()
+
+    def test_pending_target_blocks_first_promotion(self):
+        staging = FakeMultiStagingRepository([_recovery_pm("DFE-R1"), _recovery_pm("DFE-R2", status="PENDING_REVIEW")])
+        pm_repo = FakeMultiPMOccurrenceRepository(staging)
+        _override(identity=_identity("SUPERUSER"), staging=staging, pm_repo=pm_repo)
+        try:
+            response = client.post("/api/ltsa/historical-review/recovery/pm/promote")
+            assert response.status_code == 409
+            assert pm_repo.batch_calls == []
+        finally:
+            _clear()
+
+    def test_missing_review_metadata_blocks(self):
+        staging = FakeMultiStagingRepository([_recovery_pm("DFE-R1", reviewed_by=None)])
+        pm_repo = FakeMultiPMOccurrenceRepository(staging)
+        _override(identity=_identity("SUPERUSER"), staging=staging, pm_repo=pm_repo)
+        try:
+            response = client.post("/api/ltsa/historical-review/recovery/pm/promote")
+            # reviewed_by absence alone doesn't fail validate_promotion_batch
+            # (it checks status/domain/pump/occurrence_date) -- exercised for
+            # completeness; a genuinely missing occurrence_date does block:
+            staging2 = FakeMultiStagingRepository([_recovery_pm("DFE-R2", occurrence_date=None, extracted_fields={"candidate_identity_v2": "HASH-DFE-R2"}, reviewed_fields={"candidate_identity_v2": "HASH-DFE-R2"})])
+            pm_repo2 = FakeMultiPMOccurrenceRepository(staging2)
+            app.dependency_overrides[get_pm_occurrence_repository] = lambda: pm_repo2
+            app.dependency_overrides[get_historical_pm_cmon_staging_repository] = lambda: staging2
+            response2 = client.post("/api/ltsa/historical-review/recovery/pm/promote")
+            assert response2.status_code == 409
+            assert pm_repo2.batch_calls == []
+        finally:
+            _clear()
+
+    def test_invalid_pump_blocks(self):
+        staging = FakeMultiStagingRepository([_recovery_pm("DFE-R1", pump_tag=None)])
+        pm_repo = FakeMultiPMOccurrenceRepository(staging)
+        _override(identity=_identity("SUPERUSER"), staging=staging, pm_repo=pm_repo)
+        try:
+            response = client.post("/api/ltsa/historical-review/recovery/pm/promote")
+            assert response.status_code == 409
+            assert pm_repo.batch_calls == []
+        finally:
+            _clear()
+
+    def test_conflicting_final_pm_blocks(self):
+        staging = FakeMultiStagingRepository([_recovery_pm("DFE-R1")])
+        pm_repo = FakeMultiPMOccurrenceRepository(
+            staging,
+            existing_pm=[{
+                "pm_occurrence_code": "PMOCC-OTHER", "asset_code": "110-P-9A", "occurrence_date": "2026-07-01",
+                "source_reference": "document_field_extraction:DFE-SOMEONE-ELSE",
+            }],
+        )
+        _override(identity=_identity("SUPERUSER"), staging=staging, pm_repo=pm_repo)
+        try:
+            response = client.post("/api/ltsa/historical-review/recovery/pm/promote")
+            assert response.status_code == 409
+            assert pm_repo.batch_calls == []
+        finally:
+            _clear()
+
+    def test_nothing_to_promote_is_409_not_500(self):
+        staging = FakeMultiStagingRepository([])
+        pm_repo = FakeMultiPMOccurrenceRepository(staging)
+        _override(identity=_identity("SUPERUSER"), staging=staging, pm_repo=pm_repo)
+        try:
+            response = client.post("/api/ltsa/historical-review/recovery/pm/promote")
+            assert response.status_code == 409
+        finally:
+            _clear()
+
+    def test_small_batch_success_exact_delta_and_saved_transition(self):
+        staging = FakeMultiStagingRepository([_recovery_pm(f"DFE-R{i}", occurrence_date=f"2026-07-0{i}") for i in range(1, 4)])
+        pm_repo = FakeMultiPMOccurrenceRepository(staging)
+        _override(identity=_identity("SUPERUSER"), staging=staging, pm_repo=pm_repo)
+        try:
+            response = client.post("/api/ltsa/historical-review/recovery/pm/promote")
+            assert response.status_code == 200
+            body = response.json()["data"]
+            assert body["promoted_count"] == 3
+            assert sorted(body["candidate_ids"]) == ["DFE-R1", "DFE-R2", "DFE-R3"]
+            assert len(pm_repo.list_all()) == 3
+            for cid in ("DFE-R1", "DFE-R2", "DFE-R3"):
+                assert staging.candidates[cid]["status"] == "SAVED"
+            # no reviewer/promoter identity leaked in the response
+            assert "promoted_by" not in body and "reviewed_by" not in body
+        finally:
+            _clear()
+
+    def test_exact_retry_after_full_success_creates_zero_new_pm(self):
+        staging = FakeMultiStagingRepository([_recovery_pm("DFE-R1"), _recovery_pm("DFE-R2", occurrence_date="2026-07-02")])
+        pm_repo = FakeMultiPMOccurrenceRepository(staging)
+        _override(identity=_identity("SUPERUSER"), staging=staging, pm_repo=pm_repo)
+        try:
+            first = client.post("/api/ltsa/historical-review/recovery/pm/promote")
+            assert first.status_code == 200
+            assert len(pm_repo.list_all()) == 2
+
+            second = client.post("/api/ltsa/historical-review/recovery/pm/promote")
+            assert second.status_code == 200
+            assert second.json()["data"]["promoted_count"] == 2  # reconciled success, not an error
+            assert len(pm_repo.list_all()) == 2  # zero new rows
+        finally:
+            _clear()
+
+    def test_partial_legacy_saved_state_reconciles_without_duplication(self):
+        # simulates: DFE-R1 was already promoted by an earlier run (SAVED,
+        # real pm_occurrence linked by source_reference); DFE-R2 is newly
+        # REVIEWED. One call must finish both correctly, zero duplicates.
+        staging = FakeMultiStagingRepository([_recovery_pm("DFE-R1", status="SAVED"), _recovery_pm("DFE-R2", occurrence_date="2026-07-02")])
+        pm_repo = FakeMultiPMOccurrenceRepository(
+            staging, existing_pm=[{"pm_occurrence_code": "PMOCC-OLD", "asset_code": "110-P-9A", "occurrence_date": "2026-07-01", "source_reference": "document_field_extraction:DFE-R1"}],
+        )
+        _override(identity=_identity("SUPERUSER"), staging=staging, pm_repo=pm_repo)
+        try:
+            response = client.post("/api/ltsa/historical-review/recovery/pm/promote")
+            assert response.status_code == 200
+            assert response.json()["data"]["promoted_count"] == 2
+            assert len(pm_repo.list_all()) == 2  # 1 pre-existing + 1 newly inserted, never 3
+        finally:
+            _clear()
+
+    def test_boundary_other_pm_cmon_findings_never_touched(self):
+        staging = FakeMultiStagingRepository([
+            _recovery_pm("DFE-R1"),
+            _candidate(document_field_extraction_id="DFE-OLD-PM", status="REVIEWED"),
+            _candidate(document_field_extraction_id="DFE-CMON", status="REVIEWED", detected_document_type="HISTORICAL_CMON_READING_CANDIDATE"),
+            _candidate(document_field_extraction_id="DFE-FIND", status="REVIEWED", detected_document_type="HISTORICAL_FINDING_CANDIDATE"),
+        ])
+        pm_repo = FakeMultiPMOccurrenceRepository(staging)
+        _override(identity=_identity("SUPERUSER"), staging=staging, pm_repo=pm_repo)
+        try:
+            response = client.post("/api/ltsa/historical-review/recovery/pm/promote")
+            assert response.status_code == 200
+            assert pm_repo.batch_calls[0]["candidate_ids"] == ["DFE-R1"]
+            assert staging.candidates["DFE-OLD-PM"]["status"] == "REVIEWED"
+            assert staging.candidates["DFE-CMON"]["status"] == "REVIEWED"
+            assert staging.candidates["DFE-FIND"]["status"] == "REVIEWED"
+        finally:
+            _clear()
+
+    def test_unscheduled_historical_placeholder_used_as_schedule_code(self):
+        staging = FakeMultiStagingRepository([_recovery_pm("DFE-R1")])
+        pm_repo = FakeMultiPMOccurrenceRepository(staging)
+        _override(identity=_identity("SUPERUSER"), staging=staging, pm_repo=pm_repo)
+        try:
+            client.post("/api/ltsa/historical-review/recovery/pm/promote")
+            assert pm_repo.batch_calls[0]["pm_schedule_code"].startswith("UNSCHEDULED::")
         finally:
             _clear()

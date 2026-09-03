@@ -6,6 +6,8 @@ import {
   rejectHistoricalReviewCandidate,
   promoteHistoricalReviewCandidate,
   bulkReviewHistoricalReviewCandidates,
+  getHistoricalPmRecoveryStatus,
+  promoteHistoricalPmRecoveryBatch,
 } from "../../../api/ai5rClient";
 import { useOptionalAuth } from "../auth/AuthContext";
 import { can, PERMISSIONS } from "../auth/permissions";
@@ -99,6 +101,17 @@ export default function HistoricalReview() {
   const [recoveryError, setRecoveryError] = useState(null);
   const [recoveryResult, setRecoveryResult] = useState(null);
 
+  // MWO-LTSA-RECOVERY-PROMOTION-001 -- terminal promotion, gated on the
+  // SAME server-derived readiness the GET .../recovery/pm/status
+  // endpoint computes (target/reviewed/saved/pending counts,
+  // promotion_ready, current/projected final PM). This component only
+  // displays that state; it never decides readiness itself.
+  const [recoveryStatus, setRecoveryStatus] = useState(null);
+  const [promoteConfirmOpen, setPromoteConfirmOpen] = useState(false);
+  const [promoteSubmitting, setPromoteSubmitting] = useState(false);
+  const [promoteError, setPromoteError] = useState(null);
+  const [promoteResult, setPromoteResult] = useState(null);
+
   async function reload() {
     setLoading(true);
     setLoadError(null);
@@ -112,9 +125,24 @@ export default function HistoricalReview() {
     }
   }
 
+  async function loadRecoveryStatus() {
+    try {
+      const status = await getHistoricalPmRecoveryStatus();
+      setRecoveryStatus(status);
+    } catch {
+      // fail-closed: no confirmed status means no Promote button, never
+      // a guessed/optimistic one.
+      setRecoveryStatus(null);
+    }
+  }
+
   useEffect(() => {
-    if (canAccess) reload();
-    else setLoading(false);
+    if (canAccess) {
+      reload();
+      loadRecoveryStatus();
+    } else {
+      setLoading(false);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canAccess]);
 
@@ -321,7 +349,44 @@ export default function HistoricalReview() {
       }
     } finally {
       await reload();
+      await loadRecoveryStatus(); // reviewing changes reviewed_count/promotion_ready
       setRecoverySubmitting(false);
+    }
+  }
+
+  // Terminal promotion of the server-derived recovery batch. Same
+  // ambiguous-outcome handling as handleRecoveryReview/handleBulkReview
+  // (069c8326): a request failure is never assumed fatal -- re-fetch the
+  // authoritative recovery status and check whether it now shows the
+  // batch fully SAVED with nothing left REVIEWED/PENDING before ever
+  // reporting failure. Never re-submits the promotion itself.
+  async function handlePromoteRecoveryBatch() {
+    if (promoteSubmitting) return; // double-submit guard
+    setPromoteSubmitting(true);
+    setPromoteError(null);
+    try {
+      const result = await promoteHistoricalPmRecoveryBatch();
+      setPromoteResult(result);
+      setPromoteConfirmOpen(false);
+    } catch (error) {
+      try {
+        const status = await getHistoricalPmRecoveryStatus();
+        const fullyPromoted =
+          status && status.target_count > 0 && status.pending_count === 0 &&
+          status.reviewed_count === 0 && status.saved_count === status.target_count;
+        if (fullyPromoted) {
+          setPromoteResult({ promoted_count: status.saved_count });
+          setPromoteConfirmOpen(false);
+        } else {
+          setPromoteError(error.message || "Historical PM recovery promotion failed");
+        }
+      } catch {
+        setPromoteError(error.message || "Historical PM recovery promotion failed");
+      }
+    } finally {
+      await loadRecoveryStatus();
+      await reload();
+      setPromoteSubmitting(false);
     }
   }
 
@@ -468,6 +533,60 @@ export default function HistoricalReview() {
             {recoverySubmitting ? "Submitting..." : `Confirm Review of ${recoveryEligible.length}`}
           </Button>
           <Button onClick={() => setRecoveryConfirmOpen(false)} disabled={recoverySubmitting}>
+            Cancel
+          </Button>
+        </div>
+      </Modal>
+
+      {recoveryStatus && (recoveryStatus.promotion_ready || promoteResult || promoteError) ? (
+        <div className="ltsa-historical-review-recovery-panel" data-testid="recovery-promote-panel">
+          <div className="ltsa-historical-review-bulk-header">
+            <strong>Historical PM Recovery -- Promotion</strong>
+          </div>
+          {recoveryStatus.promotion_ready ? (
+            <>
+              <p data-testid="recovery-promote-summary">
+                {recoveryStatus.target_count} reviewed PM &nbsp;
+                {recoveryStatus.final_pm_current} -&gt; {recoveryStatus.final_pm_projected} final PM
+              </p>
+              <div className="ltsa-historical-review-actions">
+                <Button onClick={() => setPromoteConfirmOpen(true)} disabled={promoteSubmitting}>
+                  Promote Verified PM to Final
+                </Button>
+              </div>
+            </>
+          ) : null}
+          {/* Result/error messages persist even after promotion_ready
+              flips to false (expected once nothing is left to promote)
+              -- a human must still see the outcome, not have it vanish
+              the instant the panel's own readiness recomputes. */}
+          {promoteError ? <p className="ltsa-historical-review-error">{promoteError}</p> : null}
+          {promoteResult ? (
+            <p className="ltsa-historical-review-success">
+              Promoted {promoteResult.promoted_count} historical PM candidate(s) to final.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      <Modal isOpen={promoteConfirmOpen} onClose={() => setPromoteConfirmOpen(false)} title="Confirm Historical PM Promotion">
+        {recoveryStatus ? (
+          <>
+            <p>
+              Promote exactly <strong>{recoveryStatus.target_count}</strong> verified historical PM candidates to
+              final PM occurrences? This is terminal and cannot be undone through this screen.
+            </p>
+            <p>
+              {recoveryStatus.target_count} reviewed PM &nbsp;
+              {recoveryStatus.final_pm_current} -&gt; {recoveryStatus.final_pm_projected} final PM
+            </p>
+          </>
+        ) : null}
+        <div className="ltsa-historical-review-actions">
+          <Button onClick={handlePromoteRecoveryBatch} disabled={promoteSubmitting || !recoveryStatus}>
+            {promoteSubmitting ? "Submitting..." : `Confirm Promotion of ${recoveryStatus?.target_count ?? 0}`}
+          </Button>
+          <Button onClick={() => setPromoteConfirmOpen(false)} disabled={promoteSubmitting}>
             Cancel
           </Button>
         </div>

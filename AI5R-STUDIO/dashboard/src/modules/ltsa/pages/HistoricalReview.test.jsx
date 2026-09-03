@@ -8,10 +8,13 @@ import {
   rejectHistoricalReviewCandidate,
   promoteHistoricalReviewCandidate,
   bulkReviewHistoricalReviewCandidates,
+  getHistoricalPmRecoveryStatus,
+  promoteHistoricalPmRecoveryBatch,
 } from "../../../api/ai5rClient";
 import { AuthProvider } from "../auth/AuthContext";
 
-// MWO-LTSA-HISTORICAL-REVIEW-UI-001 / MWO-LTSA-BULK-HISTORICAL-REVIEW-001
+// MWO-LTSA-HISTORICAL-REVIEW-UI-001 / MWO-LTSA-BULK-HISTORICAL-REVIEW-001 /
+// MWO-LTSA-RECOVERY-PROMOTION-001
 vi.mock("../../../api/ai5rClient", () => ({
   getHistoricalReviewCandidates: vi.fn(),
   getHistoricalReviewCandidate: vi.fn(),
@@ -19,6 +22,8 @@ vi.mock("../../../api/ai5rClient", () => ({
   rejectHistoricalReviewCandidate: vi.fn(),
   promoteHistoricalReviewCandidate: vi.fn(),
   bulkReviewHistoricalReviewCandidates: vi.fn(),
+  getHistoricalPmRecoveryStatus: vi.fn(),
+  promoteHistoricalPmRecoveryBatch: vi.fn(),
   onUnauthorized: vi.fn(),
 }));
 
@@ -284,7 +289,7 @@ describe("Historical Data Review workspace -- bulk review", () => {
     getHistoricalReviewCandidates.mockResolvedValue([MATCHED_CANDIDATE, PM_CANDIDATE_A]);
     renderWithSession(["record.edit"]);
     const panel = await screen.findByTestId("bulk-review-panel");
-    expect(within(panel).getByLabelText("select-DFE-PM-1")).toBeInTheDocument();
+    expect(await within(panel).findByLabelText("select-DFE-PM-1")).toBeInTheDocument();
     expect(within(panel).queryByLabelText("select-DFE-1")).not.toBeInTheDocument();
   });
 
@@ -368,8 +373,7 @@ describe("Historical Data Review workspace -- Historical PM Recovery (MWO-LTSA-E
     ]);
     renderWithSession(["record.edit"]);
     const summary = await screen.findByTestId("recovery-summary");
-    expect(summary).toHaveTextContent("Verified candidates:");
-    expect(within(summary).getByText("2")).toBeInTheDocument(); // 2 recovery-eligible
+    await waitFor(() => expect(summary).toHaveTextContent("Verified candidates: 2"));
     expect(within(summary).getByText("3")).toBeInTheDocument(); // 3 excluded (old PM + CMON + Finding)
   });
 
@@ -598,5 +602,113 @@ describe("Historical Data Review workspace -- bulk-action timeout UX (MWO-LTSA-B
     fireEvent.click(await screen.findByText("Confirm Review of 2"));
     await waitFor(() => expect(screen.getByText("Historical PM recovery reviewed 2 candidate(s).")).toBeInTheDocument());
     expect(bulkReviewHistoricalReviewCandidates).toHaveBeenCalledWith(["DFE-REC-1", "DFE-REC-2"]);
+  });
+});
+
+function _recoveryStatus(overrides = {}) {
+  return {
+    target_count: 3,
+    reviewed_count: 3,
+    saved_count: 0,
+    pending_count: 0,
+    promotion_ready: true,
+    final_pm_current: 101,
+    final_pm_projected: 104,
+    ...overrides,
+  };
+}
+
+describe("Historical Data Review workspace -- Historical PM recovery promotion (MWO-LTSA-RECOVERY-PROMOTION-001)", () => {
+  it("the Promote button only appears when the server reports promotion_ready", async () => {
+    getHistoricalReviewCandidates.mockResolvedValue([]);
+    getHistoricalPmRecoveryStatus.mockResolvedValue(_recoveryStatus({ promotion_ready: false }));
+    renderWithSession(["record.edit"]);
+    await screen.findByTestId("bulk-review-panel");
+    expect(screen.queryByText("Promote Verified PM to Final")).not.toBeInTheDocument();
+  });
+
+  it("shows the Promote button with dynamic, server-derived counts when ready", async () => {
+    getHistoricalReviewCandidates.mockResolvedValue([]);
+    getHistoricalPmRecoveryStatus.mockResolvedValue(
+      _recoveryStatus({ target_count: 7, final_pm_current: 50, final_pm_projected: 57 })
+    );
+    renderWithSession(["record.edit"]);
+    expect(await screen.findByText("Promote Verified PM to Final")).toBeInTheDocument();
+    const summary = await screen.findByTestId("recovery-promote-summary");
+    expect(summary).toHaveTextContent("7 reviewed PM");
+    expect(summary).toHaveTextContent("50");
+    expect(summary).toHaveTextContent("57");
+  });
+
+  it("requires explicit confirmation before promoting, showing the same dynamic counts", async () => {
+    getHistoricalReviewCandidates.mockResolvedValue([]);
+    getHistoricalPmRecoveryStatus.mockResolvedValue(_recoveryStatus());
+    renderWithSession(["record.edit"]);
+    fireEvent.click(await screen.findByText("Promote Verified PM to Final"));
+    const modal = await screen.findByTestId("modal");
+    expect(modal).toHaveTextContent("Promote exactly");
+    expect(modal).toHaveTextContent("101");
+    expect(modal).toHaveTextContent("104");
+    expect(promoteHistoricalPmRecoveryBatch).not.toHaveBeenCalled();
+    fireEvent.click(within(modal).getByText("Confirm Promotion of 3"));
+    await waitFor(() => expect(promoteHistoricalPmRecoveryBatch).toHaveBeenCalledTimes(1));
+  });
+
+  it("double-click on confirm promotes exactly once", async () => {
+    getHistoricalReviewCandidates.mockResolvedValue([]);
+    getHistoricalPmRecoveryStatus.mockResolvedValue(_recoveryStatus());
+    let resolvePromote;
+    promoteHistoricalPmRecoveryBatch.mockReturnValue(
+      new Promise((resolve) => {
+        resolvePromote = resolve;
+      })
+    );
+    renderWithSession(["record.edit"]);
+    fireEvent.click(await screen.findByText("Promote Verified PM to Final"));
+    const confirmButton = await screen.findByText("Confirm Promotion of 3");
+    fireEvent.click(confirmButton);
+    fireEvent.click(confirmButton);
+    resolvePromote({ promoted_count: 3, candidate_ids: ["DFE-1", "DFE-2", "DFE-3"] });
+    await waitFor(() => expect(promoteHistoricalPmRecoveryBatch).toHaveBeenCalledTimes(1));
+  });
+
+  it("normal success shows the promoted count", async () => {
+    getHistoricalReviewCandidates.mockResolvedValue([]);
+    getHistoricalPmRecoveryStatus.mockResolvedValue(_recoveryStatus());
+    promoteHistoricalPmRecoveryBatch.mockResolvedValue({ promoted_count: 3, candidate_ids: ["DFE-1", "DFE-2", "DFE-3"] });
+    renderWithSession(["record.edit"]);
+    fireEvent.click(await screen.findByText("Promote Verified PM to Final"));
+    fireEvent.click(await screen.findByText("Confirm Promotion of 3"));
+    await waitFor(() => expect(screen.getByText("Promoted 3 historical PM candidate(s) to final.")).toBeInTheDocument());
+  });
+
+  it("timeout but promotion committed (reconciled REVIEWED=0/SAVED=target) -- shows completed, not failed", async () => {
+    getHistoricalReviewCandidates.mockResolvedValue([]);
+    getHistoricalPmRecoveryStatus
+      .mockResolvedValueOnce(_recoveryStatus()) // initial load
+      .mockResolvedValueOnce(_recoveryStatus({ reviewed_count: 0, saved_count: 3, promotion_ready: false })) // reconciliation
+      .mockResolvedValueOnce(_recoveryStatus({ reviewed_count: 0, saved_count: 3, promotion_ready: false })); // final loadRecoveryStatus() in finally
+    promoteHistoricalPmRecoveryBatch.mockRejectedValue(new Error("API request timed out"));
+    renderWithSession(["record.edit"]);
+    fireEvent.click(await screen.findByText("Promote Verified PM to Final"));
+    fireEvent.click(await screen.findByText("Confirm Promotion of 3"));
+    await waitFor(() => expect(screen.getByText("Promoted 3 historical PM candidate(s) to final.")).toBeInTheDocument());
+    expect(screen.queryByText("API request timed out")).not.toBeInTheDocument();
+    expect(promoteHistoricalPmRecoveryBatch).toHaveBeenCalledTimes(1); // never auto-retried
+  });
+
+  it("timeout and promotion did not commit -- safe failure, not an assumed success", async () => {
+    getHistoricalReviewCandidates.mockResolvedValue([]);
+    getHistoricalPmRecoveryStatus
+      .mockResolvedValueOnce(_recoveryStatus()) // initial load
+      .mockResolvedValueOnce(_recoveryStatus()) // reconciliation: still fully REVIEWED, nothing SAVED
+      .mockResolvedValueOnce(_recoveryStatus()); // final loadRecoveryStatus()
+    promoteHistoricalPmRecoveryBatch.mockRejectedValue(new Error("API request timed out"));
+    renderWithSession(["record.edit"]);
+    fireEvent.click(await screen.findByText("Promote Verified PM to Final"));
+    fireEvent.click(await screen.findByText("Confirm Promotion of 3"));
+    await waitFor(() => expect(screen.getByText("API request timed out")).toBeInTheDocument());
+    expect(screen.queryByText(/Promoted 3/)).not.toBeInTheDocument();
+    expect(promoteHistoricalPmRecoveryBatch).toHaveBeenCalledTimes(1);
   });
 });

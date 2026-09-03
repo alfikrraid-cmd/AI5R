@@ -1429,6 +1429,33 @@ export async function bulkReviewHistoricalReviewCandidates(candidateIds) {
     return payload?.data ?? null;
 }
 
+// MWO-LTSA-RECOVERY-PROMOTION-001 -- read-only readiness summary for the
+// server-derived historical PM recovery batch (target/reviewed/saved/
+// pending counts, promotion_ready, current/projected final PM counts).
+// No candidate_ids, no identity fields -- the UI never derives
+// eligibility itself, it only displays what the server already decided.
+export async function getHistoricalPmRecoveryStatus() {
+    const payload = await _adminUsersRequest(
+        `${API_URL}/api/ltsa/historical-review/recovery/pm/status`
+    );
+    return payload?.data ?? null;
+}
+
+// Terminal promotion of the server-derived historical PM recovery
+// batch. No request body at all -- membership, eligibility, and the
+// promoter identity are entirely server-side; nothing here could
+// supply/override any of that even if it tried. Same long-operation
+// timeout as bulkReviewHistoricalReviewCandidates (a 540-row atomic
+// promotion is the same class of operation as the 540-row bulk review
+// that first motivated it).
+export async function promoteHistoricalPmRecoveryBatch() {
+    const payload = await _adminUsersRequest(
+        `${API_URL}/api/ltsa/historical-review/recovery/pm/promote`,
+        { method: "POST", timeoutMs: LONG_BULK_OPERATION_TIMEOUT_MS }
+    );
+    return payload?.data ?? null;
+}
+
 export async function getRecordChangeHistory(entityType, entityId) {
     const payload = await _adminUsersRequest(
         `${API_URL}/api/ltsa/records/history?entity_type=${encodeURIComponent(entityType)}&entity_id=${encodeURIComponent(entityId)}`
