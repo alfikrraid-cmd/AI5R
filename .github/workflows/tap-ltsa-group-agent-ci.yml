@@ -38,10 +38,22 @@ jobs:
       - name: Install approved test requirements
         run: pip install -r CORE-SERVICES/BACKEND-API/requirements-dev.txt
       - name: Run CORE-SERVICES/API tests (includes new Group Agent service tests)
+        # --continue-on-collection-errors: this directory has pre-existing,
+        # already-known collection failures unrelated to this branch --
+        # test_ltsa_messaging_gateway.py (intentionally HELD, see
+        # MWO-LTSA-039A -- ACCEPTANCE_2_PRODUCT_STATUS=HOLD_SECURITY_SCOPE_CLOSURE,
+        # not merged) and, discovered this run, test_equipment_360_bare_tag.py/
+        # test_equipment_tag_entity_lock.py (pre-existing files that import
+        # `routers`, added to release since this job's PYTHONPATH was last
+        # tuned). BACKEND-API is now added to PYTHONPATH so `routers` itself
+        # resolves (fixing those two), but the still-genuinely-missing
+        # ltsa_messaging_gateway.py module cannot be fixed here -- without
+        # this flag, that ONE remaining collection error aborts the entire
+        # session and this branch's own new tests would never run at all.
         env:
-          PYTHONPATH: ${{ github.workspace }}/CORE-SERVICES:${{ github.workspace }}/AI5R-SDK
+          PYTHONPATH: ${{ github.workspace }}/CORE-SERVICES:${{ github.workspace }}/AI5R-SDK:${{ github.workspace }}/CORE-SERVICES/BACKEND-API
         run: |
-          python -m pytest CORE-SERVICES/API/TESTS -q
+          python -m pytest CORE-SERVICES/API/TESTS -q --continue-on-collection-errors
 
   group-agent-node-tests:
     runs-on: ubuntu-latest
