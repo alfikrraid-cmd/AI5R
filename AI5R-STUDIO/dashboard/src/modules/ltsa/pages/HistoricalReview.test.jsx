@@ -7,16 +7,18 @@ import {
   reviewHistoricalReviewCandidate,
   rejectHistoricalReviewCandidate,
   promoteHistoricalReviewCandidate,
+  bulkReviewHistoricalReviewCandidates,
 } from "../../../api/ai5rClient";
 import { AuthProvider } from "../auth/AuthContext";
 
-// MWO-LTSA-HISTORICAL-REVIEW-UI-001
+// MWO-LTSA-HISTORICAL-REVIEW-UI-001 / MWO-LTSA-BULK-HISTORICAL-REVIEW-001
 vi.mock("../../../api/ai5rClient", () => ({
   getHistoricalReviewCandidates: vi.fn(),
   getHistoricalReviewCandidate: vi.fn(),
   reviewHistoricalReviewCandidate: vi.fn(),
   rejectHistoricalReviewCandidate: vi.fn(),
   promoteHistoricalReviewCandidate: vi.fn(),
+  bulkReviewHistoricalReviewCandidates: vi.fn(),
   onUnauthorized: vi.fn(),
 }));
 
@@ -56,6 +58,18 @@ const UNRESOLVED_CANDIDATE = {
   pump_tag_number: null,
 };
 
+const PM_CANDIDATE_A = {
+  ...MATCHED_CANDIDATE,
+  document_field_extraction_id: "DFE-PM-1",
+  detected_document_type: "HISTORICAL_PM_OCCURRENCE_CANDIDATE",
+};
+
+const PM_CANDIDATE_B = {
+  ...MATCHED_CANDIDATE,
+  document_field_extraction_id: "DFE-PM-2",
+  detected_document_type: "HISTORICAL_PM_OCCURRENCE_CANDIDATE",
+};
+
 afterEach(() => {
   vi.clearAllMocks();
 });
@@ -87,7 +101,10 @@ describe("Historical Data Review workspace -- summary and filters", () => {
     getHistoricalReviewCandidates.mockResolvedValue([MATCHED_CANDIDATE, UNRESOLVED_CANDIDATE]);
     renderWithSession(["record.edit"]);
     const summary = await screen.findByTestId("historical-review-summary");
-    expect(summary).toHaveTextContent("2"); // total pending
+    // findByTestId resolves as soon as the element exists, which can be
+    // before the async candidate load lands -- wait for the real content,
+    // not just the element's presence.
+    await waitFor(() => expect(summary).toHaveTextContent("2")); // total pending
     expect(summary).toHaveTextContent("1"); // matched / needs resolution
   });
 });
@@ -211,5 +228,86 @@ describe("Historical Data Review workspace -- actions", () => {
     await waitFor(() =>
       expect(rejectHistoricalReviewCandidate).toHaveBeenCalledWith("DFE-1", "Duplicate of a live reading")
     );
+  });
+});
+
+describe("Historical Data Review workspace -- bulk review", () => {
+  it("only offers PM candidates as bulk-selectable, never CMON", async () => {
+    getHistoricalReviewCandidates.mockResolvedValue([MATCHED_CANDIDATE, PM_CANDIDATE_A]);
+    renderWithSession(["record.edit"]);
+    const panel = await screen.findByTestId("bulk-review-panel");
+    expect(within(panel).getByLabelText("select-DFE-PM-1")).toBeInTheDocument();
+    expect(within(panel).queryByLabelText("select-DFE-1")).not.toBeInTheDocument();
+  });
+
+  it("select all filtered selects exactly the eligible PM candidates and shows the count", async () => {
+    getHistoricalReviewCandidates.mockResolvedValue([PM_CANDIDATE_A, PM_CANDIDATE_B, MATCHED_CANDIDATE]);
+    renderWithSession(["record.edit"]);
+    fireEvent.click(await screen.findByText("Select All Filtered PM (2)"));
+    expect(await screen.findByTestId("bulk-review-summary")).toHaveTextContent("2 selected of 2 eligible");
+  });
+
+  it("requires explicit confirmation before calling the bulk endpoint", async () => {
+    getHistoricalReviewCandidates.mockResolvedValue([PM_CANDIDATE_A, PM_CANDIDATE_B]);
+    renderWithSession(["record.edit"]);
+    fireEvent.click(await screen.findByLabelText("select-DFE-PM-1"));
+    fireEvent.click(await screen.findByLabelText("select-DFE-PM-2"));
+    fireEvent.click(screen.getByText("Bulk Review Selected (2)"));
+
+    const modal = await screen.findByTestId("modal");
+    expect(modal).toHaveTextContent("confirm-as-extracted");
+    expect(within(modal).getByText("2")).toBeInTheDocument(); // the <strong> count
+    expect(bulkReviewHistoricalReviewCandidates).not.toHaveBeenCalled();
+
+    fireEvent.click(within(modal).getByText("Confirm Bulk Review of 2"));
+    await waitFor(() =>
+      expect(bulkReviewHistoricalReviewCandidates).toHaveBeenCalledWith(["DFE-PM-1", "DFE-PM-2"])
+    );
+  });
+
+  it("cancelling the confirm dialog never calls the bulk endpoint", async () => {
+    getHistoricalReviewCandidates.mockResolvedValue([PM_CANDIDATE_A]);
+    renderWithSession(["record.edit"]);
+    fireEvent.click(await screen.findByLabelText("select-DFE-PM-1"));
+    fireEvent.click(screen.getByText("Bulk Review Selected (1)"));
+    const modal = await screen.findByTestId("modal");
+    fireEvent.click(within(modal).getByText("Cancel"));
+    expect(screen.queryByTestId("modal")).not.toBeInTheDocument();
+    expect(bulkReviewHistoricalReviewCandidates).not.toHaveBeenCalled();
+  });
+
+  it("shows the reviewed count on success and reloads the list", async () => {
+    getHistoricalReviewCandidates.mockResolvedValue([PM_CANDIDATE_A]);
+    bulkReviewHistoricalReviewCandidates.mockResolvedValue({
+      reviewed_count: 1,
+      candidate_ids: ["DFE-PM-1"],
+    });
+    renderWithSession(["record.edit"]);
+    fireEvent.click(await screen.findByLabelText("select-DFE-PM-1"));
+    fireEvent.click(screen.getByText("Bulk Review Selected (1)"));
+    fireEvent.click(await screen.findByText("Confirm Bulk Review of 1"));
+    await waitFor(() => expect(screen.getByText("Bulk reviewed 1 candidate(s).")).toBeInTheDocument());
+    // called once for initial load, once more after the bulk action reloads
+    await waitFor(() => expect(getHistoricalReviewCandidates).toHaveBeenCalledTimes(2));
+  });
+
+  it("bulk review never calls promote -- promotion stays a separate action", async () => {
+    getHistoricalReviewCandidates.mockResolvedValue([PM_CANDIDATE_A]);
+    bulkReviewHistoricalReviewCandidates.mockResolvedValue({ reviewed_count: 1, candidate_ids: ["DFE-PM-1"] });
+    renderWithSession(["record.edit"]);
+    fireEvent.click(await screen.findByLabelText("select-DFE-PM-1"));
+    fireEvent.click(screen.getByText("Bulk Review Selected (1)"));
+    fireEvent.click(await screen.findByText("Confirm Bulk Review of 1"));
+    await waitFor(() => expect(bulkReviewHistoricalReviewCandidates).toHaveBeenCalled());
+    expect(promoteHistoricalReviewCandidate).not.toHaveBeenCalled();
+  });
+
+  it("clear selection empties the selected count", async () => {
+    getHistoricalReviewCandidates.mockResolvedValue([PM_CANDIDATE_A, PM_CANDIDATE_B]);
+    renderWithSession(["record.edit"]);
+    fireEvent.click(await screen.findByText("Select All Filtered PM (2)"));
+    await screen.findByText("Bulk Review Selected (2)");
+    fireEvent.click(screen.getByText("Clear Selection"));
+    expect(await screen.findByTestId("bulk-review-summary")).toHaveTextContent("0 selected of 2 eligible");
   });
 });

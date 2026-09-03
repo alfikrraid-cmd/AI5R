@@ -339,6 +339,76 @@ SELECT COALESCE((SELECT json_agg(row_to_json(t))::text FROM (
         raw = self._runner.query_scalar(script.strip())
         return json.loads(raw or "[]")
 
+    def bulk_review_batch_atomic(self, candidate_ids: list[str], *, reviewed_by: str) -> list[dict]:
+        """MWO-LTSA-BULK-HISTORICAL-REVIEW-001 -- true single-transaction
+        bulk "confirm as extracted" for an explicit, caller-supplied
+        candidate_id list. Never rediscovers which candidates to touch,
+        never corrects a field (reviewed_fields is copied from
+        extracted_fields verbatim -- the source-extracted value is never
+        altered), PM-only, PENDING_REVIEW-only. Same "one script, one
+        atomic outcome" idiom as stage_verified_batch()/installation_
+        report_repository.backfill_pump_tags_batch_atomic(): BEGIN ->
+        precheck DO block (RAISE EXCEPTION unless every id currently
+        exists with status='PENDING_REVIEW' AND detected_document_type=
+        'HISTORICAL_PM_OCCURRENCE_CANDIDATE') -> one UPDATE ... WHERE id
+        IN (...) -> postcheck DO block (RAISE EXCEPTION unless exactly N
+        rows are now REVIEWED) -> COMMIT -> final SELECT."""
+        if not candidate_ids:
+            return []
+
+        n = len(candidate_ids)
+        ids_sql = ", ".join(_sql(cid) for cid in candidate_ids)
+
+        script = f"""
+BEGIN;
+
+DO $$
+DECLARE
+  v_eligible_count INT;
+BEGIN
+  SELECT count(*) INTO v_eligible_count
+  FROM document_field_extraction
+  WHERE document_field_extraction_id IN ({ids_sql})
+    AND status = 'PENDING_REVIEW'
+    AND detected_document_type = '{PM_OCCURRENCE_CANDIDATE}';
+  IF v_eligible_count <> {n} THEN
+    RAISE EXCEPTION 'bulk_review_batch_atomic precheck failed: % of % candidate(s) eligible (PENDING_REVIEW + PM only)', v_eligible_count, {n};
+  END IF;
+END $$;
+
+UPDATE document_field_extraction
+SET status = 'REVIEWED',
+    reviewed_fields = extracted_fields,
+    reviewed_by = {_sql(reviewed_by)},
+    reviewed_at = NOW(),
+    updated_at = NOW()
+WHERE document_field_extraction_id IN ({ids_sql})
+  AND status = 'PENDING_REVIEW'
+  AND detected_document_type = '{PM_OCCURRENCE_CANDIDATE}';
+
+DO $$
+DECLARE
+  v_reviewed_count INT;
+BEGIN
+  SELECT count(*) INTO v_reviewed_count
+  FROM document_field_extraction
+  WHERE document_field_extraction_id IN ({ids_sql})
+    AND status = 'REVIEWED';
+  IF v_reviewed_count <> {n} THEN
+    RAISE EXCEPTION 'bulk_review_batch_atomic postcheck failed: % of {n} reviewed', v_reviewed_count;
+  END IF;
+END $$;
+
+COMMIT;
+
+SELECT COALESCE((SELECT json_agg(row_to_json(t))::text FROM (
+    SELECT {_SELECT_COLUMNS} FROM document_field_extraction
+    WHERE document_field_extraction_id IN ({ids_sql})
+) t), '[]');
+"""
+        raw = self._runner.query_scalar(script.strip())
+        return json.loads(raw or "[]")
+
 
 __all__ = [
     "HistoricalPMCMONStagingRepository",

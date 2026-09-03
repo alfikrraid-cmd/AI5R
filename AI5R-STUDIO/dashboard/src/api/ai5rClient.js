@@ -1400,6 +1400,22 @@ export async function promoteHistoricalReviewCandidate(candidateId) {
     return payload?.data ?? null;
 }
 
+// MWO-LTSA-BULK-HISTORICAL-REVIEW-001 -- confirm-as-extracted only, for
+// an explicit candidate_id list the caller (the UI) already selected.
+// No corrections, no promotion -- both remain the existing single-
+// candidate actions above.
+export async function bulkReviewHistoricalReviewCandidates(candidateIds) {
+    const payload = await _adminUsersRequest(
+        `${API_URL}/api/ltsa/historical-review/candidates/bulk-review`,
+        {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ candidate_ids: candidateIds }),
+        }
+    );
+    return payload?.data ?? null;
+}
+
 export async function getRecordChangeHistory(entityType, entityId) {
     const payload = await _adminUsersRequest(
         `${API_URL}/api/ltsa/records/history?entity_type=${encodeURIComponent(entityType)}&entity_id=${encodeURIComponent(entityId)}`

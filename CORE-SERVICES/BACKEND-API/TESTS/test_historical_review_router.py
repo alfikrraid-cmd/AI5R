@@ -101,6 +101,31 @@ class FakeStagingRepository:
         self.candidate["status"] = "SAVED"
 
 
+class FakeMultiStagingRepository:
+    """A multi-candidate fake for the bulk-review endpoint -- the
+    single-candidate FakeStagingRepository above only ever holds one
+    row, which cannot exercise exact-id-targeting or partial-eligibility
+    behavior."""
+
+    def __init__(self, candidates):
+        self.candidates = {c["document_field_extraction_id"]: dict(c) for c in candidates}
+        self.bulk_review_calls = []
+
+    def find_by_id(self, candidate_id):
+        c = self.candidates.get(candidate_id)
+        return dict(c) if c else None
+
+    def bulk_review_batch_atomic(self, candidate_ids, *, reviewed_by):
+        self.bulk_review_calls.append({"candidate_ids": list(candidate_ids), "reviewed_by": reviewed_by})
+        updated = []
+        for cid in candidate_ids:
+            self.candidates[cid]["status"] = "REVIEWED"
+            self.candidates[cid]["reviewed_by"] = reviewed_by
+            self.candidates[cid]["reviewed_fields"] = self.candidates[cid]["extracted_fields"]
+            updated.append(dict(self.candidates[cid]))
+        return updated
+
+
 class FakePMOccurrenceRepository:
     def __init__(self):
         self.create_draft_calls = []
@@ -358,5 +383,170 @@ class TestHistoryReuse:
                 params={"entity_type": "HISTORICAL_STAGING_CANDIDATE", "entity_id": "DFE-1"},
             )
             assert response.status_code == 403
+        finally:
+            _clear()
+
+
+class TestBulkReview:
+    def test_superuser_bulk_reviews_exact_ids(self):
+        staging = FakeMultiStagingRepository([
+            _candidate(document_field_extraction_id="DFE-1"),
+            _candidate(document_field_extraction_id="DFE-2"),
+            _candidate(document_field_extraction_id="DFE-3"),
+        ])
+        _override(identity=_identity("SUPERUSER"), staging=staging)
+        try:
+            response = client.post(
+                "/api/ltsa/historical-review/candidates/bulk-review",
+                json={"candidate_ids": ["DFE-1", "DFE-2"]},
+            )
+            assert response.status_code == 200
+            assert response.json()["data"]["reviewed_count"] == 2
+            assert sorted(response.json()["data"]["candidate_ids"]) == ["DFE-1", "DFE-2"]
+            # exact targeting -- DFE-3 was never named, so it must be untouched
+            assert staging.candidates["DFE-3"]["status"] == "PENDING_REVIEW"
+            assert staging.bulk_review_calls[0]["candidate_ids"] == ["DFE-1", "DFE-2"]
+        finally:
+            _clear()
+
+    def test_other_four_roles_denied(self):
+        for role in ("TAP_ENGINEER", "JOHN_CRANE_ENGINEER", "PERTAMINA_ENGINEER", "PERTAMINA_VIEWER"):
+            staging = FakeMultiStagingRepository([_candidate(document_field_extraction_id="DFE-1")])
+            _override(identity=_identity(role), staging=staging)
+            try:
+                response = client.post(
+                    "/api/ltsa/historical-review/candidates/bulk-review",
+                    json={"candidate_ids": ["DFE-1"]},
+                )
+                assert response.status_code == 403, f"{role} must be denied"
+            finally:
+                _clear()
+
+    def test_reviewer_is_always_the_authenticated_actor_never_the_payload(self):
+        staging = FakeMultiStagingRepository([_candidate(document_field_extraction_id="DFE-1")])
+        _override(identity=_identity("SUPERUSER"), staging=staging)
+        try:
+            # BulkReviewRequest has no reviewed_by field at all -- an
+            # extra key is simply ignored by pydantic, never a spoof path.
+            response = client.post(
+                "/api/ltsa/historical-review/candidates/bulk-review",
+                json={"candidate_ids": ["DFE-1"], "reviewed_by": "spoofed"},
+            )
+            assert response.status_code == 200
+            assert staging.bulk_review_calls[0]["reviewed_by"] == "actor-1"
+        finally:
+            _clear()
+
+    def test_no_correction_possible_extracted_fields_untouched(self):
+        candidate = _candidate(
+            document_field_extraction_id="DFE-1",
+            extracted_fields={"occurrence_date": "2026-07-01", "quench_temp_de": None},
+        )
+        staging = FakeMultiStagingRepository([candidate])
+        _override(identity=_identity("SUPERUSER"), staging=staging)
+        try:
+            response = client.post(
+                "/api/ltsa/historical-review/candidates/bulk-review",
+                json={"candidate_ids": ["DFE-1"]},
+            )
+            assert response.status_code == 200
+            assert staging.candidates["DFE-1"]["extracted_fields"]["quench_temp_de"] is None
+            assert staging.candidates["DFE-1"]["reviewed_fields"] == staging.candidates["DFE-1"]["extracted_fields"]
+        finally:
+            _clear()
+
+    def test_empty_candidate_ids_is_422(self):
+        staging = FakeMultiStagingRepository([])
+        _override(identity=_identity("SUPERUSER"), staging=staging)
+        try:
+            response = client.post(
+                "/api/ltsa/historical-review/candidates/bulk-review", json={"candidate_ids": []}
+            )
+            assert response.status_code == 422
+        finally:
+            _clear()
+
+    def test_duplicate_candidate_ids_is_422(self):
+        staging = FakeMultiStagingRepository([_candidate(document_field_extraction_id="DFE-1")])
+        _override(identity=_identity("SUPERUSER"), staging=staging)
+        try:
+            response = client.post(
+                "/api/ltsa/historical-review/candidates/bulk-review",
+                json={"candidate_ids": ["DFE-1", "DFE-1"]},
+            )
+            assert response.status_code == 422
+            assert staging.bulk_review_calls == []
+        finally:
+            _clear()
+
+    def test_batch_too_large_is_422(self):
+        staging = FakeMultiStagingRepository([])
+        _override(identity=_identity("SUPERUSER"), staging=staging)
+        try:
+            ids = [f"DFE-{i}" for i in range(1001)]
+            response = client.post(
+                "/api/ltsa/historical-review/candidates/bulk-review", json={"candidate_ids": ids}
+            )
+            assert response.status_code == 422
+        finally:
+            _clear()
+
+    def test_one_ineligible_candidate_fails_the_whole_batch(self):
+        staging = FakeMultiStagingRepository([
+            _candidate(document_field_extraction_id="DFE-1", status="PENDING_REVIEW"),
+            _candidate(document_field_extraction_id="DFE-2", status="REVIEWED"),
+        ])
+        _override(identity=_identity("SUPERUSER"), staging=staging)
+        try:
+            response = client.post(
+                "/api/ltsa/historical-review/candidates/bulk-review",
+                json={"candidate_ids": ["DFE-1", "DFE-2"]},
+            )
+            assert response.status_code == 409
+            assert staging.candidates["DFE-1"]["status"] == "PENDING_REVIEW"
+            assert staging.bulk_review_calls == []
+        finally:
+            _clear()
+
+    def test_missing_candidate_id_is_404(self):
+        staging = FakeMultiStagingRepository([_candidate(document_field_extraction_id="DFE-1")])
+        _override(identity=_identity("SUPERUSER"), staging=staging)
+        try:
+            response = client.post(
+                "/api/ltsa/historical-review/candidates/bulk-review",
+                json={"candidate_ids": ["DFE-1", "DFE-MISSING"]},
+            )
+            assert response.status_code == 404
+            assert staging.bulk_review_calls == []
+        finally:
+            _clear()
+
+    def test_non_pm_candidate_fails_the_batch(self):
+        staging = FakeMultiStagingRepository([
+            _candidate(document_field_extraction_id="DFE-1", detected_document_type="HISTORICAL_CMON_READING_CANDIDATE"),
+        ])
+        _override(identity=_identity("SUPERUSER"), staging=staging)
+        try:
+            response = client.post(
+                "/api/ltsa/historical-review/candidates/bulk-review",
+                json={"candidate_ids": ["DFE-1"]},
+            )
+            assert response.status_code == 409
+            assert staging.bulk_review_calls == []
+        finally:
+            _clear()
+
+    def test_promotion_is_not_performed_by_bulk_review(self):
+        staging = FakeMultiStagingRepository([_candidate(document_field_extraction_id="DFE-1")])
+        pm_repo = FakePMOccurrenceRepository()
+        _override(identity=_identity("SUPERUSER"), staging=staging, pm_repo=pm_repo)
+        try:
+            response = client.post(
+                "/api/ltsa/historical-review/candidates/bulk-review",
+                json={"candidate_ids": ["DFE-1"]},
+            )
+            assert response.status_code == 200
+            assert staging.candidates["DFE-1"]["status"] == "REVIEWED"
+            assert pm_repo.create_draft_calls == []
         finally:
             _clear()
