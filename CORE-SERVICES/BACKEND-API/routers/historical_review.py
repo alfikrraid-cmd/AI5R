@@ -18,7 +18,7 @@ from API.historical_pm_cmon_promotion_service import (
     AlreadyPromotedError,
     PromotionError,
     promote_cmon_reading_candidate,
-    promote_pm_occurrence_candidate,
+    promote_pm_occurrence_atomic,
 )
 from API.historical_bulk_review_service import (
     BatchTooLargeError,
@@ -305,10 +305,9 @@ def promote_candidate(
     schedule_code = build_unscheduled_reference(candidate.get("source_document_id") or candidate_id)
     try:
         if detected_type == "HISTORICAL_PM_OCCURRENCE_CANDIDATE":
-            record = promote_pm_occurrence_candidate(
-                candidate, pm_occurrence_repository=pm_occurrence_repository,
+            record = promote_pm_occurrence_atomic(
+                candidate_id, pm_occurrence_repository=pm_occurrence_repository,
                 pm_schedule_code=schedule_code, promoted_by=actor_id,
-                staging_repository=staging_repository,
             )
         else:
             record = promote_cmon_reading_candidate(

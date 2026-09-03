@@ -1,7 +1,7 @@
 """MWO-LTSA-HISTORICAL-PM-RECOVERY-001 -- read-only pre-flight validation
 for the deterministic historical PM recovery manifest, BEFORE any
 candidate is staged (historical_pm_cmon_cli.py stage) or promoted
-(historical_pm_cmon_promotion_service.promote_pm_occurrence_candidate).
+(historical_pm_cmon_promotion_service.promote_pm_occurrence_atomic).
 
 This module writes nothing, ever -- it only classifies each candidate
 against LIVE pm_occurrence + ltsa_pumps state so a caller can decide
@@ -24,8 +24,8 @@ row number) -- not two distinct legitimate occurrences. A future batch
 with a genuine same-day double-visit would need the same manual check,
 not blind trust in this key.
 
-promote_pm_occurrence_candidate()'s own real idempotency guarantee is
-candidate-identity-based (document_field_extraction status ->
+promote_pm_occurrence_atomic()'s own real idempotency guarantee is
+source_reference-based (pm_occurrence.source_reference ->
 AlreadyPromotedError), not date-based -- this module's ALREADY_EXISTS
 check exists to catch the DIFFERENT case: a pre-existing pm_occurrence
 row that has no source_reference at all (entered through some other

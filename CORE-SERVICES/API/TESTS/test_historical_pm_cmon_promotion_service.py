@@ -18,17 +18,33 @@ from API.historical_pm_cmon_promotion_service import (  # noqa: E402
     AlreadyPromotedError,
     PromotionError,
     promote_cmon_reading_candidate,
-    promote_pm_occurrence_candidate,
+    promote_pm_occurrence_atomic,
 )
 
 
-class FakePMRepository:
-    def __init__(self):
+class FakeAtomicPMRepository:
+    """Fakes PMOccurrenceRepository.promote_historical_pm_atomic()'s own
+    result contract (candidate_found/eligible/already/conflict/inserted/
+    marked_saved), letting the SERVICE layer's exception-translation be
+    tested independently of the real SQL."""
+
+    def __init__(self, response: dict):
+        self.response = response
         self.calls: list[dict] = []
 
-    def create_draft(self, **kwargs):
-        self.calls.append(kwargs)
-        return {"pm_occurrence_code": "PMOCC-NEW", **kwargs}
+    def promote_historical_pm_atomic(self, candidate_id, *, pm_schedule_code, promoted_by):
+        self.calls.append({"candidate_id": candidate_id, "pm_schedule_code": pm_schedule_code, "promoted_by": promoted_by})
+        return self.response
+
+
+def _atomic_response(**overrides):
+    base = {
+        "candidate_found": True, "eligible": True, "already": None,
+        "conflict": None, "inserted": {"pm_occurrence_code": "PMOCC-NEW", "asset_code": "110-P-9A"},
+        "marked_saved": True,
+    }
+    base.update(overrides)
+    return base
 
 
 class FakeCMONRepository:
@@ -48,18 +64,6 @@ class FakeStagingRepository:
         self.saved_ids.append(candidate_id)
 
 
-def _pm_candidate(**overrides):
-    base = {
-        "document_field_extraction_id": "DFE-1",
-        "status": "REVIEWED",
-        "pump_tag_number": "110-P-9A",
-        "extracted_fields": {"occurrence_date": "2026-07-01", "asset_type": "PUMP"},
-        "reviewed_fields": None,
-    }
-    base.update(overrides)
-    return base
-
-
 def _cmon_candidate(**overrides):
     base = {
         "document_field_extraction_id": "DFE-2",
@@ -75,92 +79,94 @@ def _cmon_candidate(**overrides):
     return base
 
 
-class TestPromotePMOccurrenceCandidate:
-    def test_promotes_a_reviewed_matched_candidate(self):
-        repo = FakePMRepository()
-        promote_pm_occurrence_candidate(
-            _pm_candidate(), pm_occurrence_repository=repo,
+class TestPromotePMOccurrenceAtomic:
+    def test_promotes_and_returns_the_inserted_row(self):
+        repo = FakeAtomicPMRepository(_atomic_response())
+        record = promote_pm_occurrence_atomic(
+            "DFE-1", pm_occurrence_repository=repo,
             pm_schedule_code="UNSCHEDULED::HOC-JULY-2026", promoted_by="reviewer-1",
         )
-        assert repo.calls[0]["provenance"] == PROVENANCE_HISTORICAL_IMPORT
-        assert repo.calls[0]["source_reference"] == "document_field_extraction:DFE-1"
-        assert repo.calls[0]["asset_code"] == "110-P-9A"
+        assert record["pm_occurrence_code"] == "PMOCC-NEW"
+        assert repo.calls[0] == {
+            "candidate_id": "DFE-1", "pm_schedule_code": "UNSCHEDULED::HOC-JULY-2026", "promoted_by": "reviewer-1",
+        }
 
-    def test_rejects_non_reviewed_candidate(self):
-        repo = FakePMRepository()
+    def test_candidate_not_found_raises_promotion_error(self):
+        repo = FakeAtomicPMRepository(_atomic_response(candidate_found=False, eligible=False, inserted=None, marked_saved=False))
         with pytest.raises(PromotionError):
-            promote_pm_occurrence_candidate(
-                _pm_candidate(status="PENDING_REVIEW"), pm_occurrence_repository=repo,
+            promote_pm_occurrence_atomic(
+                "DFE-MISSING", pm_occurrence_repository=repo,
                 pm_schedule_code="UNSCHEDULED::HOC-JULY-2026", promoted_by="reviewer-1",
             )
-        assert repo.calls == []
 
-    def test_rejects_unmatched_pump(self):
-        repo = FakePMRepository()
+    def test_not_reviewed_is_not_eligible_and_raises_promotion_error(self):
+        repo = FakeAtomicPMRepository(_atomic_response(eligible=False, inserted=None, marked_saved=False))
         with pytest.raises(PromotionError):
-            promote_pm_occurrence_candidate(
-                _pm_candidate(pump_tag_number=None), pm_occurrence_repository=repo,
+            promote_pm_occurrence_atomic(
+                "DFE-1", pm_occurrence_repository=repo,
                 pm_schedule_code="UNSCHEDULED::HOC-JULY-2026", promoted_by="reviewer-1",
             )
-        assert repo.calls == []
 
-    def test_already_saved_raises_already_promoted(self):
-        repo = FakePMRepository()
+    def test_already_promoted_raises_already_promoted_error(self):
+        repo = FakeAtomicPMRepository(_atomic_response(
+            already={"pm_occurrence_code": "PMOCC-OLD"}, eligible=False, inserted=None, marked_saved=False,
+        ))
         with pytest.raises(AlreadyPromotedError):
-            promote_pm_occurrence_candidate(
-                _pm_candidate(status="SAVED"), pm_occurrence_repository=repo,
+            promote_pm_occurrence_atomic(
+                "DFE-1", pm_occurrence_repository=repo,
                 pm_schedule_code="UNSCHEDULED::HOC-JULY-2026", promoted_by="reviewer-1",
             )
 
-    def test_reviewed_fields_take_precedence_over_extracted_fields(self):
-        repo = FakePMRepository()
-        candidate = _pm_candidate(reviewed_fields={"occurrence_date": "2026-07-02", "asset_type": "PUMP"})
-        promote_pm_occurrence_candidate(
-            candidate, pm_occurrence_repository=repo,
+    def test_conflict_with_a_different_candidates_final_pm_raises_promotion_error(self):
+        repo = FakeAtomicPMRepository(_atomic_response(
+            conflict={"pm_occurrence_code": "PMOCC-OTHER"}, inserted=None, marked_saved=False,
+        ))
+        with pytest.raises(PromotionError):
+            promote_pm_occurrence_atomic(
+                "DFE-1", pm_occurrence_repository=repo,
+                pm_schedule_code="UNSCHEDULED::HOC-JULY-2026", promoted_by="reviewer-1",
+            )
+
+    def test_eligible_but_no_insert_raises_promotion_error(self):
+        # e.g. unknown pump or missing pm_schedule -- eligible per the
+        # candidate row itself, but the atomic script's own WHERE EXISTS
+        # guard(s) still blocked the insert.
+        repo = FakeAtomicPMRepository(_atomic_response(inserted=None, marked_saved=False))
+        with pytest.raises(PromotionError):
+            promote_pm_occurrence_atomic(
+                "DFE-1", pm_occurrence_repository=repo,
+                pm_schedule_code="UNSCHEDULED::HOC-JULY-2026", promoted_by="reviewer-1",
+            )
+
+    def test_inconsistent_insert_without_mark_saved_raises(self):
+        # Should be unreachable given the SQL's own gating, but the
+        # service layer still refuses to report success silently.
+        repo = FakeAtomicPMRepository(_atomic_response(marked_saved=False))
+        with pytest.raises(PromotionError):
+            promote_pm_occurrence_atomic(
+                "DFE-1", pm_occurrence_repository=repo,
+                pm_schedule_code="UNSCHEDULED::HOC-JULY-2026", promoted_by="reviewer-1",
+            )
+
+    def test_exact_retry_after_success_is_already_promoted_never_a_second_write(self):
+        # The real idempotency proof: first call promotes; a second call
+        # against the SAME repository state (as a real retry would see,
+        # since the candidate is now SAVED with a matching pm_occurrence)
+        # must be rejected as AlreadyPromotedError, never treated as a
+        # fresh promotion.
+        first = FakeAtomicPMRepository(_atomic_response())
+        promote_pm_occurrence_atomic(
+            "DFE-1", pm_occurrence_repository=first,
             pm_schedule_code="UNSCHEDULED::HOC-JULY-2026", promoted_by="reviewer-1",
         )
-        assert repo.calls[0]["occurrence_date"] == "2026-07-02"
-
-    def test_marks_candidate_saved_when_staging_repository_given(self):
-        repo = FakePMRepository()
-        staging = FakeStagingRepository()
-        promote_pm_occurrence_candidate(
-            _pm_candidate(), pm_occurrence_repository=repo,
-            pm_schedule_code="UNSCHEDULED::HOC-JULY-2026", promoted_by="reviewer-1",
-            staging_repository=staging,
-        )
-        assert staging.saved_ids == ["DFE-1"]
-
-    def test_does_not_mark_saved_when_staging_repository_omitted(self):
-        repo = FakePMRepository()
-        # Must not raise just because staging_repository wasn't passed.
-        promote_pm_occurrence_candidate(
-            _pm_candidate(), pm_occurrence_repository=repo,
-            pm_schedule_code="UNSCHEDULED::HOC-JULY-2026", promoted_by="reviewer-1",
-        )
-
-    def test_second_promotion_after_mark_saved_is_rejected_never_duplicated(self):
-        # The real idempotency proof: promote once (marks SAVED via the
-        # staging repository), then attempt to promote the SAME candidate
-        # dict again with status manually advanced to SAVED (as a real
-        # staging_repository.find_by_id() re-read would show) -- must be
-        # rejected, never silently creating a second canonical record.
-        repo = FakePMRepository()
-        staging = FakeStagingRepository()
-        promote_pm_occurrence_candidate(
-            _pm_candidate(), pm_occurrence_repository=repo,
-            pm_schedule_code="UNSCHEDULED::HOC-JULY-2026", promoted_by="reviewer-1",
-            staging_repository=staging,
-        )
-        assert len(repo.calls) == 1
-
+        retry = FakeAtomicPMRepository(_atomic_response(
+            already={"pm_occurrence_code": "PMOCC-NEW"}, eligible=False, inserted=None, marked_saved=False,
+        ))
         with pytest.raises(AlreadyPromotedError):
-            promote_pm_occurrence_candidate(
-                _pm_candidate(status="SAVED"), pm_occurrence_repository=repo,
+            promote_pm_occurrence_atomic(
+                "DFE-1", pm_occurrence_repository=retry,
                 pm_schedule_code="UNSCHEDULED::HOC-JULY-2026", promoted_by="reviewer-1",
-                staging_repository=staging,
             )
-        assert len(repo.calls) == 1  # no second canonical write
 
 
 class TestPromoteCMONReadingCandidate:

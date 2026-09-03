@@ -127,12 +127,55 @@ class FakeMultiStagingRepository:
 
 
 class FakePMOccurrenceRepository:
-    def __init__(self):
-        self.create_draft_calls = []
+    """Fakes promote_historical_pm_atomic()'s own result contract,
+    computed from the SAME staging fake's current candidate state the
+    real atomic SQL would freshly re-read -- so these router tests
+    exercise the router's dispatch/exception-handling, not the SQL
+    itself (that is test_pm_occurrence_repository.py's job)."""
 
-    def create_draft(self, **kwargs):
-        self.create_draft_calls.append(kwargs)
-        return {"pm_occurrence_code": "PMOCC-NEW", **kwargs}
+    def __init__(self, staging=None):
+        self.staging = staging
+        self.promote_calls = []
+        self._promoted_source_refs: set[str] = set()
+
+    def promote_historical_pm_atomic(self, candidate_id, *, pm_schedule_code, promoted_by):
+        self.promote_calls.append(
+            {"candidate_id": candidate_id, "pm_schedule_code": pm_schedule_code, "promoted_by": promoted_by}
+        )
+        source_reference = f"document_field_extraction:{candidate_id}"
+        candidate = self.staging.find_by_id(candidate_id) if self.staging else None
+        empty = {"candidate_found": False, "eligible": False, "already": None, "conflict": None, "inserted": None, "marked_saved": False}
+        if candidate is None:
+            return empty
+        # status == SAVED implies a matching pm_occurrence already exists
+        # -- the real invariant the atomic path itself maintains (SAVED
+        # is only ever reached via a successful promotion).
+        if candidate.get("status") == "SAVED" or source_reference in self._promoted_source_refs:
+            return {"candidate_found": True, "eligible": False, "already": {"pm_occurrence_code": "PMOCC-NEW"}, "conflict": None, "inserted": None, "marked_saved": False}
+        fields = candidate.get("reviewed_fields") or candidate.get("extracted_fields") or {}
+        eligible = bool(
+            candidate.get("status") == "REVIEWED"
+            and candidate.get("detected_document_type") == "HISTORICAL_PM_OCCURRENCE_CANDIDATE"
+            and candidate.get("pump_tag_number")
+            and fields.get("occurrence_date")
+        )
+        if not eligible:
+            return {**empty, "candidate_found": True}
+        inserted = {
+            "pm_occurrence_code": "PMOCC-NEW",
+            "asset_code": candidate["pump_tag_number"],
+            "occurrence_date": fields.get("occurrence_date"),
+            "provenance": "HISTORICAL_IMPORT",
+            "source_reference": source_reference,
+        }
+        self._promoted_source_refs.add(source_reference)
+        # The real atomic script marks SAVED inside its own single
+        # statement -- never via a separate staging_repository.
+        # mark_saved() call. Mutate the fake candidate directly so
+        # staging.mark_saved_calls correctly stays empty for this path.
+        if self.staging is not None:
+            self.staging.candidate["status"] = "SAVED"
+        return {"candidate_found": True, "eligible": True, "already": None, "conflict": None, "inserted": inserted, "marked_saved": True}
 
 
 class FakeCMONRepository:
@@ -308,37 +351,43 @@ class TestPumpResolutionAudit:
 class TestPromotion:
     def test_unresolved_pending_review_candidate_cannot_promote(self):
         staging = FakeStagingRepository(_candidate(status="PENDING_REVIEW"))
-        pm_repo = FakePMOccurrenceRepository()
+        pm_repo = FakePMOccurrenceRepository(staging)
         _override(identity=_identity("SUPERUSER"), staging=staging, pm_repo=pm_repo)
         try:
             response = client.post("/api/ltsa/historical-review/candidates/DFE-1/promote")
             assert response.status_code == 422
-            assert pm_repo.create_draft_calls == []
+            # pump is resolved (MATCHED classification) so the router's own
+            # pre-check doesn't short-circuit -- the atomic layer itself
+            # rejects it (status != REVIEWED), never inserting a PM row.
+            assert len(pm_repo.promote_calls) == 1
         finally:
             _clear()
 
     def test_reviewed_candidate_with_resolved_pump_promotes(self):
         staging = FakeStagingRepository(_candidate(status="REVIEWED", pump_tag_number="110-P-9A"))
-        pm_repo = FakePMOccurrenceRepository()
+        pm_repo = FakePMOccurrenceRepository(staging)
         _override(identity=_identity("SUPERUSER"), staging=staging, pm_repo=pm_repo)
         try:
             response = client.post("/api/ltsa/historical-review/candidates/DFE-1/promote")
             assert response.status_code == 200
             assert response.json()["data"]["pm_occurrence_code"] == "PMOCC-NEW"
-            assert len(pm_repo.create_draft_calls) == 1
-            assert pm_repo.create_draft_calls[0]["provenance"] == "HISTORICAL_IMPORT"
-            assert staging.mark_saved_calls == ["DFE-1"]
+            assert response.json()["data"]["provenance"] == "HISTORICAL_IMPORT"
+            assert len(pm_repo.promote_calls) == 1
+            # The atomic path marks SAVED inside its own single statement,
+            # never via a separate staging_repository.mark_saved() call.
+            assert staging.mark_saved_calls == []
+            assert staging.candidate["status"] == "SAVED"
         finally:
             _clear()
 
     def test_already_saved_candidate_cannot_promote_again(self):
         staging = FakeStagingRepository(_candidate(status="SAVED", pump_tag_number="110-P-9A"))
-        pm_repo = FakePMOccurrenceRepository()
+        pm_repo = FakePMOccurrenceRepository(staging)
         _override(identity=_identity("SUPERUSER"), staging=staging, pm_repo=pm_repo)
         try:
             response = client.post("/api/ltsa/historical-review/candidates/DFE-1/promote")
             assert response.status_code == 409
-            assert pm_repo.create_draft_calls == []
+            assert pm_repo._promoted_source_refs == set()  # no new canonical write attempted
         finally:
             _clear()
 
@@ -547,6 +596,6 @@ class TestBulkReview:
             )
             assert response.status_code == 200
             assert staging.candidates["DFE-1"]["status"] == "REVIEWED"
-            assert pm_repo.create_draft_calls == []
+            assert pm_repo.promote_calls == []
         finally:
             _clear()

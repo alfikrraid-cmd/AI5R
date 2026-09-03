@@ -283,3 +283,168 @@ def test_soft_delete_is_audited_and_preserves_the_record():
     assert "deleted_at = NOW()" in runner.scalar_calls[0]
     assert "record_change_history" in runner.scalar_calls[0]
     assert "'DELETE'" in runner.scalar_calls[0]
+
+
+def _promo_response(**overrides):
+    base = {
+        "candidate_found": True, "eligible": True, "already": None,
+        "conflict": None, "inserted": {"pm_occurrence_code": "PMOCC-1"}, "marked_saved": True,
+    }
+    base.update(overrides)
+    return json.dumps(base)
+
+
+class TestPromoteHistoricalPmAtomic:
+    def test_single_statement_no_explicit_begin_commit(self):
+        # Postgres's own per-statement atomicity guarantee is relied on
+        # (same as create_draft's own ins/schedule_completion CTE chain)
+        # -- no separate BEGIN;/COMMIT; statements needed for one row.
+        runner = FakeRunner(scalar_response=_promo_response())
+        PMOccurrenceRepository(runner).promote_historical_pm_atomic(
+            "DFE-1", pm_schedule_code="UNSCHEDULED::HOC-JULY-2026", promoted_by="actor-1",
+        )
+        sql = runner.scalar_calls[0]
+        assert len(runner.scalar_calls) == 1
+        assert "BEGIN;" not in sql
+        assert "COMMIT;" not in sql
+        assert sql.strip().upper().startswith("WITH")
+
+    def test_locks_the_candidate_row(self):
+        runner = FakeRunner(scalar_response=_promo_response())
+        PMOccurrenceRepository(runner).promote_historical_pm_atomic(
+            "DFE-1", pm_schedule_code="UNSCHEDULED::HOC-JULY-2026", promoted_by="actor-1",
+        )
+        assert "FOR UPDATE" in runner.scalar_calls[0]
+
+    def test_idempotency_key_is_the_existing_source_reference_column(self):
+        runner = FakeRunner(scalar_response=_promo_response())
+        PMOccurrenceRepository(runner).promote_historical_pm_atomic(
+            "DFE-1", pm_schedule_code="UNSCHEDULED::HOC-JULY-2026", promoted_by="actor-1",
+        )
+        sql = runner.scalar_calls[0]
+        assert "'document_field_extraction:DFE-1'" in sql
+        assert "source_reference = 'document_field_extraction:DFE-1'" in sql
+
+    def test_requires_reviewed_pm_matched_pump_and_occurrence_date(self):
+        runner = FakeRunner(scalar_response=_promo_response())
+        PMOccurrenceRepository(runner).promote_historical_pm_atomic(
+            "DFE-1", pm_schedule_code="UNSCHEDULED::HOC-JULY-2026", promoted_by="actor-1",
+        )
+        sql = runner.scalar_calls[0]
+        assert "status = 'REVIEWED'" in sql
+        assert "detected_document_type = 'HISTORICAL_PM_OCCURRENCE_CANDIDATE'" in sql
+        assert "pump_tag_number IS NOT NULL" in sql
+        assert "fields->>'occurrence_date' IS NOT NULL" in sql
+
+    def test_still_requires_a_real_schedule_for_a_real_schedule_code(self):
+        runner = FakeRunner(scalar_response=_promo_response())
+        PMOccurrenceRepository(runner).promote_historical_pm_atomic(
+            "DFE-1", pm_schedule_code="PMS-1", promoted_by="actor-1",
+        )
+        assert "EXISTS (SELECT 1 FROM pm_schedule WHERE pm_schedule_code = 'PMS-1')" in runner.scalar_calls[0]
+
+    def test_skips_schedule_guard_for_unscheduled_historical_placeholder(self):
+        runner = FakeRunner(scalar_response=_promo_response())
+        PMOccurrenceRepository(runner).promote_historical_pm_atomic(
+            "DFE-1", pm_schedule_code="UNSCHEDULED::HOC-JULY-2026", promoted_by="actor-1",
+        )
+        assert "pm_schedule WHERE pm_schedule_code" not in runner.scalar_calls[0]
+
+    def test_insert_only_fires_when_not_already_promoted_and_not_conflicting(self):
+        runner = FakeRunner(scalar_response=_promo_response())
+        PMOccurrenceRepository(runner).promote_historical_pm_atomic(
+            "DFE-1", pm_schedule_code="UNSCHEDULED::HOC-JULY-2026", promoted_by="actor-1",
+        )
+        sql = runner.scalar_calls[0]
+        assert "NOT EXISTS (SELECT 1 FROM already)" in sql
+        assert "NOT EXISTS (SELECT 1 FROM conflict)" in sql
+
+    def test_mark_saved_gated_on_the_insert_actually_happening(self):
+        runner = FakeRunner(scalar_response=_promo_response())
+        PMOccurrenceRepository(runner).promote_historical_pm_atomic(
+            "DFE-1", pm_schedule_code="UNSCHEDULED::HOC-JULY-2026", promoted_by="actor-1",
+        )
+        sql = runner.scalar_calls[0]
+        assert "status = 'SAVED'" in sql
+        assert "EXISTS (SELECT 1 FROM ins)" in sql
+
+    def test_returns_parsed_result_object(self):
+        runner = FakeRunner(scalar_response=_promo_response(inserted={"pm_occurrence_code": "PMOCC-42"}))
+        result = PMOccurrenceRepository(runner).promote_historical_pm_atomic(
+            "DFE-1", pm_schedule_code="UNSCHEDULED::HOC-JULY-2026", promoted_by="actor-1",
+        )
+        assert result["inserted"]["pm_occurrence_code"] == "PMOCC-42"
+        assert result["marked_saved"] is True
+
+
+class TestPromoteHistoricalPmBatchAtomic:
+    def test_empty_list_returns_empty_without_a_query(self):
+        runner = FakeRunner()
+        assert PMOccurrenceRepository(runner).promote_historical_pm_batch_atomic(
+            [], pm_schedule_code="UNSCHEDULED::HOC-JULY-2026", promoted_by="actor-1",
+        ) == []
+        assert runner.scalar_calls == []
+
+    def test_one_call_with_explicit_begin_and_commit(self):
+        runner = FakeRunner(scalar_response=json.dumps([{"document_field_extraction_id": "DFE-1", "status": "SAVED", "pm_occurrence_code": "PMOCC-1"}]))
+        PMOccurrenceRepository(runner).promote_historical_pm_batch_atomic(
+            ["DFE-1", "DFE-2"], pm_schedule_code="UNSCHEDULED::HOC-JULY-2026", promoted_by="actor-1",
+        )
+        assert len(runner.scalar_calls) == 1
+        sql = runner.scalar_calls[0]
+        assert "BEGIN;" in sql
+        assert "\nCOMMIT;\n" in sql
+
+    def test_targets_exactly_the_given_ids(self):
+        runner = FakeRunner(scalar_response="[]")
+        PMOccurrenceRepository(runner).promote_historical_pm_batch_atomic(
+            ["DFE-1", "DFE-2", "DFE-3"], pm_schedule_code="UNSCHEDULED::HOC-JULY-2026", promoted_by="actor-1",
+        )
+        sql = runner.scalar_calls[0]
+        assert "'DFE-1'" in sql and "'DFE-2'" in sql and "'DFE-3'" in sql
+
+    def test_precheck_allows_reviewed_or_already_saved_for_retry_safety(self):
+        runner = FakeRunner(scalar_response="[]")
+        PMOccurrenceRepository(runner).promote_historical_pm_batch_atomic(
+            ["DFE-1"], pm_schedule_code="UNSCHEDULED::HOC-JULY-2026", promoted_by="actor-1",
+        )
+        sql = runner.scalar_calls[0]
+        assert "d.status IN ('REVIEWED', 'SAVED')" in sql
+
+    def test_insert_is_idempotent_via_source_reference_not_exists_guard(self):
+        runner = FakeRunner(scalar_response="[]")
+        PMOccurrenceRepository(runner).promote_historical_pm_batch_atomic(
+            ["DFE-1"], pm_schedule_code="UNSCHEDULED::HOC-JULY-2026", promoted_by="actor-1",
+        )
+        sql = runner.scalar_calls[0]
+        assert "p2.source_reference = 'document_field_extraction:' || d.document_field_extraction_id" in sql
+
+    def test_conflict_precheck_excludes_the_candidates_own_source_reference(self):
+        runner = FakeRunner(scalar_response="[]")
+        PMOccurrenceRepository(runner).promote_historical_pm_batch_atomic(
+            ["DFE-1"], pm_schedule_code="UNSCHEDULED::HOC-JULY-2026", promoted_by="actor-1",
+        )
+        sql = runner.scalar_calls[0]
+        assert "IS DISTINCT FROM ('document_field_extraction:' || d.document_field_extraction_id)" in sql
+
+    def test_returns_rows_from_final_select(self):
+        rows = [
+            {"document_field_extraction_id": "DFE-1", "status": "SAVED", "pm_occurrence_code": "PMOCC-1"},
+            {"document_field_extraction_id": "DFE-2", "status": "SAVED", "pm_occurrence_code": "PMOCC-2"},
+        ]
+        runner = FakeRunner(scalar_response=json.dumps(rows))
+        result = PMOccurrenceRepository(runner).promote_historical_pm_batch_atomic(
+            ["DFE-1", "DFE-2"], pm_schedule_code="UNSCHEDULED::HOC-JULY-2026", promoted_by="actor-1",
+        )
+        assert [r["document_field_extraction_id"] for r in result] == ["DFE-1", "DFE-2"]
+
+
+def test_find_by_asset_and_date_is_a_plain_read_only_select():
+    runner = FakeRunner(scalar_response="[]")
+    PMOccurrenceRepository(runner).find_by_asset_and_date("211-P-18A", "2026-08-01")
+    sql = runner.scalar_calls[0]
+    assert "SELECT" in sql
+    assert "INSERT" not in sql
+    assert "UPDATE" not in sql
+    assert "asset_code = '211-P-18A'" in sql
+    assert "occurrence_date = '2026-08-01'" in sql

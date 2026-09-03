@@ -211,6 +211,293 @@ class PMOccurrenceRepository:
         )
         return rows[0]
 
+    def promote_historical_pm_atomic(
+        self,
+        candidate_id: str,
+        *,
+        pm_schedule_code: str,
+        promoted_by: str,
+    ) -> dict:
+        """MWO-LTSA-ATOMIC-PM-PROMOTION-001 -- fixes the two-separate-
+        writes defect in the old promote_pm_occurrence_candidate()
+        (create_draft() INSERT, then a SEPARATE mark_saved() UPDATE): one
+        single Postgres statement (a WITH-chain, same shape as
+        create_draft's own ins/schedule_completion CTEs -- Postgres's own
+        per-statement atomicity guarantee, no explicit BEGIN/COMMIT
+        needed) that re-reads the candidate FOR UPDATE (locks it against
+        a concurrent promote of the same id), validates it, checks for an
+        existing promotion or conflict, inserts pm_occurrence, and marks
+        the candidate SAVED -- all or nothing.
+
+        Retry-safe idempotency key: source_reference =
+        'document_field_extraction:<candidate_id>' -- an EXISTING column
+        (pm_occurrence.source_reference) and an EXISTING lookup pattern
+        (find_by_source_reference(), already proven for the WhatsApp PM
+        writer's own idempotency). No schema change: candidate_id is
+        assigned once at staging time and is 1:1 stably bound to
+        extracted_fields->>'candidate_identity_v2' by
+        stage_verified_batch()'s own duplicate-identity precheck, so a
+        source_reference lookup is equivalent to a candidate_identity_v2
+        lookup without a second index/column.
+
+        Returns a dict:
+          candidate_found: bool
+          eligible: bool (REVIEWED, PM-type-caller's responsibility to
+                    only call this for PM, resolved pump, occurrence_date set)
+          already: the existing pm_occurrence row if this exact candidate
+                    was already promoted (safe no-op retry), else None
+          conflict: an existing pm_occurrence row for the same
+                    (asset_code, occurrence_date) from a DIFFERENT
+                    candidate, else None
+          inserted: the newly-inserted pm_occurrence row, else None
+          marked_saved: bool -- True only when the candidate was
+                    transitioned REVIEWED -> SAVED in this same statement
+        """
+        source_reference = f"document_field_extraction:{candidate_id}"
+        _requires_real_schedule = not pm_schedule_code.startswith("UNSCHEDULED::")
+        _schedule_guard = (
+            f"AND EXISTS (SELECT 1 FROM pm_schedule WHERE pm_schedule_code = {_sql(pm_schedule_code)}) "
+            if _requires_real_schedule
+            else ""
+        )
+        code = _new_code()
+        raw = self._runner.query_scalar(f"""
+WITH cand AS (
+    SELECT document_field_extraction_id, status, detected_document_type, pump_tag_number,
+           COALESCE(reviewed_fields, extracted_fields) AS fields
+    FROM document_field_extraction
+    WHERE document_field_extraction_id = {_sql(candidate_id)}
+    FOR UPDATE
+),
+eligible AS (
+    SELECT * FROM cand
+    WHERE status = 'REVIEWED'
+      AND detected_document_type = 'HISTORICAL_PM_OCCURRENCE_CANDIDATE'
+      AND pump_tag_number IS NOT NULL
+      AND fields->>'occurrence_date' IS NOT NULL
+),
+already AS (
+    SELECT {_SELECT_COLUMNS} FROM pm_occurrence
+    WHERE source_reference = {_sql(source_reference)} AND deleted_at IS NULL
+),
+conflict AS (
+    SELECT {_SELECT_COLUMNS} FROM pm_occurrence
+    WHERE deleted_at IS NULL
+      AND source_reference IS DISTINCT FROM {_sql(source_reference)}
+      AND asset_code = (SELECT pump_tag_number FROM eligible)
+      AND occurrence_date = (SELECT (fields->>'occurrence_date')::date FROM eligible)
+),
+ins AS (
+    INSERT INTO pm_occurrence
+        (pm_occurrence_code, pm_schedule_code, asset_code, asset_type, occurrence_date,
+         activities, remarks, workflow_status, provenance, created_by, updated_by, source_reference)
+    SELECT {_sql(code)}, {_sql(pm_schedule_code)}, e.pump_tag_number,
+           COALESCE(e.fields->>'asset_type', 'PUMP'), (e.fields->>'occurrence_date')::date,
+           e.fields->'activities', e.fields->>'remarks',
+           'DRAFT', 'HISTORICAL_IMPORT', {_sql(promoted_by)}, {_sql(promoted_by)}, {_sql(source_reference)}
+    FROM eligible e
+    WHERE NOT EXISTS (SELECT 1 FROM already)
+      AND NOT EXISTS (SELECT 1 FROM conflict)
+      AND EXISTS (SELECT 1 FROM ltsa_pumps WHERE tag_number = e.pump_tag_number)
+      {_schedule_guard}
+    RETURNING {_SELECT_COLUMNS}
+),
+mark_saved AS (
+    UPDATE document_field_extraction
+    SET status = 'SAVED', updated_at = NOW()
+    WHERE document_field_extraction_id = {_sql(candidate_id)}
+      AND EXISTS (SELECT 1 FROM ins)
+    RETURNING document_field_extraction_id
+),
+audit AS (
+    INSERT INTO record_change_history
+        (entity_type, entity_id, field_name, old_value, new_value, changed_by, reason)
+    SELECT 'PM_OCCURRENCE', pm_occurrence_code, '__record__', NULL, row_to_json(ins)::text,
+           {_sql(promoted_by)}, 'HISTORICAL_PROMOTE'
+    FROM ins
+)
+SELECT json_build_object(
+    'candidate_found', (SELECT count(*) FROM cand) > 0,
+    'eligible', (SELECT count(*) FROM eligible) > 0,
+    'already', (SELECT row_to_json(a) FROM already a),
+    'conflict', (SELECT row_to_json(k) FROM conflict k),
+    'inserted', (SELECT row_to_json(i) FROM ins i),
+    'marked_saved', (SELECT count(*) FROM mark_saved) > 0
+)::text;
+""")
+        return json.loads(raw) if raw else {
+            "candidate_found": False, "eligible": False, "already": None,
+            "conflict": None, "inserted": None, "marked_saved": False,
+        }
+
+    def promote_historical_pm_batch_atomic(
+        self,
+        candidate_ids: list[str],
+        *,
+        pm_schedule_code: str,
+        promoted_by: str,
+    ) -> list[dict]:
+        """Exact-batch sibling of promote_historical_pm_atomic() -- same
+        idempotency key (source_reference), same eligibility rule, same
+        conflict rule, but as ONE explicit transaction (BEGIN/DO-
+        precheck/INSERT/UPDATE/DO-postcheck/COMMIT/SELECT, the same idiom
+        as stage_verified_batch()/bulk_review_batch_atomic()) covering
+        every id in `candidate_ids` at once: either every NEW-eligible
+        candidate promotes and every already-promoted id stays a safe
+        no-op, or NOTHING commits. Never rediscovers membership -- the
+        caller supplies the exact frozen id list; historical_pm_
+        promotion_batch_service.py is responsible for read-only
+        prevalidating that list before calling this.
+        """
+        if not candidate_ids:
+            return []
+
+        n = len(candidate_ids)
+        ids_sql = ", ".join(_sql(cid) for cid in candidate_ids)
+        _requires_real_schedule = not pm_schedule_code.startswith("UNSCHEDULED::")
+        _schedule_guard = (
+            f"AND EXISTS (SELECT 1 FROM pm_schedule WHERE pm_schedule_code = {_sql(pm_schedule_code)}) "
+            if _requires_real_schedule
+            else ""
+        )
+
+        script = f"""
+BEGIN;
+
+DO $$
+DECLARE
+  v_ineligible_count INT;
+  v_bad_pump_count INT;
+  v_conflict_count INT;
+BEGIN
+  -- Every id must exist, be PM, be REVIEWED or already SAVED (a SAVED id
+  -- is allowed into a retry batch -- it is simply a safe no-op below),
+  -- have a resolved pump and an occurrence_date.
+  SELECT count(*) INTO v_ineligible_count
+  FROM document_field_extraction d
+  WHERE d.document_field_extraction_id IN ({ids_sql})
+    AND NOT (
+      d.detected_document_type = 'HISTORICAL_PM_OCCURRENCE_CANDIDATE'
+      AND d.status IN ('REVIEWED', 'SAVED')
+      AND d.pump_tag_number IS NOT NULL
+      AND COALESCE(d.reviewed_fields, d.extracted_fields)->>'occurrence_date' IS NOT NULL
+    );
+  IF (SELECT count(*) FROM document_field_extraction WHERE document_field_extraction_id IN ({ids_sql})) <> {n}
+     OR v_ineligible_count > 0 THEN
+    RAISE EXCEPTION 'promotion batch precheck failed: % of % candidate(s) missing/ineligible', v_ineligible_count, {n};
+  END IF;
+
+  SELECT count(*) INTO v_bad_pump_count
+  FROM (SELECT DISTINCT d.pump_tag_number AS tag FROM document_field_extraction d
+        WHERE d.document_field_extraction_id IN ({ids_sql})) m
+  LEFT JOIN (SELECT tag_number, count(*) AS c FROM ltsa_pumps GROUP BY tag_number) p
+    ON p.tag_number = m.tag
+  WHERE p.tag_number IS NULL OR p.c <> 1;
+  IF v_bad_pump_count > 0 THEN
+    RAISE EXCEPTION 'promotion batch precheck failed: % pump tag(s) unknown/ambiguous', v_bad_pump_count;
+  END IF;
+
+  SELECT count(*) INTO v_conflict_count
+  FROM document_field_extraction d
+  JOIN pm_occurrence p
+    ON p.asset_code = d.pump_tag_number
+   AND p.occurrence_date = (COALESCE(d.reviewed_fields, d.extracted_fields)->>'occurrence_date')::date
+   AND p.deleted_at IS NULL
+   AND p.source_reference IS DISTINCT FROM ('document_field_extraction:' || d.document_field_extraction_id)
+  WHERE d.document_field_extraction_id IN ({ids_sql});
+  IF v_conflict_count > 0 THEN
+    RAISE EXCEPTION 'promotion batch precheck failed: % candidate(s) conflict with an existing pm_occurrence for the same asset/date', v_conflict_count;
+  END IF;
+END $$;
+
+WITH ins AS (
+    INSERT INTO pm_occurrence
+        (pm_occurrence_code, pm_schedule_code, asset_code, asset_type, occurrence_date,
+         activities, remarks, workflow_status, provenance, created_by, updated_by, source_reference)
+    SELECT
+        'PMOCC-' || upper(substr(md5(d.document_field_extraction_id || clock_timestamp()::text || random()::text), 1, 12)),
+        {_sql(pm_schedule_code)}, d.pump_tag_number,
+        COALESCE(COALESCE(d.reviewed_fields, d.extracted_fields)->>'asset_type', 'PUMP'),
+        (COALESCE(d.reviewed_fields, d.extracted_fields)->>'occurrence_date')::date,
+        COALESCE(d.reviewed_fields, d.extracted_fields)->'activities',
+        COALESCE(d.reviewed_fields, d.extracted_fields)->>'remarks',
+        'DRAFT', 'HISTORICAL_IMPORT', {_sql(promoted_by)}, {_sql(promoted_by)},
+        'document_field_extraction:' || d.document_field_extraction_id
+    FROM document_field_extraction d
+    WHERE d.document_field_extraction_id IN ({ids_sql})
+      AND NOT EXISTS (
+        SELECT 1 FROM pm_occurrence p2
+        WHERE p2.source_reference = 'document_field_extraction:' || d.document_field_extraction_id
+          AND p2.deleted_at IS NULL
+      )
+      {_schedule_guard}
+    RETURNING {_SELECT_COLUMNS}
+)
+INSERT INTO record_change_history
+    (entity_type, entity_id, field_name, old_value, new_value, changed_by, reason)
+SELECT 'PM_OCCURRENCE', pm_occurrence_code, '__record__', NULL, row_to_json(ins)::text,
+       {_sql(promoted_by)}, 'HISTORICAL_PROMOTE_BATCH'
+FROM ins;
+
+UPDATE document_field_extraction
+SET status = 'SAVED', updated_at = NOW()
+WHERE document_field_extraction_id IN ({ids_sql})
+  AND status = 'REVIEWED'
+  AND EXISTS (
+    SELECT 1 FROM pm_occurrence p3
+    WHERE p3.source_reference = 'document_field_extraction:' || document_field_extraction_id
+      AND p3.deleted_at IS NULL
+  );
+
+DO $$
+DECLARE
+  v_final_count INT;
+BEGIN
+  SELECT count(*) INTO v_final_count
+  FROM document_field_extraction d
+  WHERE d.document_field_extraction_id IN ({ids_sql})
+    AND d.status = 'SAVED'
+    AND EXISTS (
+      SELECT 1 FROM pm_occurrence p
+      WHERE p.source_reference = 'document_field_extraction:' || d.document_field_extraction_id
+        AND p.deleted_at IS NULL
+    );
+  IF v_final_count <> {n} THEN
+    RAISE EXCEPTION 'promotion batch postcheck failed: % of {n} candidate(s) SAVED with a linked pm_occurrence', v_final_count;
+  END IF;
+END $$;
+
+COMMIT;
+
+SELECT COALESCE(json_agg(row_to_json(t))::text, '[]') FROM (
+    SELECT d.document_field_extraction_id, d.status, p.pm_occurrence_code
+    FROM document_field_extraction d
+    LEFT JOIN pm_occurrence p
+      ON p.source_reference = 'document_field_extraction:' || d.document_field_extraction_id
+     AND p.deleted_at IS NULL
+    WHERE d.document_field_extraction_id IN ({ids_sql})
+) t;
+"""
+        raw = self._runner.query_scalar(script.strip())
+        return json.loads(raw or "[]")
+
+    def find_by_asset_and_date(self, asset_code: str, occurrence_date: str) -> dict | None:
+        """Read-only. Used by historical_pm_promotion_batch_service.py's
+        prevalidation to detect a CONFLICT (a final PM for this (asset,
+        date) already exists, produced by a DIFFERENT candidate) before
+        the atomic batch write -- (asset_code, occurrence_date) is this
+        bounded historical archive's own verified dedup grain, checked
+        here only as an additional conflict guard, never as the primary
+        retry-identity (that is source_reference, see find_by_source_
+        reference below / promote_historical_pm_atomic)."""
+        rows = _json_query(
+            f"SELECT {_SELECT_COLUMNS} FROM pm_occurrence "
+            f"WHERE asset_code = {_sql(asset_code)} AND occurrence_date = {_sql(occurrence_date)} "
+            "AND deleted_at IS NULL LIMIT 1",
+            self._runner,
+        )
+        return rows[0] if rows else None
+
     def find_by_source_reference(self, source_reference: str) -> dict | None:
         # WhatsApp PM writer readiness (MWO: PM AD-HOC / UNSCHEDULED
         # CANONICAL WRITE DESIGN) -- same durable, DB-backed idempotency

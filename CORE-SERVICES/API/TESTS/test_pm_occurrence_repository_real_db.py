@@ -35,7 +35,7 @@ for path in (_CORE_SERVICES_DIR, _INGESTION_DIR, _BACKEND_API_DIR):
 from ltsa_pump_inventory_db_upsert import DatabaseConfig, DatabaseRunner, bootstrap_schema  # noqa: E402
 from API.pm_occurrence_repository import PMOccurrenceRepository  # noqa: E402
 from API.condition_monitoring_reading_repository import ConditionMonitoringReadingRepository  # noqa: E402
-from API.historical_pm_cmon_promotion_service import promote_pm_occurrence_candidate  # noqa: E402
+from API.historical_pm_cmon_promotion_service import promote_pm_occurrence_atomic  # noqa: E402
 
 from fastapi.testclient import TestClient  # noqa: E402
 from main import app  # noqa: E402
@@ -351,23 +351,28 @@ def test_dashboard_create_route_diagnostic_logs_on_failure_without_changing_resp
     assert _ASSET_CODE not in log_lines[0]
 
 
-def test_historical_promotion_reaches_repaired_repository_and_persists(pm_repo):
-    # Phase 5B -- the historical promotion path, through the real
-    # (unmodified) promote_pm_occurrence_candidate, with the real
-    # repository bound to real Postgres.
-    candidate = {
-        "document_field_extraction_id": "dfe-real-db-1",
-        "status": "REVIEWED",
-        "pump_tag_number": _ASSET_CODE,
-        "reviewed_fields": {
-            "asset_type": "PUMP",
-            "occurrence_date": "2026-08-29",
-            "activities": [{"description": "Lubrication check", "done": True}],
-            "remarks": "promoted from historical import",
-        },
-    }
-    record = promote_pm_occurrence_candidate(
-        candidate,
+def test_historical_promotion_reaches_repaired_repository_and_persists(pm_repo, runner):
+    # MWO-LTSA-ATOMIC-PM-PROMOTION-001 -- the atomic historical promotion
+    # path, through the real (unmodified) promote_pm_occurrence_atomic,
+    # with the real repository bound to real Postgres. Unlike the old
+    # promote_pm_occurrence_candidate (which took a plain Python dict),
+    # the atomic path re-reads the candidate from document_field_
+    # extraction itself, so a real row must exist first.
+    import json as _json
+
+    runner.execute_script(
+        "INSERT INTO document_field_extraction "
+        "(document_field_extraction_id, source_document_id, source_document_type, "
+        "detected_document_type, extraction_provider, extracted_fields, reviewed_fields, "
+        "status, pump_tag_number) VALUES ("
+        "'dfe-real-db-1', 'PDF-REAL-DB-1', 'PDF', 'HISTORICAL_PM_OCCURRENCE_CANDIDATE', "
+        "'deterministic_workbook_table_parser', '{}'::jsonb, "
+        f"'{_json.dumps({'asset_type': 'PUMP', 'occurrence_date': '2026-08-29', 'activities': [{'description': 'Lubrication check', 'done': True}], 'remarks': 'promoted from historical import'})}'::jsonb, "
+        f"'REVIEWED', '{_ASSET_CODE}');"
+    )
+
+    record = promote_pm_occurrence_atomic(
+        "dfe-real-db-1",
         pm_occurrence_repository=pm_repo,
         pm_schedule_code=_SCHEDULE_CODE,
         promoted_by=_ACTOR,
@@ -379,6 +384,23 @@ def test_historical_promotion_reaches_repaired_repository_and_persists(pm_repo):
 
     stored = pm_repo.find_by_code(record["pm_occurrence_code"])
     assert stored is not None
+    assert len(pm_repo.list_by_asset(_ASSET_CODE)) == 1
+
+    staged = runner.query_scalar(
+        "SELECT status FROM document_field_extraction WHERE document_field_extraction_id = 'dfe-real-db-1'"
+    )
+    assert staged == "SAVED"
+
+    # Retry proof: a second promotion attempt against the SAME real row
+    # must be recognized as already-promoted, never a duplicate write.
+    from API.historical_pm_cmon_promotion_service import AlreadyPromotedError
+    with pytest.raises(AlreadyPromotedError):
+        promote_pm_occurrence_atomic(
+            "dfe-real-db-1",
+            pm_occurrence_repository=pm_repo,
+            pm_schedule_code=_SCHEDULE_CODE,
+            promoted_by=_ACTOR,
+        )
     assert len(pm_repo.list_by_asset(_ASSET_CODE)) == 1
 
 
