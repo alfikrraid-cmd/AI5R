@@ -20,6 +20,13 @@ from API.historical_pm_cmon_promotion_service import (
     promote_cmon_reading_candidate,
     promote_pm_occurrence_candidate,
 )
+from API.historical_bulk_review_service import (
+    BatchTooLargeError,
+    DuplicateCandidateIdError,
+    EmptyBatchError,
+    bulk_review_candidates,
+    validate_request_shape,
+)
 from API.historical_pm_cmon_staging_repository import InvalidStatusTransitionError
 from API.pump_area_scope import is_asset_in_scope
 from dependencies import (
@@ -315,3 +322,64 @@ def promote_candidate(
         raise HTTPException(status_code=422, detail=str(error))
 
     return {"data": record}
+
+
+class BulkReviewRequest(BaseModel):
+    # Explicit id list only -- this endpoint never rediscovers or
+    # reclassifies a batch itself, matching historical_selective_
+    # staging_service's own "caller supplies the exact manifest" rule.
+    candidate_ids: list[str]
+
+
+# MWO-LTSA-BULK-HISTORICAL-REVIEW-001 -- a second, narrower review path
+# for a human reviewer who has already verified an entire recovery batch
+# out-of-band and needs to confirm it in bulk. Reuses this router's own
+# record.edit gate, get_current_user for the reviewer identity (never
+# client-supplied, same as review_candidate's actor_id), and
+# _assert_in_scope_or_404 per candidate (never a partial-scope leak).
+# Only ever confirms-as-extracted: no reviewed_fields/pump_tag_number/
+# reason in the request body at all, so no correction is possible here --
+# a correction still requires the existing single-candidate /review
+# action. Promotion remains a fully separate action (per-candidate
+# /promote, unchanged) -- this endpoint never writes pm_occurrence.
+@router.post("/api/ltsa/historical-review/candidates/bulk-review")
+def bulk_review_candidates_endpoint(
+    payload: BulkReviewRequest,
+    staging_repository=Depends(get_historical_pm_cmon_staging_repository),
+    pump_gateway=Depends(get_pump_gateway),
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
+) -> Payload:
+    # Cheap request-shape check first (no repository access) -- a
+    # malformed request (empty/oversized/duplicate ids) is rejected
+    # before spending one find_by_id + scope check per id.
+    try:
+        validate_request_shape(payload.candidate_ids)
+    except (EmptyBatchError, BatchTooLargeError, DuplicateCandidateIdError) as error:
+        raise HTTPException(status_code=422, detail=str(error))
+
+    for candidate_id in payload.candidate_ids:
+        candidate = staging_repository.find_by_id(candidate_id)
+        if candidate is None:
+            raise HTTPException(status_code=404, detail=f"No such candidate: {candidate_id}")
+        _assert_in_scope_or_404(candidate, current_user, pump_gateway)
+
+    actor_id = _actor_id(current_user)
+    result = bulk_review_candidates(staging_repository, payload.candidate_ids, reviewed_by=actor_id)
+
+    if result["status"] == "REJECTED_PRECHECK_FAILED":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "one or more candidates are not eligible for bulk review (must be PENDING_REVIEW + PM)",
+                "counts": result["precheck"]["counts"],
+            },
+        )
+    if result["status"] == "REJECTED_ATOMIC_TRANSACTION_FAILED":
+        raise HTTPException(status_code=409, detail=result.get("error", "bulk review transaction failed"))
+
+    return {
+        "data": {
+            "reviewed_count": len(result["reviewed"]),
+            "candidate_ids": [r["document_field_extraction_id"] for r in result["reviewed"]],
+        }
+    }

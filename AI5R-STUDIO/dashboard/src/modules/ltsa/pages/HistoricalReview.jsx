@@ -5,6 +5,7 @@ import {
   reviewHistoricalReviewCandidate,
   rejectHistoricalReviewCandidate,
   promoteHistoricalReviewCandidate,
+  bulkReviewHistoricalReviewCandidates,
 } from "../../../api/ai5rClient";
 import { useOptionalAuth } from "../auth/AuthContext";
 import { can, PERMISSIONS } from "../auth/permissions";
@@ -23,6 +24,15 @@ const TYPE_LABEL = {
 };
 
 const PROMOTABLE_TYPES = new Set(["HISTORICAL_PM_OCCURRENCE_CANDIDATE", "HISTORICAL_CMON_READING_CANDIDATE"]);
+
+// MWO-LTSA-BULK-HISTORICAL-REVIEW-001 -- matches the backend's own
+// PM-only, PENDING_REVIEW-only restriction (historical_bulk_review_
+// service.py) exactly; a candidate outside this never appears as
+// selectable here, so the UI never offers a selection the backend would
+// reject. MAX_BULK_REVIEW_BATCH mirrors the backend's own bound (a
+// client-side hint only -- the backend enforces the real limit).
+const BULK_ELIGIBLE_TYPE = "HISTORICAL_PM_OCCURRENCE_CANDIDATE";
+const MAX_BULK_REVIEW_BATCH = 1000;
 
 // MWO-LTSA-HISTORICAL-INCOMPLETE-DATA-POLICY-001 -- Core Model:
 // MATCHED (canonical pump relation known), INCOMPLETE (a valid
@@ -69,6 +79,15 @@ export default function HistoricalReview() {
   const [pumpTagInput, setPumpTagInput] = useState("");
   const [reasonInput, setReasonInput] = useState("");
 
+  // MWO-LTSA-BULK-HISTORICAL-REVIEW-001 -- selection lives entirely in
+  // this session's UI state; nothing is targeted server-side until the
+  // human explicitly confirms and the exact id list is sent.
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
+  const [bulkSubmitting, setBulkSubmitting] = useState(false);
+  const [bulkError, setBulkError] = useState(null);
+  const [bulkResult, setBulkResult] = useState(null);
+
   async function reload() {
     setLoading(true);
     setLoadError(null);
@@ -104,6 +123,17 @@ export default function HistoricalReview() {
       return true;
     });
   }, [pending, typeFilter, matchFilter]);
+
+  // MWO-LTSA-BULK-HISTORICAL-REVIEW-001 -- "select exact recovery batch"
+  // means: narrow via the existing Type/Status filters to the intended
+  // batch, then select individually or via Select All Filtered. Only
+  // PM PENDING_REVIEW candidates are ever offered -- matches the
+  // backend's own restriction exactly, never a generic "select
+  // everything" mechanism and never tied to any one batch size.
+  const bulkEligible = useMemo(
+    () => filtered.filter((c) => c.detected_document_type === BULK_ELIGIBLE_TYPE),
+    [filtered]
+  );
 
   const summary = useMemo(() => {
     // PENDING_REVIEW records are never REJECTED (a different status), so
@@ -156,6 +186,43 @@ export default function HistoricalReview() {
       }
     } catch (error) {
       setActionError(error.message || "Action failed");
+    }
+  }
+
+  function toggleSelected(candidateId) {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(candidateId)) next.delete(candidateId);
+      else next.add(candidateId);
+      return next;
+    });
+  }
+
+  function selectAllEligible() {
+    setSelectedIds(new Set(bulkEligible.map((c) => c.document_field_extraction_id)));
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
+
+  // Confirm-as-extracted only, for the exact selected id list -- no
+  // corrections, no promotion. Promotion stays the existing separate
+  // per-candidate action; nothing here ever calls it.
+  async function handleBulkReview() {
+    setBulkSubmitting(true);
+    setBulkError(null);
+    try {
+      const ids = Array.from(selectedIds);
+      const result = await bulkReviewHistoricalReviewCandidates(ids);
+      setBulkResult(result);
+      setBulkConfirmOpen(false);
+      setSelectedIds(new Set());
+      await reload();
+    } catch (error) {
+      setBulkError(error.message || "Bulk review failed");
+    } finally {
+      setBulkSubmitting(false);
     }
   }
 
@@ -259,6 +326,74 @@ export default function HistoricalReview() {
         </label>
         <Button onClick={reload}>Refresh</Button>
       </div>
+
+      <div className="ltsa-historical-review-bulk-panel" data-testid="bulk-review-panel">
+        <div className="ltsa-historical-review-bulk-header">
+          <strong>Bulk Review (PM only, confirm-as-extracted)</strong>
+          <span data-testid="bulk-review-summary">
+            {selectedIds.size} selected of {bulkEligible.length} eligible in current filter
+          </span>
+        </div>
+        <div className="ltsa-historical-review-actions">
+          <Button onClick={selectAllEligible} disabled={bulkEligible.length === 0}>
+            Select All Filtered PM ({bulkEligible.length})
+          </Button>
+          <Button onClick={clearSelection} disabled={selectedIds.size === 0}>
+            Clear Selection
+          </Button>
+          <Button onClick={() => setBulkConfirmOpen(true)} disabled={selectedIds.size === 0}>
+            Bulk Review Selected ({selectedIds.size})
+          </Button>
+        </div>
+        {selectedIds.size > MAX_BULK_REVIEW_BATCH ? (
+          <p className="ltsa-historical-review-error">
+            {selectedIds.size} exceeds the maximum bulk review batch size ({MAX_BULK_REVIEW_BATCH}).
+          </p>
+        ) : null}
+        {bulkEligible.length > 0 ? (
+          <ul className="ltsa-historical-review-bulk-list">
+            {bulkEligible.map((candidate) => {
+              const id = candidate.document_field_extraction_id;
+              return (
+                <li key={id}>
+                  <label>
+                    <input
+                      type="checkbox"
+                      aria-label={`select-${id}`}
+                      checked={selectedIds.has(id)}
+                      onChange={() => toggleSelected(id)}
+                    />
+                    {id} — {displayValue((candidate.extracted_fields || {}).raw_asset_tag)} /{" "}
+                    {displayValue(candidate.pump_tag_number)}
+                  </label>
+                </li>
+              );
+            })}
+          </ul>
+        ) : null}
+        {bulkError ? <p className="ltsa-historical-review-error">{bulkError}</p> : null}
+        {bulkResult ? (
+          <p className="ltsa-historical-review-success">
+            Bulk reviewed {bulkResult.reviewed_count} candidate(s).
+          </p>
+        ) : null}
+      </div>
+
+      <Modal isOpen={bulkConfirmOpen} onClose={() => setBulkConfirmOpen(false)} title="Confirm Bulk Review">
+        <p>
+          You are about to confirm-as-extracted <strong>{selectedIds.size}</strong> PM candidate(s), exactly
+          the ones currently selected. No field is corrected and nothing is promoted -- promotion remains a
+          separate, per-candidate action.
+        </p>
+        <div className="ltsa-historical-review-actions">
+          <Button onClick={handleBulkReview} disabled={bulkSubmitting || selectedIds.size === 0}>
+            {bulkSubmitting ? "Submitting..." : `Confirm Bulk Review of ${selectedIds.size}`}
+          </Button>
+          <Button onClick={() => setBulkConfirmOpen(false)} disabled={bulkSubmitting}>
+            Cancel
+          </Button>
+        </div>
+      </Modal>
 
       {loading ? (
         <p>Loading...</p>

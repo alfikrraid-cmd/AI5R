@@ -203,3 +203,79 @@ class TestListForSource:
 
         sql = runner.scalar_calls[0]
         assert "source_document_id = 'PDF-1'" in sql
+
+
+class TestBulkReviewBatchAtomic:
+    def test_empty_list_returns_empty_without_a_query(self):
+        runner = FakeRunner()
+        repo = HistoricalPMCMONStagingRepository(runner)
+
+        assert repo.bulk_review_batch_atomic([], reviewed_by="r1") == []
+        assert runner.scalar_calls == []
+
+    def test_script_is_one_call_containing_begin_and_commit(self):
+        runner = FakeRunner(scalar_response=json.dumps([_row(status="REVIEWED")]))
+        repo = HistoricalPMCMONStagingRepository(runner)
+
+        repo.bulk_review_batch_atomic(["DFE-1", "DFE-2"], reviewed_by="reviewer-1")
+
+        assert len(runner.scalar_calls) == 1
+        sql = runner.scalar_calls[0]
+        assert "BEGIN;" in sql
+        assert "\nCOMMIT;\n" in sql
+
+    def test_targets_exactly_the_given_ids(self):
+        runner = FakeRunner(scalar_response=json.dumps([_row(status="REVIEWED")]))
+        repo = HistoricalPMCMONStagingRepository(runner)
+
+        repo.bulk_review_batch_atomic(["DFE-1", "DFE-2", "DFE-3"], reviewed_by="reviewer-1")
+
+        sql = runner.scalar_calls[0]
+        assert "'DFE-1'" in sql and "'DFE-2'" in sql and "'DFE-3'" in sql
+
+    def test_restricted_to_pending_review_and_pm_only(self):
+        runner = FakeRunner(scalar_response=json.dumps([_row(status="REVIEWED")]))
+        repo = HistoricalPMCMONStagingRepository(runner)
+
+        repo.bulk_review_batch_atomic(["DFE-1"], reviewed_by="reviewer-1")
+
+        sql = runner.scalar_calls[0]
+        assert "status = 'PENDING_REVIEW'" in sql
+        assert f"detected_document_type = '{PM_OCCURRENCE_CANDIDATE}'" in sql
+
+    def test_reviewed_fields_copied_from_extracted_fields_verbatim(self):
+        runner = FakeRunner(scalar_response=json.dumps([_row(status="REVIEWED")]))
+        repo = HistoricalPMCMONStagingRepository(runner)
+
+        repo.bulk_review_batch_atomic(["DFE-1"], reviewed_by="reviewer-1")
+
+        sql = runner.scalar_calls[0]
+        assert "reviewed_fields = extracted_fields" in sql
+
+    def test_reviewer_is_the_given_reviewed_by(self):
+        runner = FakeRunner(scalar_response=json.dumps([_row(status="REVIEWED")]))
+        repo = HistoricalPMCMONStagingRepository(runner)
+
+        repo.bulk_review_batch_atomic(["DFE-1"], reviewed_by="reviewer-42")
+
+        assert "reviewed_by = 'reviewer-42'" in runner.scalar_calls[0]
+
+    def test_precheck_and_postcheck_blocks_present(self):
+        runner = FakeRunner(scalar_response=json.dumps([_row(status="REVIEWED")]))
+        repo = HistoricalPMCMONStagingRepository(runner)
+
+        repo.bulk_review_batch_atomic(["DFE-1", "DFE-2"], reviewed_by="r1")
+
+        sql = runner.scalar_calls[0]
+        assert "v_eligible_count <> 2" in sql
+        assert "v_reviewed_count <> 2" in sql
+
+    def test_returns_rows_from_final_select(self):
+        rows = [_row(document_field_extraction_id="DFE-1", status="REVIEWED"),
+                _row(document_field_extraction_id="DFE-2", status="REVIEWED")]
+        runner = FakeRunner(scalar_response=json.dumps(rows))
+        repo = HistoricalPMCMONStagingRepository(runner)
+
+        result = repo.bulk_review_batch_atomic(["DFE-1", "DFE-2"], reviewed_by="r1")
+
+        assert [r["document_field_extraction_id"] for r in result] == ["DFE-1", "DFE-2"]
