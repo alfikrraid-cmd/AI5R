@@ -1,0 +1,17 @@
+{
+  "name": "@ai5r/tap-ltsa-group-agent",
+  "version": "0.1.0-phase1",
+  "private": true,
+  "description": "TAP LTSA WhatsApp Group Agent transport (MWO-LTSA-TAP-GROUP-AGENT-001). Unofficial WhatsApp Web transport (Baileys) -- separate, isolated from the production Meta WhatsApp Business Cloud API personal-chat flow. Phase 1: build + test only, no real number pairing.",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=20"
+  },
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "6.7.24"
+  }
+}
