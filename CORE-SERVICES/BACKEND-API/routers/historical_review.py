@@ -90,8 +90,35 @@ def classify_candidate(candidate: dict) -> str:
     return "INCOMPLETE"
 
 
+_RECOVERY_ELIGIBLE_DOMAIN = "HISTORICAL_PM_OCCURRENCE_CANDIDATE"
+_RECOVERY_ELIGIBLE_STATUS = "PENDING_REVIEW"
+
+
+# MWO-LTSA-EXACT-540-RECOVERY-UI-001 -- server-derived, not frontend-
+# reimplemented: the ONLY place that decides "is this candidate part of
+# the selectively staged deterministic recovery batch" is here, reusing
+# the exact same fields historical_bulk_review_service.py's own
+# eligibility check already reads (detected_document_type, status,
+# extracted_fields->>'candidate_identity_v2'). candidate_identity_v2 is
+# written ONLY by historical_selective_staging_service.stage_verified_
+# batch() (verified against production: every row carrying it belongs to
+# the single 540-candidate recovery manifest, zero exceptions) -- no
+# second table, no schema change, no new column.
+def _is_recovery_batch_eligible(candidate: dict) -> bool:
+    if candidate.get("detected_document_type") != _RECOVERY_ELIGIBLE_DOMAIN:
+        return False
+    if candidate.get("status") != _RECOVERY_ELIGIBLE_STATUS:
+        return False
+    fields = candidate.get("extracted_fields") or {}
+    return bool(fields.get("candidate_identity_v2"))
+
+
 def _with_classification(candidate: dict) -> dict:
-    return {**candidate, "classification": classify_candidate(candidate)}
+    return {
+        **candidate,
+        "classification": classify_candidate(candidate),
+        "recovery_batch_eligible": _is_recovery_batch_eligible(candidate),
+    }
 
 
 def _assert_in_scope_or_404(candidate: dict, current_user: AuthenticatedIdentity, pump_gateway) -> None:

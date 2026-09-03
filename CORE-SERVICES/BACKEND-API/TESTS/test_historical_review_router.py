@@ -403,6 +403,83 @@ class TestPromotion:
             _clear()
 
 
+class TestRecoveryBatchEligibility:
+    """MWO-LTSA-EXACT-540-RECOVERY-UI-001 -- recovery_batch_eligible is
+    server-derived (_is_recovery_batch_eligible) and returned on every
+    candidate response; the frontend never re-implements this rule."""
+
+    def test_pm_pending_with_v2_identity_is_eligible(self):
+        staging = FakeStagingRepository(
+            _candidate(extracted_fields={"occurrence_date": "2026-07-01", "candidate_identity_v2": "HASH-1"})
+        )
+        _override(identity=_identity("SUPERUSER"), staging=staging)
+        try:
+            response = client.get("/api/ltsa/historical-review/candidates/DFE-1")
+            assert response.json()["data"]["recovery_batch_eligible"] is True
+        finally:
+            _clear()
+
+    def test_pm_pending_without_v2_identity_is_not_eligible(self):
+        # the 2 old pending PM candidates -- same type/status, no
+        # candidate_identity_v2 -- must never be swept into a recovery
+        # request.
+        staging = FakeStagingRepository(_candidate())  # default extracted_fields has no candidate_identity_v2
+        _override(identity=_identity("SUPERUSER"), staging=staging)
+        try:
+            response = client.get("/api/ltsa/historical-review/candidates/DFE-1")
+            assert response.json()["data"]["recovery_batch_eligible"] is False
+        finally:
+            _clear()
+
+    def test_cmon_with_v2_identity_is_not_eligible(self):
+        staging = FakeStagingRepository(_candidate(
+            detected_document_type="HISTORICAL_CMON_READING_CANDIDATE",
+            extracted_fields={"reading_date": "2026-07-01", "candidate_identity_v2": "HASH-2"},
+        ))
+        _override(identity=_identity("SUPERUSER"), staging=staging)
+        try:
+            response = client.get("/api/ltsa/historical-review/candidates/DFE-1")
+            assert response.json()["data"]["recovery_batch_eligible"] is False
+        finally:
+            _clear()
+
+    def test_finding_with_v2_identity_is_not_eligible(self):
+        staging = FakeStagingRepository(_candidate(
+            detected_document_type="HISTORICAL_FINDING_CANDIDATE",
+            extracted_fields={"candidate_identity_v2": "HASH-3"},
+        ))
+        _override(identity=_identity("SUPERUSER"), staging=staging)
+        try:
+            response = client.get("/api/ltsa/historical-review/candidates/DFE-1")
+            assert response.json()["data"]["recovery_batch_eligible"] is False
+        finally:
+            _clear()
+
+    def test_pm_reviewed_with_v2_identity_is_not_eligible(self):
+        # already advanced past PENDING_REVIEW -- never re-offered.
+        staging = FakeStagingRepository(_candidate(
+            status="REVIEWED",
+            extracted_fields={"occurrence_date": "2026-07-01", "candidate_identity_v2": "HASH-4"},
+        ))
+        _override(identity=_identity("SUPERUSER"), staging=staging)
+        try:
+            response = client.get("/api/ltsa/historical-review/candidates/DFE-1")
+            assert response.json()["data"]["recovery_batch_eligible"] is False
+        finally:
+            _clear()
+
+    def test_field_present_on_the_list_endpoint_too(self):
+        staging = FakeStagingRepository(
+            _candidate(extracted_fields={"occurrence_date": "2026-07-01", "candidate_identity_v2": "HASH-5"})
+        )
+        _override(identity=_identity("SUPERUSER"), staging=staging)
+        try:
+            response = client.get("/api/ltsa/historical-review/candidates")
+            assert response.json()["data"][0]["recovery_batch_eligible"] is True
+        finally:
+            _clear()
+
+
 class TestHistoryReuse:
     def test_superuser_can_read_staging_candidate_history_via_the_reused_endpoint(self):
         history = FakeHistoryRepository()

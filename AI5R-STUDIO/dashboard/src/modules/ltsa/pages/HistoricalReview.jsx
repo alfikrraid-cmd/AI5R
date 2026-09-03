@@ -88,6 +88,17 @@ export default function HistoricalReview() {
   const [bulkError, setBulkError] = useState(null);
   const [bulkResult, setBulkResult] = useState(null);
 
+  // MWO-LTSA-EXACT-540-RECOVERY-UI-001 -- a SECOND, dedicated action,
+  // deliberately separate from the generic Bulk Review panel above.
+  // Never a selection UI: the target set is entirely server-derived
+  // (candidate.recovery_batch_eligible, computed by routers/historical_
+  // review.py::_is_recovery_batch_eligible) -- this component only
+  // reads that flag, it never re-implements the eligibility rule.
+  const [recoveryConfirmOpen, setRecoveryConfirmOpen] = useState(false);
+  const [recoverySubmitting, setRecoverySubmitting] = useState(false);
+  const [recoveryError, setRecoveryError] = useState(null);
+  const [recoveryResult, setRecoveryResult] = useState(null);
+
   async function reload() {
     setLoading(true);
     setLoadError(null);
@@ -134,6 +145,30 @@ export default function HistoricalReview() {
     () => filtered.filter((c) => c.detected_document_type === BULK_ELIGIBLE_TYPE),
     [filtered]
   );
+
+  // MWO-LTSA-EXACT-540-RECOVERY-UI-001 -- derived from `pending` (the
+  // full still-pending set), NOT `filtered` -- this dedicated action is
+  // independent of whatever the generic Type/Status dropdowns happen to
+  // be set to. Every id here comes straight from the server response;
+  // none are ever hard-coded in this source file.
+  const recoveryEligible = useMemo(
+    () => pending.filter((c) => c.recovery_batch_eligible === true),
+    [pending]
+  );
+  const recoveryIdentities = useMemo(
+    () => recoveryEligible.map((c) => (c.extracted_fields || {}).candidate_identity_v2).filter(Boolean),
+    [recoveryEligible]
+  );
+  // Fail-closed sanity check: the server-derived set must have exactly
+  // one distinct, non-empty candidate_identity_v2 per row. Any drift
+  // (a duplicate identity, or a flagged row missing one) disables the
+  // action entirely rather than submitting a request that might not be
+  // exactly the intended batch.
+  const recoveryInternallyConsistent =
+    recoveryEligible.length > 0 &&
+    recoveryIdentities.length === recoveryEligible.length &&
+    new Set(recoveryIdentities).size === recoveryEligible.length;
+  const recoveryExcludedCount = pending.length - recoveryEligible.length;
 
   const summary = useMemo(() => {
     // PENDING_REVIEW records are never REJECTED (a different status), so
@@ -223,6 +258,27 @@ export default function HistoricalReview() {
       setBulkError(error.message || "Bulk review failed");
     } finally {
       setBulkSubmitting(false);
+    }
+  }
+
+  // Confirm-as-extracted for the exact server-flagged recovery batch
+  // only -- same endpoint as the generic Bulk Review action, same
+  // no-correction/no-promotion guarantee, but the id list here is never
+  // derived from a filter or a manual selection, only from
+  // recovery_batch_eligible === true.
+  async function handleRecoveryReview() {
+    setRecoverySubmitting(true);
+    setRecoveryError(null);
+    try {
+      const ids = recoveryEligible.map((c) => c.document_field_extraction_id);
+      const result = await bulkReviewHistoricalReviewCandidates(ids);
+      setRecoveryResult(result);
+      setRecoveryConfirmOpen(false);
+      await reload();
+    } catch (error) {
+      setRecoveryError(error.message || "Historical PM recovery review failed");
+    } finally {
+      setRecoverySubmitting(false);
     }
   }
 
@@ -326,6 +382,53 @@ export default function HistoricalReview() {
         </label>
         <Button onClick={reload}>Refresh</Button>
       </div>
+
+      <div className="ltsa-historical-review-recovery-panel" data-testid="recovery-panel">
+        <div className="ltsa-historical-review-bulk-header">
+          <strong>Historical PM Recovery</strong>
+        </div>
+        <p data-testid="recovery-summary">
+          Verified candidates: <strong>{recoveryEligible.length}</strong> &nbsp; Excluded pending candidates:{" "}
+          <strong>{recoveryExcludedCount}</strong>
+        </p>
+        <div className="ltsa-historical-review-actions">
+          <Button
+            onClick={() => setRecoveryConfirmOpen(true)}
+            disabled={!recoveryInternallyConsistent}
+          >
+            Review {recoveryEligible.length} Verified PM
+          </Button>
+        </div>
+        {!recoveryInternallyConsistent && recoveryEligible.length > 0 ? (
+          <p className="ltsa-historical-review-error">
+            Recovery set is inconsistent (duplicate or missing candidate identity) -- action disabled.
+          </p>
+        ) : null}
+        {recoveryError ? <p className="ltsa-historical-review-error">{recoveryError}</p> : null}
+        {recoveryResult ? (
+          <p className="ltsa-historical-review-success">
+            Historical PM recovery reviewed {recoveryResult.reviewed_count} candidate(s).
+          </p>
+        ) : null}
+      </div>
+
+      <Modal isOpen={recoveryConfirmOpen} onClose={() => setRecoveryConfirmOpen(false)} title="Confirm Historical PM Recovery">
+        <p>
+          Review exactly <strong>{recoveryEligible.length}</strong> verified historical PM candidates?
+        </p>
+        <p>
+          {recoveryEligible.length} verified &nbsp; {recoveryExcludedCount} excluded (old pending PM, CMON,
+          Finding, and any candidate without a verified recovery identity are never included).
+        </p>
+        <div className="ltsa-historical-review-actions">
+          <Button onClick={handleRecoveryReview} disabled={recoverySubmitting || !recoveryInternallyConsistent}>
+            {recoverySubmitting ? "Submitting..." : `Confirm Review of ${recoveryEligible.length}`}
+          </Button>
+          <Button onClick={() => setRecoveryConfirmOpen(false)} disabled={recoverySubmitting}>
+            Cancel
+          </Button>
+        </div>
+      </Modal>
 
       <div className="ltsa-historical-review-bulk-panel" data-testid="bulk-review-panel">
         <div className="ltsa-historical-review-bulk-header">

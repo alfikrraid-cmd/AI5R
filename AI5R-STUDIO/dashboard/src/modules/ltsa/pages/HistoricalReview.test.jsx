@@ -70,6 +70,54 @@ const PM_CANDIDATE_B = {
   detected_document_type: "HISTORICAL_PM_OCCURRENCE_CANDIDATE",
 };
 
+// MWO-LTSA-EXACT-540-RECOVERY-UI-001 -- recovery_batch_eligible is a
+// SERVER-derived field (routers/historical_review.py::_is_recovery_
+// batch_eligible); these fixtures set it exactly as the real backend
+// would, so the tests below prove the frontend trusts that flag rather
+// than re-deriving eligibility itself.
+const RECOVERY_CANDIDATE_A = {
+  ...PM_CANDIDATE_A,
+  document_field_extraction_id: "DFE-REC-1",
+  extracted_fields: { ...PM_CANDIDATE_A.extracted_fields, candidate_identity_v2: "HASH-1" },
+  recovery_batch_eligible: true,
+};
+
+const RECOVERY_CANDIDATE_B = {
+  ...PM_CANDIDATE_B,
+  document_field_extraction_id: "DFE-REC-2",
+  extracted_fields: { ...PM_CANDIDATE_B.extracted_fields, candidate_identity_v2: "HASH-2" },
+  recovery_batch_eligible: true,
+};
+
+const OLD_PENDING_PM_CANDIDATE = {
+  ...PM_CANDIDATE_A,
+  document_field_extraction_id: "DFE-OLD-PM",
+  recovery_batch_eligible: false, // no candidate_identity_v2, server says not eligible
+};
+
+const CMON_PENDING_CANDIDATE = {
+  ...MATCHED_CANDIDATE,
+  document_field_extraction_id: "DFE-CMON-1",
+  recovery_batch_eligible: false,
+};
+
+const FINDING_PENDING_CANDIDATE = {
+  ...MATCHED_CANDIDATE,
+  document_field_extraction_id: "DFE-FIND-1",
+  detected_document_type: "HISTORICAL_FINDING_CANDIDATE",
+  recovery_batch_eligible: false,
+};
+
+// A candidate that HAS candidate_identity_v2 in its raw fields but the
+// server still flagged it ineligible (e.g. wrong status/domain) -- the
+// frontend must trust the flag, never re-derive from field presence.
+const MALFORMED_V2_CANDIDATE = {
+  ...PM_CANDIDATE_A,
+  document_field_extraction_id: "DFE-MALFORMED",
+  extracted_fields: { ...PM_CANDIDATE_A.extracted_fields, candidate_identity_v2: "HASH-SUSPECT" },
+  recovery_batch_eligible: false,
+};
+
 afterEach(() => {
   vi.clearAllMocks();
 });
@@ -309,5 +357,133 @@ describe("Historical Data Review workspace -- bulk review", () => {
     await screen.findByText("Bulk Review Selected (2)");
     fireEvent.click(screen.getByText("Clear Selection"));
     expect(await screen.findByTestId("bulk-review-summary")).toHaveTextContent("0 selected of 2 eligible");
+  });
+});
+
+describe("Historical Data Review workspace -- Historical PM Recovery (MWO-LTSA-EXACT-540-RECOVERY-UI-001)", () => {
+  it("counts only server-flagged recovery-eligible candidates as verified", async () => {
+    getHistoricalReviewCandidates.mockResolvedValue([
+      RECOVERY_CANDIDATE_A, RECOVERY_CANDIDATE_B, OLD_PENDING_PM_CANDIDATE,
+      CMON_PENDING_CANDIDATE, FINDING_PENDING_CANDIDATE,
+    ]);
+    renderWithSession(["record.edit"]);
+    const summary = await screen.findByTestId("recovery-summary");
+    expect(summary).toHaveTextContent("Verified candidates:");
+    expect(within(summary).getByText("2")).toBeInTheDocument(); // 2 recovery-eligible
+    expect(within(summary).getByText("3")).toBeInTheDocument(); // 3 excluded (old PM + CMON + Finding)
+  });
+
+  it("excludes the old pending PM candidate from the recovery request", async () => {
+    getHistoricalReviewCandidates.mockResolvedValue([RECOVERY_CANDIDATE_A, OLD_PENDING_PM_CANDIDATE]);
+    bulkReviewHistoricalReviewCandidates.mockResolvedValue({ reviewed_count: 1, candidate_ids: ["DFE-REC-1"] });
+    renderWithSession(["record.edit"]);
+    fireEvent.click(await screen.findByText("Review 1 Verified PM"));
+    fireEvent.click(await screen.findByText("Confirm Review of 1"));
+    await waitFor(() => expect(bulkReviewHistoricalReviewCandidates).toHaveBeenCalledWith(["DFE-REC-1"]));
+  });
+
+  it("excludes CMON candidates from the recovery request", async () => {
+    getHistoricalReviewCandidates.mockResolvedValue([RECOVERY_CANDIDATE_A, CMON_PENDING_CANDIDATE]);
+    bulkReviewHistoricalReviewCandidates.mockResolvedValue({ reviewed_count: 1, candidate_ids: ["DFE-REC-1"] });
+    renderWithSession(["record.edit"]);
+    fireEvent.click(await screen.findByText("Review 1 Verified PM"));
+    fireEvent.click(await screen.findByText("Confirm Review of 1"));
+    await waitFor(() =>
+      expect(bulkReviewHistoricalReviewCandidates).toHaveBeenCalledWith(
+        expect.not.arrayContaining(["DFE-CMON-1"])
+      )
+    );
+  });
+
+  it("excludes Finding candidates from the recovery request", async () => {
+    getHistoricalReviewCandidates.mockResolvedValue([RECOVERY_CANDIDATE_A, FINDING_PENDING_CANDIDATE]);
+    bulkReviewHistoricalReviewCandidates.mockResolvedValue({ reviewed_count: 1, candidate_ids: ["DFE-REC-1"] });
+    renderWithSession(["record.edit"]);
+    fireEvent.click(await screen.findByText("Review 1 Verified PM"));
+    fireEvent.click(await screen.findByText("Confirm Review of 1"));
+    await waitFor(() =>
+      expect(bulkReviewHistoricalReviewCandidates).toHaveBeenCalledWith(
+        expect.not.arrayContaining(["DFE-FIND-1"])
+      )
+    );
+  });
+
+  it("the generic bulk panel's larger PM count never leaks into the recovery request", async () => {
+    // The generic panel would offer BOTH PM candidates (2) via "Select
+    // All Filtered PM" since it filters by type only -- the dedicated
+    // recovery action must still submit only the 1 flagged as eligible.
+    getHistoricalReviewCandidates.mockResolvedValue([RECOVERY_CANDIDATE_A, OLD_PENDING_PM_CANDIDATE]);
+    bulkReviewHistoricalReviewCandidates.mockResolvedValue({ reviewed_count: 1, candidate_ids: ["DFE-REC-1"] });
+    renderWithSession(["record.edit"]);
+    expect(await screen.findByText("Select All Filtered PM (2)")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Review 1 Verified PM"));
+    fireEvent.click(await screen.findByText("Confirm Review of 1"));
+    await waitFor(() => expect(bulkReviewHistoricalReviewCandidates).toHaveBeenCalledWith(["DFE-REC-1"]));
+  });
+
+  it("a candidate missing candidate_identity_v2 (server flag false) is excluded", async () => {
+    getHistoricalReviewCandidates.mockResolvedValue([RECOVERY_CANDIDATE_A, OLD_PENDING_PM_CANDIDATE]);
+    renderWithSession(["record.edit"]);
+    const summary = await screen.findByTestId("recovery-summary");
+    // only RECOVERY_CANDIDATE_A is verified; OLD_PENDING_PM_CANDIDATE (no
+    // candidate_identity_v2) is the one excluded -- both counts happen
+    // to read "1" here, so assert the full sentence instead of a bare digit.
+    await waitFor(() => expect(summary).toHaveTextContent("Verified candidates: 1"));
+    expect(summary).toHaveTextContent("Excluded pending candidates: 1");
+  });
+
+  it("trusts the server's recovery_batch_eligible flag over raw field presence (malformed/non-target case)", async () => {
+    getHistoricalReviewCandidates.mockResolvedValue([RECOVERY_CANDIDATE_A, MALFORMED_V2_CANDIDATE]);
+    bulkReviewHistoricalReviewCandidates.mockResolvedValue({ reviewed_count: 1, candidate_ids: ["DFE-REC-1"] });
+    renderWithSession(["record.edit"]);
+    fireEvent.click(await screen.findByText("Review 1 Verified PM"));
+    fireEvent.click(await screen.findByText("Confirm Review of 1"));
+    await waitFor(() => expect(bulkReviewHistoricalReviewCandidates).toHaveBeenCalledWith(["DFE-REC-1"]));
+  });
+
+  it("sends the exact unique id list of every recovery-eligible candidate", async () => {
+    getHistoricalReviewCandidates.mockResolvedValue([RECOVERY_CANDIDATE_A, RECOVERY_CANDIDATE_B]);
+    bulkReviewHistoricalReviewCandidates.mockResolvedValue({ reviewed_count: 2, candidate_ids: ["DFE-REC-1", "DFE-REC-2"] });
+    renderWithSession(["record.edit"]);
+    fireEvent.click(await screen.findByText("Review 2 Verified PM"));
+    fireEvent.click(await screen.findByText("Confirm Review of 2"));
+    await waitFor(() =>
+      expect(bulkReviewHistoricalReviewCandidates).toHaveBeenCalledWith(["DFE-REC-1", "DFE-REC-2"])
+    );
+  });
+
+  it("the confirmation dialog displays the exact verified count before submission", async () => {
+    getHistoricalReviewCandidates.mockResolvedValue([RECOVERY_CANDIDATE_A, RECOVERY_CANDIDATE_B, OLD_PENDING_PM_CANDIDATE]);
+    renderWithSession(["record.edit"]);
+    fireEvent.click(await screen.findByText("Review 2 Verified PM"));
+    const modal = await screen.findByTestId("modal");
+    expect(modal).toHaveTextContent("Review exactly");
+    expect(within(modal).getByText("2")).toBeInTheDocument();
+    expect(bulkReviewHistoricalReviewCandidates).not.toHaveBeenCalled();
+  });
+
+  it("a backend rejection shows an error, never an optimistic success message", async () => {
+    getHistoricalReviewCandidates.mockResolvedValue([RECOVERY_CANDIDATE_A]);
+    bulkReviewHistoricalReviewCandidates.mockRejectedValue(new Error("one or more candidates are not eligible"));
+    renderWithSession(["record.edit"]);
+    fireEvent.click(await screen.findByText("Review 1 Verified PM"));
+    fireEvent.click(await screen.findByText("Confirm Review of 1"));
+    await waitFor(() => expect(screen.getByText("one or more candidates are not eligible")).toBeInTheDocument());
+    expect(screen.queryByText(/reviewed 1 candidate/)).not.toBeInTheDocument();
+  });
+
+  it("action is disabled (fail-closed) when there is nothing recovery-eligible", async () => {
+    getHistoricalReviewCandidates.mockResolvedValue([OLD_PENDING_PM_CANDIDATE, CMON_PENDING_CANDIDATE]);
+    renderWithSession(["record.edit"]);
+    expect(await screen.findByText("Review 0 Verified PM")).toBeDisabled();
+  });
+
+  it("existing generic Bulk Review panel is untouched by the recovery panel's presence", async () => {
+    getHistoricalReviewCandidates.mockResolvedValue([RECOVERY_CANDIDATE_A, PM_CANDIDATE_B]);
+    renderWithSession(["record.edit"]);
+    // generic panel still offers both PM candidates independently of
+    // the recovery flag.
+    expect(await screen.findByText("Select All Filtered PM (2)")).toBeInTheDocument();
+    expect(await screen.findByText("Review 1 Verified PM")).toBeInTheDocument();
   });
 });
