@@ -63,7 +63,7 @@ AUTHORIZED_IDENTITY = AuthenticatedIdentity(
     email=None,
     organization_id="org-1",
     organization_code="TAP",
-    role="ENGINEER",
+    role="TAP_ENGINEER",
     permissions=frozenset({"maintenance.read"}),
 )
 
@@ -223,7 +223,7 @@ def test_10_active_group_authorized_sender_routed_to_ltsa():
 def test_11_sender_scope_enforced_when_group_has_no_scope():
     seen_scope = []
     identity = AuthenticatedIdentity(
-        user_id="u", email=None, organization_id="o", organization_code="TAP", role="ENGINEER",
+        user_id="u", email=None, organization_id="o", organization_code="TAP", role="AREA_SCOPED_ENGINEER",
         permissions=frozenset({"maintenance.read"}), data_scope_type="AREA", data_scope_value="MA2",
     )
     # resolve_area_scope needs a real AREA_CODES membership check -- MA2 is
