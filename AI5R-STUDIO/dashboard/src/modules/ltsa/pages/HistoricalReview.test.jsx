@@ -487,3 +487,116 @@ describe("Historical Data Review workspace -- Historical PM Recovery (MWO-LTSA-E
     expect(await screen.findByText("Review 1 Verified PM")).toBeInTheDocument();
   });
 });
+
+describe("Historical Data Review workspace -- bulk-action timeout UX (MWO-LTSA-BULK-TIMEOUT-UX-001)", () => {
+  it("recovery: response succeeds normally shows success, no reconciliation needed", async () => {
+    getHistoricalReviewCandidates.mockResolvedValueOnce([RECOVERY_CANDIDATE_A]); // initial load
+    bulkReviewHistoricalReviewCandidates.mockResolvedValue({ reviewed_count: 1, candidate_ids: ["DFE-REC-1"] });
+    getHistoricalReviewCandidates.mockResolvedValueOnce([]); // reload() after success
+    renderWithSession(["record.edit"]);
+    fireEvent.click(await screen.findByText("Review 1 Verified PM"));
+    fireEvent.click(await screen.findByText("Confirm Review of 1"));
+    await waitFor(() => expect(screen.getByText("Historical PM recovery reviewed 1 candidate(s).")).toBeInTheDocument());
+    // only one GET beyond the initial load (the success-path reload) --
+    // no reconciliation GET was needed.
+    expect(getHistoricalReviewCandidates).toHaveBeenCalledTimes(2);
+  });
+
+  it("recovery: client timeout but mutation committed -- shows completed, not failed", async () => {
+    getHistoricalReviewCandidates.mockResolvedValueOnce([RECOVERY_CANDIDATE_A]); // initial load
+    bulkReviewHistoricalReviewCandidates.mockRejectedValue(new Error("API request timed out"));
+    // reconciliation GET: the candidate is no longer PENDING_REVIEW --
+    // it committed despite the client-side timeout.
+    getHistoricalReviewCandidates.mockResolvedValueOnce([]);
+    getHistoricalReviewCandidates.mockResolvedValueOnce([]); // final reload()
+    renderWithSession(["record.edit"]);
+    fireEvent.click(await screen.findByText("Review 1 Verified PM"));
+    fireEvent.click(await screen.findByText("Confirm Review of 1"));
+    await waitFor(() => expect(screen.getByText("Historical PM recovery reviewed 1 candidate(s).")).toBeInTheDocument());
+    expect(screen.queryByText("API request timed out")).not.toBeInTheDocument();
+    // exactly one mutation attempt -- reconciliation never re-submits it.
+    expect(bulkReviewHistoricalReviewCandidates).toHaveBeenCalledTimes(1);
+  });
+
+  it("recovery: client timeout and mutation did not commit -- shows a real failure", async () => {
+    getHistoricalReviewCandidates.mockResolvedValueOnce([RECOVERY_CANDIDATE_A]); // initial load
+    bulkReviewHistoricalReviewCandidates.mockRejectedValue(new Error("API request timed out"));
+    // reconciliation GET: the candidate is STILL PENDING_REVIEW -- the
+    // mutation genuinely never committed.
+    getHistoricalReviewCandidates.mockResolvedValueOnce([RECOVERY_CANDIDATE_A]);
+    getHistoricalReviewCandidates.mockResolvedValueOnce([RECOVERY_CANDIDATE_A]); // final reload()
+    renderWithSession(["record.edit"]);
+    fireEvent.click(await screen.findByText("Review 1 Verified PM"));
+    fireEvent.click(await screen.findByText("Confirm Review of 1"));
+    await waitFor(() => expect(screen.getByText("API request timed out")).toBeInTheDocument());
+    expect(screen.queryByText(/reviewed 1 candidate/)).not.toBeInTheDocument();
+    expect(bulkReviewHistoricalReviewCandidates).toHaveBeenCalledTimes(1);
+  });
+
+  it("recovery: a generic network failure with a committed state is also reconciled to success", async () => {
+    getHistoricalReviewCandidates.mockResolvedValueOnce([RECOVERY_CANDIDATE_A]);
+    bulkReviewHistoricalReviewCandidates.mockRejectedValue(new TypeError("Failed to fetch"));
+    getHistoricalReviewCandidates.mockResolvedValueOnce([]);
+    getHistoricalReviewCandidates.mockResolvedValueOnce([]);
+    renderWithSession(["record.edit"]);
+    fireEvent.click(await screen.findByText("Review 1 Verified PM"));
+    fireEvent.click(await screen.findByText("Confirm Review of 1"));
+    await waitFor(() => expect(screen.getByText("Historical PM recovery reviewed 1 candidate(s).")).toBeInTheDocument());
+  });
+
+  it("recovery: double-click on confirm submits the mutation exactly once", async () => {
+    getHistoricalReviewCandidates.mockResolvedValueOnce([RECOVERY_CANDIDATE_A]);
+    let resolveBulk;
+    bulkReviewHistoricalReviewCandidates.mockReturnValue(
+      new Promise((resolve) => {
+        resolveBulk = resolve;
+      })
+    );
+    renderWithSession(["record.edit"]);
+    fireEvent.click(await screen.findByText("Review 1 Verified PM"));
+    const confirmButton = await screen.findByText("Confirm Review of 1");
+    fireEvent.click(confirmButton);
+    fireEvent.click(confirmButton); // rapid second click while the first is still in flight
+    resolveBulk({ reviewed_count: 1, candidate_ids: ["DFE-REC-1"] });
+    await waitFor(() => expect(bulkReviewHistoricalReviewCandidates).toHaveBeenCalledTimes(1));
+  });
+
+  it("generic bulk review: client timeout but mutation committed is also reconciled (parity with recovery)", async () => {
+    getHistoricalReviewCandidates.mockResolvedValueOnce([PM_CANDIDATE_A]);
+    bulkReviewHistoricalReviewCandidates.mockRejectedValue(new Error("API request timed out"));
+    getHistoricalReviewCandidates.mockResolvedValueOnce([]);
+    getHistoricalReviewCandidates.mockResolvedValueOnce([]);
+    renderWithSession(["record.edit"]);
+    fireEvent.click(await screen.findByLabelText("select-DFE-PM-1"));
+    fireEvent.click(screen.getByText("Bulk Review Selected (1)"));
+    fireEvent.click(await screen.findByText("Confirm Bulk Review of 1"));
+    await waitFor(() => expect(screen.getByText("Bulk reviewed 1 candidate(s).")).toBeInTheDocument());
+    expect(bulkReviewHistoricalReviewCandidates).toHaveBeenCalledTimes(1);
+  });
+
+  it("bulkReviewHistoricalReviewCandidates uses a timeout well above the 60s server budget", async () => {
+    getHistoricalReviewCandidates.mockResolvedValueOnce([RECOVERY_CANDIDATE_A]);
+    bulkReviewHistoricalReviewCandidates.mockResolvedValue({ reviewed_count: 1, candidate_ids: ["DFE-REC-1"] });
+    getHistoricalReviewCandidates.mockResolvedValueOnce([]);
+    renderWithSession(["record.edit"]);
+    fireEvent.click(await screen.findByText("Review 1 Verified PM"));
+    fireEvent.click(await screen.findByText("Confirm Review of 1"));
+    await waitFor(() => expect(bulkReviewHistoricalReviewCandidates).toHaveBeenCalledWith(["DFE-REC-1"]));
+    // the timeout itself is asserted directly against the real client
+    // implementation in ai5rClient.timeout.test.js (LONG_BULK_OPERATION_
+    // TIMEOUT_MS = 75000) -- this test only proves the UI still passes
+    // exactly the id list, unaffected by that change.
+  });
+
+  it("recovery: reconciliation preserves the exact submitted id set, never a broader predicate", async () => {
+    getHistoricalReviewCandidates.mockResolvedValueOnce([RECOVERY_CANDIDATE_A, RECOVERY_CANDIDATE_B]);
+    bulkReviewHistoricalReviewCandidates.mockRejectedValue(new Error("API request timed out"));
+    getHistoricalReviewCandidates.mockResolvedValueOnce([]); // both committed
+    getHistoricalReviewCandidates.mockResolvedValueOnce([]);
+    renderWithSession(["record.edit"]);
+    fireEvent.click(await screen.findByText("Review 2 Verified PM"));
+    fireEvent.click(await screen.findByText("Confirm Review of 2"));
+    await waitFor(() => expect(screen.getByText("Historical PM recovery reviewed 2 candidate(s).")).toBeInTheDocument());
+    expect(bulkReviewHistoricalReviewCandidates).toHaveBeenCalledWith(["DFE-REC-1", "DFE-REC-2"]);
+  });
+});

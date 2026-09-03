@@ -1400,6 +1400,18 @@ export async function promoteHistoricalReviewCandidate(candidateId) {
     return payload?.data ?? null;
 }
 
+// MWO-LTSA-BULK-TIMEOUT-UX-001 -- a controlled bulk historical operation
+// (540 rows observed taking ~22s server-side) can legitimately exceed
+// the platform's normal 15s default -- but well within nginx's own 60s
+// proxy_read_timeout (both the host and docker layers). 75s gives real
+// margin above that 60s budget without masking a genuine hang (which
+// would still time out, just later, and still gets reconciled against
+// real server state by the caller rather than assumed as a fatal
+// failure -- see HistoricalReview.jsx's reconcileAfterAmbiguousResult).
+// Scoped to this ONE call site only -- every other apiFetch() call
+// keeps the global 15s default unchanged.
+const LONG_BULK_OPERATION_TIMEOUT_MS = 75000;
+
 // MWO-LTSA-BULK-HISTORICAL-REVIEW-001 -- confirm-as-extracted only, for
 // an explicit candidate_id list the caller (the UI) already selected.
 // No corrections, no promotion -- both remain the existing single-
@@ -1411,6 +1423,7 @@ export async function bulkReviewHistoricalReviewCandidates(candidateIds) {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ candidate_ids: candidateIds }),
+            timeoutMs: LONG_BULK_OPERATION_TIMEOUT_MS,
         }
     );
     return payload?.data ?? null;

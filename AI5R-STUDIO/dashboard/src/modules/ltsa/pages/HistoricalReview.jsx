@@ -244,19 +244,51 @@ export default function HistoricalReview() {
   // Confirm-as-extracted only, for the exact selected id list -- no
   // corrections, no promotion. Promotion stays the existing separate
   // per-candidate action; nothing here ever calls it.
+  // MWO-LTSA-BULK-TIMEOUT-UX-001 -- a client-side timeout/network error
+  // on a mutation request does NOT prove the server transaction never
+  // committed (observed for real: a 540-candidate bulk review committed
+  // ~22s server-side, after the client's own 15s abort had already
+  // fired and reported failure). Before ever telling a human "failed",
+  // re-fetch the authoritative PENDING_REVIEW set (read-only) and check
+  // whether the submitted ids are still in it. If none of them are
+  // still pending, the mutation demonstrably committed despite the
+  // ambiguous client-side outcome. This NEVER re-submits the mutation
+  // itself -- only a GET.
+  async function reconcileAfterAmbiguousResult(submittedIds) {
+    const fresh = await getHistoricalReviewCandidates({ status: "PENDING_REVIEW" });
+    const stillPendingIds = new Set(fresh.map((c) => c.document_field_extraction_id));
+    const notCommittedIds = submittedIds.filter((id) => stillPendingIds.has(id));
+    return { committed: notCommittedIds.length === 0, notCommittedCount: notCommittedIds.length };
+  }
+
   async function handleBulkReview() {
+    if (bulkSubmitting) return; // double-submit guard
     setBulkSubmitting(true);
     setBulkError(null);
+    const ids = Array.from(selectedIds);
     try {
-      const ids = Array.from(selectedIds);
       const result = await bulkReviewHistoricalReviewCandidates(ids);
       setBulkResult(result);
       setBulkConfirmOpen(false);
       setSelectedIds(new Set());
-      await reload();
     } catch (error) {
-      setBulkError(error.message || "Bulk review failed");
+      try {
+        const { committed } = await reconcileAfterAmbiguousResult(ids);
+        if (committed) {
+          setBulkResult({ reviewed_count: ids.length });
+          setBulkConfirmOpen(false);
+          setSelectedIds(new Set());
+        } else {
+          setBulkError(error.message || "Bulk review failed");
+        }
+      } catch {
+        // Reconciliation itself failed (e.g. also a network error) --
+        // report the ORIGINAL error, never mask it with a second one,
+        // and never assume success without having actually verified it.
+        setBulkError(error.message || "Bulk review failed");
+      }
     } finally {
+      await reload();
       setBulkSubmitting(false);
     }
   }
@@ -267,17 +299,28 @@ export default function HistoricalReview() {
   // derived from a filter or a manual selection, only from
   // recovery_batch_eligible === true.
   async function handleRecoveryReview() {
+    if (recoverySubmitting) return; // double-submit guard
     setRecoverySubmitting(true);
     setRecoveryError(null);
+    const ids = recoveryEligible.map((c) => c.document_field_extraction_id);
     try {
-      const ids = recoveryEligible.map((c) => c.document_field_extraction_id);
       const result = await bulkReviewHistoricalReviewCandidates(ids);
       setRecoveryResult(result);
       setRecoveryConfirmOpen(false);
-      await reload();
     } catch (error) {
-      setRecoveryError(error.message || "Historical PM recovery review failed");
+      try {
+        const { committed } = await reconcileAfterAmbiguousResult(ids);
+        if (committed) {
+          setRecoveryResult({ reviewed_count: ids.length });
+          setRecoveryConfirmOpen(false);
+        } else {
+          setRecoveryError(error.message || "Historical PM recovery review failed");
+        }
+      } catch {
+        setRecoveryError(error.message || "Historical PM recovery review failed");
+      }
     } finally {
+      await reload();
       setRecoverySubmitting(false);
     }
   }
