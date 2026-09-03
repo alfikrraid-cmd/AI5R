@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { bulkReviewHistoricalReviewCandidates, promoteHistoricalPmRecoveryBatch, getPumps } from "./ai5rClient";
+import {
+  bulkReviewHistoricalReviewCandidates,
+  promoteHistoricalPmRecoveryBatch,
+  getHistoricalPmRecoveryStatus,
+  getPumps,
+} from "./ai5rClient";
 
 // MWO-LTSA-BULK-TIMEOUT-UX-001 -- proves the ACTUAL configured timeout,
 // not just that a UI component calls the client function. A real
@@ -51,6 +56,23 @@ describe("bulk historical review request timeout", () => {
 
   it("promoteHistoricalPmRecoveryBatch also survives past 60s (same long-operation timeout)", async () => {
     const promise = promoteHistoricalPmRecoveryBatch();
+    promise.catch(() => {});
+    const [, options] = global.fetch.mock.calls[0];
+
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(options.signal.aborted).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(15000); // total 75s
+    expect(options.signal.aborted).toBe(true);
+  });
+
+  it("getHistoricalPmRecoveryStatus also survives past 60s (MWO-LTSA-RECOVERY-STATUS-LATENCY-001)", async () => {
+    // the status GET, not just the review/promote POSTs -- a real
+    // production request was measured at ~54s (1,624 unbatched
+    // queries) before the backend fix, and the request-level timeout
+    // must independently be safe regardless of how fast the backend
+    // eventually becomes.
+    const promise = getHistoricalPmRecoveryStatus();
     promise.catch(() => {});
     const [, options] = global.fetch.mock.calls[0];
 

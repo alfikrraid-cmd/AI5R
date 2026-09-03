@@ -1429,14 +1429,20 @@ export async function bulkReviewHistoricalReviewCandidates(candidateIds) {
     return payload?.data ?? null;
 }
 
-// MWO-LTSA-RECOVERY-PROMOTION-001 -- read-only readiness summary for the
-// server-derived historical PM recovery batch (target/reviewed/saved/
-// pending counts, promotion_ready, current/projected final PM counts).
-// No candidate_ids, no identity fields -- the UI never derives
-// eligibility itself, it only displays what the server already decided.
+// MWO-LTSA-RECOVERY-PROMOTION-001 / MWO-LTSA-RECOVERY-STATUS-LATENCY-001
+// -- read-only readiness summary for the server-derived historical PM
+// recovery batch (target/reviewed/saved/pending counts, promotion_ready,
+// current/projected final PM counts). No candidate_ids, no identity
+// fields -- the UI never derives eligibility itself, it only displays
+// what the server already decided. Same long-operation timeout as the
+// bulk-review/promote calls -- a 540-candidate validate pass measured
+// at ~54s in production even after the backend's own batching fix (a
+// bounded but still real query cost per request), well past the
+// platform's normal 15s default.
 export async function getHistoricalPmRecoveryStatus() {
     const payload = await _adminUsersRequest(
-        `${API_URL}/api/ltsa/historical-review/recovery/pm/status`
+        `${API_URL}/api/ltsa/historical-review/recovery/pm/status`,
+        { timeoutMs: LONG_BULK_OPERATION_TIMEOUT_MS }
     );
     return payload?.data ?? null;
 }

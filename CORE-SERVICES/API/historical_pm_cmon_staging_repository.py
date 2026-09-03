@@ -107,6 +107,24 @@ class HistoricalPMCMONStagingRepository:
         )
         return rows[0] if rows else None
 
+    def find_by_ids(self, candidate_ids: list[str]) -> list[dict]:
+        # MWO-LTSA-RECOVERY-STATUS-LATENCY-001 -- batched sibling of
+        # find_by_id(), read-only, ONE query for many ids. Exists so a
+        # caller validating N candidates (historical_pm_promotion_batch_
+        # service.validate_promotion_batch()) never has to call find_by_id()
+        # once per candidate -- that N-round-trip pattern measured at
+        # ~1,624 fresh-connection queries for N=540 in production
+        # (~54s), which is what made GET .../recovery/pm/status
+        # routinely exceed the frontend's default 15s timeout.
+        if not candidate_ids:
+            return []
+        values = ", ".join(_sql(cid) for cid in candidate_ids)
+        return _json_query(
+            f"SELECT {_SELECT_COLUMNS} FROM document_field_extraction "
+            f"WHERE document_field_extraction_id IN ({values})",
+            self._runner,
+        )
+
     def list_pending(self, detected_document_type: str | None = None) -> list[dict]:
         return self.list_by_status("PENDING_REVIEW", detected_document_type)
 

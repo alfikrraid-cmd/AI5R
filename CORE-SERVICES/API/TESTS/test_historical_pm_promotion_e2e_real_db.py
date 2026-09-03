@@ -207,3 +207,39 @@ def test_540_pending_to_reviewed_to_promoted_then_idempotent_rerun(runner, candi
         or "0"
     )
     assert distinct_source_refs == _N
+
+
+def test_validate_promotion_batch_at_540_scale_uses_bounded_queries_not_1624(runner, candidate_ids):
+    # MWO-LTSA-RECOVERY-STATUS-LATENCY-001 -- the real regression proof
+    # against real Postgres (not a Fake): the OLD per-candidate pattern
+    # measured ~1,624 query_scalar() round trips / ~54s in production
+    # for N=540. The batched validate_promotion_batch() must cost a
+    # small, N-independent number of real round trips and complete in a
+    # small fraction of that time -- both measured here for real, not
+    # asserted by inspection.
+    staging_repo = HistoricalPMCMONStagingRepository(runner)
+    pm_repo = PMOccurrenceRepository(runner)
+
+    bulk_review_candidates(staging_repo, candidate_ids, reviewed_by=_ACTOR)
+
+    original_query_scalar = runner.query_scalar
+    call_count = [0]
+
+    def _counting_query_scalar(sql):
+        call_count[0] += 1
+        return original_query_scalar(sql)
+
+    runner.query_scalar = _counting_query_scalar
+
+    start = time.monotonic()
+    from API.historical_pm_promotion_batch_service import validate_promotion_batch
+    result = validate_promotion_batch(staging_repo, pm_repo, candidate_ids)
+    elapsed = time.monotonic() - start
+
+    assert result["all_valid"] is True
+    assert result["counts"] == {"VALID": _N}
+    print(f"QUERY_SCALAR_CALL_COUNT={call_count[0]} ELAPSED_SECONDS={elapsed:.2f}")
+    # 3 batched repository calls (find_by_ids, find_by_source_references,
+    # find_by_asset_dates) -- nowhere near the old ~3*N=1620+ pattern.
+    assert call_count[0] <= 5
+    assert elapsed < 10.0  # was ~54s in production before this fix

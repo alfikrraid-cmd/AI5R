@@ -448,3 +448,49 @@ def test_find_by_asset_and_date_is_a_plain_read_only_select():
     assert "UPDATE" not in sql
     assert "asset_code = '211-P-18A'" in sql
     assert "occurrence_date = '2026-08-01'" in sql
+
+
+class TestFindBySourceReferencesBatched:
+    def test_empty_list_returns_empty_without_a_query(self):
+        runner = FakeRunner()
+        assert PMOccurrenceRepository(runner).find_by_source_references([]) == []
+        assert runner.scalar_calls == []
+
+    def test_one_call_for_many_identities(self):
+        runner = FakeRunner(scalar_response="[]")
+        PMOccurrenceRepository(runner).find_by_source_references(["document_field_extraction:DFE-1", "document_field_extraction:DFE-2"])
+        assert len(runner.scalar_calls) == 1
+        sql = runner.scalar_calls[0]
+        assert "SELECT" in sql and "INSERT" not in sql and "UPDATE" not in sql
+        assert "'document_field_extraction:DFE-1'" in sql
+        assert "'document_field_extraction:DFE-2'" in sql
+        assert "deleted_at IS NULL" in sql
+
+    def test_returns_parsed_rows(self):
+        rows = [{"pm_occurrence_code": "PMOCC-1", "source_reference": "document_field_extraction:DFE-1"}]
+        runner = FakeRunner(scalar_response=json.dumps(rows))
+        result = PMOccurrenceRepository(runner).find_by_source_references(["document_field_extraction:DFE-1"])
+        assert result == rows
+
+
+class TestFindByAssetDatesBatched:
+    def test_empty_list_returns_empty_without_a_query(self):
+        runner = FakeRunner()
+        assert PMOccurrenceRepository(runner).find_by_asset_dates([]) == []
+        assert runner.scalar_calls == []
+
+    def test_one_call_for_many_pairs(self):
+        runner = FakeRunner(scalar_response="[]")
+        PMOccurrenceRepository(runner).find_by_asset_dates([("110-P-9A", "2026-07-01"), ("110-P-9B", "2026-07-02")])
+        assert len(runner.scalar_calls) == 1
+        sql = runner.scalar_calls[0]
+        assert "SELECT" in sql and "INSERT" not in sql and "UPDATE" not in sql
+        assert "(asset_code, occurrence_date) IN" in sql
+        assert "('110-P-9A', '2026-07-01')" in sql
+        assert "('110-P-9B', '2026-07-02')" in sql
+
+    def test_duplicate_pairs_deduplicated_in_the_query(self):
+        runner = FakeRunner(scalar_response="[]")
+        PMOccurrenceRepository(runner).find_by_asset_dates([("110-P-9A", "2026-07-01"), ("110-P-9A", "2026-07-01")])
+        sql = runner.scalar_calls[0]
+        assert sql.count("'110-P-9A'") == 1

@@ -39,10 +39,15 @@ def _candidate(candidate_id, **overrides):
 class FakeStagingRepo:
     def __init__(self, candidates):
         self._candidates = {c["document_field_extraction_id"]: c for c in candidates}
+        self.find_by_ids_calls: list[list] = []
 
     def find_by_id(self, candidate_id):
         c = self._candidates.get(candidate_id)
         return dict(c) if c else None
+
+    def find_by_ids(self, candidate_ids):
+        self.find_by_ids_calls.append(list(candidate_ids))
+        return [dict(self._candidates[cid]) for cid in candidate_ids if cid in self._candidates]
 
 
 class FakePMOccurrenceRepo:
@@ -51,14 +56,38 @@ class FakePMOccurrenceRepo:
         self._by_asset_date = by_asset_date or {}
         self.batch_calls: list[dict] = []
         self.raise_on_atomic = None
+        self.find_by_source_references_calls: list[list] = []
+        self.find_by_asset_dates_calls: list[list] = []
 
     def find_by_source_reference(self, source_reference):
         row = self._by_source_reference.get(source_reference)
         return dict(row) if row else None
 
+    def find_by_source_references(self, source_references):
+        self.find_by_source_references_calls.append(list(source_references))
+        return [
+            {"source_reference": s, **self._by_source_reference[s]}
+            for s in source_references if s in self._by_source_reference
+        ]
+
     def find_by_asset_and_date(self, asset_code, occurrence_date):
         row = self._by_asset_date.get((asset_code, occurrence_date))
         return dict(row) if row else None
+
+    def find_by_asset_dates(self, pairs):
+        self.find_by_asset_dates_calls.append(list(pairs))
+        seen = set()
+        rows = []
+        for pair in pairs:
+            if pair in self._by_asset_date and pair not in seen:
+                seen.add(pair)
+                asset_code, occurrence_date = pair
+                # the real repository's SELECT always includes these
+                # columns; the fake's fixture dicts only carry the
+                # fields each test actually cares about, so fill them
+                # in from the lookup key itself.
+                rows.append({"asset_code": asset_code, "occurrence_date": occurrence_date, **self._by_asset_date[pair]})
+        return rows
 
     def promote_historical_pm_batch_atomic(self, candidate_ids, *, pm_schedule_code, promoted_by):
         self.batch_calls.append({
@@ -148,6 +177,62 @@ class TestValidatePromotionBatch:
         )
         result = validate_promotion_batch(staging, pm_repo, ["DFE-1"])
         assert result["counts"] == {"ALREADY_PROMOTED": 1}
+
+    def test_mixed_reviewed_and_saved_in_same_batch_is_all_valid(self):
+        # a partially-promoted retry batch -- some rows already SAVED
+        # (from a prior successful run), some newly REVIEWED -- must
+        # validate as a whole, not just the REVIEWED subset.
+        staging = FakeStagingRepo([
+            _candidate("DFE-1", status="SAVED"),
+            _candidate("DFE-2", status="REVIEWED", extracted_fields={"occurrence_date": "2026-07-02"}),
+        ])
+        pm_repo = FakePMOccurrenceRepo(by_source_reference={
+            "document_field_extraction:DFE-1": {"pm_occurrence_code": "PMOCC-1"},
+        })
+        result = validate_promotion_batch(staging, pm_repo, ["DFE-1", "DFE-2"])
+        assert result["all_valid"] is True
+        assert result["counts"] == {"ALREADY_PROMOTED": 1, "VALID": 1}
+
+    def test_540_scale_all_valid_uses_a_bounded_query_count_not_3n(self):
+        # MWO-LTSA-RECOVERY-STATUS-LATENCY-001 -- the actual performance
+        # regression proof: N=540 must NOT cost ~3*540 repository calls
+        # (the old per-candidate pattern measured at ~1,624 real DB
+        # round trips / ~54s in production). Exactly one batched call per
+        # repository method, regardless of N.
+        candidates = [
+            _candidate(f"DFE-{i}", extracted_fields={"occurrence_date": f"2026-01-{(i % 27) + 1:02d}"})
+            for i in range(540)
+        ]
+        staging = FakeStagingRepo(candidates)
+        pm_repo = FakePMOccurrenceRepo()
+        ids = [c["document_field_extraction_id"] for c in candidates]
+
+        result = validate_promotion_batch(staging, pm_repo, ids)
+
+        assert result["all_valid"] is True
+        assert result["counts"] == {"VALID": 540}
+        assert len(staging.find_by_ids_calls) == 1
+        assert len(staging.find_by_ids_calls[0]) == 540
+        assert len(pm_repo.find_by_source_references_calls) == 1
+        assert len(pm_repo.find_by_source_references_calls[0]) == 540
+        assert len(pm_repo.find_by_asset_dates_calls) == 1
+        assert len(pm_repo.find_by_asset_dates_calls[0]) == 540
+        # exactly 3 repository round trips total for the whole batch,
+        # never one per candidate.
+        total_calls = (
+            len(staging.find_by_ids_calls)
+            + len(pm_repo.find_by_source_references_calls)
+            + len(pm_repo.find_by_asset_dates_calls)
+        )
+        assert total_calls == 3
+
+    def test_response_contract_unchanged_shape_and_keys(self):
+        staging = FakeStagingRepo([_candidate("DFE-1")])
+        result = validate_promotion_batch(staging, FakePMOccurrenceRepo(), ["DFE-1"])
+        assert set(result.keys()) == {"results", "counts", "all_valid"}
+        assert set(result["results"][0].keys()) >= {"candidate_id", "status"}
+        assert isinstance(result["counts"], dict)
+        assert isinstance(result["all_valid"], bool)
 
 
 class TestPromotePmBatch:

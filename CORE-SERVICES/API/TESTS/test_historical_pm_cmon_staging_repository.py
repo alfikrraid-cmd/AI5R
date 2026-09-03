@@ -279,3 +279,24 @@ class TestBulkReviewBatchAtomic:
         result = repo.bulk_review_batch_atomic(["DFE-1", "DFE-2"], reviewed_by="r1")
 
         assert [r["document_field_extraction_id"] for r in result] == ["DFE-1", "DFE-2"]
+
+
+class TestFindByIdsBatched:
+    def test_empty_list_returns_empty_without_a_query(self):
+        runner = FakeRunner()
+        assert HistoricalPMCMONStagingRepository(runner).find_by_ids([]) == []
+        assert runner.scalar_calls == []
+
+    def test_one_call_for_many_ids(self):
+        runner = FakeRunner(scalar_response="[]")
+        HistoricalPMCMONStagingRepository(runner).find_by_ids(["DFE-1", "DFE-2", "DFE-3"])
+        assert len(runner.scalar_calls) == 1
+        sql = runner.scalar_calls[0]
+        assert "SELECT" in sql and "INSERT" not in sql and "UPDATE" not in sql
+        assert "'DFE-1'" in sql and "'DFE-2'" in sql and "'DFE-3'" in sql
+
+    def test_returns_parsed_rows(self):
+        rows = [_row(document_field_extraction_id="DFE-1"), _row(document_field_extraction_id="DFE-2")]
+        runner = FakeRunner(scalar_response=json.dumps(rows))
+        result = HistoricalPMCMONStagingRepository(runner).find_by_ids(["DFE-1", "DFE-2"])
+        assert [r["document_field_extraction_id"] for r in result] == ["DFE-1", "DFE-2"]

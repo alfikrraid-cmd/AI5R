@@ -115,6 +115,9 @@ class FakeMultiStagingRepository:
         c = self.candidates.get(candidate_id)
         return dict(c) if c else None
 
+    def find_by_ids(self, candidate_ids):
+        return [dict(self.candidates[cid]) for cid in candidate_ids if cid in self.candidates]
+
     def list_by_status(self, status, detected_document_type=None):
         return [
             dict(c) for c in self.candidates.values()
@@ -210,6 +213,14 @@ class FakeMultiPMOccurrenceRepository:
             if row.get("asset_code") == asset_code and row.get("occurrence_date") == occurrence_date:
                 return dict(row)
         return None
+
+    def find_by_source_references(self, source_references):
+        wanted = set(source_references)
+        return [dict(r) for r in self._pm_rows.values() if r.get("source_reference") in wanted]
+
+    def find_by_asset_dates(self, pairs):
+        wanted = set(pairs)
+        return [dict(r) for r in self._pm_rows.values() if (r.get("asset_code"), r.get("occurrence_date")) in wanted]
 
     def list_all(self, **_kwargs):
         return [dict(r) for r in self._pm_rows.values()]

@@ -512,6 +512,39 @@ SELECT COALESCE(json_agg(row_to_json(t))::text, '[]') FROM (
         )
         return rows[0] if rows else None
 
+    def find_by_source_references(self, source_references: list[str]) -> list[dict]:
+        # MWO-LTSA-RECOVERY-STATUS-LATENCY-001 -- batched sibling of
+        # find_by_source_reference(), ONE query for many identities.
+        # Same identity semantics, just N-at-once instead of one round
+        # trip per candidate (the pattern that made GET .../recovery/
+        # pm/status take ~54s / ~1,624 queries for a 540-candidate
+        # batch, exceeding the frontend's default 15s timeout).
+        if not source_references:
+            return []
+        values = ", ".join(_sql(s) for s in source_references)
+        return _json_query(
+            f"SELECT {_SELECT_COLUMNS} FROM pm_occurrence "
+            f"WHERE source_reference IN ({values}) AND deleted_at IS NULL",
+            self._runner,
+        )
+
+    def find_by_asset_dates(self, pairs: list[tuple[str, str]]) -> list[dict]:
+        # MWO-LTSA-RECOVERY-STATUS-LATENCY-001 -- batched sibling of
+        # find_by_asset_and_date(), ONE query for many (asset_code,
+        # occurrence_date) pairs, using a standard SQL row-value IN
+        # list. Same conflict-detection semantics (the additional guard
+        # beyond source_reference, never the primary retry identity),
+        # just N-at-once.
+        if not pairs:
+            return []
+        unique_pairs = sorted(set(pairs))
+        values = ", ".join(f"({_sql(asset_code)}, {_sql(occurrence_date)})" for asset_code, occurrence_date in unique_pairs)
+        return _json_query(
+            f"SELECT {_SELECT_COLUMNS} FROM pm_occurrence "
+            f"WHERE (asset_code, occurrence_date) IN ({values}) AND deleted_at IS NULL",
+            self._runner,
+        )
+
     def find_open_schedules_by_asset(self, asset_code: str) -> list[dict]:
         # "Open" mirrors create_draft's own existing auto-completion
         # semantics (status NOT IN ('CANCELLED', 'COMPLETED') is exactly

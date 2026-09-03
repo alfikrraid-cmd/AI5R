@@ -44,23 +44,31 @@ class DuplicateCandidateIdError(PromotionBatchError):
 
 class StagingRepositoryProtocol(Protocol):
     def find_by_id(self, candidate_id: str) -> dict[str, Any] | None: ...
+    def find_by_ids(self, candidate_ids: list[str]) -> list[dict[str, Any]]: ...
 
 
 class PMOccurrenceRepositoryProtocol(Protocol):
     def find_by_source_reference(self, source_reference: str) -> dict[str, Any] | None: ...
+    def find_by_source_references(self, source_references: list[str]) -> list[dict[str, Any]]: ...
     def find_by_asset_and_date(self, asset_code: str, occurrence_date: str) -> dict[str, Any] | None: ...
+    def find_by_asset_dates(self, pairs: list[tuple[str, str]]) -> list[dict[str, Any]]: ...
     def promote_historical_pm_batch_atomic(
         self, candidate_ids: list[str], *, pm_schedule_code: str, promoted_by: str
     ) -> list[dict[str, Any]]: ...
 
 
-def _validate_one(
-    staging_repository: StagingRepositoryProtocol,
-    pm_occurrence_repository: PMOccurrenceRepositoryProtocol,
+def _classify_one(
     candidate_id: str,
+    candidates_by_id: dict[str, dict[str, Any]],
+    already_by_source_reference: dict[str, dict[str, Any]],
+    conflict_by_asset_date: dict[tuple[str, str], dict[str, Any]],
 ) -> dict[str, Any]:
-    """Read-only. Never promotes."""
-    candidate = staging_repository.find_by_id(candidate_id)
+    """Pure, read-only classification -- zero DB calls. Identical rule
+    set/ordering to the original per-candidate _validate_one() (removed
+    MWO-LTSA-RECOVERY-STATUS-LATENCY-001), just reading from lookup
+    dicts validate_promotion_batch() batch-fetched once up front instead
+    of one live query per candidate."""
+    candidate = candidates_by_id.get(candidate_id)
     if candidate is None:
         return {"candidate_id": candidate_id, "status": "NOT_FOUND"}
     if candidate.get("detected_document_type") != _ELIGIBLE_DOMAIN:
@@ -76,11 +84,11 @@ def _validate_one(
         return {"candidate_id": candidate_id, "status": "INVALID_FIELDS", "reason": "missing occurrence_date"}
 
     source_reference = f"document_field_extraction:{candidate_id}"
-    already = pm_occurrence_repository.find_by_source_reference(source_reference)
+    already = already_by_source_reference.get(source_reference)
     if already is not None:
         return {"candidate_id": candidate_id, "status": "ALREADY_PROMOTED", "pm_occurrence_code": already["pm_occurrence_code"]}
 
-    existing_for_date = pm_occurrence_repository.find_by_asset_and_date(pump_tag, occurrence_date)
+    existing_for_date = conflict_by_asset_date.get((pump_tag, occurrence_date))
     if existing_for_date is not None and existing_for_date.get("source_reference") != source_reference:
         return {"candidate_id": candidate_id, "status": "CONFLICT", "pm_occurrence_code": existing_for_date["pm_occurrence_code"]}
 
@@ -92,7 +100,18 @@ def validate_promotion_batch(
     pm_occurrence_repository: PMOccurrenceRepositoryProtocol,
     candidate_ids: list[str],
 ) -> dict[str, Any]:
-    """Read-only. Never promotes, regardless of outcome."""
+    """Read-only. Never promotes, regardless of outcome.
+
+    MWO-LTSA-RECOVERY-STATUS-LATENCY-001 -- batched, not one-query-per-
+    candidate: N=540 previously meant ~1,624 individual round trips
+    (find_by_id + find_by_source_reference + find_by_asset_and_date per
+    candidate, each opening a fresh connection), measured at ~54s in
+    production -- long enough to routinely exceed the frontend's default
+    15s request timeout and leave the recovery/promotion status
+    permanently unreachable. Now: exactly 3 batched queries total,
+    regardless of N (find_by_ids, find_by_source_references,
+    find_by_asset_dates), then pure in-memory classification
+    (_classify_one) with byte-identical rules/ordering to before."""
     if not candidate_ids:
         raise EmptyBatchError("candidate_ids must not be empty")
     if len(candidate_ids) > MAX_PROMOTION_BATCH:
@@ -102,7 +121,34 @@ def validate_promotion_batch(
     if duplicates:
         raise DuplicateCandidateIdError(f"duplicate candidate_id(s) in request: {duplicates}")
 
-    results = [_validate_one(staging_repository, pm_occurrence_repository, cid) for cid in candidate_ids]
+    candidates_by_id = {
+        c["document_field_extraction_id"]: c for c in staging_repository.find_by_ids(candidate_ids)
+    }
+
+    source_references = [f"document_field_extraction:{cid}" for cid in candidate_ids]
+    already_by_source_reference = {
+        r["source_reference"]: r for r in pm_occurrence_repository.find_by_source_references(source_references)
+    }
+
+    pairs: list[tuple[str, str]] = []
+    for cid in candidate_ids:
+        candidate = candidates_by_id.get(cid)
+        if candidate is None:
+            continue
+        pump_tag = candidate.get("pump_tag_number")
+        fields = candidate.get("reviewed_fields") or candidate.get("extracted_fields") or {}
+        occurrence_date = fields.get("occurrence_date")
+        if pump_tag and occurrence_date:
+            pairs.append((pump_tag, occurrence_date))
+    conflict_by_asset_date: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in pm_occurrence_repository.find_by_asset_dates(pairs):
+        key = (row["asset_code"], row["occurrence_date"])
+        conflict_by_asset_date.setdefault(key, row)
+
+    results = [
+        _classify_one(cid, candidates_by_id, already_by_source_reference, conflict_by_asset_date)
+        for cid in candidate_ids
+    ]
     counts: dict[str, int] = {}
     for r in results:
         counts[r["status"]] = counts.get(r["status"], 0) + 1
