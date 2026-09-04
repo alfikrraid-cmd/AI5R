@@ -163,9 +163,11 @@ def test_dedupe_retention_is_bounded_and_prunable(pg_port):
         DatabaseConfig(host="127.0.0.1", port=pg_port, user=_USER, password=_PASSWORD, database=_DATABASE)
     )
     # Backdate the row to simulate age, rather than waiting real days.
-    runner.query_scalar(
+    # execute_script (not query_scalar): a bare UPDATE with no RETURNING
+    # clause produces no result set to fetch.
+    runner.execute_script(
         "UPDATE public.whatsapp_group_message_seen SET seen_at = now() - interval '31 days' "
-        "WHERE provider_message_id = 'wamid.RETENTION-OLD'"
+        "WHERE provider_message_id = 'wamid.RETENTION-OLD';"
     )
     repo.record_seen_message("wamid.RETENTION-FRESH")
     removed = repo.prune_seen_messages_older_than(30)
