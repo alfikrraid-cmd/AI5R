@@ -1,0 +1,92 @@
+name: TAP LTSA Group Agent CI
+
+on:
+  push:
+    branches:
+      - feature/tap-ltsa-group-agent
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  backend-api-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install production requirements
+        run: pip install -r CORE-SERVICES/BACKEND-API/requirements.txt
+      - name: Install approved test requirements
+        run: pip install -r CORE-SERVICES/BACKEND-API/requirements-dev.txt
+      - name: Run BACKEND-API tests (includes existing WhatsApp/Copilot/Equipment360 regression)
+        run: |
+          cd CORE-SERVICES/BACKEND-API
+          python -m pytest TESTS -q
+
+  core-services-api-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install production requirements
+        run: pip install -r CORE-SERVICES/BACKEND-API/requirements.txt
+      - name: Install approved test requirements
+        run: pip install -r CORE-SERVICES/BACKEND-API/requirements-dev.txt
+      - name: Run CORE-SERVICES/API tests (includes new Group Agent service tests)
+        # --continue-on-collection-errors: this directory has pre-existing,
+        # already-known collection failures unrelated to this branch --
+        # test_ltsa_messaging_gateway.py (intentionally HELD, see
+        # MWO-LTSA-039A -- ACCEPTANCE_2_PRODUCT_STATUS=HOLD_SECURITY_SCOPE_CLOSURE,
+        # not merged) and, discovered this run, test_equipment_360_bare_tag.py/
+        # test_equipment_tag_entity_lock.py (pre-existing files that import
+        # `routers`, added to release since this job's PYTHONPATH was last
+        # tuned). BACKEND-API is now added to PYTHONPATH so `routers` itself
+        # resolves (fixing those two), but the still-genuinely-missing
+        # ltsa_messaging_gateway.py module cannot be fixed here -- without
+        # this flag, that ONE remaining collection error aborts the entire
+        # session and this branch's own new tests would never run at all.
+        env:
+          PYTHONPATH: ${{ github.workspace }}/CORE-SERVICES:${{ github.workspace }}/AI5R-SDK:${{ github.workspace }}/CORE-SERVICES/BACKEND-API
+        run: |
+          python -m pytest CORE-SERVICES/API/TESTS -q --continue-on-collection-errors --ignore=CORE-SERVICES/API/TESTS/test_whatsapp_group_repository_real_db.py
+
+  group-agent-real-db-tests:
+    # Self-contained `docker run postgres:16-alpine` (no docker-compose,
+    # no .env.verify.local) -- same discipline
+    # test_pm_occurrence_repository_real_db.py already established.
+    # ubuntu-latest already has the docker CLI + daemon available.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install production requirements
+        run: pip install -r CORE-SERVICES/BACKEND-API/requirements.txt
+      - name: Install approved test requirements
+        run: pip install -r CORE-SERVICES/BACKEND-API/requirements-dev.txt
+      - name: Run real-Postgres persistence tests (proves restart-survival, not simulated)
+        env:
+          PYTHONPATH: ${{ github.workspace }}/CORE-SERVICES:${{ github.workspace }}/AI5R-SDK
+        run: |
+          python -m pytest CORE-SERVICES/API/TESTS/test_whatsapp_group_repository_real_db.py -q
+
+  group-agent-node-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: CORE-SERVICES/TAP-LTSA-GROUP-AGENT
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install dependencies (pinned lockfile)
+        run: npm ci
+      - name: Run pure message-pipeline / transport-wiring tests
+        run: npm test
