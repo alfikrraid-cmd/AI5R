@@ -545,6 +545,165 @@ SELECT COALESCE(json_agg(row_to_json(t))::text, '[]') FROM (
             self._runner,
         )
 
+    def find_valid_pump_tags(self, tags: list[str]) -> set[str]:
+        # MWO-LTSA-HISTORICAL-PM-FINALIZATION-001 -- batched canonical-pump
+        # validity check, same "unknown or ambiguous" rule promote_
+        # historical_pm_batch_atomic()'s own precheck DO block already
+        # enforces (LEFT JOIN ... GROUP BY ... HAVING count(*) <> 1), just
+        # exposed as a read-only, N-at-once repository method for
+        # historical_pm_finalization_service.py's own read-only
+        # validate_finalization_batch() pass.
+        if not tags:
+            return set()
+        values = ", ".join(_sql(tag) for tag in tags)
+        rows = _json_query(
+            f"SELECT tag_number FROM ltsa_pumps WHERE tag_number IN ({values}) "
+            "GROUP BY tag_number HAVING count(*) = 1",
+            self._runner,
+        )
+        return {r["tag_number"] for r in rows}
+
+    def finalize_historical_batch_atomic(
+        self,
+        pm_occurrence_codes: list[str],
+        *,
+        finalized_by: str,
+    ) -> list[dict]:
+        """MWO-LTSA-HISTORICAL-PM-FINALIZATION-001 -- narrow, explicit
+        workflow_status DRAFT -> FINALIZED transition for historical-
+        recovery PM occurrences ONLY. Never touches, reuses, or widens
+        pm_cm_workflow_service.py's own guarded DRAFT -> SUBMITTED ->
+        FINALIZED transition graph (technical_finalize() above remains
+        the only path for a normal digital PM) -- this is a separate,
+        narrower privileged transition reserved for records that are
+        provably part of the frozen, already-human-verified historical
+        recovery batch.
+
+        `pm_occurrence_codes` is a server-derived list (historical_pm_
+        finalization_service.validate_finalization_batch() -- never a
+        client-supplied id list, no request body accepts one). This
+        method re-derives and re-checks the FULL eligibility chain
+        itself, inside one DB transaction, before writing anything
+        (defense in depth, same convention as every other atomic batch
+        method in this module): the owning staging candidate must still
+        be a real recovery-batch member (PM domain + candidate_identity_
+        v2), SAVED, reviewed (reviewed_by/reviewed_at both set), this
+        pm_occurrence row must still be DRAFT, its pump must still be
+        canonical, and its (asset_code, occurrence_date) must not
+        collide with a different pm_occurrence row.
+
+        Only workflow_status/updated_by/updated_at change -- occurrence_
+        date, pump, source_reference, schedule code, PM content
+        (activities/finding/remarks/...), review metadata (submitted_*/
+        reviewed_*/technical_*, all left NULL -- this bypass never went
+        through SUBMITTED or technical review), and the legacy `status`
+        column are all untouched.
+
+        Idempotent: a code already FINALIZED simply fails the precheck's
+        eligibility count for itself, so passing an already-finalized
+        code raises rather than silently no-op-ing -- callers (historical_
+        pm_finalization_service.finalize_historical_pm_batch()) are
+        expected to only ever pass codes that validate_finalization_
+        batch() classified ELIGIBLE (genuinely still DRAFT), routing
+        already-FINALIZED codes around this method entirely as a safe,
+        zero-mutation no-op. This method's own precheck exists as a
+        defense against a stale/racing caller, not as the primary
+        idempotency mechanism.
+        """
+        if not pm_occurrence_codes:
+            return []
+
+        n = len(pm_occurrence_codes)
+        codes_sql = ", ".join(_sql(c) for c in pm_occurrence_codes)
+
+        script = f"""
+BEGIN;
+
+DO $$
+DECLARE
+  v_ineligible_count INT;
+BEGIN
+  SELECT count(*) INTO v_ineligible_count
+  FROM pm_occurrence p
+  WHERE p.pm_occurrence_code IN ({codes_sql})
+    AND p.deleted_at IS NULL
+    AND NOT (
+      p.workflow_status = 'DRAFT'
+      AND p.source_reference LIKE 'document_field_extraction:%'
+      AND EXISTS (
+        SELECT 1 FROM document_field_extraction d
+        WHERE d.document_field_extraction_id = split_part(p.source_reference, ':', 2)
+          AND d.detected_document_type = 'HISTORICAL_PM_OCCURRENCE_CANDIDATE'
+          AND d.extracted_fields ? 'candidate_identity_v2'
+          AND d.status = 'SAVED'
+          AND d.reviewed_by IS NOT NULL
+          AND d.reviewed_at IS NOT NULL
+      )
+      AND EXISTS (
+        SELECT 1 FROM ltsa_pumps lp
+        WHERE lp.tag_number = p.asset_code
+        GROUP BY lp.tag_number
+        HAVING count(*) = 1
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM pm_occurrence p2
+        WHERE p2.deleted_at IS NULL
+          AND p2.source_reference IS DISTINCT FROM p.source_reference
+          AND p2.asset_code = p.asset_code
+          AND p2.occurrence_date = p.occurrence_date
+      )
+    );
+  IF (SELECT count(*) FROM pm_occurrence WHERE pm_occurrence_code IN ({codes_sql}) AND deleted_at IS NULL) <> {n}
+     OR v_ineligible_count > 0 THEN
+    RAISE EXCEPTION 'finalization batch precheck failed: % of % pm_occurrence(s) missing/ineligible', v_ineligible_count, {n};
+  END IF;
+END $$;
+
+WITH old AS (
+    SELECT pm_occurrence_code, row_to_json(p)::text AS snapshot
+    FROM pm_occurrence p
+    WHERE p.pm_occurrence_code IN ({codes_sql})
+),
+upd AS (
+    UPDATE pm_occurrence
+    SET workflow_status = 'FINALIZED',
+        updated_by = {_sql(finalized_by)},
+        updated_at = NOW()
+    WHERE pm_occurrence_code IN ({codes_sql})
+      AND workflow_status = 'DRAFT'
+      AND deleted_at IS NULL
+    RETURNING {_SELECT_COLUMNS}
+)
+INSERT INTO record_change_history
+    (entity_type, entity_id, field_name, old_value, new_value, changed_by, reason, source_reference)
+SELECT 'PM_OCCURRENCE', upd.pm_occurrence_code, 'workflow_status', 'DRAFT', 'FINALIZED',
+       {_sql(finalized_by)}, 'HISTORICAL_FINALIZE_BATCH', upd.source_reference
+FROM upd JOIN old ON old.pm_occurrence_code = upd.pm_occurrence_code;
+
+DO $$
+DECLARE
+  v_final_count INT;
+BEGIN
+  SELECT count(*) INTO v_final_count
+  FROM pm_occurrence
+  WHERE pm_occurrence_code IN ({codes_sql})
+    AND workflow_status = 'FINALIZED'
+    AND deleted_at IS NULL;
+  IF v_final_count <> {n} THEN
+    RAISE EXCEPTION 'finalization batch postcheck failed: % of {n} pm_occurrence(s) FINALIZED', v_final_count;
+  END IF;
+END $$;
+
+COMMIT;
+
+SELECT COALESCE(json_agg(row_to_json(t))::text, '[]') FROM (
+    SELECT {_SELECT_COLUMNS} FROM pm_occurrence
+    WHERE pm_occurrence_code IN ({codes_sql}) AND deleted_at IS NULL
+) t;
+"""
+        raw = self._runner.query_scalar(script.strip())
+        return json.loads(raw or "[]")
+
     def find_open_schedules_by_asset(self, asset_code: str) -> list[dict]:
         # "Open" mirrors create_draft's own existing auto-completion
         # semantics (status NOT IN ('CANCELLED', 'COMPLETED') is exactly

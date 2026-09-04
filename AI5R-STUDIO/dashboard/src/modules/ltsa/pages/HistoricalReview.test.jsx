@@ -10,6 +10,8 @@ import {
   bulkReviewHistoricalReviewCandidates,
   getHistoricalPmRecoveryStatus,
   promoteHistoricalPmRecoveryBatch,
+  getHistoricalPmFinalizationStatus,
+  finalizeHistoricalPmRecoveryBatch,
 } from "../../../api/ai5rClient";
 import { AuthProvider } from "../auth/AuthContext";
 
@@ -24,6 +26,8 @@ vi.mock("../../../api/ai5rClient", () => ({
   bulkReviewHistoricalReviewCandidates: vi.fn(),
   getHistoricalPmRecoveryStatus: vi.fn(),
   promoteHistoricalPmRecoveryBatch: vi.fn(),
+  getHistoricalPmFinalizationStatus: vi.fn(),
+  finalizeHistoricalPmRecoveryBatch: vi.fn(),
   onUnauthorized: vi.fn(),
 }));
 
@@ -710,5 +714,127 @@ describe("Historical Data Review workspace -- Historical PM recovery promotion (
     await waitFor(() => expect(screen.getByText("API request timed out")).toBeInTheDocument());
     expect(screen.queryByText(/Promoted 3/)).not.toBeInTheDocument();
     expect(promoteHistoricalPmRecoveryBatch).toHaveBeenCalledTimes(1);
+  });
+});
+
+function _finalizationStatus(overrides = {}) {
+  return {
+    target_count: 3,
+    draft_count: 3,
+    finalized_count: 0,
+    invalid_count: 0,
+    finalization_ready: true,
+    ...overrides,
+  };
+}
+
+// MWO-LTSA-HISTORICAL-PM-FINALIZATION-001
+describe("Historical Data Review workspace -- Historical PM recovery finalization", () => {
+  it("the Finalize button only appears when the server reports finalization_ready", async () => {
+    getHistoricalReviewCandidates.mockResolvedValue([]);
+    getHistoricalPmFinalizationStatus.mockResolvedValue(_finalizationStatus({ finalization_ready: false, draft_count: 0, finalized_count: 3 }));
+    renderWithSession(["record.edit"]);
+    await screen.findByTestId("bulk-review-panel");
+    expect(screen.queryByText(/Finalize \d+ Historical PM/)).not.toBeInTheDocument();
+  });
+
+  it("shows the Finalize button with dynamic, server-derived counts when ready", async () => {
+    getHistoricalReviewCandidates.mockResolvedValue([]);
+    getHistoricalPmFinalizationStatus.mockResolvedValue(_finalizationStatus({ target_count: 7, draft_count: 7 }));
+    renderWithSession(["record.edit"]);
+    expect(await screen.findByText("Finalize 7 Historical PM")).toBeInTheDocument();
+    const summary = await screen.findByTestId("recovery-finalize-summary");
+    expect(summary).toHaveTextContent("7 verified historical PM");
+    expect(summary).toHaveTextContent("7 Draft -> Finalized");
+  });
+
+  it("requires explicit confirmation before finalizing, stating the DRAFT->FINALIZED change and that PM data is unaffected", async () => {
+    getHistoricalReviewCandidates.mockResolvedValue([]);
+    getHistoricalPmFinalizationStatus.mockResolvedValue(_finalizationStatus());
+    renderWithSession(["record.edit"]);
+    fireEvent.click(await screen.findByText("Finalize 3 Historical PM"));
+    const modal = await screen.findByTestId("modal");
+    expect(modal).toHaveTextContent("3");
+    expect(modal).toHaveTextContent("DRAFT to");
+    expect(modal).toHaveTextContent("FINALIZED");
+    expect(modal).toHaveTextContent("does not modify PM engineering data");
+    expect(finalizeHistoricalPmRecoveryBatch).not.toHaveBeenCalled();
+    fireEvent.click(within(modal).getByText("Confirm Finalization of 3"));
+    await waitFor(() => expect(finalizeHistoricalPmRecoveryBatch).toHaveBeenCalledTimes(1));
+  });
+
+  it("double-click on confirm finalizes exactly once", async () => {
+    getHistoricalReviewCandidates.mockResolvedValue([]);
+    getHistoricalPmFinalizationStatus.mockResolvedValue(_finalizationStatus());
+    let resolveFinalize;
+    finalizeHistoricalPmRecoveryBatch.mockReturnValue(
+      new Promise((resolve) => {
+        resolveFinalize = resolve;
+      })
+    );
+    renderWithSession(["record.edit"]);
+    fireEvent.click(await screen.findByText("Finalize 3 Historical PM"));
+    const modal = await screen.findByTestId("modal");
+    const confirmButton = within(modal).getByText("Confirm Finalization of 3");
+    fireEvent.click(confirmButton);
+    fireEvent.click(confirmButton);
+    resolveFinalize({ finalized_count: 3, pm_occurrence_codes: ["PMOCC-1", "PMOCC-2", "PMOCC-3"] });
+    await waitFor(() => expect(finalizeHistoricalPmRecoveryBatch).toHaveBeenCalledTimes(1));
+  });
+
+  it("normal success shows the finalized count", async () => {
+    getHistoricalReviewCandidates.mockResolvedValue([]);
+    getHistoricalPmFinalizationStatus.mockResolvedValue(_finalizationStatus());
+    finalizeHistoricalPmRecoveryBatch.mockResolvedValue({ finalized_count: 3, pm_occurrence_codes: ["PMOCC-1", "PMOCC-2", "PMOCC-3"] });
+    renderWithSession(["record.edit"]);
+    fireEvent.click(await screen.findByText("Finalize 3 Historical PM"));
+    const modal = await screen.findByTestId("modal");
+    fireEvent.click(within(modal).getByText("Confirm Finalization of 3"));
+    await waitFor(() => expect(screen.getByText("Finalized 3 historical PM record(s).")).toBeInTheDocument());
+  });
+
+  it("ambiguous browser failure but finalization committed (reconciled draft_count=0/finalized_count=target) -- shows completed, not failed, and never auto-retries the POST", async () => {
+    getHistoricalReviewCandidates.mockResolvedValue([]);
+    getHistoricalPmFinalizationStatus
+      .mockResolvedValueOnce(_finalizationStatus()) // initial load
+      .mockResolvedValueOnce(_finalizationStatus({ draft_count: 0, finalized_count: 3, finalization_ready: false })); // reconciliation (also the finally-block reload)
+    finalizeHistoricalPmRecoveryBatch.mockRejectedValue(new Error("API request timed out"));
+    renderWithSession(["record.edit"]);
+    fireEvent.click(await screen.findByText("Finalize 3 Historical PM"));
+    const modal = await screen.findByTestId("modal");
+    fireEvent.click(within(modal).getByText("Confirm Finalization of 3"));
+    await waitFor(() => expect(screen.getByText("Finalized 3 historical PM record(s).")).toBeInTheDocument());
+    expect(screen.queryByText("API request timed out")).not.toBeInTheDocument();
+    expect(finalizeHistoricalPmRecoveryBatch).toHaveBeenCalledTimes(1); // never auto-retried
+  });
+
+  it("ambiguous browser failure and finalization did NOT commit -- safe failure, not an assumed success, never auto-retries the POST", async () => {
+    getHistoricalReviewCandidates.mockResolvedValue([]);
+    getHistoricalPmFinalizationStatus
+      .mockResolvedValueOnce(_finalizationStatus()) // initial load
+      .mockResolvedValueOnce(_finalizationStatus()); // reconciliation: still fully DRAFT, nothing finalized
+    finalizeHistoricalPmRecoveryBatch.mockRejectedValue(new Error("API request timed out"));
+    renderWithSession(["record.edit"]);
+    fireEvent.click(await screen.findByText("Finalize 3 Historical PM"));
+    const modal = await screen.findByTestId("modal");
+    fireEvent.click(within(modal).getByText("Confirm Finalization of 3"));
+    await waitFor(() => expect(screen.getByText("API request timed out")).toBeInTheDocument());
+    expect(screen.queryByText(/Finalized 3/)).not.toBeInTheDocument();
+    expect(finalizeHistoricalPmRecoveryBatch).toHaveBeenCalledTimes(1);
+  });
+
+  it("the finalization panel is never mixed with Review, Promotion, or the remaining pending candidates", async () => {
+    getHistoricalReviewCandidates.mockResolvedValue([RECOVERY_CANDIDATE_A]);
+    getHistoricalPmRecoveryStatus.mockResolvedValue(_recoveryStatus({ promotion_ready: true }));
+    getHistoricalPmFinalizationStatus.mockResolvedValue(_finalizationStatus());
+    renderWithSession(["record.edit"]);
+    const finalizePanel = await screen.findByTestId("recovery-finalize-panel");
+    const promotePanel = await screen.findByTestId("recovery-promote-panel");
+    const reviewPanel = await screen.findByTestId("recovery-panel");
+    // three structurally distinct DOM containers -- never one shared panel.
+    expect(finalizePanel).not.toBe(promotePanel);
+    expect(finalizePanel).not.toBe(reviewPanel);
+    expect(finalizePanel.contains(promotePanel)).toBe(false);
+    expect(finalizePanel.contains(reviewPanel)).toBe(false);
   });
 });
