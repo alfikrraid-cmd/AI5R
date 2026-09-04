@@ -35,6 +35,46 @@ const ACTIVITY_OPTIONS = [
 // promise an edit the backend would reject.
 const EDITABLE_STATUSES = new Set(["DRAFT", "RETURNED_FOR_CORRECTION"]);
 
+// MWO-LTSA-HISTORICAL-PM-ACTIVITY-DISPLAY-001 -- the one already-existing,
+// backend-verified signal that distinguishes a historical import from a
+// live digital PM visit: pm_occurrence.provenance is written literally
+// 'HISTORICAL_IMPORT' by every historical promotion path (promote_
+// historical_pm_atomic/promote_historical_pm_batch_atomic,
+// pm_occurrence_repository.py) and 'MANUAL' by the live TAP Engineer
+// create flow -- never guessed from date/asset/source_reference
+// substring matching. Covers both the 540 V2-recovered batch and the
+// pre-existing historical PM pool identically, since both promotion
+// paths write this same literal.
+const HISTORICAL_PROVENANCE = "HISTORICAL_IMPORT";
+
+// Historical activities entries carry only {description, done} -- never
+// a `code` (confirmed: 0 of 540 V2-recovered records have one) -- so
+// they can never be matched against ACTIVITY_OPTIONS' fixed, code-keyed
+// checklist. Rendered directly from the record's own stored data
+// instead: only entries genuinely marked done=true, using the stored
+// description verbatim (including real source spelling variants, e.g.
+// "Resevoir" -- never silently corrected), never merged against or
+// padded out with unrelated unchecked options from ACTIVITY_OPTIONS.
+// An absent/false entry is never invented as "performed".
+function HistoricalActivitiesPerformed({ activities }) {
+  const performed = (activities ?? []).filter((entry) => entry?.done === true);
+  if (performed.length === 0) {
+    return <p style={{ color: colors.text, margin: 0 }}>No maintenance activity recorded.</p>;
+  }
+  return (
+    <>
+      {performed.map((entry, index) => (
+        <div
+          key={`${entry.description ?? "activity"}-${index}`}
+          style={{ color: colors.text, marginBottom: spacing.xs }}
+        >
+          ✓ {entry.description}
+        </div>
+      ))}
+    </>
+  );
+}
+
 const fieldStyle = {
   width: "100%",
   background: colors.panel,
@@ -138,10 +178,22 @@ export default function PMOccurrenceDetailPanel({
     setSaving(true);
     setSaveError(null);
     try {
-      const nextActivities = ACTIVITY_OPTIONS.map((option) => ({
-        ...option,
-        done: Boolean(activities[option.code]),
-      }));
+      // MWO-LTSA-HISTORICAL-PM-ACTIVITY-DISPLAY-001 -- a historical
+      // record never renders the ACTIVITY_OPTIONS checklist (see the
+      // Activities Card above), so `activities` local state was never
+      // populated for it and rebuilding from ACTIVITY_OPTIONS here would
+      // silently overwrite its real, source-verbatim activities with an
+      // all-false 7-item array on any other field's save (Finding/
+      // Remarks) -- exactly the historical-data mutation this MWO
+      // forbids. Historical activities are therefore never rewritten by
+      // this form at all; they pass through unchanged.
+      const nextActivities =
+        occurrence.provenance === HISTORICAL_PROVENANCE
+          ? occurrence.activities
+          : ACTIVITY_OPTIONS.map((option) => ({
+              ...option,
+              done: Boolean(activities[option.code]),
+            }));
       await onSaveDraft?.(occurrence.id, {
         occurrenceDate: occurrence.occurrenceDate,
         activities: nextActivities,
@@ -247,22 +299,28 @@ export default function PMOccurrenceDetailPanel({
         <Field label="Occurrence Date" value={occurrence.occurrenceDate ?? "—"} />
       </Card>
 
-      <Card title="Activities">
-        {ACTIVITY_OPTIONS.map((option) => (
-          <label
-            key={option.code}
-            style={{ display: "flex", alignItems: "center", gap: spacing.xs, color: colors.text, marginBottom: spacing.xs }}
-          >
-            <input
-              type="checkbox"
-              checked={Boolean(activities[option.code])}
-              disabled={!editable}
-              onChange={() => toggleActivity(option.code)}
-            />
-            {option.description}
-          </label>
-        ))}
-      </Card>
+      {occurrence.provenance === HISTORICAL_PROVENANCE ? (
+        <Card title="Activities Performed">
+          <HistoricalActivitiesPerformed activities={occurrence.activities} />
+        </Card>
+      ) : (
+        <Card title="Activities">
+          {ACTIVITY_OPTIONS.map((option) => (
+            <label
+              key={option.code}
+              style={{ display: "flex", alignItems: "center", gap: spacing.xs, color: colors.text, marginBottom: spacing.xs }}
+            >
+              <input
+                type="checkbox"
+                checked={Boolean(activities[option.code])}
+                disabled={!editable}
+                onChange={() => toggleActivity(option.code)}
+              />
+              {option.description}
+            </label>
+          ))}
+        </Card>
+      )}
 
       <Card title="Finding">
         {editable ? (

@@ -308,3 +308,138 @@ describe("PMOccurrenceDetailPanel", () => {
     expect(screen.getByText("PM-2001")).toBeTruthy();
   });
 });
+
+// MWO-LTSA-HISTORICAL-PM-ACTIVITY-DISPLAY-001 -- a historical
+// (provenance=HISTORICAL_IMPORT) occurrence renders its activities
+// directly from the stored array, never merged with/padded out by the
+// fixed ACTIVITY_OPTIONS checklist, and never requiring a `code` field
+// (confirmed: real historical entries only ever carry
+// {description, done}).
+describe("PMOccurrenceDetailPanel -- historical activities display (MWO-LTSA-HISTORICAL-PM-ACTIVITY-DISPLAY-001)", () => {
+  it("1: renders exactly the done=true historical entries, nothing else", () => {
+    render(
+      <PMOccurrenceDetailPanel
+        occurrence={baseOccurrence({
+          provenance: "HISTORICAL_IMPORT",
+          activities: [
+            { done: true, description: "Flushing Line" },
+            { done: true, description: "Quench Line" },
+          ],
+        })}
+      />
+    );
+
+    expect(screen.getByText("Activities Performed")).toBeTruthy();
+    expect(screen.getByText(/Flushing Line/)).toBeTruthy();
+    expect(screen.getByText(/Quench Line/)).toBeTruthy();
+    // none of the other ACTIVITY_OPTIONS labels appear as performed --
+    // this is the exact 110-P-8A / 2026-07-07 production example.
+    expect(screen.queryByText(/Strainer/)).toBeNull();
+    expect(screen.queryByText(/Check Valve DE Side/)).toBeNull();
+    expect(screen.queryByText(/Check Valve NDE Side/)).toBeNull();
+    expect(screen.queryByText(/Reservoir/)).toBeNull();
+    expect(screen.queryByText(/Cooling Water Cooler/)).toBeNull();
+    // never the interactive/generic checklist for a historical record.
+    expect(screen.queryByRole("checkbox")).toBeNull();
+  });
+
+  it("2: renders correctly even though no entry carries a `code` field", () => {
+    const activities = [{ done: true, description: "Flushing Line" }];
+    expect(activities[0].code).toBeUndefined();
+    render(<PMOccurrenceDetailPanel occurrence={baseOccurrence({ provenance: "HISTORICAL_IMPORT", activities })} />);
+
+    expect(screen.getByText(/Flushing Line/)).toBeTruthy();
+  });
+
+  it("3: a DE/NDE-side variant outside ACTIVITY_OPTIONS renders verbatim, not dropped", () => {
+    render(
+      <PMOccurrenceDetailPanel
+        occurrence={baseOccurrence({
+          provenance: "HISTORICAL_IMPORT",
+          activities: [{ done: true, description: "Flushing Line DE Side" }],
+        })}
+      />
+    );
+
+    expect(screen.getByText(/Flushing Line DE Side/)).toBeTruthy();
+  });
+
+  it('4: renders "Resevoir" exactly as stored -- never silently corrected to "Reservoir"', () => {
+    render(
+      <PMOccurrenceDetailPanel
+        occurrence={baseOccurrence({
+          provenance: "HISTORICAL_IMPORT",
+          activities: [{ done: true, description: "Resevoir" }],
+        })}
+      />
+    );
+
+    expect(screen.getByText(/Resevoir/)).toBeTruthy();
+    expect(screen.queryByText(/^Reservoir$/)).toBeNull();
+  });
+
+  it("5: zero performed activities shows the honest empty state, never an invented activity", () => {
+    render(
+      <PMOccurrenceDetailPanel
+        occurrence={baseOccurrence({ provenance: "HISTORICAL_IMPORT", activities: [] })}
+      />
+    );
+
+    expect(screen.getByText("No maintenance activity recorded.")).toBeTruthy();
+  });
+
+  it("5b: entries present but none done=true also shows the empty state, never a checked mark", () => {
+    render(
+      <PMOccurrenceDetailPanel
+        occurrence={baseOccurrence({
+          provenance: "HISTORICAL_IMPORT",
+          activities: [{ done: false, description: "Flushing Line" }],
+        })}
+      />
+    );
+
+    expect(screen.getByText("No maintenance activity recorded.")).toBeTruthy();
+  });
+
+  it("6: a MANUAL (live digital) occurrence still uses the existing ACTIVITY_OPTIONS checklist, unchanged", () => {
+    render(
+      <PMOccurrenceDetailPanel
+        occurrence={baseOccurrence({
+          provenance: "MANUAL",
+          activities: [{ code: "1", description: "Flushing Line", side: null, done: true }],
+        })}
+      />
+    );
+
+    expect(screen.getByText("Activities")).toBeTruthy();
+    expect(screen.queryByText("Activities Performed")).toBeNull();
+    // the full fixed checklist renders, including unchecked options --
+    // exactly the pre-existing behavior for a live digital PM.
+    expect(screen.getAllByRole("checkbox").length).toBe(7);
+    expect(screen.getByText("Strainer")).toBeTruthy();
+    expect(screen.getByText("Reservoir")).toBeTruthy();
+  });
+
+  it("6b: an occurrence with no provenance at all (existing pre-MWO fixtures) keeps the original checklist behavior", () => {
+    render(<PMOccurrenceDetailPanel occurrence={baseOccurrence()} />);
+
+    expect(screen.getByText("Activities")).toBeTruthy();
+    expect(screen.getAllByRole("checkbox").length).toBe(7);
+  });
+
+  it("historical Save Draft never rewrites activities from ACTIVITY_OPTIONS -- passes the original array through unchanged", async () => {
+    const onSaveDraft = vi.fn().mockResolvedValue({});
+    const historicalActivities = [{ done: true, description: "Flushing Line" }, { done: true, description: "Resevoir" }];
+    render(
+      <PMOccurrenceDetailPanel
+        occurrence={baseOccurrence({ provenance: "HISTORICAL_IMPORT", activities: historicalActivities })}
+        canWrite
+        onSaveDraft={onSaveDraft}
+      />
+    );
+
+    fireEvent.click(screen.getByText("Save Draft"));
+    await waitFor(() => expect(onSaveDraft).toHaveBeenCalled());
+    expect(onSaveDraft.mock.calls[0][1].activities).toEqual(historicalActivities);
+  });
+});
