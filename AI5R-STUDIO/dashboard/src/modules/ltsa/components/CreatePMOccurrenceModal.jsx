@@ -2,24 +2,8 @@ import { useState } from "react";
 import { Button, Modal } from "../../../design-system";
 import colors from "../../../design-system/theme/colors";
 import spacing from "../../../design-system/theme/spacing";
-
-// MWO-LTSA-PM-CM-INTAKE-001 -- golden evidence (Laporan PM, CM &
-// Pemasangan Seal, page 34/35): a fixed 33-item cleaning-accessories
-// checklist. This form offers the most common items as checkboxes
-// (matching the golden report's own most-frequently-recorded activities)
-// rather than all 33 -- the backend's `activities` JSONB accepts any
-// subset, so this is a UI scope choice, not a data-model limit; a
-// technician who needs a less common item can still record it via
-// remarks until a fuller checklist UI follows.
-const ACTIVITY_OPTIONS = [
-  { code: "1", description: "Flushing Line", side: null },
-  { code: "4", description: "Quench Line", side: null },
-  { code: "19", description: "Strainer", side: null },
-  { code: "17", description: "Check Valve DE Side", side: "DE" },
-  { code: "18", description: "Check Valve NDE Side", side: "NDE" },
-  { code: "6", description: "Reservoir", side: null },
-  { code: "8", description: "Cooling Water Cooler", side: null },
-];
+import { buildActivitiesPayload } from "../utils/pmActivityCatalog";
+import PMActivityFamilyChecklist from "./PMActivityFamilyChecklist";
 
 const fieldStyle = {
   width: "100%",
@@ -67,10 +51,7 @@ export default function CreatePMOccurrenceModal({ isOpen, onClose, onCreate, pmS
     setError(null);
     setSaving(true);
     try {
-      const activities = ACTIVITY_OPTIONS.map((option) => ({
-        ...option,
-        done: Boolean(doneActivities[option.code]),
-      }));
+      const activities = buildActivitiesPayload(doneActivities);
       await onCreate({ occurrenceDate: occurrenceDate || null, activities, remarks: remarks || null });
       resetForm();
     } catch (err) {
@@ -111,16 +92,7 @@ export default function CreatePMOccurrenceModal({ isOpen, onClose, onCreate, pmS
 
         <div style={{ marginBottom: spacing.sm }}>
           <div className="confidence-label" style={{ marginBottom: spacing.xs }}>Activities</div>
-          {ACTIVITY_OPTIONS.map((option) => (
-            <label key={option.code} style={{ display: "flex", alignItems: "center", gap: spacing.xs, color: colors.text }}>
-              <input
-                type="checkbox"
-                checked={Boolean(doneActivities[option.code])}
-                onChange={() => toggleActivity(option.code)}
-              />
-              {option.description}
-            </label>
-          ))}
+          <PMActivityFamilyChecklist doneMap={doneActivities} onToggle={toggleActivity} />
         </div>
 
         <Field id="pm-occ-remarks" label="Remarks">

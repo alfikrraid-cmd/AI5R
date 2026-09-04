@@ -5,6 +5,8 @@ import spacing from "../../../design-system/theme/spacing";
 import EvidenceAttachments, { EVIDENCE_RECORD_TYPES } from "./EvidenceAttachments";
 import { TechnicalOutcomeBadge, WorkflowStatusBadge } from "./WorkflowStatusBadge";
 import { isUnscheduledPlaceholder } from "../utils/pmMapping";
+import { buildActivitiesPayload, buildDoneMapFromActivities } from "../utils/pmActivityCatalog";
+import PMActivityFamilyChecklist from "./PMActivityFamilyChecklist";
 
 // MWO-LTSA-PM-CM-REVIEW-UI-001 -- displays/edits a real pm_occurrence
 // record (a field visit, distinct from the pm_schedule PMOpenDesignView.jsx
@@ -15,19 +17,11 @@ import { isUnscheduledPlaceholder } from "../utils/pmMapping";
 // and touching it would risk absorbing unrelated work (Phase 1's own "Do
 // not absorb unrelated work").
 //
-// Same ACTIVITY_OPTIONS subset CreatePMOccurrenceModal.jsx already
-// establishes (the backend's `activities` JSONB accepts any subset, this
-// is a UI scope choice already made once, reused verbatim here so create
-// and edit render/accept the exact same checklist).
-const ACTIVITY_OPTIONS = [
-  { code: "1", description: "Flushing Line", side: null },
-  { code: "4", description: "Quench Line", side: null },
-  { code: "19", description: "Strainer", side: null },
-  { code: "17", description: "Check Valve DE Side", side: "DE" },
-  { code: "18", description: "Check Valve NDE Side", side: "NDE" },
-  { code: "6", description: "Reservoir", side: null },
-  { code: "8", description: "Cooling Water Cooler", side: null },
-];
+// MWO-LTSA-PM-ACTIVITY-TAXONOMY-001 -- the flat 7-item ACTIVITY_OPTIONS
+// this file and CreatePMOccurrenceModal.jsx both used to define
+// separately is now the single shared PM_ACTIVITY_FAMILIES catalog
+// (pmActivityCatalog.js), so create and edit stay on the exact same
+// grouped checklist by construction, not by convention.
 
 // Phase 6/9: only DRAFT and RETURNED_FOR_CORRECTION are ever
 // client-editable -- matches pm_occurrence_repository.py's own
@@ -134,11 +128,14 @@ export default function PMOccurrenceDetailPanel({
 
   useEffect(() => {
     if (!occurrence) return;
-    const doneMap = {};
-    (occurrence.activities ?? []).forEach((entry) => {
-      if (entry?.done) doneMap[entry.code] = true;
-    });
-    setActivities(doneMap);
+    // MWO-LTSA-PM-ACTIVITY-TAXONOMY-001 -- matches both the new stable
+    // string codes and the pre-existing legacy numeric codes (1/4/6/8/
+    // 17/18/19), so an old MANUAL record keeps rendering correctly
+    // against the expanded catalog. For a HISTORICAL_IMPORT occurrence
+    // this map is built but never rendered (see the Activities Card
+    // below, which reads occurrence.activities directly for historical
+    // records via HistoricalActivitiesPerformed) -- harmless, unused.
+    setActivities(buildDoneMapFromActivities(occurrence.activities));
     setFinding(occurrence.finding ?? "");
     setPreliminaryRecommendation(occurrence.preliminaryRecommendation ?? "");
     setRemarks(occurrence.remarks ?? "");
@@ -179,21 +176,19 @@ export default function PMOccurrenceDetailPanel({
     setSaveError(null);
     try {
       // MWO-LTSA-HISTORICAL-PM-ACTIVITY-DISPLAY-001 -- a historical
-      // record never renders the ACTIVITY_OPTIONS checklist (see the
-      // Activities Card above), so `activities` local state was never
-      // populated for it and rebuilding from ACTIVITY_OPTIONS here would
+      // record never renders the grouped catalog checklist (see the
+      // Activities Card above), so `activities` local state, while
+      // populated (see the useEffect above), was never toggled by a
+      // technician for it -- rebuilding from the catalog here would
       // silently overwrite its real, source-verbatim activities with an
-      // all-false 7-item array on any other field's save (Finding/
-      // Remarks) -- exactly the historical-data mutation this MWO
-      // forbids. Historical activities are therefore never rewritten by
-      // this form at all; they pass through unchanged.
+      // all-false array on any other field's save (Finding/Remarks) --
+      // exactly the historical-data mutation this MWO forbids.
+      // Historical activities are therefore never rewritten by this form
+      // at all; they pass through unchanged.
       const nextActivities =
         occurrence.provenance === HISTORICAL_PROVENANCE
           ? occurrence.activities
-          : ACTIVITY_OPTIONS.map((option) => ({
-              ...option,
-              done: Boolean(activities[option.code]),
-            }));
+          : buildActivitiesPayload(activities);
       await onSaveDraft?.(occurrence.id, {
         occurrenceDate: occurrence.occurrenceDate,
         activities: nextActivities,
@@ -305,20 +300,7 @@ export default function PMOccurrenceDetailPanel({
         </Card>
       ) : (
         <Card title="Activities">
-          {ACTIVITY_OPTIONS.map((option) => (
-            <label
-              key={option.code}
-              style={{ display: "flex", alignItems: "center", gap: spacing.xs, color: colors.text, marginBottom: spacing.xs }}
-            >
-              <input
-                type="checkbox"
-                checked={Boolean(activities[option.code])}
-                disabled={!editable}
-                onChange={() => toggleActivity(option.code)}
-              />
-              {option.description}
-            </label>
-          ))}
+          <PMActivityFamilyChecklist doneMap={activities} onToggle={toggleActivity} disabled={!editable} />
         </Card>
       )}
 

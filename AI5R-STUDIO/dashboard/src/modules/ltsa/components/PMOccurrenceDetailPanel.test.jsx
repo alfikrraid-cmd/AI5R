@@ -401,7 +401,7 @@ describe("PMOccurrenceDetailPanel -- historical activities display (MWO-LTSA-HIS
     expect(screen.getByText("No maintenance activity recorded.")).toBeTruthy();
   });
 
-  it("6: a MANUAL (live digital) occurrence still uses the existing ACTIVITY_OPTIONS checklist, unchanged", () => {
+  it("6: a MANUAL (live digital) occurrence uses the grouped activity catalog, unchanged by the historical fix", () => {
     render(
       <PMOccurrenceDetailPanel
         occurrence={baseOccurrence({
@@ -413,18 +413,20 @@ describe("PMOccurrenceDetailPanel -- historical activities display (MWO-LTSA-HIS
 
     expect(screen.getByText("Activities")).toBeTruthy();
     expect(screen.queryByText("Activities Performed")).toBeNull();
-    // the full fixed checklist renders, including unchecked options --
-    // exactly the pre-existing behavior for a live digital PM.
-    expect(screen.getAllByRole("checkbox").length).toBe(7);
+    // MWO-LTSA-PM-ACTIVITY-TAXONOMY-001 -- the grouped 19-variant catalog
+    // renders (7 families x General/DE/NDE where evidenced), including
+    // unchecked options -- exactly the pre-existing "full catalog always
+    // shown" behavior for a live digital PM, just a wider catalog now.
+    expect(screen.getAllByRole("checkbox").length).toBe(19);
     expect(screen.getByText("Strainer")).toBeTruthy();
     expect(screen.getByText("Reservoir")).toBeTruthy();
   });
 
-  it("6b: an occurrence with no provenance at all (existing pre-MWO fixtures) keeps the original checklist behavior", () => {
+  it("6b: an occurrence with no provenance at all (existing pre-MWO fixtures) keeps using the grouped MANUAL catalog", () => {
     render(<PMOccurrenceDetailPanel occurrence={baseOccurrence()} />);
 
     expect(screen.getByText("Activities")).toBeTruthy();
-    expect(screen.getAllByRole("checkbox").length).toBe(7);
+    expect(screen.getAllByRole("checkbox").length).toBe(19);
   });
 
   it("historical Save Draft never rewrites activities from ACTIVITY_OPTIONS -- passes the original array through unchanged", async () => {
@@ -441,5 +443,66 @@ describe("PMOccurrenceDetailPanel -- historical activities display (MWO-LTSA-HIS
     fireEvent.click(screen.getByText("Save Draft"));
     await waitFor(() => expect(onSaveDraft).toHaveBeenCalled());
     expect(onSaveDraft.mock.calls[0][1].activities).toEqual(historicalActivities);
+  });
+});
+
+// MWO-LTSA-PM-ACTIVITY-TAXONOMY-001 -- MANUAL-provenance activities now
+// render via the shared grouped PMActivityFamilyChecklist; a MANUAL
+// record's own legacy numeric codes (1/4/6/8/17/18/19, the only codes
+// that ever existed before this MWO) must keep matching correctly
+// against the expanded catalog with zero migration.
+describe("PMOccurrenceDetailPanel -- grouped activity catalog for MANUAL PM (MWO-LTSA-PM-ACTIVITY-TAXONOMY-001)", () => {
+  it("14: a legacy numeric-coded MANUAL record renders its checked activity correctly under the new catalog", async () => {
+    render(
+      <PMOccurrenceDetailPanel
+        occurrence={baseOccurrence({
+          activities: [{ code: "1", description: "Flushing Line", side: null, done: true }],
+        })}
+      />
+    );
+    expect((await screen.findByLabelText("Flushing Line")).checked).toBe(true);
+    expect(screen.getByLabelText("Flushing Line DE Side").checked).toBe(false);
+  });
+
+  it("shows the grouped family catalog (not the old flat list) for a MANUAL/undefined-provenance record", async () => {
+    render(<PMOccurrenceDetailPanel occurrence={baseOccurrence()} />);
+    expect(await screen.findByText("Activities")).toBeTruthy();
+    expect(screen.queryByText("Activities Performed")).toBeNull();
+    expect(screen.getByTestId("activity-family-Cooler")).toBeTruthy();
+    expect(screen.getByTestId("activity-family-Cooling Water Cooler")).toBeTruthy();
+  });
+
+  it("12: no history/ConMon/pump context auto-selects any activity -- editing a fresh DRAFT with zero activities leaves every checkbox unchecked", async () => {
+    render(<PMOccurrenceDetailPanel occurrence={baseOccurrence({ activities: [] })} canWrite />);
+    for (const box of await screen.findAllByRole("checkbox")) {
+      expect(box.checked).toBe(false);
+    }
+  });
+
+  it("13/16: saving a MANUAL record serializes new selections with the new stable string code, full catalog included", async () => {
+    const onSaveDraft = vi.fn().mockResolvedValue({});
+    render(<PMOccurrenceDetailPanel occurrence={baseOccurrence({ activities: [] })} canWrite onSaveDraft={onSaveDraft} />);
+
+    fireEvent.click(await screen.findByLabelText("Cooler DE Side"));
+    fireEvent.click(screen.getByText("Save Draft"));
+
+    await waitFor(() => expect(onSaveDraft).toHaveBeenCalled());
+    const payload = onSaveDraft.mock.calls[0][1].activities;
+    expect(payload).toHaveLength(19); // full catalog, existing payload contract preserved
+    expect(payload).toContainEqual({ code: "COOLER_DE", description: "Cooler DE Side", side: "DE", done: true });
+  });
+
+  it("5/6: DE and NDE (and General) of the same family can be selected together and both save correctly", async () => {
+    const onSaveDraft = vi.fn().mockResolvedValue({});
+    render(<PMOccurrenceDetailPanel occurrence={baseOccurrence({ activities: [] })} canWrite onSaveDraft={onSaveDraft} />);
+
+    fireEvent.click(await screen.findByLabelText("Cooler"));
+    fireEvent.click(screen.getByLabelText("Cooler DE Side"));
+    fireEvent.click(screen.getByLabelText("Cooler NDE Side"));
+    fireEvent.click(screen.getByText("Save Draft"));
+
+    await waitFor(() => expect(onSaveDraft).toHaveBeenCalled());
+    const done = onSaveDraft.mock.calls[0][1].activities.filter((a) => a.done).map((a) => a.code);
+    expect(done.sort()).toEqual(["COOLER", "COOLER_DE", "COOLER_NDE"]);
   });
 });

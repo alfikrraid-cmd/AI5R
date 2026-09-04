@@ -94,6 +94,13 @@ describe("PM workspace -- Record PM Occurrence (real persistence)", () => {
     fireEvent.click(screen.getByText("PM-2001"));
 
     fireEvent.click(await screen.findByText("+ Record PM Occurrence"));
+    // MWO-LTSA-PM-ACTIVITY-TAXONOMY-001 -- "Flushing Line" is now the
+    // Flushing Line family's General checkbox (grouped UI, accessible
+    // name unchanged); the payload's `code` is a deliberate, disclosed
+    // contract evolution to the new stable string code, never the old
+    // legacy "1" -- new selections always use the new catalog codes
+    // (legacy numeric codes remain readable for pre-existing records,
+    // see PMOccurrenceDetailPanel.test.jsx's own legacy-rendering test).
     fireEvent.click(screen.getByLabelText("Flushing Line"));
     fireEvent.click(screen.getByText("Save Draft"));
 
@@ -103,7 +110,7 @@ describe("PM workspace -- Record PM Occurrence (real persistence)", () => {
         pmScheduleCode: "PM-2001",
         assetCode: "211-P-1A",
         activities: expect.arrayContaining([
-          expect.objectContaining({ code: "1", description: "Flushing Line", done: true }),
+          expect.objectContaining({ code: "FLUSHING_LINE", description: "Flushing Line", done: true }),
         ]),
       })
     );
