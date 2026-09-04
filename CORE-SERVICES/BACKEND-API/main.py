@@ -66,6 +66,7 @@ from routers import (
     seal,
     work_orders,
     whatsapp_group_agent,
+    whatsapp_group_agent_admin,
     whatsapp_intake,
     whatsapp_webhook,
 )
@@ -106,6 +107,10 @@ app.include_router(whatsapp_webhook.router)
 # with whatsapp_intake.router/whatsapp_webhook.router above, and never
 # imports or modifies either.
 app.include_router(whatsapp_group_agent.router)
+# MWO-LTSA-TAP-GROUP-AGENT-001 Phase 2A -- admin lifecycle endpoints
+# (register/activate/disable a group). Gated by the existing admin.users
+# permission, same as admin_users.router -- no new permission invented.
+app.include_router(whatsapp_group_agent_admin.router)
 # MWO-LTSA-AUTH-003A-FINAL -- User Administration. Every route requires
 # admin.users (get_current_user is the router's own module-level
 # dependency; per-route _require_admin_users()/authorize_user_management()

@@ -53,7 +53,28 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}/CORE-SERVICES:${{ github.workspace }}/AI5R-SDK:${{ github.workspace }}/CORE-SERVICES/BACKEND-API
         run: |
-          python -m pytest CORE-SERVICES/API/TESTS -q --continue-on-collection-errors
+          python -m pytest CORE-SERVICES/API/TESTS -q --continue-on-collection-errors --ignore=CORE-SERVICES/API/TESTS/test_whatsapp_group_repository_real_db.py
+
+  group-agent-real-db-tests:
+    # Self-contained `docker run postgres:16-alpine` (no docker-compose,
+    # no .env.verify.local) -- same discipline
+    # test_pm_occurrence_repository_real_db.py already established.
+    # ubuntu-latest already has the docker CLI + daemon available.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install production requirements
+        run: pip install -r CORE-SERVICES/BACKEND-API/requirements.txt
+      - name: Install approved test requirements
+        run: pip install -r CORE-SERVICES/BACKEND-API/requirements-dev.txt
+      - name: Run real-Postgres persistence tests (proves restart-survival, not simulated)
+        env:
+          PYTHONPATH: ${{ github.workspace }}/CORE-SERVICES:${{ github.workspace }}/AI5R-SDK
+        run: |
+          python -m pytest CORE-SERVICES/API/TESTS/test_whatsapp_group_repository_real_db.py -q
 
   group-agent-node-tests:
     runs-on: ubuntu-latest

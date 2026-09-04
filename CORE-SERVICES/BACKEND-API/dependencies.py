@@ -659,21 +659,26 @@ def require_permission(permission: str):
     return _check
 
 
-# MWO-LTSA-TAP-GROUP-AGENT-001 -- TAP LTSA WhatsApp Group Agent. Phase 1:
-# in-memory only, per the mission's own "disposable/local infrastructure
-# only, no production schema change" instruction. A production-backed
-# repository is a PROPOSED, NOT-yet-applied migration (see
-# ENGINEERING/MWO/MWO-LTSA-TAP-GROUP-AGENT-001-Proposed-Migration.md) --
-# swapping this singleton for one is the only change a later phase needs,
-# since routers/whatsapp_group_agent.py only depends on the Protocol.
+# MWO-LTSA-TAP-GROUP-AGENT-001 Phase 2A -- TAP LTSA WhatsApp Group Agent,
+# now wired to the real, persistent Postgres-backed repository (reuses
+# the SAME _import_database_runner singleton every other direct-DB
+# repository above already shares -- no new connection/config). Schema:
+# PRODUCTS/LTSA-BRAIN/DATABASE/MIGRATIONS/032_create_whatsapp_group_authorization.sql
+# -- NOT applied to any database by this MWO (see that file's own
+# header); this wiring is safe to merge/ship unexercised because the
+# DatabaseRunner connects lazily, per-call, exactly like every other
+# repository already built on it (e.g. _mechanical_seal_stock_repository
+# above) -- importing this module performs no network/DB I/O.
+# InMemoryGroupAuthorizationRepository (Phase 1) remains available for
+# tests/CI, which do not have a live Postgres.
 from API.whatsapp_group_agent_service import InMemoryRateLimiter
-from API.whatsapp_group_repository_inmemory import InMemoryGroupAuthorizationRepository
+from API.whatsapp_group_repository_postgres import WhatsAppGroupAuthorizationRepository
 
-_group_authorization_repository = InMemoryGroupAuthorizationRepository()
+_group_authorization_repository = WhatsAppGroupAuthorizationRepository(_import_database_runner)
 _group_message_rate_limiter = InMemoryRateLimiter()
 
 
-def get_group_authorization_repository() -> InMemoryGroupAuthorizationRepository:
+def get_group_authorization_repository() -> WhatsAppGroupAuthorizationRepository:
     return _group_authorization_repository
 
 

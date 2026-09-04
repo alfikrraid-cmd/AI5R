@@ -426,3 +426,35 @@ def test_ltsa_unavailable_on_downstream_exception_without_leaking_details():
     assert result.reply == "LTSA sedang tidak tersedia. Silakan coba lagi nanti."
     assert "psycopg2" not in result.reply
     assert "internal-db-host" not in result.reply
+
+
+# --------------------------------------------------------------------------
+# Phase 2A -- a group can never self-activate through the WhatsApp
+# message pipeline itself; only the admin lifecycle router (a separate,
+# admin.users-gated surface) can call activate_group/register_group at
+# all. Proven here structurally: GroupAuthorizationRepositoryProtocol
+# (the only repository interface process_group_message depends on) does
+# not even declare register_group/activate_group/disable_group -- the
+# pipeline could not call them even if it tried.
+# --------------------------------------------------------------------------
+def test_group_cannot_self_activate_via_the_message_pipeline():
+    import inspect
+
+    from API.whatsapp_group_agent_service import GroupAuthorizationRepositoryProtocol, process_group_message
+
+    protocol_methods = {name for name, _ in inspect.getmembers(GroupAuthorizationRepositoryProtocol) if not name.startswith("_")}
+    assert "activate_group" not in protocol_methods
+    assert "register_group" not in protocol_methods
+    # And the pipeline itself never references those names at all.
+    source = inspect.getsource(process_group_message)
+    assert "activate_group" not in source
+    assert "register_group" not in source
+
+
+def test_repeated_unknown_group_message_never_auto_registers():
+    repo = InMemoryGroupAuthorizationRepository()
+    for _ in range(3):
+        event = _make_event("/ltsa status 212-P-8A", provider_message_id=f"wamid.{_}")
+        result = _run(event, repo)
+        assert result.status == "IGNORED_UNKNOWN_GROUP"
+    assert repo.find_group_by_hash(GROUP_HASH) is None

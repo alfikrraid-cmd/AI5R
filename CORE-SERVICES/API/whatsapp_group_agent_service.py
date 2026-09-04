@@ -149,6 +149,13 @@ class GroupAuthorizationRecord:
     allowed_scope: frozenset[str] | None = None
 
 
+class GroupNotFoundError(ValueError):
+    """Shared across every GroupAuthorizationRepositoryProtocol
+    implementation (in-memory, Postgres) -- callers (e.g. the admin
+    lifecycle router) catch this one class regardless of which
+    implementation is wired in, never a repository-specific subclass."""
+
+
 class GroupAuthorizationRepositoryProtocol(Protocol):
     def find_group_by_hash(self, group_hash: str) -> GroupAuthorizationRecord | None: ...
 
@@ -320,6 +327,7 @@ __all__ = [
     "GroupMessageEvent",
     "GroupAgentResult",
     "GroupAuthorizationRecord",
+    "GroupNotFoundError",
     "GroupAuthorizationRepositoryProtocol",
     "SenderIdentityRepositoryProtocol",
     "RateLimiterProtocol",
