@@ -34,6 +34,11 @@ from API.historical_pm_promotion_batch_service import (
     promote_pm_batch,
     validate_promotion_batch,
 )
+from API.historical_pm_finalization_service import (
+    FinalizationBatchError,
+    finalization_readiness,
+    finalize_historical_pm_batch,
+)
 from API.historical_pm_cmon_staging_repository import InvalidStatusTransitionError
 from API.pump_area_scope import is_asset_in_scope
 from dependencies import (
@@ -559,5 +564,66 @@ def promote_recovery_pm_batch(
             "status": "PROMOTED",
             "promoted_count": len(result["results"]),
             "candidate_ids": [r["document_field_extraction_id"] for r in result["results"]],
+        }
+    }
+
+
+# MWO-LTSA-HISTORICAL-PM-FINALIZATION-001 -- read-only readiness summary,
+# same "never speculatively call the mutating POST" purpose as the
+# promotion status endpoint above, for the SEPARATE, narrower DRAFT ->
+# FINALIZED transition (never DRAFT -> SUBMITTED -> FINALIZED -- this
+# never touches pm_cm_workflow_service.py's own guarded graph). Set-
+# based: finalization_readiness()/validate_finalization_batch() cost a
+# small, N-independent number of queries, never one per candidate.
+@router.get("/api/ltsa/historical-review/recovery/pm/finalization-status")
+def recovery_pm_finalization_status(
+    staging_repository=Depends(get_historical_pm_cmon_staging_repository),
+    pm_occurrence_repository=Depends(get_pm_occurrence_repository),
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
+) -> Payload:
+    return {"data": finalization_readiness(staging_repository, pm_occurrence_repository)}
+
+
+# MWO-LTSA-HISTORICAL-PM-FINALIZATION-001 -- the terminal step that moves
+# the already-promoted historical recovery batch's pm_occurrence rows
+# from DRAFT to FINALIZED. No request body at all, same discipline as
+# promote_recovery_pm_batch above: no candidate/pm_occurrence id list,
+# no status predicate, and no actor can ever be supplied by a caller --
+# membership is entirely server-derived (historical_pm_finalization_
+# service.fetch_finalization_targets(), the exact same rule the read-
+# only status endpoint above uses) and the actor is always the
+# authenticated session (current_user.user_id), never a payload field.
+# Restricted to SUPERUSER/TAP_ADMIN by this router's own record.edit
+# gate (line 57), same as every other historical recovery control.
+@router.post("/api/ltsa/historical-review/recovery/pm/finalize")
+def finalize_recovery_pm_batch(
+    staging_repository=Depends(get_historical_pm_cmon_staging_repository),
+    pm_occurrence_repository=Depends(get_pm_occurrence_repository),
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
+) -> Payload:
+    actor_id = _actor_id(current_user)
+    try:
+        result = finalize_historical_pm_batch(
+            staging_repository, pm_occurrence_repository, finalized_by=actor_id,
+        )
+    except FinalizationBatchError as error:
+        raise HTTPException(status_code=422, detail=str(error))
+
+    if result["status"] == "REJECTED_PRECHECK_FAILED":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "historical PM finalization batch is not ready -- one or more targets are ineligible",
+                "counts": result["precheck"]["counts"],
+            },
+        )
+    if result["status"] == "REJECTED_ATOMIC_TRANSACTION_FAILED":
+        raise HTTPException(status_code=409, detail=result.get("error", "finalization transaction failed"))
+
+    return {
+        "data": {
+            "status": "FINALIZED",
+            "finalized_count": result["finalized_count"],
+            "pm_occurrence_codes": [r["pm_occurrence_code"] for r in result["results"]],
         }
     }

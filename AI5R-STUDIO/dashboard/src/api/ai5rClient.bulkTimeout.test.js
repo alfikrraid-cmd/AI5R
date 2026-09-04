@@ -3,6 +3,8 @@ import {
   bulkReviewHistoricalReviewCandidates,
   promoteHistoricalPmRecoveryBatch,
   getHistoricalPmRecoveryStatus,
+  getHistoricalPmFinalizationStatus,
+  finalizeHistoricalPmRecoveryBatch,
   getPumps,
 } from "./ai5rClient";
 
@@ -73,6 +75,30 @@ describe("bulk historical review request timeout", () => {
     // must independently be safe regardless of how fast the backend
     // eventually becomes.
     const promise = getHistoricalPmRecoveryStatus();
+    promise.catch(() => {});
+    const [, options] = global.fetch.mock.calls[0];
+
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(options.signal.aborted).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(15000); // total 75s
+    expect(options.signal.aborted).toBe(true);
+  });
+
+  it("getHistoricalPmFinalizationStatus also survives past 60s (MWO-LTSA-HISTORICAL-PM-FINALIZATION-001)", async () => {
+    const promise = getHistoricalPmFinalizationStatus();
+    promise.catch(() => {});
+    const [, options] = global.fetch.mock.calls[0];
+
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(options.signal.aborted).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(15000); // total 75s
+    expect(options.signal.aborted).toBe(true);
+  });
+
+  it("finalizeHistoricalPmRecoveryBatch also survives past 60s (MWO-LTSA-HISTORICAL-PM-FINALIZATION-001)", async () => {
+    const promise = finalizeHistoricalPmRecoveryBatch();
     promise.catch(() => {});
     const [, options] = global.fetch.mock.calls[0];
 

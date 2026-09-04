@@ -1462,6 +1462,33 @@ export async function promoteHistoricalPmRecoveryBatch() {
     return payload?.data ?? null;
 }
 
+// MWO-LTSA-HISTORICAL-PM-FINALIZATION-001 -- read-only readiness for the
+// SEPARATE, narrower DRAFT -> FINALIZED transition (never the normal
+// DRAFT -> SUBMITTED -> FINALIZED digital workflow). Same long-operation
+// timeout as getHistoricalPmRecoveryStatus -- set-based on the backend
+// but still real query cost, well past the platform's normal 15s
+// default.
+export async function getHistoricalPmFinalizationStatus() {
+    const payload = await _adminUsersRequest(
+        `${API_URL}/api/ltsa/historical-review/recovery/pm/finalization-status`,
+        { timeoutMs: LONG_BULK_OPERATION_TIMEOUT_MS }
+    );
+    return payload?.data ?? null;
+}
+
+// Terminal DRAFT -> FINALIZED transition for the server-derived
+// historical PM recovery batch. No request body at all -- membership,
+// eligibility, and the actor identity are entirely server-side; nothing
+// here could supply/override any of that even if it tried. Same long-
+// operation timeout as promoteHistoricalPmRecoveryBatch.
+export async function finalizeHistoricalPmRecoveryBatch() {
+    const payload = await _adminUsersRequest(
+        `${API_URL}/api/ltsa/historical-review/recovery/pm/finalize`,
+        { method: "POST", timeoutMs: LONG_BULK_OPERATION_TIMEOUT_MS }
+    );
+    return payload?.data ?? null;
+}
+
 export async function getRecordChangeHistory(entityType, entityId) {
     const payload = await _adminUsersRequest(
         `${API_URL}/api/ltsa/records/history?entity_type=${encodeURIComponent(entityType)}&entity_id=${encodeURIComponent(entityId)}`

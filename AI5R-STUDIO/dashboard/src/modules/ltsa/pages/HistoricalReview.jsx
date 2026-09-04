@@ -8,6 +8,8 @@ import {
   bulkReviewHistoricalReviewCandidates,
   getHistoricalPmRecoveryStatus,
   promoteHistoricalPmRecoveryBatch,
+  getHistoricalPmFinalizationStatus,
+  finalizeHistoricalPmRecoveryBatch,
 } from "../../../api/ai5rClient";
 import { useOptionalAuth } from "../auth/AuthContext";
 import { can, PERMISSIONS } from "../auth/permissions";
@@ -112,6 +114,19 @@ export default function HistoricalReview() {
   const [promoteError, setPromoteError] = useState(null);
   const [promoteResult, setPromoteResult] = useState(null);
 
+  // MWO-LTSA-HISTORICAL-PM-FINALIZATION-001 -- a THIRD, separate action,
+  // deliberately never mixed with Review, Promotion, the ordinary PM
+  // digital workflow, or the remaining 35 pending candidates. Gated on
+  // the SAME server-derived readiness the GET .../recovery/pm/
+  // finalization-status endpoint computes (target/draft/finalized/
+  // invalid counts, finalization_ready); this component only displays
+  // that state, it never decides eligibility itself.
+  const [finalizationStatus, setFinalizationStatus] = useState(null);
+  const [finalizeConfirmOpen, setFinalizeConfirmOpen] = useState(false);
+  const [finalizeSubmitting, setFinalizeSubmitting] = useState(false);
+  const [finalizeError, setFinalizeError] = useState(null);
+  const [finalizeResult, setFinalizeResult] = useState(null);
+
   async function reload() {
     setLoading(true);
     setLoadError(null);
@@ -136,10 +151,22 @@ export default function HistoricalReview() {
     }
   }
 
+  async function loadFinalizationStatus() {
+    try {
+      const status = await getHistoricalPmFinalizationStatus();
+      setFinalizationStatus(status);
+    } catch {
+      // fail-closed: no confirmed status means no Finalize button, never
+      // a guessed/optimistic one.
+      setFinalizationStatus(null);
+    }
+  }
+
   useEffect(() => {
     if (canAccess) {
       reload();
       loadRecoveryStatus();
+      loadFinalizationStatus();
     } else {
       setLoading(false);
     }
@@ -390,6 +417,43 @@ export default function HistoricalReview() {
     }
   }
 
+  // Terminal DRAFT -> FINALIZED transition for the server-derived
+  // recovery batch. Same ambiguous-outcome handling as
+  // handlePromoteRecoveryBatch (069c8326/MWO-LTSA-BULK-TIMEOUT-UX-001):
+  // a request failure is never assumed fatal -- re-fetch the
+  // authoritative finalization status and check whether it now shows
+  // draft_count=0 with finalized_count matching target_count before
+  // ever reporting failure. Never re-submits the finalize action
+  // itself, and never mixes with review/promotion/ordinary PM workflow.
+  async function handleFinalizeRecoveryBatch() {
+    if (finalizeSubmitting) return; // double-submit guard
+    setFinalizeSubmitting(true);
+    setFinalizeError(null);
+    try {
+      const result = await finalizeHistoricalPmRecoveryBatch();
+      setFinalizeResult(result);
+      setFinalizeConfirmOpen(false);
+    } catch (error) {
+      try {
+        const status = await getHistoricalPmFinalizationStatus();
+        const fullyFinalized =
+          status && status.target_count > 0 && status.draft_count === 0 &&
+          status.finalized_count === status.target_count;
+        if (fullyFinalized) {
+          setFinalizeResult({ finalized_count: status.finalized_count });
+          setFinalizeConfirmOpen(false);
+        } else {
+          setFinalizeError(error.message || "Historical PM finalization failed");
+        }
+      } catch {
+        setFinalizeError(error.message || "Historical PM finalization failed");
+      }
+    } finally {
+      await loadFinalizationStatus();
+      setFinalizeSubmitting(false);
+    }
+  }
+
   function handleConfirm() {
     runAction(() => reviewHistoricalReviewCandidate(selected.document_field_extraction_id, {}));
   }
@@ -587,6 +651,61 @@ export default function HistoricalReview() {
             {promoteSubmitting ? "Submitting..." : `Confirm Promotion of ${recoveryStatus?.target_count ?? 0}`}
           </Button>
           <Button onClick={() => setPromoteConfirmOpen(false)} disabled={promoteSubmitting}>
+            Cancel
+          </Button>
+        </div>
+      </Modal>
+
+      {finalizationStatus && (finalizationStatus.finalization_ready || finalizeResult || finalizeError) ? (
+        <div className="ltsa-historical-review-recovery-panel" data-testid="recovery-finalize-panel">
+          <div className="ltsa-historical-review-bulk-header">
+            <strong>Historical PM Recovery — Finalization</strong>
+          </div>
+          {finalizationStatus.finalization_ready ? (
+            <>
+              <p data-testid="recovery-finalize-summary">
+                {finalizationStatus.target_count} verified historical PM &nbsp;
+                {finalizationStatus.draft_count} Draft -&gt; Finalized
+              </p>
+              <div className="ltsa-historical-review-actions">
+                <Button onClick={() => setFinalizeConfirmOpen(true)} disabled={finalizeSubmitting}>
+                  Finalize {finalizationStatus.draft_count} Historical PM
+                </Button>
+              </div>
+            </>
+          ) : null}
+          {/* Result/error messages persist even after finalization_ready
+              flips to false (expected once nothing is left to finalize)
+              -- a human must still see the outcome, not have it vanish
+              the instant the panel's own readiness recomputes. */}
+          {finalizeError ? <p className="ltsa-historical-review-error">{finalizeError}</p> : null}
+          {finalizeResult ? (
+            <p className="ltsa-historical-review-success">
+              Finalized {finalizeResult.finalized_count} historical PM record(s).
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      <Modal
+        isOpen={finalizeConfirmOpen}
+        onClose={() => setFinalizeConfirmOpen(false)}
+        title="Confirm Historical PM Finalization"
+      >
+        {finalizationStatus ? (
+          <>
+            <p>
+              <strong>{finalizationStatus.draft_count}</strong> historical PM records will change from DRAFT to
+              FINALIZED.
+            </p>
+            <p>This action does not modify PM engineering data.</p>
+          </>
+        ) : null}
+        <div className="ltsa-historical-review-actions">
+          <Button onClick={handleFinalizeRecoveryBatch} disabled={finalizeSubmitting || !finalizationStatus}>
+            {finalizeSubmitting ? "Submitting..." : `Confirm Finalization of ${finalizationStatus?.draft_count ?? 0}`}
+          </Button>
+          <Button onClick={() => setFinalizeConfirmOpen(false)} disabled={finalizeSubmitting}>
             Cancel
           </Button>
         </div>

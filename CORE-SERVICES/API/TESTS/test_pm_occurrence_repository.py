@@ -494,3 +494,71 @@ class TestFindByAssetDatesBatched:
         PMOccurrenceRepository(runner).find_by_asset_dates([("110-P-9A", "2026-07-01"), ("110-P-9A", "2026-07-01")])
         sql = runner.scalar_calls[0]
         assert sql.count("'110-P-9A'") == 1
+
+
+class TestFindValidPumpTagsBatched:
+    # MWO-LTSA-HISTORICAL-PM-FINALIZATION-001
+    def test_empty_list_returns_empty_without_a_query(self):
+        runner = FakeRunner()
+        assert PMOccurrenceRepository(runner).find_valid_pump_tags([]) == set()
+        assert runner.scalar_calls == []
+
+    def test_one_call_for_many_tags(self):
+        runner = FakeRunner(scalar_response=json.dumps([{"tag_number": "110-P-9A"}, {"tag_number": "110-P-9B"}]))
+        result = PMOccurrenceRepository(runner).find_valid_pump_tags(["110-P-9A", "110-P-9B"])
+        assert result == {"110-P-9A", "110-P-9B"}
+        assert len(runner.scalar_calls) == 1
+        sql = runner.scalar_calls[0]
+        assert "GROUP BY tag_number HAVING count(*) = 1" in sql
+        assert "'110-P-9A'" in sql and "'110-P-9B'" in sql
+
+    def test_ambiguous_or_missing_tags_excluded(self):
+        # HAVING count(*) = 1 means an unknown or duplicated tag_number
+        # simply never appears in the returned set -- the fake's response
+        # models what the real HAVING clause would already have filtered.
+        runner = FakeRunner(scalar_response=json.dumps([{"tag_number": "110-P-9A"}]))
+        result = PMOccurrenceRepository(runner).find_valid_pump_tags(["110-P-9A", "UNKNOWN-TAG"])
+        assert result == {"110-P-9A"}
+
+
+class TestFinalizeHistoricalBatchAtomicShape:
+    # MWO-LTSA-HISTORICAL-PM-FINALIZATION-001 -- SQL-shape tests only;
+    # real execution (precheck/postcheck/audit/idempotency/rollback) is
+    # proven against a real disposable Postgres in
+    # test_historical_pm_finalization_e2e_real_db.py.
+    def test_empty_list_returns_empty_without_a_query(self):
+        runner = FakeRunner()
+        assert PMOccurrenceRepository(runner).finalize_historical_batch_atomic([], finalized_by="actor-1") == []
+        assert runner.scalar_calls == []
+
+    def test_single_statement_begin_commit_wraps_update_and_audit(self):
+        runner = FakeRunner(scalar_response="[]")
+        PMOccurrenceRepository(runner).finalize_historical_batch_atomic(["PMOCC-1", "PMOCC-2"], finalized_by="actor-1")
+        assert len(runner.scalar_calls) == 1  # ONE round trip, not one per code
+        sql = runner.scalar_calls[0]
+        assert sql.strip().startswith("BEGIN;")
+        assert sql.strip().endswith(";")
+        assert "COMMIT;" in sql
+        assert "SET workflow_status = 'FINALIZED'" in sql
+        assert "WHERE pm_occurrence_code IN (" in sql
+        assert "AND workflow_status = 'DRAFT'" in sql
+        assert "GROUP BY lp.tag_number" in sql
+        assert "HAVING count(*) = 1" in sql
+        assert "'HISTORICAL_FINALIZE_BATCH'" in sql
+        assert "source_reference)" in sql
+        assert "upd.source_reference" in sql
+        assert "'PMOCC-1'" in sql and "'PMOCC-2'" in sql
+
+    def test_never_touches_legacy_status_or_review_metadata_columns(self):
+        runner = FakeRunner(scalar_response="[]")
+        PMOccurrenceRepository(runner).finalize_historical_batch_atomic(["PMOCC-1"], finalized_by="actor-1")
+        sql = runner.scalar_calls[0]
+        # the UPDATE clause itself must only ever set these three columns
+        update_clause = sql.split("UPDATE pm_occurrence")[1].split("WHERE")[0]
+        assert "workflow_status = 'FINALIZED'" in update_clause
+        assert " status = " not in update_clause  # legacy `status` column untouched (only workflow_status changes)
+        assert "submitted_by" not in update_clause
+        assert "reviewed_by" not in update_clause
+        assert "technical_reviewed_by" not in update_clause
+        assert "occurrence_date" not in update_clause
+        assert "source_reference" not in update_clause
