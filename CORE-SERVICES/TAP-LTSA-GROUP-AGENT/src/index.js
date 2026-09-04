@@ -3,12 +3,15 @@
  * point. Wires a Baileys WhatsApp Web socket to messagePipeline.js's pure
  * classification/trigger functions and httpClient.js's backend call.
  *
- * PHASE 1: THIS FILE IS NOT RUN. No real WhatsApp number is paired, no
- * QR code is generated, no message is sent, in Phase 1 -- see this
- * feature's own README.md. It exists so the wiring itself is reviewable
- * and so a later phase's "pair a real number" step is a config/ops
- * action, not a code change.
+ * Phase 2B-1: main() now runs for real when this file is executed
+ * directly (see the import.meta.url guard at the bottom) -- but only to
+ * reach and stay in an UNPAIRED, WAITING_FOR_PAIRING state.
+ * printQRInTerminal is false and no handler ever logs the `qr` value
+ * itself -- only the fact that pairing is pending. Actually scanning a
+ * QR / entering a pairing code is a separate, explicit, human-gated
+ * action (Phase 2B-2), not triggered by this file running.
  *
+
  * Isolation: this process is entirely separate from the existing Meta
  * WhatsApp Business Cloud API personal-chat flow (a different language,
  * a different runtime, a different network boundary). Its crash,
@@ -88,6 +91,27 @@ async function main() {
   const client = createGroupAgentClient({ baseUrl: BACKEND_BASE_URL, ingressSecret: INGRESS_SECRET });
 
   sock.ev.on("creds.update", saveCreds);
+  sock.ev.on("connection.update", (update) => {
+    if (update.qr) {
+      // Never log update.qr itself -- only that pairing is pending.
+      console.log("event=tap_group_agent_status status=WAITING_FOR_PAIRING");
+    }
+    if (update.connection === "open") {
+      console.log("event=tap_group_agent_status status=CONNECTED");
+    }
+    if (update.connection === "close") {
+      // Unpaired sessions cycle their QR every ~20-60s via Baileys' own
+      // internal timeout, which closes the socket -- this is expected,
+      // not a crash. Exiting cleanly and letting the container's own
+      // restart policy (restart: unless-stopped) bring the process back
+      // up is intentionally simple for Phase 2B-1: no bespoke reconnect
+      // loop, no tight restart loop (Baileys' own QR cycle plus Docker's
+      // default restart backoff keeps this well-paced), and a genuine
+      // crash looks identical to this path -- both are safe to restart.
+      console.log("event=tap_group_agent_status status=DISCONNECTED_WILL_RESTART");
+      process.exit(0);
+    }
+  });
   sock.ev.on("messages.upsert", async ({ messages }) => {
     for (const msg of messages) {
       try {
@@ -101,9 +125,15 @@ async function main() {
   });
 }
 
-// Phase 1: intentionally not invoked. Uncomment only after an explicit,
-// separate, human-approved pairing step (see README.md) -- this file
-// must never auto-connect on import/require.
-// main();
+// Runs only when this file is executed directly (`node src/index.js`,
+// the container's own entrypoint) -- never on import, so
+// messagePipeline.test.js / index.test.js (which import
+// handleIncomingMessage) never trigger a real Baileys connection.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((error) => {
+    console.error("event=tap_group_agent_status status=FATAL_STARTUP_ERROR message=" + error.message);
+    process.exit(1);
+  });
+}
 
 export { handleIncomingMessage };
