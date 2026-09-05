@@ -62,6 +62,11 @@ export default function PM({ onNavigate, navContext }) {
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [selectedId, setSelectedId] = useState(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  // AI5R-PHASE4E2, Section H -- server-side create failures (unknown pump,
+  // duplicate/conflict, API validation failure) shown INSIDE the still-
+  // open modal, separate from `listError` above (which is about the list
+  // failing to LOAD, not a create attempt failing).
+  const [createError, setCreateError] = useState(null);
   // MWO-LTSA-PM-CMON-OPERATIONAL-UI-014C -- editingSchedule holds the real
   // schedule record being edited (not just an id), so the modal can
   // prefill from it directly without a second lookup.
@@ -260,6 +265,18 @@ export default function PM({ onNavigate, navContext }) {
     onNavigate?.("drawing", { assetTag: selectedPM?.equipmentTag });
   }
 
+  // AI5R-PHASE4E2 -- clears any stale createError from a prior failed
+  // attempt whenever the modal is (re)opened or closed, so it never
+  // leaks into the next, unrelated create attempt.
+  function openCreateModal() {
+    setCreateError(null);
+    setIsCreateModalOpen(true);
+  }
+  function closeCreateModal() {
+    setCreateError(null);
+    setIsCreateModalOpen(false);
+  }
+
   // AI5R-PHASE4E1 -- pm_schedule_code is no longer sent: the backend
   // generates it (OWNER DECISIONS 1-3). `notes` maps onto the existing
   // `procedure` column (OWNER DECISION 5 -- the smallest backward-
@@ -268,6 +285,7 @@ export default function PM({ onNavigate, navContext }) {
   // architecturally separate from pm_occurrence.activities (PERFORMED
   // activities) -- see handleRecordOccurrence below, untouched by this.
   async function handleCreate(formValues) {
+    setCreateError(null);
     try {
       const result = await createPMSchedule({
         asset_code: formValues.equipmentTag,
@@ -286,7 +304,7 @@ export default function PM({ onNavigate, navContext }) {
       setSelectedId(created.id);
       setSuccessMessage(`PM Schedule ${created.id} created.`);
     } catch (error) {
-      setListError(error.message);
+      setCreateError(error.message);
     }
   }
 
@@ -384,7 +402,7 @@ export default function PM({ onNavigate, navContext }) {
             {selectedPM && canWriteMaintenance && (
               <Button onClick={() => setIsCreateOccurrenceModalOpen(true)}>+ Record PM Occurrence</Button>
             )}
-            <Button onClick={() => setIsCreateModalOpen(true)}>+ Create PM Schedule</Button>
+            <Button onClick={openCreateModal}>+ Create PM Schedule</Button>
           </span>
         }
       />
@@ -427,7 +445,7 @@ export default function PM({ onNavigate, navContext }) {
                     cmRecords={relatedCMRecords}
                     onOpenPump={handleOpenPump}
                     onOpenDrawing={handleOpenDrawing}
-                    onCreatePM={() => setIsCreateModalOpen(true)}
+                    onCreatePM={openCreateModal}
                     canDelete={canDeleteRecords}
                     onDelete={handleDeleteSchedule}
                     canEdit={canWriteMaintenance}
@@ -501,7 +519,7 @@ export default function PM({ onNavigate, navContext }) {
                 />
                 {canWriteMaintenance && (
                   <div style={{ marginTop: "var(--space-3)" }}>
-                    <Button onClick={() => setIsCreateModalOpen(true)}>Create PM Schedule</Button>
+                    <Button onClick={openCreateModal}>Create PM Schedule</Button>
                   </div>
                 )}
               </>
@@ -517,8 +535,9 @@ export default function PM({ onNavigate, navContext }) {
 
       <CreatePMScheduleModal
         isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
+        onClose={closeCreateModal}
         onCreate={handleCreate}
+        errorMessage={createError}
         initialEquipmentTag={noScheduleForAssetTag ? navContext.assetTag : ""}
       />
 

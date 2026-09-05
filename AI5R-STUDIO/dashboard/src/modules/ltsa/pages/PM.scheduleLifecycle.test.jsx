@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import PM from "./PM";
-import { getPMSchedules, getPump, getCMReports, getPMOccurrences, getPMCMEvidence, createPMSchedule } from "../../../api/ai5rClient";
+import { getPMSchedules, getPump, getCMReports, getPMOccurrences, getPMCMEvidence, createPMSchedule, getPumps } from "../../../api/ai5rClient";
 import { nextMonthFirstDay } from "../utils/pmMapping";
 
 // MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016 -- covers the mission's own
@@ -18,6 +18,7 @@ vi.mock("../../../api/ai5rClient", () => ({
   getPMOccurrences: vi.fn(),
   getPMCMEvidence: vi.fn(),
   createPMSchedule: vi.fn(),
+  getPumps: vi.fn(),
 }));
 
 const LIFECYCLE_SCHEDULES = [
@@ -47,6 +48,7 @@ function loadLifecycleSchedules() {
   getPump.mockResolvedValue({ tag_number: null, area: "Boiler House" });
   getCMReports.mockResolvedValue([]);
   getPMOccurrences.mockResolvedValue([]);
+  getPumps.mockResolvedValue([{ tag_number: "533-P-1", name: "Standby Transfer Pump" }]);
 }
 
 describe("PM schedule lifecycle -- active work queue", () => {
@@ -96,7 +98,7 @@ describe("PM schedule lifecycle -- next-month creation default", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "+ Create PM Schedule" }));
     fireEvent.change(screen.getByLabelText("Notes"), { target: { value: "Standard Lubrication" } });
-    fireEvent.change(screen.getByLabelText("Equipment"), { target: { value: "533-P-1" } });
+    fireEvent.change(await screen.findByLabelText("Pump *"), { target: { value: "533-P-1" } });
     // Start Date deliberately left untouched -- proving the DEFAULT (not a
     // user-entered value) is what reaches the API.
     fireEvent.click(screen.getByRole("button", { name: "Create PM Schedule" }));

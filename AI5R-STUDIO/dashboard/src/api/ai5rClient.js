@@ -1095,18 +1095,43 @@ export async function dryRunPumpXlsx(file) {
     return payload;
 }
 
+// AI5R-PHASE4E2 -- FastAPI's own `detail` field is a STRING for a single
+// HTTPException (e.g. "Canonical pump not found") but a LIST of
+// {loc, msg, type} objects for a Pydantic 422 validation error (e.g. the
+// PMScheduleCreateRequest.planned_activities validator added in 4E.1).
+// `new Error(detail)` on that list coerces it via the array's own
+// toString(), which stringifies each object element as "[object Object]"
+// -- the exact "[object Object],[object Object]" seen in production on
+// the PM workspace. Normalizes both shapes into one readable string
+// before it ever reaches `new Error(...)`.
+function formatApiErrorDetail(detail) {
+    if (typeof detail === "string" && detail.trim()) return detail;
+    if (Array.isArray(detail)) {
+        const messages = detail
+            .map((entry) => (entry && typeof entry === "object" ? entry.msg : entry))
+            .filter((msg) => typeof msg === "string" && msg.trim());
+        if (messages.length > 0) return messages.join("; ");
+    }
+    if (detail && typeof detail === "object" && typeof detail.msg === "string") return detail.msg;
+    return null;
+}
+
 // MWO-LTSA-AUTH-003A-FINAL -- Admin Users API. Every call requires
 // admin.users (enforced server-side, routers/admin_users.py); a 403 here
 // always means the real backend denied it (delegation scope), never a
 // frontend-only gate -- errors surface `detail` (FastAPI's own field,
 // e.g. "TAP_ADMIN is not authorized to manage SUPERUSER accounts") the
 // same way dryRunPumpXlsx() already does above.
+//
+// Also the request path for PM Schedule create/update/delete (Phase4E) --
+// see formatApiErrorDetail() above for why `detail` is normalized before
+// being thrown.
 async function _adminUsersRequest(input, options) {
     const response = await apiFetch(input, options);
     const payload = await response.json().catch(() => null);
 
     if (!response.ok) {
-        throw new Error(payload?.detail || payload?.message || "Admin Users API unavailable");
+        throw new Error(formatApiErrorDetail(payload?.detail) || payload?.message || "Admin Users API unavailable");
     }
 
     return payload;
