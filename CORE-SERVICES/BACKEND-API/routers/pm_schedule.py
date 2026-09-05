@@ -3,8 +3,9 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 
 from API.auth_service import AuthenticatedIdentity, resolve_area_scope
+from API.operational_registry_repository import BulkPMScheduleValidationError
 from dependencies import get_current_user, get_pm_schedule_repository, require_permission
-from models.requests import PMScheduleCreateRequest, PMScheduleUpdateRequest
+from models.requests import PMScheduleBulkCreateRequest, PMScheduleCreateRequest, PMScheduleUpdateRequest
 from models.responses import Payload
 
 # MWO-LTSA-AUTH-001
@@ -20,6 +21,30 @@ def create_pm_schedule(payload: PMScheduleCreateRequest, current_user=Depends(re
     created = repository.create(values=payload.model_dump(), actor=_actor_id(current_user))
     if created is None:
         raise HTTPException(status_code=404, detail="Canonical pump not found")
+    return {"data": created}
+
+
+# AI5R-PHASE4E3, Section I -- ONE atomic backend bulk endpoint, gated by
+# the same maintenance.write permission as the single-create route above
+# (Section K: reuse, never widen). Registered as a literal "/bulk" path
+# segment, distinct from the "/{code}" PATCH/DELETE routes below -- no
+# path-matching ambiguity since no other POST exists at "/{code}".
+@router.post("/api/ltsa/pm-schedules/bulk", dependencies=[Depends(require_permission("maintenance.write"))])
+def bulk_create_pm_schedules(
+    payload: PMScheduleBulkCreateRequest,
+    current_user=Depends(require_permission("maintenance.write")),
+    repository=Depends(get_pm_schedule_repository),
+) -> Payload:
+    try:
+        created = repository.bulk_create(
+            rows=[row.model_dump() for row in payload.rows],
+            actor=_actor_id(current_user),
+        )
+    except BulkPMScheduleValidationError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=[{"client_row_id": row_id, "msg": message} for row_id, message in exc.row_errors.items()],
+        ) from exc
     return {"data": created}
 
 

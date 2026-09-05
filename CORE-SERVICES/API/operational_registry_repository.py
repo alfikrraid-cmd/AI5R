@@ -46,6 +46,17 @@ def _pm_schedule_code_exists(runner: "DatabaseRunner", code: str) -> bool:
     return bool(rows)
 
 
+class BulkPMScheduleValidationError(ValueError):
+    # AI5R-PHASE4E3 -- carries a client_row_id -> message map so the
+    # router/frontend can surface a human-readable error against the
+    # exact row that failed (Section G: "Display human-readable row
+    # errors. Never: [object Object]"), instead of a single flattened
+    # exception string.
+    def __init__(self, row_errors: dict[str, str]) -> None:
+        self.row_errors = row_errors
+        super().__init__(f"{len(row_errors)} row(s) failed bulk validation")
+
+
 def _new_pm_schedule_code(runner: "DatabaseRunner", *, max_attempts: int = 5) -> str:
     # AI5R-PHASE4E1 -- OWNER DECISIONS 1-3: schedule code is system-
     # generated, never typed by a human, format PMSCH-{12 uppercase hex},
@@ -106,8 +117,8 @@ class PMScheduleRepository:
 
         fields = (
             "pm_schedule_code", "asset_code", "asset_type", "procedure", "frequency", "trigger_type",
-            "interval_unit", "effective_date", "next_due", "assigned_to", "provenance", "source_reference",
-            "planned_activities",
+            "interval_unit", "effective_date", "next_due", "assigned_to", "estimated_duration_hours",
+            "provenance", "source_reference", "planned_activities",
         )
 
         def _value_sql(field: str) -> str:
@@ -124,6 +135,110 @@ class PMScheduleRepository:
             self._runner,
         )
         return rows[0] if rows else None
+
+    def bulk_create(self, *, rows: list[dict], actor: str) -> list[dict]:
+        # AI5R-PHASE4E3, Section I -- ONE atomic backend bulk endpoint.
+        # Server-side revalidation happens HERE, independent of whatever
+        # the frontend already checked (Section K: "Do not trust frontend
+        # validation"): every row's asset_code is checked against the
+        # canonical pump master and the batch is checked for internal
+        # duplicates BEFORE any SQL INSERT is built or executed. On any
+        # row error, raises BulkPMScheduleValidationError and creates
+        # NOTHING -- Section M's own "9 valid, 1 invalid -> 0 created"
+        # requirement holds because the INSERT is never even attempted in
+        # that case, not because of a transaction rollback.
+        if not rows:
+            return []
+
+        asset_codes = sorted({row["asset_code"] for row in rows})
+        existing = _json_query(
+            "SELECT tag_number FROM public.ltsa_pumps WHERE tag_number IN ("
+            + ", ".join(_sql(code) for code in asset_codes)
+            + ")",
+            self._runner,
+        )
+        canonical_pumps = {r["tag_number"] for r in existing}
+
+        row_errors: dict[str, str] = {}
+        seen_keys: dict[tuple, str] = {}
+        for row in rows:
+            client_row_id = row["client_row_id"]
+            if row["asset_code"] not in canonical_pumps:
+                row_errors[client_row_id] = f"Unknown pump: {row['asset_code']}"
+                continue
+            dup_key = (row["asset_code"], row["frequency"], row.get("effective_date"))
+            if dup_key in seen_keys:
+                row_errors[client_row_id] = (
+                    f"Duplicate of row {seen_keys[dup_key]!r}: same pump + frequency + start date in this batch"
+                )
+                continue
+            seen_keys[dup_key] = client_row_id
+
+        if row_errors:
+            raise BulkPMScheduleValidationError(row_errors)
+
+        # Codes are generated (and collision-checked, including against
+        # each other within this same batch) entirely in Python BEFORE the
+        # INSERT is built, so the final result can be correlated back to
+        # each row by simple positional zip -- no reliance on a multi-row
+        # INSERT's RETURNING order, which Postgres does not formally
+        # guarantee to match VALUES order.
+        codes = self._new_pm_schedule_codes(len(rows))
+
+        fields = (
+            "pm_schedule_code", "asset_code", "asset_type", "procedure", "frequency", "trigger_type",
+            "interval_unit", "effective_date", "next_due", "assigned_to", "estimated_duration_hours",
+            "provenance", "source_reference", "planned_activities",
+        )
+
+        def _row_value_sql(row: dict, code: str, field: str) -> str:
+            if field == "pm_schedule_code":
+                return _sql(code)
+            if field == "planned_activities":
+                planned = row.get("planned_activities")
+                return f"{_sql(json.dumps(planned) if planned is not None else None)}::jsonb"
+            return _sql(row.get(field))
+
+        value_tuples = []
+        for row, code in zip(rows, codes):
+            value_tuples.append(
+                "(" + ", ".join(_row_value_sql(row, code, field) for field in fields)
+                + f", {_sql(actor)}, {_sql(actor)})"
+            )
+
+        rows_created = _json_query(
+            "WITH ins AS (INSERT INTO public.pm_schedule (" + ",".join(fields) + ", created_by, updated_by) "
+            "VALUES " + ", ".join(value_tuples) + " RETURNING *), "
+            "audit AS (INSERT INTO record_change_history (entity_type, entity_id, field_name, old_value, new_value, changed_by, reason) "
+            "SELECT 'PM_SCHEDULE', pm_schedule_code, '__record__', NULL, row_to_json(ins)::text, "
+            + _sql(actor) + ", 'CREATE' FROM ins) "
+            "SELECT * FROM ins",
+            self._runner,
+        )
+        # A single INSERT...VALUES statement is one atomic unit of work in
+        # Postgres regardless of the runner's autocommit setting -- either
+        # every row above lands (len(rows_created) == len(rows)) or the
+        # whole statement raises and NOTHING is created. This assertion is
+        # a belt-and-suspenders sanity check, not the atomicity mechanism
+        # itself.
+        if len(rows_created) != len(rows):
+            raise RuntimeError(
+                f"bulk pm_schedule insert returned {len(rows_created)} rows, expected {len(rows)}"
+            )
+
+        return [{"client_row_id": row["client_row_id"], "pm_schedule_code": code} for row, code in zip(rows, codes)]
+
+    def _new_pm_schedule_codes(self, count: int, *, max_attempts_per_code: int = 5) -> list[str]:
+        codes: list[str] = []
+        for _ in range(count):
+            for _ in range(max_attempts_per_code):
+                candidate = f"PMSCH-{uuid.uuid4().hex[:12].upper()}"
+                if candidate not in codes and not _pm_schedule_code_exists(self._runner, candidate):
+                    codes.append(candidate)
+                    break
+            else:
+                raise RuntimeError("could not generate a unique pm_schedule_code after repeated attempts")
+        return codes
 
     def update(self, code: str, *, values: dict, actor: str) -> dict | None:
         assignments = ", ".join(f"{field} = {_sql(value)}" for field, value in values.items() if value is not None)

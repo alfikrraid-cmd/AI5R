@@ -322,6 +322,13 @@ export async function getPMSchedules() {
 export async function createPMSchedule(payload) {
     return _adminUsersRequest(`${API_URL}/api/ltsa/pm-schedules`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
 }
+// AI5R-PHASE4E3, Section I -- ONE atomic backend bulk endpoint. `rows` is
+// already in the exact wire shape (see utils/pmBulkSchedule.js's
+// toBulkCreatePayload()) -- this function does no request-loop, a single
+// POST creates every row or none.
+export async function bulkCreatePMSchedules(rows) {
+    return _adminUsersRequest(`${API_URL}/api/ltsa/pm-schedules/bulk`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rows }) });
+}
 export async function updatePMSchedule(code, payload) {
     return _adminUsersRequest(`${API_URL}/api/ltsa/pm-schedules/${encodeURIComponent(code)}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
 }
@@ -1131,7 +1138,19 @@ async function _adminUsersRequest(input, options) {
     const payload = await response.json().catch(() => null);
 
     if (!response.ok) {
-        throw new Error(formatApiErrorDetail(payload?.detail) || payload?.message || "Admin Users API unavailable");
+        const error = new Error(formatApiErrorDetail(payload?.detail) || payload?.message || "Admin Users API unavailable");
+        // AI5R-PHASE4E3 -- `.detail` carries FastAPI's raw (already-JSON-
+        // parsed) detail value alongside the flattened, always-readable
+        // `.message` string above. Additive/optional: every existing
+        // caller keeps reading `.message` unchanged; the PM bulk schedule
+        // editor uses `.detail` (an array of {client_row_id, msg}, see
+        // routers/pm_schedule.py's bulk_create_pm_schedules) to re-surface
+        // each server-side row error against the exact row that failed,
+        // instead of only a single flattened banner.
+        if (payload?.detail !== undefined) {
+            error.detail = payload.detail;
+        }
+        throw error;
     }
 
     return payload;

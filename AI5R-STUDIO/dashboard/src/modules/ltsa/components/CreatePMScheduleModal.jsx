@@ -8,6 +8,7 @@ import AssetSelector from "./AssetSelector";
 import { buildPlannedActivitiesPayload } from "../utils/pmActivityCatalog";
 import { getPumps } from "../../../api/ai5rClient";
 import { mapPumpRecord } from "../utils/pumpMapping";
+import { deriveTriggerType } from "../utils/pmBulkSchedule";
 
 const FREQUENCY_OPTIONS = [
   { value: "DAILY", label: "Daily" },
@@ -16,8 +17,8 @@ const FREQUENCY_OPTIONS = [
   { value: "RUNTIME_BASED", label: "Runtime-based" },
 ];
 
-// AI5R-PHASE4E2, Section B -- Trigger Type is a required backend/DB field
-// (pm_schedule.trigger_type TEXT NOT NULL) with ZERO business-logic
+// AI5R-PHASE4E2/4E3, Section B -- Trigger Type is a required backend/DB
+// field (pm_schedule.trigger_type TEXT NOT NULL) with ZERO business-logic
 // readers anywhere in the codebase (confirmed by a full-repo grep: every
 // non-test reference is either this literal string, a pure display label
 // (triggerTypeLabel/InfoRow), or the column definition itself -- no
@@ -28,10 +29,9 @@ const FREQUENCY_OPTIONS = [
 // RUNTIME_BASED -> METER, with zero exceptions. Deriving it here is
 // therefore safe and changes no recurrence behavior -- it only removes a
 // redundant manual choice from the create form (never surfaced to the
-// user, per Section B's own preference).
-function deriveTriggerType(frequency) {
-  return frequency === "RUNTIME_BASED" ? "METER" : "CALENDAR";
-}
+// user, per Section B's own preference). deriveTriggerType() now lives in
+// utils/pmBulkSchedule.js so the bulk editor (4E.3) uses the exact same
+// derivation, never a second, potentially-diverging copy.
 
 // AI5R-PHASE4E1 -- OWNER DECISIONS 1-5: Schedule Code is now system-
 // generated (never typed by a human, so it has no field here at all) and
