@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from API.pm_activity_catalog import InvalidPlannedActivityError, validate_planned_activities
 
 # MWO-LTSA-AUTH-001
 
@@ -296,10 +298,20 @@ class PMOccurrenceCreateRequest(BaseModel):
 
 
 class PMScheduleCreateRequest(BaseModel):
-    pm_schedule_code: str
+    # AI5R-PHASE4E1, OWNER DECISIONS 1-2: pm_schedule_code is system-
+    # generated (PMScheduleRepository.create()'s own _new_pm_schedule_code())
+    # -- a human never types it, so it is optional here. A caller that
+    # supplies one anyway (e.g. a future historical-import path) is still
+    # honored unchanged, preserving existing FK/reference behavior.
+    pm_schedule_code: str | None = None
     asset_code: str
     asset_type: str | None = None
-    procedure: str
+    # OWNER DECISION 5: procedure is no longer a required user-facing
+    # field -- the new UI's optional "Notes" maps onto this same existing
+    # column (smallest backward-compatible persistence mapping; no
+    # existing historical procedure value is ever rewritten by this
+    # relaxation).
+    procedure: str | None = None
     frequency: str
     trigger_type: str
     interval_unit: str | None = None
@@ -308,6 +320,21 @@ class PMScheduleCreateRequest(BaseModel):
     assigned_to: str | None = None
     provenance: str = "MANUAL"
     source_reference: str | None = None
+    # OWNER DECISION 6/7: planned (not performed) activities -- validated
+    # and normalized against the canonical Phase4D catalog, architecturally
+    # separate from pm_occurrence.activities (PERFORMED activities), and
+    # never carrying a `done` flag (a plan is not execution evidence).
+    planned_activities: list[dict[str, Any]] | None = None
+
+    @field_validator("planned_activities")
+    @classmethod
+    def _validate_planned_activities(cls, value: list[dict[str, Any]] | None) -> list[dict[str, Any]] | None:
+        if value is None:
+            return None
+        try:
+            return validate_planned_activities(value)
+        except InvalidPlannedActivityError as exc:
+            raise ValueError(str(exc)) from exc
 
 
 class PMScheduleUpdateRequest(BaseModel):

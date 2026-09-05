@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import sys
+import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -36,6 +38,31 @@ def _scope_and(column: str, scope: frozenset[str] | None) -> str:
     return "" if not where else "AND " + where.removeprefix("WHERE ")
 
 
+def _pm_schedule_code_exists(runner: "DatabaseRunner", code: str) -> bool:
+    rows = _json_query(
+        f"SELECT 1 AS present FROM public.pm_schedule WHERE pm_schedule_code = {_sql(code)}",
+        runner,
+    )
+    return bool(rows)
+
+
+def _new_pm_schedule_code(runner: "DatabaseRunner", *, max_attempts: int = 5) -> str:
+    # AI5R-PHASE4E1 -- OWNER DECISIONS 1-3: schedule code is system-
+    # generated, never typed by a human, format PMSCH-{12 uppercase hex},
+    # mirroring pm_occurrence_repository.py's own _new_code() pattern.
+    # 12 hex chars (48 bits) makes a real collision practically
+    # impossible, but pm_schedule_code is the table's PRIMARY KEY, so a
+    # silent collision would corrupt an existing schedule -- checked
+    # explicitly (including soft-deleted rows, since the PK constraint
+    # does not exempt them) and retried a bounded number of times rather
+    # than trusted blindly.
+    for _ in range(max_attempts):
+        candidate = f"PMSCH-{uuid.uuid4().hex[:12].upper()}"
+        if not _pm_schedule_code_exists(runner, candidate):
+            return candidate
+    raise RuntimeError("could not generate a unique pm_schedule_code after repeated attempts")
+
+
 class PMScheduleRepository:
     def __init__(self, runner: "DatabaseRunner") -> None:
         self._runner = runner
@@ -43,7 +70,7 @@ class PMScheduleRepository:
     def list_pm_schedules(self, *, scope: frozenset[str] | None = None) -> dict:
         rows = _json_query(
             "SELECT p.pm_schedule_code, p.asset_code, p.asset_type, p.procedure, p.frequency, "
-            "p.trigger_type, p.checklist, p.assigned_to, p.estimated_duration_hours, p.next_due, "
+            "p.trigger_type, p.checklist, p.planned_activities, p.assigned_to, p.estimated_duration_hours, p.next_due, "
             "p.last_performed, p.status, p.created_at, p.updated_at, pump.area, pump.name AS pump_name "
             "FROM public.pm_schedule p LEFT JOIN public.ltsa_pumps pump ON pump.tag_number = p.asset_code "
             "WHERE p.deleted_at IS NULL "
@@ -56,7 +83,7 @@ class PMScheduleRepository:
     def get_pm_schedule(self, code: str, *, scope: frozenset[str] | None = None) -> dict:
         rows = _json_query(
             "SELECT p.pm_schedule_code, p.asset_code, p.asset_type, p.procedure, p.frequency, "
-            "p.trigger_type, p.checklist, p.assigned_to, p.estimated_duration_hours, p.next_due, "
+            "p.trigger_type, p.checklist, p.planned_activities, p.assigned_to, p.estimated_duration_hours, p.next_due, "
             "p.last_performed, p.status, p.created_at, p.updated_at, pump.area, pump.name AS pump_name "
             "FROM public.pm_schedule p LEFT JOIN public.ltsa_pumps pump ON pump.tag_number = p.asset_code "
             f"WHERE p.pm_schedule_code = {_sql(code)} AND p.deleted_at IS NULL {_scope_and('pump.area', scope)}",
@@ -65,8 +92,32 @@ class PMScheduleRepository:
         return _detail("PM schedule not found", rows[0] if rows else None)
 
     def create(self, *, values: dict, actor: str) -> dict | None:
-        fields = ("pm_schedule_code", "asset_code", "asset_type", "procedure", "frequency", "trigger_type", "interval_unit", "effective_date", "next_due", "assigned_to", "provenance", "source_reference")
-        vals = ", ".join(_sql(values.get(field)) for field in fields)
+        # AI5R-PHASE4E1 -- Section B: caller does not need to supply
+        # pm_schedule_code; when omitted (the new UI never sends one), the
+        # backend generates it. A caller that DOES pass one (e.g. a future
+        # historical-import path) keeps working unchanged -- existing
+        # codes/FK/reference behavior is untouched.
+        code = values.get("pm_schedule_code") or _new_pm_schedule_code(self._runner)
+        # Section D: planned_activities is PLANNED work only, stored as
+        # its own JSONB column, never written into pm_occurrence.activities
+        # and never carrying a `done` flag -- kept fully separate from the
+        # PERFORMED-activities contract pm_occurrence_repository.py owns.
+        planned_activities = values.get("planned_activities")
+
+        fields = (
+            "pm_schedule_code", "asset_code", "asset_type", "procedure", "frequency", "trigger_type",
+            "interval_unit", "effective_date", "next_due", "assigned_to", "provenance", "source_reference",
+            "planned_activities",
+        )
+
+        def _value_sql(field: str) -> str:
+            if field == "pm_schedule_code":
+                return _sql(code)
+            if field == "planned_activities":
+                return f"{_sql(json.dumps(planned_activities) if planned_activities is not None else None)}::jsonb"
+            return _sql(values.get(field))
+
+        vals = ", ".join(_value_sql(field) for field in fields)
         rows = _json_query(
             "WITH ins AS (INSERT INTO public.pm_schedule (" + ",".join(fields) + ", created_by, updated_by) "
             "SELECT " + vals + ", " + _sql(actor) + ", " + _sql(actor) + " WHERE EXISTS (SELECT 1 FROM public.ltsa_pumps WHERE tag_number = " + _sql(values.get("asset_code")) + ") RETURNING *), audit AS (INSERT INTO record_change_history (entity_type, entity_id, field_name, old_value, new_value, changed_by, reason) SELECT 'PM_SCHEDULE', pm_schedule_code, '__record__', NULL, row_to_json(ins)::text, " + _sql(actor) + ", 'CREATE' FROM ins) SELECT * FROM ins",

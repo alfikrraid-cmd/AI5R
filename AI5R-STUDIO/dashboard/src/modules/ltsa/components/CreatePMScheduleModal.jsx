@@ -3,6 +3,8 @@ import { Button, Modal } from "../../../design-system";
 import colors from "../../../design-system/theme/colors";
 import spacing from "../../../design-system/theme/spacing";
 import { nextMonthFirstDay } from "../utils/pmMapping";
+import PMActivityFamilyChecklist from "./PMActivityFamilyChecklist";
+import { buildPlannedActivitiesPayload } from "../utils/pmActivityCatalog";
 
 const FREQUENCY_OPTIONS = [
   { value: "DAILY", label: "Daily" },
@@ -16,31 +18,12 @@ const TRIGGER_TYPE_OPTIONS = [
   { value: "METER", label: "Runtime Meter" },
 ];
 
-const CHECKLIST_TEMPLATES = {
-  "Standard Lubrication Checklist": [
-    "Check oil level and condition",
-    "Grease bearing housings",
-    "Record vibration baseline reading",
-  ],
-  "Vibration & Alignment Checklist": [
-    "Record vibration baseline reading",
-    "Inspect coupling alignment",
-    "Check foundation bolts",
-  ],
-  "Seal Inspection Checklist": [
-    "Inspect seal chamber for leakage",
-    "Check seal flush pressure",
-    "Record vibration and temperature readings",
-  ],
-  "Operator Walkdown Checklist": [
-    "Check for visible leaks",
-    "Listen for abnormal noise",
-    "Verify local gauge readings",
-  ],
-};
-
-const CHECKLIST_TEMPLATE_NAMES = Object.keys(CHECKLIST_TEMPLATES);
-
+// AI5R-PHASE4E1 -- OWNER DECISIONS 1-5: Schedule Code is now system-
+// generated (never typed by a human, so it has no field here at all) and
+// Procedure is no longer a required user-facing field (replaced by an
+// optional "Notes" field, mapped onto the same existing `procedure`
+// column by PM.jsx's handleCreate -- see that file for the mapping).
+//
 // MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016 -- "Normal operational UI should
 // create schedules for NEXT MONTH... Derive next calendar month from
 // current operational date." A function, not a static value, so the
@@ -48,15 +31,13 @@ const CHECKLIST_TEMPLATE_NAMES = Object.keys(CHECKLIST_TEMPLATES);
 // initialFormFor's own useEffect below) rather than frozen at module load.
 function emptyForm() {
   return {
-    scheduleCode: "",
-    procedure: "",
+    notes: "",
     equipmentTag: "",
     frequency: "MONTHLY",
     triggerType: "CALENDAR",
     assignedTechnician: "",
     startDate: nextMonthFirstDay(),
     estimatedDurationHours: "",
-    checklistTemplate: CHECKLIST_TEMPLATE_NAMES[0],
   };
 }
 
@@ -94,16 +75,26 @@ function initialFormFor(initialEquipmentTag) {
 
 export default function CreatePMScheduleModal({ isOpen, onClose, onCreate, initialEquipmentTag = "" }) {
   const [form, setForm] = useState(() => initialFormFor(initialEquipmentTag));
+  // AI5R-PHASE4E1, OWNER DECISION 6/7: PLANNED activities only -- this map
+  // never feeds pm_occurrence.activities (PERFORMED activities) and is
+  // reset independently of it; PMActivityFamilyChecklist itself carries no
+  // "performed" semantics, so reusing it here for planning is safe.
+  const [plannedMap, setPlannedMap] = useState({});
 
   useEffect(() => {
     if (isOpen) {
       setForm(initialFormFor(initialEquipmentTag));
+      setPlannedMap({});
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, initialEquipmentTag]);
 
   function setField(name) {
     return (event) => setForm((current) => ({ ...current, [name]: event.target.value }));
+  }
+
+  function togglePlanned(code) {
+    setPlannedMap((current) => ({ ...current, [code]: !current[code] }));
   }
 
   function handleSubmit(event) {
@@ -113,6 +104,7 @@ export default function CreatePMScheduleModal({ isOpen, onClose, onCreate, initi
       return;
     }
 
+    const plannedActivities = buildPlannedActivitiesPayload(plannedMap);
     onCreate({
       equipmentTag: form.equipmentTag,
       frequency: form.frequency,
@@ -120,26 +112,22 @@ export default function CreatePMScheduleModal({ isOpen, onClose, onCreate, initi
       assignedTechnician: form.assignedTechnician,
       startDate: form.startDate,
       estimatedDurationHours: form.estimatedDurationHours === "" ? 0 : Number(form.estimatedDurationHours),
-      checklistTemplate: form.checklistTemplate,
-      checklist: CHECKLIST_TEMPLATES[form.checklistTemplate],
+      notes: form.notes,
+      plannedActivities: plannedActivities.length > 0 ? plannedActivities : null,
     });
     setForm(emptyForm());
+    setPlannedMap({});
   }
 
   function handleClose() {
     setForm(emptyForm());
+    setPlannedMap({});
     onClose();
   }
 
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title="Create PM Schedule">
       <form onSubmit={handleSubmit}>
-        <Field id="pm-schedule-code" label="Schedule Code">
-          <input id="pm-schedule-code" style={fieldStyle} value={form.scheduleCode} onChange={setField("scheduleCode")} required />
-        </Field>
-        <Field id="pm-procedure" label="Procedure">
-          <input id="pm-procedure" style={fieldStyle} value={form.procedure} onChange={setField("procedure")} required />
-        </Field>
         <Field id="pm-equipment" label="Equipment">
           <input
             id="pm-equipment"
@@ -175,15 +163,6 @@ export default function CreatePMScheduleModal({ isOpen, onClose, onCreate, initi
           </select>
         </Field>
 
-        <Field id="pm-technician" label="Technician">
-          <input
-            id="pm-technician"
-            style={fieldStyle}
-            value={form.assignedTechnician}
-            onChange={setField("assignedTechnician")}
-          />
-        </Field>
-
         <Field id="pm-start-date" label="Start Date">
           <input
             id="pm-start-date"
@@ -191,6 +170,20 @@ export default function CreatePMScheduleModal({ isOpen, onClose, onCreate, initi
             style={fieldStyle}
             value={form.startDate}
             onChange={setField("startDate")}
+          />
+        </Field>
+
+        <div style={{ marginBottom: spacing.sm }}>
+          <div style={labelStyle}>Planned Activities</div>
+          <PMActivityFamilyChecklist doneMap={plannedMap} onToggle={togglePlanned} />
+        </div>
+
+        <Field id="pm-technician" label="Technician">
+          <input
+            id="pm-technician"
+            style={fieldStyle}
+            value={form.assignedTechnician}
+            onChange={setField("assignedTechnician")}
           />
         </Field>
 
@@ -206,19 +199,8 @@ export default function CreatePMScheduleModal({ isOpen, onClose, onCreate, initi
           />
         </Field>
 
-        <Field id="pm-checklist-template" label="Checklist Template">
-          <select
-            id="pm-checklist-template"
-            style={fieldStyle}
-            value={form.checklistTemplate}
-            onChange={setField("checklistTemplate")}
-          >
-            {CHECKLIST_TEMPLATE_NAMES.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </select>
+        <Field id="pm-notes" label="Notes">
+          <input id="pm-notes" style={fieldStyle} value={form.notes} onChange={setField("notes")} />
         </Field>
 
         <div style={{ display: "flex", gap: spacing.sm, justifyContent: "flex-end" }}>

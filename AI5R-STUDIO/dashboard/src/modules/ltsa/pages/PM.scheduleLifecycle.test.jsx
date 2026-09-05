@@ -87,7 +87,7 @@ describe("PM schedule lifecycle -- next-month creation default", () => {
     loadLifecycleSchedules();
     createPMSchedule.mockResolvedValue({
       data: {
-        pm_schedule_code: "PM-3004", asset_code: "533-P-1", procedure: "Standard Lubrication",
+        pm_schedule_code: "PMSCH-AAAAAAAAAAAA", asset_code: "533-P-1", procedure: "Standard Lubrication",
         frequency: "MONTHLY", trigger_type: "CALENDAR", status: "ACTIVE", checklist: [],
       },
     });
@@ -95,8 +95,7 @@ describe("PM schedule lifecycle -- next-month creation default", () => {
     await screen.findByText("PM-3001");
 
     fireEvent.click(screen.getByRole("button", { name: "+ Create PM Schedule" }));
-    fireEvent.change(screen.getByLabelText("Schedule Code"), { target: { value: "PM-3004" } });
-    fireEvent.change(screen.getByLabelText("Procedure"), { target: { value: "Standard Lubrication" } });
+    fireEvent.change(screen.getByLabelText("Notes"), { target: { value: "Standard Lubrication" } });
     fireEvent.change(screen.getByLabelText("Equipment"), { target: { value: "533-P-1" } });
     // Start Date deliberately left untouched -- proving the DEFAULT (not a
     // user-entered value) is what reaches the API.
@@ -107,5 +106,9 @@ describe("PM schedule lifecycle -- next-month creation default", () => {
     const expected = nextMonthFirstDay();
     expect(payload.next_due).toBe(expected);
     expect(payload.effective_date).toBe(expected);
+    // AI5R-PHASE4E1, OWNER DECISIONS 1-2: the caller never sends a
+    // schedule code -- the backend generates it.
+    expect(payload).not.toHaveProperty("pm_schedule_code");
+    expect(payload.procedure).toBe("Standard Lubrication");
   });
 });

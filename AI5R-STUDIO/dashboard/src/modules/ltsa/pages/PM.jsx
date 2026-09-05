@@ -260,22 +260,25 @@ export default function PM({ onNavigate, navContext }) {
     onNavigate?.("drawing", { assetTag: selectedPM?.equipmentTag });
   }
 
-  // Backend create/update routes for pm_schedule were not built by
-  // WO-PM-001/WO-PM-002 (list/detail only) -- handleCreate remains
-  // client-state-only, the same as it was before this migration and the
-  // same as Pump's own Create PM/Create CM stubs.
+  // AI5R-PHASE4E1 -- pm_schedule_code is no longer sent: the backend
+  // generates it (OWNER DECISIONS 1-3). `notes` maps onto the existing
+  // `procedure` column (OWNER DECISION 5 -- the smallest backward-
+  // compatible persistence mapping; no existing procedure value is ever
+  // rewritten by this). `planned_activities` is PLANNED work only,
+  // architecturally separate from pm_occurrence.activities (PERFORMED
+  // activities) -- see handleRecordOccurrence below, untouched by this.
   async function handleCreate(formValues) {
     try {
       const result = await createPMSchedule({
-        pm_schedule_code: formValues.scheduleCode,
         asset_code: formValues.equipmentTag,
-        procedure: formValues.procedure,
+        procedure: formValues.notes || null,
         frequency: formValues.frequency,
         trigger_type: formValues.triggerType,
         interval_unit: formValues.intervalUnit,
         effective_date: formValues.startDate || null,
         next_due: formValues.startDate || null,
         assigned_to: formValues.assignedTechnician || null,
+        planned_activities: formValues.plannedActivities,
       });
       const created = mapPMScheduleRecord(result.data);
       setPmSchedules((current) => [...current, created]);

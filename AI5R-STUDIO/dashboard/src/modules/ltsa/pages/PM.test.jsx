@@ -220,8 +220,7 @@ describe("Preventive Maintenance workspace page", () => {
     await screen.findByText("PM-2007");
 
     fireEvent.click(screen.getByRole("button", { name: "+ Create PM Schedule" }));
-    fireEvent.change(screen.getByLabelText("Schedule Code"), { target: { value: "PM-2008" } });
-    fireEvent.change(screen.getByLabelText("Procedure"), { target: { value: "Standard Lubrication" } });
+    fireEvent.change(screen.getByLabelText("Notes"), { target: { value: "Standard Lubrication" } });
     fireEvent.change(screen.getByLabelText("Equipment"), { target: { value: "533-P-1" } });
 
     fireEvent.click(screen.getByRole("button", { name: "Create PM Schedule" }));
