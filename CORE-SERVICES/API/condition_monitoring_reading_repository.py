@@ -304,6 +304,106 @@ class ConditionMonitoringReadingRepository:
         )
         return rows[0] if rows else None
 
+    def create_ad_hoc_batch(self, rows: list[dict], *, created_by: str) -> list[dict]:
+        """MWO-LTSA-CMON-BULK-ADHOC-ENTRY-001 -- true single-transaction
+        batch sibling of create_ad_hoc_draft(): every row in `rows`
+        creates a new UNSCHEDULED::<provenance> reading, or NONE do.
+        Same "one script, one atomic outcome" idiom already proven in
+        this codebase (promote_historical_pm_batch_atomic(),
+        bulk_review_batch_atomic(), stage_verified_batch()): BEGIN ->
+        precheck DO block (RAISE EXCEPTION unless every row's asset_code
+        resolves to exactly one ltsa_pumps row) -> one multi-row INSERT
+        + its audit INSERT (same 'CREATE'/CONDITION_MONITORING_READING
+        convention create_ad_hoc_draft() already uses) -> postcheck DO
+        block -> COMMIT -> final SELECT. Never calls create_ad_hoc_draft()
+        in a loop -- N separately-committed calls could not guarantee
+        all-or-nothing.
+
+        Each row dict: {asset_code, asset_type, reading_date,
+        measurements (dict), finding, source_reference}. provenance is
+        NOT a per-row input -- always 'MANUAL' here, matching this
+        method's own name and its only caller (the ad-hoc bulk web
+        route); create_ad_hoc_draft() itself is untouched and keeps
+        serving its own two callers (the single ad-hoc route, the
+        WhatsApp writer) exactly as before.
+
+        Returns [] for an empty `rows` list (no-op, matches every other
+        *_batch_atomic()'s own empty-input contract in this codebase).
+        """
+        if not rows:
+            return []
+
+        n = len(rows)
+        codes = [_new_code() for _ in rows]
+        assets_values_sql = ", ".join(f"({_sql(row['asset_code'])})" for row in rows)
+        measurement_cols_sql = ", ".join(_MEASUREMENT_COLUMNS)
+
+        value_tuples = []
+        for code, row in zip(codes, rows):
+            measurements = row["measurements"]
+            measurement_vals = ", ".join(_sql(measurements.get(col)) for col in _MEASUREMENT_COLUMNS)
+            value_tuples.append(
+                f"({_sql(code)}, {_sql('UNSCHEDULED::MANUAL')}, {_sql(row['asset_code'])}, "
+                f"{_sql(row.get('asset_type'))}, {_sql(row.get('reading_date'))}, {measurement_vals}, "
+                f"{_sql(DRAFT)}, {_sql('MANUAL')}, {_sql(created_by)}, {_sql(created_by)}, "
+                f"{_sql(row['source_reference'])}, {_sql(row.get('finding'))})"
+            )
+        values_sql = ", ".join(value_tuples)
+        codes_sql = ", ".join(_sql(code) for code in codes)
+
+        script = f"""
+BEGIN;
+
+DO $$
+DECLARE
+  v_bad_pump_count INT;
+BEGIN
+  SELECT count(*) INTO v_bad_pump_count
+  FROM (VALUES {assets_values_sql}) AS m(tag)
+  LEFT JOIN (SELECT tag_number, count(*) AS c FROM ltsa_pumps GROUP BY tag_number) p
+    ON p.tag_number = m.tag
+  WHERE p.tag_number IS NULL OR p.c <> 1;
+  IF v_bad_pump_count > 0 THEN
+    RAISE EXCEPTION 'ad-hoc bulk create precheck failed: % of {n} pump tag(s) unknown/ambiguous', v_bad_pump_count;
+  END IF;
+END $$;
+
+WITH ins AS (
+    INSERT INTO condition_monitoring_reading
+        (condition_monitoring_reading_code, condition_monitoring_schedule_code,
+         asset_code, asset_type, reading_date, {measurement_cols_sql},
+         workflow_status, provenance, created_by, updated_by, source_reference, finding)
+    VALUES {values_sql}
+    RETURNING {_SELECT_COLUMNS}
+)
+INSERT INTO record_change_history
+    (entity_type, entity_id, field_name, old_value, new_value, changed_by, reason)
+SELECT 'CONDITION_MONITORING_READING', condition_monitoring_reading_code, '__record__', NULL,
+       row_to_json(ins)::text, {_sql(created_by)}, 'CREATE'
+FROM ins;
+
+DO $$
+DECLARE
+  v_final_count INT;
+BEGIN
+  SELECT count(*) INTO v_final_count
+  FROM condition_monitoring_reading
+  WHERE condition_monitoring_reading_code IN ({codes_sql}) AND deleted_at IS NULL;
+  IF v_final_count <> {n} THEN
+    RAISE EXCEPTION 'ad-hoc bulk create postcheck failed: % of {n} reading(s) created', v_final_count;
+  END IF;
+END $$;
+
+COMMIT;
+
+SELECT COALESCE(json_agg(row_to_json(t))::text, '[]') FROM (
+    SELECT {_SELECT_COLUMNS} FROM condition_monitoring_reading
+    WHERE condition_monitoring_reading_code IN ({codes_sql}) AND deleted_at IS NULL
+) t;
+"""
+        raw = self._runner.query_scalar(script.strip())
+        return json.loads(raw or "[]")
+
     def update_draft(
         self,
         reading_code: str,

@@ -593,3 +593,18 @@ class ConditionMonitoringReadingAdHocCreateRequest(BaseModel):
     reading_date: str
     measurements: ConditionMonitoringMeasurements = Field(default_factory=ConditionMonitoringMeasurements)
     finding: str | None = None
+
+
+# MWO-LTSA-CMON-BULK-ADHOC-ENTRY-001 -- one array of the SAME per-row
+# shape as ConditionMonitoringReadingAdHocCreateRequest (never a second,
+# looser row schema) -- Pydantic itself rejects a structurally invalid
+# row (missing asset_code, missing reading_date, non-numeric measurement)
+# with a 422 before the router or repository ever sees it, satisfying
+# "server must independently revalidate... measurement schema" without
+# hand-written revalidation logic. min_length=1 matches this codebase's
+# existing empty-batch rejection convention (PMScheduleBulkCreateRequest's
+# own "rows must not be empty" validator, EmptyBatchError for PM
+# promotion/finalization) -- no upper bound is invented here either,
+# same as that existing model.
+class ConditionMonitoringReadingAdHocBulkCreateRequest(BaseModel):
+    readings: list[ConditionMonitoringReadingAdHocCreateRequest] = Field(min_length=1)

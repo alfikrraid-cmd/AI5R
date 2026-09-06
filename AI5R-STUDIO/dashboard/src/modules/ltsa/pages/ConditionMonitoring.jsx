@@ -8,6 +8,7 @@ import ConditionMonitoringReadingTable from "../components/ConditionMonitoringRe
 import ConditionMonitoringReadingDetailPanel from "../components/ConditionMonitoringReadingDetailPanel";
 import CreateConditionMonitoringReadingModal from "../components/CreateConditionMonitoringReadingModal";
 import CreateAdHocConditionMonitoringReadingModal from "../components/CreateAdHocConditionMonitoringReadingModal";
+import BulkCMONReadingEditor from "../components/BulkCMONReadingEditor";
 import CreateConditionMonitoringScheduleModal from "../components/CreateConditionMonitoringScheduleModal";
 import EditConditionMonitoringScheduleModal from "../components/EditConditionMonitoringScheduleModal";
 import SuccessToast from "../components/SuccessToast";
@@ -96,6 +97,7 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isAdHocCreateModalOpen, setIsAdHocCreateModalOpen] = useState(false);
+  const [isBulkEditorOpen, setIsBulkEditorOpen] = useState(false);
   const [isCreateScheduleModalOpen, setIsCreateScheduleModalOpen] = useState(false);
   // MWO-LTSA-PM-CMON-OPERATIONAL-UI-014C -- editingSchedule holds the real
   // schedule record being edited (not just an id), so the modal can
@@ -333,6 +335,29 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
     }
   }
 
+  // MWO-LTSA-CMON-BULK-ADHOC-ENTRY-001 -- the bulk create already
+  // succeeded atomically server-side by the time this fires (Bulk
+  // CMONReadingEditor.jsx only calls onCreated after a 200 response);
+  // this only closes the editor, surfaces the count, and refreshes the
+  // readings list, mirroring PM.jsx's own handleBulkCreated exactly.
+  async function handleBulkReadingsCreated(createdRows) {
+    setIsBulkEditorOpen(false);
+    setSuccessMessage(`${createdRows.length} Condition Monitoring reading${createdRows.length === 1 ? "" : "s"} created.`);
+    setView("readings");
+    try {
+      const records = await getConditionMonitoringReadings();
+      const resolved = await Promise.all(records.map(mapConditionMonitoringReadingRecord).map(withResolvedArea));
+      setReadings(resolved);
+      setReadingsError(null);
+    } catch {
+      // The bulk create itself already succeeded (this only refreshes
+      // the list) -- a transient refetch failure here is surfaced
+      // through the existing readingsError path, never treated as a
+      // create failure.
+      setReadingsError("Condition Monitoring readings could not be reloaded after bulk create.");
+    }
+  }
+
   function upsertReading(rawRecord) {
     const mapped = mapConditionMonitoringReadingRecord(rawRecord);
     setReadings((current) => {
@@ -398,6 +423,16 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
     setSuccessMessage(`Condition Monitoring Schedule ${code} updated.`);
   }
 
+  // MWO-LTSA-CMON-BULK-ADHOC-ENTRY-001 -- a dedicated full-width view
+  // (not a modal), same convention as PM.jsx's own BulkPMScheduleEditor
+  // early return -- practical for the ~10-100 row scale this editor
+  // targets.
+  if (isBulkEditorOpen) {
+    return (
+      <BulkCMONReadingEditor onClose={() => setIsBulkEditorOpen(false)} onCreated={handleBulkReadingsCreated} />
+    );
+  }
+
   return (
     <div>
       <PageHeader
@@ -418,6 +453,11 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
                 gap: a pump with zero schedules had no way to record a
                 reading at all. */}
             {canWriteMaintenance && <Button onClick={() => setIsAdHocCreateModalOpen(true)}>+ Add Reading</Button>}
+            {/* MWO-LTSA-CMON-BULK-ADHOC-ENTRY-001 -- also always
+                available, same reasoning as "+ Add Reading" above: no
+                schedule is required for any row in the bulk editor
+                either. */}
+            {canWriteMaintenance && <Button onClick={() => setIsBulkEditorOpen(true)}>Bulk Reading</Button>}
           </>
         }
       />

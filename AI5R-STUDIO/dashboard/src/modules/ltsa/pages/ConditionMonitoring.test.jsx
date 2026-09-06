@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import ConditionMonitoring from "./ConditionMonitoring";
 import {
   getConditionMonitoringReadings, getConditionMonitoringSchedules, getPump, createConditionMonitoringReading,
-  createAdHocConditionMonitoringReading, getPumps,
+  createAdHocConditionMonitoringReading, createAdHocConditionMonitoringReadingsBulk, getPumps,
   getPMCMEvidence,
 } from "../../../api/ai5rClient";
 import { AuthProvider } from "../auth/AuthContext";
@@ -47,6 +47,7 @@ vi.mock("../../../api/ai5rClient", () => ({
   getPumps: vi.fn(),
   createConditionMonitoringReading: vi.fn(),
   createAdHocConditionMonitoringReading: vi.fn(),
+  createAdHocConditionMonitoringReadingsBulk: vi.fn(),
   getPMCMEvidence: vi.fn(),
   onUnauthorized: vi.fn(),
 }));
@@ -455,6 +456,69 @@ describe("Condition Monitoring workspace page", () => {
 
       expect(await screen.findByTestId("cmon-create-error")).toHaveProperty("textContent", "Canonical pump not found");
       expect(screen.getByRole("heading", { name: "Add Condition Monitoring Reading" })).toBeTruthy();
+    });
+  });
+
+  // MWO-LTSA-CMON-BULK-ADHOC-ENTRY-001 -- entry-point wiring only; the
+  // editor's own exhaustive behavior (10-row UAT, row isolation, no
+  // implicit propagation, atomic-flow contract) is covered directly and
+  // more thoroughly by BulkCMONReadingEditor.test.jsx.
+  describe("bulk reading entry (MWO-LTSA-CMON-BULK-ADHOC-ENTRY-001)", () => {
+    it("shows 'Bulk Reading' even with zero schedules, and opens the dedicated editor view", async () => {
+      loadDefaults();
+      getConditionMonitoringSchedules.mockResolvedValue([]);
+      getConditionMonitoringReadings.mockResolvedValue([]);
+      renderWithWritePermission();
+      await screen.findByRole("button", { name: "Bulk Reading" });
+
+      fireEvent.click(screen.getByRole("button", { name: "Bulk Reading" }));
+
+      expect(screen.getByTestId("bulk-cmon-reading-editor")).toBeTruthy();
+      expect(screen.queryByRole("heading", { name: "Condition Monitoring" })).toBeNull(); // dedicated full-width view, not a modal over the page
+    });
+
+    it("hides 'Bulk Reading' for a Pertamina session (no maintenance.write)", async () => {
+      loadDefaults();
+      renderWithSession(["maintenance.read", "condition.read"], "PERTAMINA_ENGINEER");
+      await screen.findByText("CMON-SCHED-001");
+
+      await waitFor(() => expect(screen.queryByRole("button", { name: "Bulk Reading" })).toBeNull());
+    });
+
+    it("closing the editor returns to the normal Condition Monitoring page", async () => {
+      loadDefaults();
+      renderWithWritePermission();
+      await screen.findByRole("button", { name: "Bulk Reading" });
+      fireEvent.click(screen.getByRole("button", { name: "Bulk Reading" }));
+      await screen.findByTestId("bulk-cmon-reading-editor");
+
+      fireEvent.click(screen.getByRole("button", { name: "Back to Condition Monitoring" }));
+
+      expect(await screen.findByRole("heading", { name: "Condition Monitoring" })).toBeTruthy();
+    });
+
+    it("after a successful bulk create, closes the editor, shows the count, switches to Readings, and reloads the list", async () => {
+      loadDefaults();
+      getPumps.mockResolvedValue([{ tag_number: "641-P-5", name: "Pump 641-P-5" }]);
+      createAdHocConditionMonitoringReadingsBulk.mockResolvedValue({
+        data: [{ condition_monitoring_reading_code: "CMONR-BULK-1", asset_code: "641-P-5" }],
+      });
+      renderWithWritePermission();
+      await screen.findByRole("button", { name: "Bulk Reading" });
+      fireEvent.click(screen.getByRole("button", { name: "Bulk Reading" }));
+      await screen.findByTestId("bulk-cmon-reading-editor");
+
+      fireEvent.click(screen.getByRole("button", { name: "+ Add Row" }));
+      fireEvent.change(screen.getByLabelText("Pump"), { target: { value: "641-P-5" } });
+      fireEvent.change(screen.getByLabelText(/Reading Date for row/), { target: { value: "2026-09-06" } });
+      fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+      await screen.findByTestId("bulk-cmon-validation-summary");
+      fireEvent.click(screen.getByRole("button", { name: "Confirm Create" }));
+
+      expect(await screen.findByRole("heading", { name: "Condition Monitoring" })).toBeTruthy(); // editor closed, back on the page
+      expect(screen.getByRole("status").textContent).toContain("1 Condition Monitoring reading created.");
+      await screen.findByText("CMON-READ-101"); // Readings view active and (re)loaded
+      expect(getConditionMonitoringReadings).toHaveBeenCalledTimes(2); // initial load + post-bulk-create reload
     });
   });
 });

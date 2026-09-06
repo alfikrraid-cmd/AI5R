@@ -18,6 +18,7 @@ from models.requests import (
     AdminReturnForCorrectionRequest,
     BatchCodesRequest,
     BatchTechnicalReviewRequest,
+    ConditionMonitoringReadingAdHocBulkCreateRequest,
     ConditionMonitoringReadingAdHocCreateRequest,
     ConditionMonitoringReadingCreateRequest,
     ConditionMonitoringReadingUpdateRequest,
@@ -193,6 +194,49 @@ def create_ad_hoc_ltsa_condition_monitoring_reading(
     )
     if created is None:
         raise HTTPException(status_code=404, detail="Canonical pump not found")
+    return {"data": created}
+
+
+# MWO-LTSA-CMON-BULK-ADHOC-ENTRY-001 -- the atomic multi-row sibling of
+# the single ad-hoc route above. Every row's provenance/schedule
+# sentinel/actor is exactly as server-controlled as the single-row path
+# (never per-row client input); the only new server-generated value per
+# row is its own reading code and its own source_reference (never
+# reused across rows, so two rows in the same batch can never collide
+# on the ad-hoc idempotency key). Structural/measurement-schema
+# validation is Pydantic's (ConditionMonitoringReadingAdHocCreateRequest,
+# reused per-row, never a second row schema); canonical pump existence
+# is re-verified inside the repository's own atomic SQL, never trusted
+# from the client. create_ad_hoc_batch() either creates every row (and
+# its CREATE audit row) or none -- see that method's own docstring for
+# the exact all-or-nothing mechanism.
+@router.post(
+    "/api/ltsa/condition-monitoring-readings/ad-hoc/bulk",
+    dependencies=[Depends(require_permission("maintenance.write"))],
+)
+def create_ad_hoc_ltsa_condition_monitoring_readings_bulk(
+    payload: ConditionMonitoringReadingAdHocBulkCreateRequest,
+    current_user=Depends(require_permission("maintenance.write")),
+    condition_monitoring_reading_repository=Depends(get_condition_monitoring_reading_repository),
+) -> Payload:
+    actor = _actor_id(current_user)
+    rows = [
+        {
+            "asset_code": reading.asset_code,
+            "asset_type": reading.asset_type,
+            "reading_date": reading.reading_date,
+            "measurements": reading.measurements.model_dump(),
+            "finding": reading.finding,
+            "source_reference": f"MANUAL_WEB:{uuid.uuid4()}",
+        }
+        for reading in payload.readings
+    ]
+    try:
+        created = condition_monitoring_reading_repository.create_ad_hoc_batch(rows, created_by=actor)
+    except Exception as error:  # noqa: BLE001 -- DB driver exception type varies; means the repository's own DO block raised and Postgres rolled everything back
+        raise HTTPException(status_code=409, detail=str(error))
+    if len(created) != len(rows):
+        raise HTTPException(status_code=409, detail="bulk ad-hoc reading creation did not complete atomically")
     return {"data": created}
 
 

@@ -1336,6 +1336,17 @@ export async function createAdHocConditionMonitoringReading({
     });
 }
 
+// MWO-LTSA-CMON-BULK-ADHOC-ENTRY-001 -- `readings` is already the exact
+// snake_case wire shape (utils/cmonBulkReading.js's own toBulkAdHocPayload()),
+// one atomic POST for the whole batch -- never one request per row.
+export async function createAdHocConditionMonitoringReadingsBulk(readings) {
+    return _adminUsersRequest(`${API_URL}/api/ltsa/condition-monitoring-readings/ad-hoc/bulk`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ readings }),
+    });
+}
+
 export async function updateConditionMonitoringReadingDraft(code, { readingDate, measurements, finding }) {
     return _adminUsersRequest(`${API_URL}/api/ltsa/condition-monitoring-readings/${encodeURIComponent(code)}`, {
         method: "PATCH",

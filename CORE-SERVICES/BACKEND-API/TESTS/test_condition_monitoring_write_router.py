@@ -30,9 +30,10 @@ def _identity(role: str, user_id: str = "actor-1") -> AuthenticatedIdentity:
 
 
 class FakeConditionMonitoringReadingRepository:
-    def __init__(self, *, existing_codes=("CMONR-1",), known_assets=("G-201-01A",)):
+    def __init__(self, *, existing_codes=("CMONR-1",), known_assets=("G-201-01A",), bulk_failure=None):
         self.existing_codes = set(existing_codes)
         self.known_assets = set(known_assets)
+        self.bulk_failure = bulk_failure
         self.calls: list[tuple] = []
 
     def create_draft(self, **kwargs):
@@ -49,6 +50,28 @@ class FakeConditionMonitoringReadingRepository:
             "workflow_status": "DRAFT",
             **kwargs,
         }
+
+    def create_ad_hoc_batch(self, rows, **kwargs):
+        self.calls.append(("create_ad_hoc_batch", rows, kwargs))
+        if self.bulk_failure is not None:
+            raise self.bulk_failure
+        bad_assets = [row["asset_code"] for row in rows if row["asset_code"] not in self.known_assets]
+        if bad_assets:
+            raise ValueError(f"ad-hoc bulk create precheck failed: {len(bad_assets)} pump tag(s) unknown/ambiguous")
+        # Real create_ad_hoc_batch() generates every code inside the one
+        # atomic SQL script and returns exactly len(rows) rows or raises
+        # -- this Fake mirrors that all-or-nothing contract, never a
+        # partial list.
+        return [
+            {
+                "condition_monitoring_reading_code": f"CMONR-BULK-{i}",
+                "condition_monitoring_schedule_code": "UNSCHEDULED::MANUAL",
+                "workflow_status": "DRAFT",
+                **row,
+                **kwargs,
+            }
+            for i, row in enumerate(rows)
+        ]
 
     def update_draft(self, code, **kwargs):
         self.calls.append(("update_draft", code, kwargs))
@@ -412,3 +435,140 @@ def test_ad_hoc_changing_de_does_not_mutate_nde_field_independence():
     # was never overwritten or coerced by the other's presence.
     assert measurements["flushing_temp_de"] == 40.0
     assert measurements["flushing_temp_nde"] == 39.5
+
+
+# MWO-LTSA-CMON-BULK-ADHOC-ENTRY-001 -- the atomic bulk ad-hoc route.
+
+def _bulk_row(asset_code="G-201-01A", **overrides):
+    row = {"asset_code": asset_code, "reading_date": "2026-09-06", "measurements": {"mechseal_temp_de": 75.2}}
+    row.update(overrides)
+    return row
+
+
+def _bulk_payload(rows):
+    return {"readings": rows}
+
+
+def test_bulk_ad_hoc_endpoint_exists_and_requires_maintenance_write():
+    _override("PERTAMINA_ENGINEER")
+    response = client.post("/api/ltsa/condition-monitoring-readings/ad-hoc/bulk", json=_bulk_payload([_bulk_row()]))
+    assert response.status_code == 403
+
+
+def test_bulk_ad_hoc_anonymous_is_401():
+    app.dependency_overrides.clear()
+    response = client.post("/api/ltsa/condition-monitoring-readings/ad-hoc/bulk", json=_bulk_payload([_bulk_row()]))
+    assert response.status_code == 401
+
+
+def test_bulk_ad_hoc_empty_batch_is_422():
+    _override("TAP_ENGINEER")
+    response = client.post("/api/ltsa/condition-monitoring-readings/ad-hoc/bulk", json=_bulk_payload([]))
+    assert response.status_code == 422
+
+
+def test_bulk_ad_hoc_ten_rows_creates_exactly_ten():
+    fake = _override("TAP_ENGINEER", repository=FakeConditionMonitoringReadingRepository(
+        known_assets=[f"PUMP-{i}" for i in range(10)]
+    ))
+    rows = [_bulk_row(asset_code=f"PUMP-{i}", measurements={"mechseal_temp_de": float(i)}) for i in range(10)]
+    response = client.post("/api/ltsa/condition-monitoring-readings/ad-hoc/bulk", json=_bulk_payload(rows))
+    assert response.status_code == 200
+    assert len(response.json()["data"]) == 10
+    assert fake.calls[0][0] == "create_ad_hoc_batch"
+    assert len(fake.calls[0][1]) == 10  # exactly one call to the repository, not ten
+
+
+def test_bulk_ad_hoc_row_isolation_de_only_nde_only_both_zero_and_leak_tri_state():
+    fake = _override("TAP_ENGINEER", repository=FakeConditionMonitoringReadingRepository(
+        known_assets=["PUMP-A", "PUMP-B", "PUMP-C", "PUMP-D", "PUMP-E"]
+    ))
+    rows = [
+        _bulk_row(asset_code="PUMP-A", measurements={"mechseal_temp_de": 75.2}),
+        _bulk_row(asset_code="PUMP-B", measurements={"mechseal_temp_nde": 68.0}),
+        _bulk_row(asset_code="PUMP-C", measurements={"mechseal_temp_de": 70.0, "mechseal_temp_nde": 65.0}),
+        _bulk_row(asset_code="PUMP-D", measurements={"suction_pressure": 0}),
+        _bulk_row(asset_code="PUMP-E", measurements={"mechanical_seal_leak_de": False, "mechanical_seal_leak_nde": None}),
+    ]
+    response = client.post("/api/ltsa/condition-monitoring-readings/ad-hoc/bulk", json=_bulk_payload(rows))
+    assert response.status_code == 200
+    sent_rows = fake.calls[0][1]
+
+    a, b, c, d, e = (r["measurements"] for r in sent_rows)
+    assert a["mechseal_temp_de"] == 75.2 and a["mechseal_temp_nde"] is None
+    assert b["mechseal_temp_de"] is None and b["mechseal_temp_nde"] == 68.0
+    assert c["mechseal_temp_de"] == 70.0 and c["mechseal_temp_nde"] == 65.0
+    assert d["suction_pressure"] == 0 and d["suction_pressure"] is not None
+    assert e["mechanical_seal_leak_de"] is False and e["mechanical_seal_leak_nde"] is None
+    # Row isolation: PUMP-A's own edit never touched PUMP-B/C/D/E's fields.
+    assert b["suction_pressure"] is None
+    assert c["mechanical_seal_leak_de"] is None
+
+
+def test_bulk_ad_hoc_unknown_pump_in_batch_rejected_with_409_no_partial_success():
+    fake = _override("TAP_ENGINEER", repository=FakeConditionMonitoringReadingRepository(
+        known_assets=["PUMP-GOOD"]
+    ))
+    rows = [_bulk_row(asset_code="PUMP-GOOD"), _bulk_row(asset_code="PUMP-UNKNOWN")]
+    response = client.post("/api/ltsa/condition-monitoring-readings/ad-hoc/bulk", json=_bulk_payload(rows))
+    assert response.status_code == 409
+    # The fake raises before returning anything -- exactly mirroring the
+    # real repository's precheck DO block raising inside the same
+    # transaction the multi-row INSERT lives in, so nothing commits.
+    assert fake.calls[0][0] == "create_ad_hoc_batch"
+
+
+def test_bulk_ad_hoc_provenance_schedule_sentinel_and_actor_always_server_controlled():
+    fake = _override("TAP_ENGINEER", user_id="real-actor-7", repository=FakeConditionMonitoringReadingRepository(
+        known_assets=["PUMP-A", "PUMP-B"]
+    ))
+    rows = [_bulk_row(asset_code="PUMP-A"), _bulk_row(asset_code="PUMP-B")]
+    response = client.post("/api/ltsa/condition-monitoring-readings/ad-hoc/bulk", json=_bulk_payload(rows))
+    assert response.status_code == 200
+    _, sent_rows, kwargs = fake.calls[0]
+    assert kwargs["created_by"] == "real-actor-7"
+    for row in sent_rows:
+        # No per-row field can carry provenance/reading_code/workflow_status/
+        # actor -- the request model has none of them.
+        assert "provenance" not in row
+        assert "condition_monitoring_reading_code" not in row
+        assert "workflow_status" not in row
+        assert row["source_reference"].startswith("MANUAL_WEB:")
+    # Each row gets its own, distinct source_reference -- never reused
+    # across rows in the same batch.
+    assert len({row["source_reference"] for row in sent_rows}) == len(sent_rows)
+
+
+# MWO-LTSA-CMON-BULK-ADHOC-ENTRY-001, Section 13 -- simulated failure/
+# retry at the router-contract level: a Fake cannot itself prove real
+# Postgres transaction atomicity (that proof requires a real database --
+# see test_condition_monitoring_reading_bulk_atomicity_real_db.py,
+# written this phase but NOT executable in this environment: Docker
+# Desktop was unavailable throughout this session, confirmed via `docker
+# ps` failing with "failed to connect to the docker API"). What IS
+# proven here, at the contract level: a repository-raised failure never
+# yields a 200/partial-success response, and a corrected retry succeeds
+# cleanly afterward with fresh, non-duplicate codes.
+def test_bulk_ad_hoc_simulated_persistence_failure_yields_no_success_response():
+    fake = _override("TAP_ENGINEER", repository=FakeConditionMonitoringReadingRepository(
+        known_assets=[f"PUMP-{i}" for i in range(10)],
+        bulk_failure=RuntimeError("simulated persistence failure mid-transaction"),
+    ))
+    rows = [_bulk_row(asset_code=f"PUMP-{i}") for i in range(10)]
+    response = client.post("/api/ltsa/condition-monitoring-readings/ad-hoc/bulk", json=_bulk_payload(rows))
+    assert response.status_code == 409
+    assert "data" not in response.json() or not response.json().get("data")
+
+
+def test_bulk_ad_hoc_corrected_retry_after_failure_creates_all_ten_with_unique_codes():
+    fake = FakeConditionMonitoringReadingRepository(known_assets=[f"PUMP-{i}" for i in range(10)])
+    _override("TAP_ENGINEER", repository=fake)
+    rows = [_bulk_row(asset_code=f"PUMP-{i}") for i in range(10)]
+
+    response = client.post("/api/ltsa/condition-monitoring-readings/ad-hoc/bulk", json=_bulk_payload(rows))
+
+    assert response.status_code == 200
+    created = response.json()["data"]
+    assert len(created) == 10
+    codes = [row["condition_monitoring_reading_code"] for row in created]
+    assert len(set(codes)) == 10  # all unique, no duplicate code
