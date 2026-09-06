@@ -259,4 +259,51 @@ describe("CreatePMScheduleModal", () => {
 
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  // AI5R-PHASE4E5, Section E -- Single Create UAT: the mission's own
+  // representative scenario (Pump=canonical, Frequency=MONTHLY, valid
+  // Start Date, 4 planned activities spanning 3 families/both sides).
+  // Proves the exact outgoing payload: 4 stable string codes, no `done`,
+  // no numeric legacy code -- the same guarantee the smaller per-family
+  // tests above already establish individually, exercised here together
+  // as one end-to-end scenario.
+  it("Section E UAT -- Flushing Line DE + Cooler DE + Cooler NDE + Reservoir General produces exactly 4 planned activities, no done, no legacy code", async () => {
+    loadPumps();
+    const onCreate = vi.fn();
+    render(<CreatePMScheduleModal isOpen onClose={() => {}} onCreate={onCreate} />);
+
+    fireEvent.change(await screen.findByLabelText("Pump *"), { target: { value: "211-P-1A" } });
+    fireEvent.change(screen.getByLabelText("Frequency *"), { target: { value: "MONTHLY" } });
+    fireEvent.change(screen.getByLabelText("Start Date *"), { target: { value: "2026-11-01" } });
+    fireEvent.click(screen.getByLabelText("Flushing Line DE Side"));
+    fireEvent.click(screen.getByLabelText("Cooler DE Side"));
+    fireEvent.click(screen.getByLabelText("Cooler NDE Side"));
+    fireEvent.click(screen.getByLabelText("Reservoir"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Create PM Schedule" }));
+
+    await waitFor(() => expect(onCreate).toHaveBeenCalledOnce());
+    const payload = onCreate.mock.calls[0][0];
+    expect(payload.equipmentTag).toBe("211-P-1A");
+    expect(payload.frequency).toBe("MONTHLY");
+    expect(payload.triggerType).toBe("CALENDAR"); // derived, never asked of the user
+    expect(payload.startDate).toBe("2026-11-01");
+    // Order follows the canonical catalog's own family order (Flushing
+    // Line, ..., Reservoir, Cooler, ...), not the order the user clicked
+    // them in -- buildPlannedActivitiesPayload() is deterministic by
+    // catalog position, never by click sequence.
+    expect(payload.plannedActivities).toEqual(
+      expect.arrayContaining([
+        { family: "Flushing Line", variant: "DE", code: "FLUSHING_LINE_DE" },
+        { family: "Cooler", variant: "DE", code: "COOLER_DE" },
+        { family: "Cooler", variant: "NDE", code: "COOLER_NDE" },
+        { family: "Reservoir", variant: "GENERAL", code: "RESERVOIR" },
+      ])
+    );
+    expect(payload.plannedActivities).toHaveLength(4);
+    for (const entry of payload.plannedActivities) {
+      expect(entry).not.toHaveProperty("done");
+      expect(entry.code).not.toMatch(/^\d+$/);
+    }
+  });
 });

@@ -300,3 +300,81 @@ describe("BulkPMScheduleEditor -- confirm create", () => {
     expect(screen.getByRole("button", { name: "Confirm Create" })).toBeDisabled(); // re-validation required
   });
 });
+
+// AI5R-PHASE4E5, Section F -- Manual Bulk UAT: a 10-row batch generated
+// via multi-pump add, apply-to-selected exercised for every field
+// Section E lists (Frequency/Start Date/Technician/Duration/Activities)
+// against a SUBSET of rows, proving the untouched rows stay untouched,
+// then Validate -> Confirm Create against the real (mocked) bulk
+// endpoint for all 10.
+describe("BulkPMScheduleEditor -- Section F 10-row Manual Bulk UAT", () => {
+  const TEN_PUMPS = Array.from({ length: 10 }, (_, i) => ({
+    tag_number: `900-P-${i + 1}`,
+    name: `UAT Pump ${i + 1}`,
+  }));
+
+  it("adds 10 rows via multi-pump add, applies fields to selected rows only, and confirms all 10", async () => {
+    getPumps.mockResolvedValue(TEN_PUMPS);
+    bulkCreatePMSchedules.mockResolvedValue({
+      data: TEN_PUMPS.map((p, i) => ({ client_row_id: `bulk-row-${i + 1}`, pm_schedule_code: `PMSCH-${String(i).padStart(12, "0")}` })),
+    });
+    const onCreated = vi.fn();
+    render(<BulkPMScheduleEditor onClose={() => {}} onCreated={onCreated} existingSchedules={[]} />);
+    await screen.findByTestId("bulk-pm-schedule-editor");
+
+    // Multi-pump add: one row per selected canonical pump.
+    fireEvent.click(screen.getByRole("button", { name: "+ Add Pumps..." }));
+    for (const pump of TEN_PUMPS) {
+      fireEvent.click(screen.getByText(`${pump.tag_number} — ${pump.name}`));
+    }
+    fireEvent.click(screen.getByRole("button", { name: /Add 10 Rows/ }));
+    expect(screen.getAllByLabelText("Pump")).toHaveLength(10);
+
+    // Select the first 5 rows only.
+    const rowCheckboxes = screen.getAllByRole("checkbox", { name: /Select row/ });
+    expect(rowCheckboxes).toHaveLength(10);
+    for (const checkbox of rowCheckboxes.slice(0, 5)) {
+      fireEvent.click(checkbox);
+    }
+
+    fireEvent.change(screen.getByLabelText("Apply Frequency"), { target: { value: "WEEKLY" } });
+    fireEvent.change(screen.getByLabelText("Apply Start Date"), { target: { value: "2026-12-01" } });
+    fireEvent.change(screen.getByLabelText("Apply Assigned Technician"), { target: { value: "Sari Wulandari" } });
+    fireEvent.change(screen.getByLabelText("Apply Duration"), { target: { value: "3" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply to Selected" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Apply Activities to Selected..." }));
+    fireEvent.click(screen.getByLabelText("Flushing Line DE Side"));
+    fireEvent.click(screen.getByRole("button", { name: "Apply Activities" }));
+
+    const frequencies = screen.getAllByLabelText(/^Frequency for row/).map((el) => el.value);
+    const dates = screen.getAllByLabelText(/^Start Date for row/).map((el) => el.value);
+    const technicians = screen.getAllByLabelText(/^Assigned Technician for row/).map((el) => el.value);
+    const durations = screen.getAllByLabelText(/^Duration for row/).map((el) => el.value);
+    const activityCounts = screen.getAllByText(/selected$/).map((el) => el.textContent);
+
+    // Applied fields land on exactly the first 5 selected rows...
+    expect(frequencies.slice(0, 5)).toEqual(Array(5).fill("WEEKLY"));
+    expect(dates.slice(0, 5)).toEqual(Array(5).fill("2026-12-01"));
+    expect(technicians.slice(0, 5)).toEqual(Array(5).fill("Sari Wulandari"));
+    expect(durations.slice(0, 5)).toEqual(Array(5).fill("3"));
+    expect(activityCounts.slice(0, 5)).toEqual(Array(5).fill("1 selected"));
+    // ...and the remaining 5 unselected rows are completely untouched.
+    expect(frequencies.slice(5)).toEqual(Array(5).fill("MONTHLY"));
+    expect(technicians.slice(5)).toEqual(Array(5).fill(""));
+    expect(durations.slice(5)).toEqual(Array(5).fill(""));
+    expect(activityCounts.slice(5)).toEqual(Array(5).fill("0 selected"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+    expect(await screen.findByTestId("bulk-validation-summary")).toHaveTextContent("Rows: 10");
+    expect(screen.getByTestId("bulk-validation-summary")).toHaveTextContent("Errors: 0");
+    expect(screen.getByRole("button", { name: "Confirm Create" })).not.toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Confirm Create" }));
+    await waitFor(() => expect(onCreated).toHaveBeenCalledOnce());
+    // NOTE: bulkCreatePMSchedules.mock.calls accumulates across every test
+    // in this file (no afterEach clears it) -- .mock.lastCall is the call
+    // THIS test made, never an earlier test's.
+    expect(bulkCreatePMSchedules.mock.lastCall[0]).toHaveLength(10);
+  });
+});
