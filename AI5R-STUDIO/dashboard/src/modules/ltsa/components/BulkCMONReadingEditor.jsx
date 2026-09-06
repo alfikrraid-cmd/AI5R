@@ -51,6 +51,14 @@ const thStyle = {
 const tdStyle = { padding: spacing.xs, verticalAlign: "top", borderBottom: `1px solid ${colors.border}` };
 const errorTextStyle = { color: colors.danger, fontSize: 11, margin: `${spacing.xs}px 0 0 0` };
 
+// MWO-LTSA-CMON-EXCEL-IMPORT-001 -- "Excel row 17: ..." style prefix for
+// any message rendered against a row that came from an import, matching
+// pmBulkSchedule's own established convention. A manually-added row's
+// source/sourceRow are both null, so this is a no-op for it.
+function sourcePrefix(row) {
+  return row.source === "EXCEL_IMPORT" && row.sourceRow != null ? `Excel row ${row.sourceRow}: ` : "";
+}
+
 function StatusBadge({ level }) {
   if (!level) {
     return <span style={{ color: colors.textMuted, fontSize: 11 }}>Not validated</span>;
@@ -75,14 +83,21 @@ function MeasurementsCell({ measurements, onEdit }) {
   );
 }
 
-export default function BulkCMONReadingEditor({ onClose, onCreated }) {
+// MWO-LTSA-CMON-EXCEL-IMPORT-001 -- `initialRows` seeds the SAME row
+// model Excel import produces (utils/conditionMonitoringExcelImport.js's
+// own buildImportPreview()) so imported rows are edited exactly like
+// manually-added ones -- no second editor, no Excel-specific creation
+// path. Their ids already use a distinct "import-row-" prefix from this
+// component's own "bulk-cmon-row-" counter, so no collision risk when
+// more rows are added manually afterward.
+export default function BulkCMONReadingEditor({ onClose, onCreated, initialRows = [] }) {
   const idCounter = useRef(0);
   function nextId() {
     idCounter.current += 1;
     return `bulk-cmon-row-${idCounter.current}`;
   }
 
-  const [rows, setRows] = useState([]);
+  const [rows, setRows] = useState(initialRows);
   const [validation, setValidation] = useState(null);
   const [dirty, setDirty] = useState(true);
 
@@ -148,14 +163,22 @@ export default function BulkCMONReadingEditor({ onClose, onCreated }) {
     });
   }
 
+  // MWO-LTSA-CMON-EXCEL-IMPORT-001 -- a manual edit clears any stale
+  // Excel-import-time errors on that row: the user just corrected the
+  // field, so re-flagging the old parse-time problem after Validate
+  // re-runs would permanently block a row the human already fixed.
   function updateRowField(id, field, value) {
-    mutateRows((current) => current.map((r) => (r.id === id ? { ...r, [field]: value } : r)));
+    mutateRows((current) => current.map((r) => (r.id === id ? { ...r, [field]: value, importErrors: [] } : r)));
   }
 
   function setRowMeasurementField(id, name) {
     return (event) =>
       mutateRows((current) =>
-        current.map((r) => (r.id === id ? { ...r, measurements: { ...r.measurements, [name]: event.target.value } } : r))
+        current.map((r) =>
+          r.id === id
+            ? { ...r, measurements: { ...r.measurements, [name]: event.target.value }, importErrors: [] }
+            : r
+        )
       );
   }
 
@@ -352,8 +375,21 @@ export default function BulkCMONReadingEditor({ onClose, onCreated }) {
                     </td>
                     <td style={tdStyle}>
                       <StatusBadge level={result?.level} />
+                      {/* MWO-LTSA-CMON-EXCEL-IMPORT-001 -- import-time
+                          problems (invalid numeric text, an unrecognized
+                          leak token -- no valid slot in the structured
+                          row) are shown ALONGSIDE live validateBulkCmonRows()
+                          errors, both prefixed with the originating Excel
+                          row when this row came from an import. */}
+                      {row.importErrors?.map((message, i) => (
+                        <p key={`import-err-${i}`} style={errorTextStyle}>
+                          {sourcePrefix(row)}
+                          {message}
+                        </p>
+                      ))}
                       {result?.errors.map((message, i) => (
                         <p key={`err-${i}`} style={errorTextStyle}>
+                          {sourcePrefix(row)}
                           {message}
                         </p>
                       ))}

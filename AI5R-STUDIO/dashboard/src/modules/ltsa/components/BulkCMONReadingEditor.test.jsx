@@ -27,7 +27,9 @@ function loadPumps(pumps = TEN_PUMPS) {
 async function renderEditor(props = {}) {
   const onClose = props.onClose || vi.fn();
   const onCreated = props.onCreated || vi.fn();
-  const utils = render(<BulkCMONReadingEditor onClose={onClose} onCreated={onCreated} />);
+  const utils = render(
+    <BulkCMONReadingEditor onClose={onClose} onCreated={onCreated} initialRows={props.initialRows || []} />
+  );
   await screen.findByTestId("bulk-cmon-reading-editor");
   return { ...utils, onClose, onCreated };
 }
@@ -272,5 +274,55 @@ describe("BulkCMONReadingEditor -- error surfacing", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("pump tag(s) unknown/ambiguous");
     expect(screen.getByLabelText("Pump")).toHaveValue("PUMP-A"); // row not lost
     expect(screen.getByRole("button", { name: "Confirm Create" })).toBeDisabled(); // re-validation required
+  });
+});
+
+// MWO-LTSA-CMON-EXCEL-IMPORT-001 -- `initialRows` seeds the same row
+// model Excel import produces so imported rows are edited exactly like
+// manually-added ones.
+describe("BulkCMONReadingEditor -- initialRows (Excel import seeding)", () => {
+  function importedRow(overrides = {}) {
+    return {
+      id: "import-row-1",
+      selected: false,
+      pumpTag: "PUMP-A",
+      readingDate: "2026-09-06",
+      finding: "",
+      measurements: { mechsealTempDe: "", mechsealTempNde: "", leakDe: "", leakNde: "" },
+      source: "EXCEL_IMPORT",
+      sourceRow: 2,
+      importErrors: [],
+      ...overrides,
+    };
+  }
+
+  it("renders a seeded row without requiring + Add Pumps..., and shows its own errors alongside live validation", async () => {
+    loadPumps();
+    await renderEditor({
+      initialRows: [importedRow({ importErrors: ["Mechanical Seal Temp DE \"abc\" is not a valid number."] })],
+    });
+
+    expect(screen.getByLabelText("Pump")).toHaveValue("PUMP-A");
+    expect(screen.getByText(/Excel row 2:/)).toBeTruthy();
+    expect(screen.getByText(/not a valid number/)).toBeTruthy();
+  });
+
+  it("an unresolved importError keeps the row at ERROR even though pump/date are both valid", async () => {
+    loadPumps();
+    await renderEditor({ initialRows: [importedRow({ importErrors: ["Some import problem."] })] });
+
+    fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+
+    expect(await screen.findByTestId("bulk-cmon-validation-summary")).toHaveTextContent("Errors: 1");
+  });
+
+  it("manually editing a row clears its stale importErrors, letting a re-Validate pass cleanly", async () => {
+    loadPumps();
+    await renderEditor({ initialRows: [importedRow({ importErrors: ["Some import problem."] })] });
+
+    fireEvent.change(screen.getByLabelText(/Finding for row/), { target: { value: "corrected" } });
+    fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+
+    expect(await screen.findByTestId("bulk-cmon-validation-summary")).toHaveTextContent("Errors: 0");
   });
 });

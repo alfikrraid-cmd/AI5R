@@ -4,6 +4,7 @@ import ConditionMonitoring from "./ConditionMonitoring";
 import {
   getConditionMonitoringReadings, getConditionMonitoringSchedules, getPump, createConditionMonitoringReading,
   createAdHocConditionMonitoringReading, createAdHocConditionMonitoringReadingsBulk, getPumps,
+  parseConditionMonitoringExcel, downloadConditionMonitoringImportTemplate,
   getPMCMEvidence,
 } from "../../../api/ai5rClient";
 import { AuthProvider } from "../auth/AuthContext";
@@ -48,6 +49,8 @@ vi.mock("../../../api/ai5rClient", () => ({
   createConditionMonitoringReading: vi.fn(),
   createAdHocConditionMonitoringReading: vi.fn(),
   createAdHocConditionMonitoringReadingsBulk: vi.fn(),
+  parseConditionMonitoringExcel: vi.fn(),
+  downloadConditionMonitoringImportTemplate: vi.fn(),
   getPMCMEvidence: vi.fn(),
   onUnauthorized: vi.fn(),
 }));
@@ -519,6 +522,58 @@ describe("Condition Monitoring workspace page", () => {
       expect(screen.getByRole("status").textContent).toContain("1 Condition Monitoring reading created.");
       await screen.findByText("CMON-READ-101"); // Readings view active and (re)loaded
       expect(getConditionMonitoringReadings).toHaveBeenCalledTimes(2); // initial load + post-bulk-create reload
+    });
+  });
+
+  // MWO-LTSA-CMON-EXCEL-IMPORT-001 -- entry-point wiring only; the panel's
+  // own exhaustive behavior is covered directly by CMONExcelImportPanel.test.jsx.
+  describe("Excel import entry (MWO-LTSA-CMON-EXCEL-IMPORT-001)", () => {
+    it("shows 'Import Excel' even with zero schedules, and opens the dedicated import panel", async () => {
+      loadDefaults();
+      getConditionMonitoringSchedules.mockResolvedValue([]);
+      getConditionMonitoringReadings.mockResolvedValue([]);
+      renderWithWritePermission();
+      await screen.findByRole("button", { name: "Import Excel" });
+
+      fireEvent.click(screen.getByRole("button", { name: "Import Excel" }));
+
+      expect(screen.getByTestId("cmon-excel-import-panel")).toBeTruthy();
+      expect(screen.queryByRole("heading", { name: "Condition Monitoring" })).toBeNull();
+    });
+
+    it("hides 'Import Excel' for a Pertamina session (no maintenance.write)", async () => {
+      loadDefaults();
+      renderWithSession(["maintenance.read", "condition.read"], "PERTAMINA_ENGINEER");
+      await screen.findByText("CMON-SCHED-001");
+
+      await waitFor(() => expect(screen.queryByRole("button", { name: "Import Excel" })).toBeNull());
+    });
+
+    it("Review in Bulk Editor from the import panel transitions directly into the Bulk Editor with the parsed rows seeded", async () => {
+      loadDefaults();
+      getPumps.mockResolvedValue([{ tag_number: "641-P-5", name: "Pump 641-P-5" }]);
+      parseConditionMonitoringExcel.mockResolvedValue({
+        data: {
+          headers: ["Pump Tag *", "Reading Date *", "Mechanical Seal Temp DE"],
+          rows: [["641-P-5", "2026-09-06", "75.2"]],
+        },
+      });
+      renderWithWritePermission();
+      await screen.findByRole("button", { name: "Import Excel" });
+      fireEvent.click(screen.getByRole("button", { name: "Import Excel" }));
+      await screen.findByTestId("cmon-excel-import-panel");
+
+      fireEvent.change(screen.getByLabelText("Upload Condition Monitoring Excel file"), {
+        target: { files: [new File(["dummy"], "readings.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })] },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Parse File" }));
+      await screen.findByTestId("cmon-excel-import-preview");
+      fireEvent.click(screen.getByRole("button", { name: "Review in Bulk Editor" }));
+
+      expect(await screen.findByTestId("bulk-cmon-reading-editor")).toBeTruthy();
+      expect(screen.queryByTestId("cmon-excel-import-panel")).toBeNull();
+      const pumpSelect = screen.getByLabelText("Pump");
+      expect(pumpSelect.value).toBe("641-P-5"); // seeded from the imported row, not re-entered manually
     });
   });
 });

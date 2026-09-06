@@ -9,6 +9,7 @@ import ConditionMonitoringReadingDetailPanel from "../components/ConditionMonito
 import CreateConditionMonitoringReadingModal from "../components/CreateConditionMonitoringReadingModal";
 import CreateAdHocConditionMonitoringReadingModal from "../components/CreateAdHocConditionMonitoringReadingModal";
 import BulkCMONReadingEditor from "../components/BulkCMONReadingEditor";
+import CMONExcelImportPanel from "../components/CMONExcelImportPanel";
 import CreateConditionMonitoringScheduleModal from "../components/CreateConditionMonitoringScheduleModal";
 import EditConditionMonitoringScheduleModal from "../components/EditConditionMonitoringScheduleModal";
 import SuccessToast from "../components/SuccessToast";
@@ -98,6 +99,8 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isAdHocCreateModalOpen, setIsAdHocCreateModalOpen] = useState(false);
   const [isBulkEditorOpen, setIsBulkEditorOpen] = useState(false);
+  const [bulkEditorInitialRows, setBulkEditorInitialRows] = useState([]);
+  const [isExcelImportOpen, setIsExcelImportOpen] = useState(false);
   const [isCreateScheduleModalOpen, setIsCreateScheduleModalOpen] = useState(false);
   // MWO-LTSA-PM-CMON-OPERATIONAL-UI-014C -- editingSchedule holds the real
   // schedule record being edited (not just an id), so the modal can
@@ -342,6 +345,7 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
   // readings list, mirroring PM.jsx's own handleBulkCreated exactly.
   async function handleBulkReadingsCreated(createdRows) {
     setIsBulkEditorOpen(false);
+    setBulkEditorInitialRows([]);
     setSuccessMessage(`${createdRows.length} Condition Monitoring reading${createdRows.length === 1 ? "" : "s"} created.`);
     setView("readings");
     try {
@@ -423,13 +427,36 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
     setSuccessMessage(`Condition Monitoring Schedule ${code} updated.`);
   }
 
+  // MWO-LTSA-CMON-EXCEL-IMPORT-001 -- checked BEFORE the bulk editor
+  // below, same ordering as PM.jsx: "Review in Bulk Editor" closes this
+  // panel and opens the editor with the parsed rows, in one transition.
+  if (isExcelImportOpen) {
+    return (
+      <CMONExcelImportPanel
+        onClose={() => setIsExcelImportOpen(false)}
+        onReviewInBulkEditor={(rows) => {
+          setBulkEditorInitialRows(rows);
+          setIsExcelImportOpen(false);
+          setIsBulkEditorOpen(true);
+        }}
+      />
+    );
+  }
+
   // MWO-LTSA-CMON-BULK-ADHOC-ENTRY-001 -- a dedicated full-width view
   // (not a modal), same convention as PM.jsx's own BulkPMScheduleEditor
   // early return -- practical for the ~10-100 row scale this editor
   // targets.
   if (isBulkEditorOpen) {
     return (
-      <BulkCMONReadingEditor onClose={() => setIsBulkEditorOpen(false)} onCreated={handleBulkReadingsCreated} />
+      <BulkCMONReadingEditor
+        onClose={() => {
+          setIsBulkEditorOpen(false);
+          setBulkEditorInitialRows([]);
+        }}
+        onCreated={handleBulkReadingsCreated}
+        initialRows={bulkEditorInitialRows}
+      />
     );
   }
 
@@ -458,6 +485,10 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
                 schedule is required for any row in the bulk editor
                 either. */}
             {canWriteMaintenance && <Button onClick={() => setIsBulkEditorOpen(true)}>Bulk Reading</Button>}
+            {/* MWO-LTSA-CMON-EXCEL-IMPORT-001 -- its only exit into the
+                Bulk Editor is onReviewInBulkEditor above, never a direct
+                create -- Excel upload cannot create a reading by itself. */}
+            {canWriteMaintenance && <Button onClick={() => setIsExcelImportOpen(true)}>Import Excel</Button>}
           </>
         }
       />

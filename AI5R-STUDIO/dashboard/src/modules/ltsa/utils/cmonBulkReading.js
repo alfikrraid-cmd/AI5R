@@ -21,6 +21,18 @@ export function emptyBulkCmonRow(id, overrides = {}) {
     // uses, reused unmodified so bulk rows and the single form can never
     // diverge on what "blank" means.
     measurements: emptyMeasurementFormValues(),
+    // MWO-LTSA-CMON-EXCEL-IMPORT-001, Section K -- optional, CLIENT-SIDE-
+    // ONLY source metadata (never sent to the backend --
+    // toBulkAdHocPayloadRow below never reads these). source/sourceRow
+    // let the editor show "Excel row 17: ..." against a specific
+    // imported row; importErrors carries parse-time problems that have
+    // no valid slot in the structured fields above (invalid numeric
+    // text, an unrecognized leak token). Every manually-added row
+    // carries the same three fields at their do-nothing defaults, so
+    // imported and manual rows share one model.
+    source: null,
+    sourceRow: null,
+    importErrors: [],
     ...overrides,
   };
 }
@@ -53,7 +65,16 @@ export function validateBulkCmonRows(rows, { canonicalPumpTags = new Set() } = {
       errors.push(`Reading Date "${row.readingDate}" is invalid.`);
     }
 
-    const level = errors.length > 0 ? "ERROR" : "READY";
+    // MWO-LTSA-CMON-EXCEL-IMPORT-001 -- an Excel-imported row's own
+    // parse-time problems (invalid numeric text, an unrecognized leak
+    // token) don't touch pumpTag/readingDate, so they would otherwise
+    // slip past the checks above and show as falsely "Ready". Any
+    // unresolved importErrors keep the row at ERROR until the user
+    // edits it (BulkCMONReadingEditor clears importErrors on any
+    // manual field change to that row, so a genuine correction always
+    // clears this, never leaving a stale permanent block).
+    const hasUnresolvedImportErrors = (row.importErrors || []).length > 0;
+    const level = errors.length > 0 || hasUnresolvedImportErrors ? "ERROR" : "READY";
     results[row.id] = { errors, warnings: [], level };
   }
 

@@ -22,6 +22,7 @@ production.
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -171,6 +172,94 @@ def test_ten_valid_rows_creates_exactly_ten_readings_and_ten_audit_rows(runner):
         assert r["workflow_status"] == "DRAFT"
         assert r["provenance"] == "MANUAL"
         assert r["condition_monitoring_schedule_code"] == "UNSCHEDULED::MANUAL"
+
+
+# MWO-LTSA-CMON-EXCEL-IMPORT-001, Section 10 -- closes Phase 4F.3's own
+# disclosed residual gap: explicit numeric 0 and leak tri-state
+# (null/false/true) were proven at the Fake/pure-function level, but
+# never independently re-verified against a REAL Postgres round trip.
+# This test changes no repository behavior -- it only reads back what
+# the SAME create_ad_hoc_batch() already persists, via a fresh raw SQL
+# SELECT (never trusting the returned JSON alone), for six
+# representative rows covering every case the gap named.
+def test_explicit_zero_and_leak_tristate_persist_correctly_against_real_postgres(runner):
+    repo = ConditionMonitoringReadingRepository(runner)
+    rows = [
+        {  # DE-only
+            "asset_code": "PUMP-REAL-0", "asset_type": "PUMP", "reading_date": "2026-09-06",
+            "measurements": {"mechseal_temp_de": 75.2, "mechseal_temp_nde": None},
+            "finding": None, "source_reference": "MANUAL_WEB:sem-0",
+        },
+        {  # NDE-only
+            "asset_code": "PUMP-REAL-1", "asset_type": "PUMP", "reading_date": "2026-09-06",
+            "measurements": {"mechseal_temp_de": None, "mechseal_temp_nde": 68.0},
+            "finding": None, "source_reference": "MANUAL_WEB:sem-1",
+        },
+        {  # DE + NDE
+            "asset_code": "PUMP-REAL-2", "asset_type": "PUMP", "reading_date": "2026-09-06",
+            "measurements": {"mechseal_temp_de": 70.0, "mechseal_temp_nde": 65.0},
+            "finding": None, "source_reference": "MANUAL_WEB:sem-2",
+        },
+        {  # explicit numeric 0 (suction_pressure)
+            "asset_code": "PUMP-REAL-3", "asset_type": "PUMP", "reading_date": "2026-09-06",
+            "measurements": {"suction_pressure": 0},
+            "finding": None, "source_reference": "MANUAL_WEB:sem-3",
+        },
+        {  # leak DE=false, NDE=null (not recorded)
+            "asset_code": "PUMP-REAL-4", "asset_type": "PUMP", "reading_date": "2026-09-06",
+            "measurements": {"mechanical_seal_leak_de": False, "mechanical_seal_leak_nde": None},
+            "finding": None, "source_reference": "MANUAL_WEB:sem-4",
+        },
+        {  # leak DE=true, NDE=false
+            "asset_code": "PUMP-REAL-5", "asset_type": "PUMP", "reading_date": "2026-09-06",
+            "measurements": {"mechanical_seal_leak_de": True, "mechanical_seal_leak_nde": False},
+            "finding": None, "source_reference": "MANUAL_WEB:sem-5",
+        },
+    ]
+    created = repo.create_ad_hoc_batch(rows, created_by=_ACTOR)
+    assert len(created) == 6
+    codes_sql = ", ".join(f"'{r['condition_monitoring_reading_code']}'" for r in created)
+
+    # Re-read directly from the table -- never trust the returned JSON
+    # alone as proof of what was actually persisted.
+    raw = runner.query_scalar(
+        "SELECT COALESCE(json_agg(row_to_json(t))::text, '[]') FROM ("
+        "SELECT condition_monitoring_reading_code, asset_code, mechseal_temp_de, mechseal_temp_nde, "
+        "suction_pressure, mechanical_seal_leak_de, mechanical_seal_leak_nde "
+        f"FROM condition_monitoring_reading WHERE condition_monitoring_reading_code IN ({codes_sql})"
+        ") t"
+    )
+    persisted = {row["asset_code"]: row for row in json.loads(raw)}
+
+    de_only = persisted["PUMP-REAL-0"]
+    assert de_only["mechseal_temp_de"] == 75.2
+    assert de_only["mechseal_temp_nde"] is None
+
+    nde_only = persisted["PUMP-REAL-1"]
+    assert nde_only["mechseal_temp_de"] is None
+    assert nde_only["mechseal_temp_nde"] == 68.0
+
+    both = persisted["PUMP-REAL-2"]
+    assert both["mechseal_temp_de"] == 70.0
+    assert both["mechseal_temp_nde"] == 65.0
+
+    explicit_zero = persisted["PUMP-REAL-3"]
+    assert explicit_zero["suction_pressure"] == 0
+    assert explicit_zero["suction_pressure"] is not None  # 0 persists as 0, never coerced to NULL
+
+    leak_false_row = persisted["PUMP-REAL-4"]
+    assert leak_false_row["mechanical_seal_leak_de"] is False
+    assert leak_false_row["mechanical_seal_leak_nde"] is None
+    assert leak_false_row["mechanical_seal_leak_de"] is not leak_false_row["mechanical_seal_leak_nde"]  # NULL != FALSE
+
+    leak_true_row = persisted["PUMP-REAL-5"]
+    assert leak_true_row["mechanical_seal_leak_de"] is True
+    assert leak_true_row["mechanical_seal_leak_nde"] is False
+
+    # No hidden measurement values: every column not explicitly set on a
+    # given row stays NULL.
+    assert persisted["PUMP-REAL-0"]["mechanical_seal_leak_de"] is None
+    assert persisted["PUMP-REAL-3"]["mechseal_temp_de"] is None
 
 
 def test_one_bad_pump_in_ten_rolls_back_the_entire_batch_zero_writes(runner):

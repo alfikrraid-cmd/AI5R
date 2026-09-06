@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi.responses import Response
 
 from API.auth_service import AuthenticatedIdentity, resolve_area_scope
+from API.condition_monitoring_excel_template import build_condition_monitoring_import_template
+from API.pm_schedule_excel_import import ExcelImportError, parse_xlsx_grid
 from API.pump_area_scope import filter_records_by_asset_scope, is_asset_in_scope
 from dependencies import (
     get_condition_monitoring_reading_gateway,
@@ -238,6 +241,57 @@ def create_ad_hoc_ltsa_condition_monitoring_readings_bulk(
     if len(created) != len(rows):
         raise HTTPException(status_code=409, detail="bulk ad-hoc reading creation did not complete atomically")
     return {"data": created}
+
+
+# MWO-LTSA-CMON-EXCEL-IMPORT-001 -- Excel import is DECODE-ONLY, exactly
+# PM4E's own established architecture (parse_pm_schedule_excel, routers/
+# pm_schedule.py): this route never resolves a pump, never validates a
+# measurement, and never writes to condition_monitoring_reading,
+# condition_monitoring_schedule, pm_occurrence, or pm_schedule -- it
+# turns bytes into a JSON {headers, rows} grid and nothing else. Every
+# business rule (header aliasing, pump resolution, numeric/leak parsing)
+# lives client-side (utils/conditionMonitoringExcelImport.js) against
+# the SAME canonical pump list and measurement catalog the Bulk Editor
+# already loads. parse_xlsx_grid() is reused directly from PM4E's own
+# module -- it is domain-neutral (headers/rows only, no PM knowledge at
+# all), so importing it here creates no CMON-depends-on-PM-business-
+# logic coupling. Gated by maintenance.write for the same reason as the
+# PM route: this endpoint's only legitimate use is as the first step of
+# a create flow.
+@router.post(
+    "/api/ltsa/condition-monitoring-readings/import/parse",
+    dependencies=[Depends(require_permission("maintenance.write"))],
+)
+async def parse_condition_monitoring_excel(
+    file: UploadFile = File(...),
+    current_user=Depends(require_permission("maintenance.write")),
+) -> Payload:
+    filename = (file.filename or "").lower()
+    if not filename.endswith(".xlsx"):
+        raise HTTPException(status_code=422, detail="Only .xlsx files are supported.")
+
+    contents = await file.read()
+    try:
+        grid = parse_xlsx_grid(contents)
+    except ExcelImportError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"data": grid}
+
+
+# A static, non-user-influenced .xlsx generated fresh on every request.
+@router.get(
+    "/api/ltsa/condition-monitoring-readings/import/template",
+    dependencies=[Depends(require_permission("maintenance.write"))],
+)
+def download_condition_monitoring_import_template(
+    current_user=Depends(require_permission("maintenance.write")),
+) -> Response:
+    content = build_condition_monitoring_import_template()
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="condition_monitoring_import_template.xlsx"'},
+    )
 
 
 @router.patch(

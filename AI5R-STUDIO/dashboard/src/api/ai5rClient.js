@@ -1347,6 +1347,29 @@ export async function createAdHocConditionMonitoringReadingsBulk(readings) {
     });
 }
 
+// MWO-LTSA-CMON-EXCEL-IMPORT-001 -- decode-only: returns the raw
+// {headers, rows} grid, never a created reading. Every business rule
+// (pump resolution, measurement/leak parsing) runs client-side against
+// this grid (utils/conditionMonitoringExcelImport.js).
+export async function parseConditionMonitoringExcel(file) {
+    const formData = new FormData();
+    formData.append("file", file);
+    return _adminUsersRequest(`${API_URL}/api/ltsa/condition-monitoring-readings/import/parse`, { method: "POST", body: formData });
+}
+
+// The template is a binary .xlsx, not JSON, so this bypasses
+// _adminUsersRequest (which always calls response.json()) and returns a
+// Blob for the caller to save via a temporary <a download> element --
+// same convention as downloadPMScheduleImportTemplate().
+export async function downloadConditionMonitoringImportTemplate() {
+    const response = await apiFetch(`${API_URL}/api/ltsa/condition-monitoring-readings/import/template`);
+    if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(formatApiErrorDetail(payload?.detail) || payload?.message || "Condition Monitoring import template API unavailable");
+    }
+    return response.blob();
+}
+
 export async function updateConditionMonitoringReadingDraft(code, { readingDate, measurements, finding }) {
     return _adminUsersRequest(`${API_URL}/api/ltsa/condition-monitoring-readings/${encodeURIComponent(code)}`, {
         method: "PATCH",
