@@ -1319,6 +1319,23 @@ export async function createConditionMonitoringReading({
     });
 }
 
+// MWO-LTSA-CMON-ADHOC-ENTRY-001 -- no condition_monitoring_schedule_code
+// at all, matching the ad-hoc endpoint's own request model exactly. The
+// server always controls reading code/provenance/workflow_status/actor;
+// nothing here can override them.
+export async function createAdHocConditionMonitoringReading({
+    assetCode, assetType, readingDate, measurements, finding,
+}) {
+    return _adminUsersRequest(`${API_URL}/api/ltsa/condition-monitoring-readings/ad-hoc`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            asset_code: assetCode, asset_type: assetType, reading_date: readingDate,
+            measurements, finding,
+        }),
+    });
+}
+
 export async function updateConditionMonitoringReadingDraft(code, { readingDate, measurements, finding }) {
     return _adminUsersRequest(`${API_URL}/api/ltsa/condition-monitoring-readings/${encodeURIComponent(code)}`, {
         method: "PATCH",

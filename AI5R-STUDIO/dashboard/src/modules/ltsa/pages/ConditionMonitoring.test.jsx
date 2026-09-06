@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import ConditionMonitoring from "./ConditionMonitoring";
 import {
   getConditionMonitoringReadings, getConditionMonitoringSchedules, getPump, createConditionMonitoringReading,
+  createAdHocConditionMonitoringReading, getPumps,
   getPMCMEvidence,
 } from "../../../api/ai5rClient";
 import { AuthProvider } from "../auth/AuthContext";
@@ -43,7 +44,9 @@ vi.mock("../../../api/ai5rClient", () => ({
   getConditionMonitoringReadings: vi.fn(),
   getConditionMonitoringSchedules: vi.fn(),
   getPump: vi.fn(),
+  getPumps: vi.fn(),
   createConditionMonitoringReading: vi.fn(),
+  createAdHocConditionMonitoringReading: vi.fn(),
   getPMCMEvidence: vi.fn(),
   onUnauthorized: vi.fn(),
 }));
@@ -94,6 +97,7 @@ function loadDefaults() {
   getConditionMonitoringSchedules.mockResolvedValue(SCHEDULES);
   getConditionMonitoringReadings.mockResolvedValue(READINGS);
   getPump.mockResolvedValue({ tag_number: null, area: null });
+  getPumps.mockResolvedValue([{ tag_number: "641-P-5", name: "Pump 641-P-5" }]);
   getPMCMEvidence.mockResolvedValue([]);
 }
 
@@ -344,5 +348,113 @@ describe("Condition Monitoring workspace page", () => {
     await screen.findByText("CMON-SCHED-001");
 
     await waitFor(() => expect(screen.queryByRole("button", { name: "+ Create Reading" })).toBeNull());
+  });
+
+  // MWO-LTSA-CMON-ADHOC-ENTRY-001 -- the real gap this phase fixes: "+ Add
+  // Reading" must work even with zero active schedules, unlike "+ Create
+  // Reading" (still correctly hidden above zero schedules per the
+  // unmodified schedules.length > 0 gate).
+  describe("ad-hoc reading entry (MWO-LTSA-CMON-ADHOC-ENTRY-001)", () => {
+    function loadWithNoSchedules() {
+      getConditionMonitoringSchedules.mockResolvedValue([]);
+      getConditionMonitoringReadings.mockResolvedValue([]);
+      getPump.mockResolvedValue({ tag_number: null, area: null });
+      getPumps.mockResolvedValue([{ tag_number: "641-P-5", name: "Pump 641-P-5" }]);
+      getPMCMEvidence.mockResolvedValue([]);
+    }
+
+    it("shows '+ Add Reading' even when zero schedules exist, and '+ Create Reading' stays hidden", async () => {
+      loadWithNoSchedules();
+      renderWithWritePermission();
+      await screen.findByRole("button", { name: "+ Add Reading" });
+
+      expect(screen.queryByRole("button", { name: "+ Create Reading" })).toBeNull();
+      expect(screen.getByRole("button", { name: "+ Add Reading" })).toBeTruthy();
+    });
+
+    it("hides '+ Add Reading' for a Pertamina session (no maintenance.write)", async () => {
+      loadDefaults();
+      renderWithSession(["maintenance.read", "condition.read"], "PERTAMINA_ENGINEER");
+      await screen.findByText("CMON-SCHED-001");
+
+      await waitFor(() => expect(screen.queryByRole("button", { name: "+ Add Reading" })).toBeNull());
+    });
+
+    it("opens the Add Reading modal without requiring any schedule", async () => {
+      loadWithNoSchedules();
+      renderWithWritePermission();
+      await screen.findByRole("button", { name: "+ Add Reading" });
+
+      fireEvent.click(screen.getByRole("button", { name: "+ Add Reading" }));
+
+      expect(screen.getByRole("heading", { name: "Add Condition Monitoring Reading" })).toBeTruthy();
+      expect(await screen.findByLabelText("Pump")).toBeTruthy();
+      expect(screen.queryByLabelText("Schedule")).toBeNull();
+    });
+
+    it("creates an ad-hoc reading via the real API, with no schedule code sent, closes the modal, and selects the new entry", async () => {
+      loadWithNoSchedules();
+      createAdHocConditionMonitoringReading.mockResolvedValue({
+        data: {
+          condition_monitoring_reading_code: "CMONR-ADHOC-1",
+          condition_monitoring_schedule_code: "UNSCHEDULED::MANUAL",
+          asset_code: "641-P-5",
+          reading_date: "2026-09-06",
+          workflow_status: "DRAFT",
+        },
+      });
+      renderWithWritePermission();
+      await screen.findByRole("button", { name: "+ Add Reading" });
+
+      fireEvent.click(screen.getByRole("button", { name: "+ Add Reading" }));
+      fireEvent.change(await screen.findByLabelText("Pump"), { target: { value: "641-P-5" } });
+      fireEvent.change(screen.getByLabelText("Reading Date"), { target: { value: "2026-09-06" } });
+      fireEvent.click(screen.getByRole("button", { name: "Save Draft" }));
+
+      expect(createAdHocConditionMonitoringReading).toHaveBeenCalledWith(
+        expect.objectContaining({ assetCode: "641-P-5", readingDate: "2026-09-06" })
+      );
+      const [callArgs] = createAdHocConditionMonitoringReading.mock.calls[0];
+      expect(callArgs).not.toHaveProperty("conditionMonitoringScheduleCode");
+      await screen.findByRole("heading", { name: "CMONR-ADHOC-1" });
+      expect(screen.queryByRole("heading", { name: "Add Condition Monitoring Reading" })).toBeNull();
+      expect(screen.getByRole("status").textContent).toContain("CMONR-ADHOC-1 created (DRAFT).");
+    });
+
+    it("all measurement fields start blank/not-recorded and DE/NDE toggle independently without mutating each other", async () => {
+      loadWithNoSchedules();
+      renderWithWritePermission();
+      await screen.findByRole("button", { name: "+ Add Reading" });
+      fireEvent.click(screen.getByRole("button", { name: "+ Add Reading" }));
+      await screen.findByLabelText("Pump");
+
+      expect(screen.getByLabelText("Mechanical Seal Temp DE")).toHaveProperty("value", "");
+      expect(screen.getByLabelText("Mechanical Seal Temp NDE")).toHaveProperty("value", "");
+      expect(screen.getByLabelText("Mechanical Seal Leak DE")).toHaveProperty("value", "");
+      expect(screen.getByLabelText("Mechanical Seal Leak NDE")).toHaveProperty("value", "");
+
+      fireEvent.change(screen.getByLabelText("Mechanical Seal Temp DE"), { target: { value: "75.2" } });
+      expect(screen.getByLabelText("Mechanical Seal Temp DE")).toHaveProperty("value", "75.2");
+      expect(screen.getByLabelText("Mechanical Seal Temp NDE")).toHaveProperty("value", "");
+
+      fireEvent.change(screen.getByLabelText("Mechanical Seal Leak DE"), { target: { value: "false" } });
+      expect(screen.getByLabelText("Mechanical Seal Leak DE")).toHaveProperty("value", "false");
+      expect(screen.getByLabelText("Mechanical Seal Leak NDE")).toHaveProperty("value", "");
+    });
+
+    it("surfaces a verbatim backend error and keeps the Add Reading modal open when create fails", async () => {
+      loadWithNoSchedules();
+      createAdHocConditionMonitoringReading.mockRejectedValueOnce(new Error("Canonical pump not found"));
+      renderWithWritePermission();
+      await screen.findByRole("button", { name: "+ Add Reading" });
+
+      fireEvent.click(screen.getByRole("button", { name: "+ Add Reading" }));
+      fireEvent.change(await screen.findByLabelText("Pump"), { target: { value: "641-P-5" } });
+      fireEvent.change(screen.getByLabelText("Reading Date"), { target: { value: "2026-09-06" } });
+      fireEvent.click(screen.getByRole("button", { name: "Save Draft" }));
+
+      expect(await screen.findByTestId("cmon-create-error")).toHaveProperty("textContent", "Canonical pump not found");
+      expect(screen.getByRole("heading", { name: "Add Condition Monitoring Reading" })).toBeTruthy();
+    });
   });
 });

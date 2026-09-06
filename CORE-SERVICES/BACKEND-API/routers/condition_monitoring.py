@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from API.auth_service import AuthenticatedIdentity, resolve_area_scope
@@ -16,6 +18,7 @@ from models.requests import (
     AdminReturnForCorrectionRequest,
     BatchCodesRequest,
     BatchTechnicalReviewRequest,
+    ConditionMonitoringReadingAdHocCreateRequest,
     ConditionMonitoringReadingCreateRequest,
     ConditionMonitoringReadingUpdateRequest,
     TechnicalReviewRequest,
@@ -152,6 +155,44 @@ def create_ltsa_condition_monitoring_reading(
     )
     if created is None:
         raise HTTPException(status_code=404, detail="Canonical pump or Condition Monitoring schedule not found")
+    return {"data": created}
+
+
+# MWO-LTSA-CMON-ADHOC-ENTRY-001 -- exposes the pre-existing, already-
+# proven-in-production ConditionMonitoringReadingRepository.
+# create_ad_hoc_draft() over HTTP for the first time. That method has
+# shipped every WhatsApp-sourced reading to date via a direct Python
+# call; this route changes nothing about it, it only adds a second
+# caller. provenance is hardcoded 'MANUAL' (never client-supplied) so a
+# web-entered reading is never mistaken for a WhatsApp one, and
+# source_reference is server-synthesized (a fresh UUID) since a manual
+# web entry has no external message/document to point back to -- the
+# repository method requires a real string, and this is never confused
+# with a genuine external reference. Reading code, workflow_status, and
+# created_by/updated_by are entirely repository-controlled, exactly like
+# every other create path in this router; the request body has no way to
+# set any of them.
+@router.post(
+    "/api/ltsa/condition-monitoring-readings/ad-hoc",
+    dependencies=[Depends(require_permission("maintenance.write"))],
+)
+def create_ad_hoc_ltsa_condition_monitoring_reading(
+    payload: ConditionMonitoringReadingAdHocCreateRequest,
+    current_user=Depends(require_permission("maintenance.write")),
+    condition_monitoring_reading_repository=Depends(get_condition_monitoring_reading_repository),
+) -> Payload:
+    created = condition_monitoring_reading_repository.create_ad_hoc_draft(
+        asset_code=payload.asset_code,
+        asset_type=payload.asset_type,
+        reading_date=payload.reading_date,
+        measurements=payload.measurements.model_dump(),
+        created_by=_actor_id(current_user),
+        source_reference=f"MANUAL_WEB:{uuid.uuid4()}",
+        finding=payload.finding,
+        provenance="MANUAL",
+    )
+    if created is None:
+        raise HTTPException(status_code=404, detail="Canonical pump not found")
     return {"data": created}
 
 

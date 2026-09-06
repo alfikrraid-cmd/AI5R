@@ -7,11 +7,13 @@ import ConditionMonitoringReadingFilterBar from "../components/ConditionMonitori
 import ConditionMonitoringReadingTable from "../components/ConditionMonitoringReadingTable";
 import ConditionMonitoringReadingDetailPanel from "../components/ConditionMonitoringReadingDetailPanel";
 import CreateConditionMonitoringReadingModal from "../components/CreateConditionMonitoringReadingModal";
+import CreateAdHocConditionMonitoringReadingModal from "../components/CreateAdHocConditionMonitoringReadingModal";
 import CreateConditionMonitoringScheduleModal from "../components/CreateConditionMonitoringScheduleModal";
 import EditConditionMonitoringScheduleModal from "../components/EditConditionMonitoringScheduleModal";
 import SuccessToast from "../components/SuccessToast";
 import {
   getConditionMonitoringReadings, getConditionMonitoringSchedules, createConditionMonitoringReading,
+  createAdHocConditionMonitoringReading,
   updateConditionMonitoringReadingDraft, submitConditionMonitoringReading,
   adminReviewConditionMonitoringReading, technicalReviewConditionMonitoringReading,
   deleteConditionMonitoringReading,
@@ -93,6 +95,7 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
   const [selectedReadingId, setSelectedReadingId] = useState(null);
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isAdHocCreateModalOpen, setIsAdHocCreateModalOpen] = useState(false);
   const [isCreateScheduleModalOpen, setIsCreateScheduleModalOpen] = useState(false);
   // MWO-LTSA-PM-CMON-OPERATIONAL-UI-014C -- editingSchedule holds the real
   // schedule record being edited (not just an id), so the modal can
@@ -304,6 +307,32 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
     }
   }
 
+  // MWO-LTSA-CMON-ADHOC-ENTRY-001 -- the schedule-free sibling of
+  // handleCreateReading above: no condition_monitoring_schedule_code is
+  // ever sent, matching CreateAdHocConditionMonitoringReadingModal's own
+  // payload exactly. Never touches `schedules` or the schedule-required
+  // create path -- that flow (handleCreateReading, isCreateModalOpen)
+  // stays completely unmodified.
+  async function handleCreateAdHocReading(formValues) {
+    setCreateError(null);
+    try {
+      const result = await createAdHocConditionMonitoringReading({
+        assetCode: formValues.assetCode,
+        readingDate: formValues.readingDate,
+        measurements: formValues.measurements,
+        finding: formValues.finding,
+      });
+      const newReading = mapConditionMonitoringReadingRecord(result.data);
+      setReadings((current) => [...current, newReading]);
+      setIsAdHocCreateModalOpen(false);
+      setView("readings");
+      setSelectedReadingId(newReading.id);
+      setSuccessMessage(`Condition Monitoring reading ${newReading.id} created (DRAFT).`);
+    } catch (err) {
+      setCreateError(err.message);
+    }
+  }
+
   function upsertReading(rawRecord) {
     const mapped = mapConditionMonitoringReadingRecord(rawRecord);
     setReadings((current) => {
@@ -383,6 +412,12 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
           <>
             {canWriteMaintenance && view === "schedules" && <Button onClick={() => setIsCreateScheduleModalOpen(true)}>+ Create Schedule</Button>}
             {canWriteMaintenance && schedules.length > 0 && <Button onClick={() => setIsCreateModalOpen(true)}>+ Create Reading</Button>}
+            {/* MWO-LTSA-CMON-ADHOC-ENTRY-001 -- always available, unlike
+                "+ Create Reading" above, which stays gated on an existing
+                active schedule (unchanged). This is the fix for the real
+                gap: a pump with zero schedules had no way to record a
+                reading at all. */}
+            {canWriteMaintenance && <Button onClick={() => setIsAdHocCreateModalOpen(true)}>+ Add Reading</Button>}
           </>
         }
       />
@@ -494,6 +529,11 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
         onClose={() => setIsCreateModalOpen(false)}
         onCreate={handleCreateReading}
         schedules={schedules}
+      />
+      <CreateAdHocConditionMonitoringReadingModal
+        isOpen={isAdHocCreateModalOpen}
+        onClose={() => setIsAdHocCreateModalOpen(false)}
+        onCreate={handleCreateAdHocReading}
       />
       <CreateConditionMonitoringScheduleModal
         isOpen={isCreateScheduleModalOpen}

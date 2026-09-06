@@ -574,3 +574,22 @@ class ConditionMonitoringReadingUpdateRequest(BaseModel):
     reading_date: str | None = None
     measurements: ConditionMonitoringMeasurements = Field(default_factory=ConditionMonitoringMeasurements)
     finding: str | None = None
+
+
+# MWO-LTSA-CMON-ADHOC-ENTRY-001 -- the ad-hoc sibling of
+# ConditionMonitoringReadingCreateRequest: no condition_monitoring_schedule_code
+# at all (a real schedule is genuinely optional for a manual web reading,
+# per ConditionMonitoringReadingRepository.create_ad_hoc_draft()'s own
+# pre-existing, already-proven-in-production UNSCHEDULED::<provenance>
+# convention -- the WhatsApp writer has used this exact repository method
+# for every one of its readings). reading_date is required here (unlike
+# the schedule-based request, where it is optional) -- an ad-hoc reading
+# has no schedule to inherit a default date from, so the caller must
+# always state one explicitly. Reuses ConditionMonitoringMeasurements
+# verbatim -- no second measurement catalog.
+class ConditionMonitoringReadingAdHocCreateRequest(BaseModel):
+    asset_code: str
+    asset_type: str | None = None
+    reading_date: str
+    measurements: ConditionMonitoringMeasurements = Field(default_factory=ConditionMonitoringMeasurements)
+    finding: str | None = None

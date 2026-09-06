@@ -30,13 +30,25 @@ def _identity(role: str, user_id: str = "actor-1") -> AuthenticatedIdentity:
 
 
 class FakeConditionMonitoringReadingRepository:
-    def __init__(self, *, existing_codes=("CMONR-1",)):
+    def __init__(self, *, existing_codes=("CMONR-1",), known_assets=("G-201-01A",)):
         self.existing_codes = set(existing_codes)
+        self.known_assets = set(known_assets)
         self.calls: list[tuple] = []
 
     def create_draft(self, **kwargs):
         self.calls.append(("create_draft", kwargs))
         return {"condition_monitoring_reading_code": "CMONR-NEW", "workflow_status": "DRAFT", **kwargs}
+
+    def create_ad_hoc_draft(self, **kwargs):
+        self.calls.append(("create_ad_hoc_draft", kwargs))
+        if kwargs["asset_code"] not in self.known_assets:
+            return None
+        return {
+            "condition_monitoring_reading_code": "CMONR-ADHOC-NEW",
+            "condition_monitoring_schedule_code": f"UNSCHEDULED::{kwargs['provenance']}",
+            "workflow_status": "DRAFT",
+            **kwargs,
+        }
 
     def update_draft(self, code, **kwargs):
         self.calls.append(("update_draft", code, kwargs))
@@ -205,3 +217,198 @@ def test_submit_returns_409_for_an_unknown_reading():
     _override("TAP_ENGINEER", repository=FakeConditionMonitoringReadingRepository(existing_codes=()))
     response = client.post("/api/ltsa/condition-monitoring-readings/CMONR-MISSING/submit")
     assert response.status_code == 409
+
+
+# MWO-LTSA-CMON-ADHOC-ENTRY-001 -- the ad-hoc (schedule-free) create
+# route. Same FakeConditionMonitoringReadingRepository as every test
+# above, only its new create_ad_hoc_draft() method is exercised here.
+
+def _adhoc_payload(**overrides):
+    payload = {
+        "asset_code": "G-201-01A",
+        "reading_date": "2026-09-06",
+        "measurements": {"mechseal_temp_de": 75.2},
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_ad_hoc_endpoint_exists_and_succeeds_for_a_canonical_pump():
+    fake = _override("TAP_ENGINEER")
+    response = client.post("/api/ltsa/condition-monitoring-readings/ad-hoc", json=_adhoc_payload())
+    assert response.status_code == 200
+    assert fake.calls[0][0] == "create_ad_hoc_draft"
+
+
+def test_ad_hoc_requires_maintenance_write():
+    _override("PERTAMINA_ENGINEER")
+    response = client.post("/api/ltsa/condition-monitoring-readings/ad-hoc", json=_adhoc_payload())
+    assert response.status_code == 403
+
+
+def test_ad_hoc_anonymous_is_401():
+    app.dependency_overrides.clear()
+    response = client.post("/api/ltsa/condition-monitoring-readings/ad-hoc", json=_adhoc_payload())
+    assert response.status_code == 401
+
+
+def test_ad_hoc_actor_comes_from_authenticated_identity_not_request_body():
+    fake = _override("TAP_ENGINEER", user_id="real-actor-99")
+    # Even if a caller tries to smuggle an actor/created_by-shaped field
+    # into the body, ConditionMonitoringReadingAdHocCreateRequest has no
+    # such field at all -- FastAPI/Pydantic drops any unknown key.
+    response = client.post(
+        "/api/ltsa/condition-monitoring-readings/ad-hoc",
+        json=_adhoc_payload(created_by="attacker-supplied", actor="attacker-supplied"),
+    )
+    assert response.status_code == 200
+    assert fake.calls[0][1]["created_by"] == "real-actor-99"
+
+
+def test_ad_hoc_client_cannot_inject_code_provenance_or_status():
+    fake = _override("TAP_ENGINEER")
+    response = client.post(
+        "/api/ltsa/condition-monitoring-readings/ad-hoc",
+        json=_adhoc_payload(
+            condition_monitoring_reading_code="CMONR-FORGED",
+            provenance="WHATSAPP",
+            workflow_status="FINALIZED",
+        ),
+    )
+    assert response.status_code == 200
+    kwargs = fake.calls[0][1]
+    # The request model has no such fields, so nothing forged reaches the
+    # repository call -- provenance is always the router's own hardcoded
+    # "MANUAL", never client-supplied.
+    assert kwargs["provenance"] == "MANUAL"
+    assert "condition_monitoring_reading_code" not in kwargs
+    assert "workflow_status" not in kwargs
+
+
+def test_ad_hoc_unknown_pump_is_404():
+    _override("TAP_ENGINEER", repository=FakeConditionMonitoringReadingRepository(known_assets=()))
+    response = client.post("/api/ltsa/condition-monitoring-readings/ad-hoc", json=_adhoc_payload())
+    assert response.status_code == 404
+
+
+def test_ad_hoc_missing_reading_date_is_422():
+    _override("TAP_ENGINEER")
+    payload = _adhoc_payload()
+    del payload["reading_date"]
+    response = client.post("/api/ltsa/condition-monitoring-readings/ad-hoc", json=payload)
+    assert response.status_code == 422
+
+
+def test_ad_hoc_never_requires_a_schedule_code():
+    fake = _override("TAP_ENGINEER")
+    payload = _adhoc_payload()
+    assert "condition_monitoring_schedule_code" not in payload  # the request model has no such field
+    response = client.post("/api/ltsa/condition-monitoring-readings/ad-hoc", json=payload)
+    assert response.status_code == 200
+    assert "condition_monitoring_schedule_code" not in fake.calls[0][1]
+
+
+def test_ad_hoc_provenance_is_always_manual():
+    fake = _override("TAP_ENGINEER")
+    client.post("/api/ltsa/condition-monitoring-readings/ad-hoc", json=_adhoc_payload())
+    assert fake.calls[0][1]["provenance"] == "MANUAL"
+
+
+def test_ad_hoc_source_reference_is_self_disclosing_manual_web():
+    fake = _override("TAP_ENGINEER")
+    client.post("/api/ltsa/condition-monitoring-readings/ad-hoc", json=_adhoc_payload())
+    assert fake.calls[0][1]["source_reference"].startswith("MANUAL_WEB:")
+
+
+def test_ad_hoc_creates_exactly_one_reading():
+    fake = _override("TAP_ENGINEER")
+    client.post("/api/ltsa/condition-monitoring-readings/ad-hoc", json=_adhoc_payload())
+    assert len(fake.calls) == 1
+    assert fake.calls[0][0] == "create_ad_hoc_draft"
+
+
+def test_ad_hoc_missing_measurement_is_null_not_zero():
+    fake = _override("TAP_ENGINEER")
+    client.post(
+        "/api/ltsa/condition-monitoring-readings/ad-hoc",
+        json=_adhoc_payload(measurements={"mechseal_temp_de": 75.2}),
+    )
+    measurements = fake.calls[0][1]["measurements"]
+    assert measurements["mechseal_temp_de"] == 75.2
+    assert measurements["mechseal_temp_nde"] is None
+    assert measurements["flushing_temp_de"] is None
+
+
+def test_ad_hoc_explicit_zero_is_preserved_not_treated_as_blank():
+    fake = _override("TAP_ENGINEER")
+    client.post(
+        "/api/ltsa/condition-monitoring-readings/ad-hoc",
+        json=_adhoc_payload(measurements={"suction_pressure": 0}),
+    )
+    measurements = fake.calls[0][1]["measurements"]
+    assert measurements["suction_pressure"] == 0
+    assert measurements["suction_pressure"] is not None
+
+
+def test_ad_hoc_leak_tri_state_de_and_nde_independent():
+    fake = _override("TAP_ENGINEER")
+    client.post(
+        "/api/ltsa/condition-monitoring-readings/ad-hoc",
+        json=_adhoc_payload(measurements={"mechanical_seal_leak_de": True, "mechanical_seal_leak_nde": False}),
+    )
+    measurements = fake.calls[0][1]["measurements"]
+    assert measurements["mechanical_seal_leak_de"] is True
+    assert measurements["mechanical_seal_leak_nde"] is False  # NULL != FALSE -- explicit False preserved
+
+
+def test_ad_hoc_leak_not_recorded_stays_null_never_false():
+    fake = _override("TAP_ENGINEER")
+    client.post("/api/ltsa/condition-monitoring-readings/ad-hoc", json=_adhoc_payload(measurements={}))
+    measurements = fake.calls[0][1]["measurements"]
+    assert measurements["mechanical_seal_leak_de"] is None
+    assert measurements["mechanical_seal_leak_nde"] is None
+
+
+def test_ad_hoc_de_only_nde_only_and_both_independently_preserved():
+    fake = _override("TAP_ENGINEER")
+
+    client.post(
+        "/api/ltsa/condition-monitoring-readings/ad-hoc",
+        json=_adhoc_payload(measurements={"mechseal_temp_de": 75.2}),
+    )
+    de_only = fake.calls[0][1]["measurements"]
+    assert de_only["mechseal_temp_de"] == 75.2 and de_only["mechseal_temp_nde"] is None
+
+    client.post(
+        "/api/ltsa/condition-monitoring-readings/ad-hoc",
+        json=_adhoc_payload(measurements={"mechseal_temp_nde": 68.0}),
+    )
+    nde_only = fake.calls[1][1]["measurements"]
+    assert nde_only["mechseal_temp_nde"] == 68.0 and nde_only["mechseal_temp_de"] is None
+
+    client.post(
+        "/api/ltsa/condition-monitoring-readings/ad-hoc",
+        json=_adhoc_payload(measurements={"mechseal_temp_de": 75.2, "mechseal_temp_nde": 68.0}),
+    )
+    both = fake.calls[2][1]["measurements"]
+    assert both["mechseal_temp_de"] == 75.2 and both["mechseal_temp_nde"] == 68.0
+
+    client.post(
+        "/api/ltsa/condition-monitoring-readings/ad-hoc",
+        json=_adhoc_payload(measurements={}),
+    )
+    neither = fake.calls[3][1]["measurements"]
+    assert neither["mechseal_temp_de"] is None and neither["mechseal_temp_nde"] is None
+
+
+def test_ad_hoc_changing_de_does_not_mutate_nde_field_independence():
+    fake = _override("TAP_ENGINEER")
+    client.post(
+        "/api/ltsa/condition-monitoring-readings/ad-hoc",
+        json=_adhoc_payload(measurements={"flushing_temp_de": 40.0, "flushing_temp_nde": 39.5}),
+    )
+    measurements = fake.calls[0][1]["measurements"]
+    # Both explicitly provided values are preserved independently -- one
+    # was never overwritten or coerced by the other's presence.
+    assert measurements["flushing_temp_de"] == 40.0
+    assert measurements["flushing_temp_nde"] == 39.5
