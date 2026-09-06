@@ -329,6 +329,27 @@ export async function createPMSchedule(payload) {
 export async function bulkCreatePMSchedules(rows) {
     return _adminUsersRequest(`${API_URL}/api/ltsa/pm-schedules/bulk`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rows }) });
 }
+// AI5R-PHASE4E4, Section C -- DECODE ONLY: turns an .xlsx upload into a
+// {headers, rows} JSON grid. No Content-Type header is set here -- the
+// browser sets its own multipart boundary for a FormData body, the same
+// convention dryRunPumpXlsx() already established.
+export async function parsePMScheduleExcel(file) {
+    const formData = new FormData();
+    formData.append("file", file);
+    return _adminUsersRequest(`${API_URL}/api/ltsa/pm-schedules/import/parse`, { method: "POST", body: formData });
+}
+// AI5R-PHASE4E4, Section D/O -- the template is a binary .xlsx, not
+// JSON, so this bypasses _adminUsersRequest (which always calls
+// response.json()) and returns a Blob for the caller to save via a
+// temporary <a download> element.
+export async function downloadPMScheduleImportTemplate() {
+    const response = await apiFetch(`${API_URL}/api/ltsa/pm-schedules/import/template`);
+    if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(formatApiErrorDetail(payload?.detail) || payload?.message || "PM Schedule import template API unavailable");
+    }
+    return response.blob();
+}
 export async function updatePMSchedule(code, payload) {
     return _adminUsersRequest(`${API_URL}/api/ltsa/pm-schedules/${encodeURIComponent(code)}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
 }

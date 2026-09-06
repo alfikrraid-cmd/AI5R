@@ -37,6 +37,19 @@ export function emptyBulkRow(id, overrides = {}) {
     technician: "",
     duration: "",
     notes: "",
+    // AI5R-PHASE4E4, Section K -- optional, CLIENT-SIDE-ONLY source
+    // metadata (never sent to the backend -- absent from
+    // toBulkCreatePayloadRow's wire shape below). `source`/`sourceRow`
+    // let the editor show "Excel row 17: ..." against a specific
+    // imported row; `importErrors` carries parse-time problems that have
+    // no valid slot in the structured fields above (e.g. an
+    // unrecognized Planned Activities token) and are shown ALONGSIDE
+    // live validateBulkRows() results, not instead of them. Every
+    // manually-added row carries the same three fields at their
+    // do-nothing defaults, so imported and manual rows share one model.
+    source: null,
+    sourceRow: null,
+    importErrors: [],
     ...overrides,
   };
 }
@@ -73,12 +86,24 @@ export function validateBulkRows(rows, { canonicalPumpTags = new Set(), existing
       errors.push(`Unknown pump: ${row.pumpTag} (not in the canonical pump master).`);
     }
 
-    if (!row.frequency || !SUPPORTED_FREQUENCIES.includes(row.frequency)) {
+    if (!row.frequency) {
       errors.push("Frequency is required.");
+    } else if (!SUPPORTED_FREQUENCIES.includes(row.frequency)) {
+      // AI5R-PHASE4E4, Section P -- distinguishes "nothing was given" from
+      // "something was given but isn't a recognized value" (e.g. an
+      // Excel cell that fell through frequency-alias mapping unchanged),
+      // matching the mission's own example: `Frequency "3 Monthly" is
+      // unsupported.`
+      errors.push(`Frequency "${row.frequency}" is unsupported.`);
     }
 
     if (!row.startDate) {
       errors.push("Start Date is required.");
+    } else if (!/^\d{4}-\d{2}-\d{2}$/.test(row.startDate)) {
+      // AI5R-PHASE4E4 -- the UI's own <input type="date"> always produces
+      // ISO YYYY-MM-DD, so this only ever fires for an imported row whose
+      // date could not be resolved to that canonical form (Section H).
+      errors.push(`Start Date "${row.startDate}" is invalid.`);
     }
 
     if (!isValidDuration(row.duration)) {

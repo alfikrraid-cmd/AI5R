@@ -50,6 +50,14 @@ const tdStyle = { padding: spacing.xs, verticalAlign: "top", borderBottom: `1px 
 const errorTextStyle = { color: colors.danger, fontSize: 11, margin: `${spacing.xs}px 0 0 0` };
 const warningTextStyle = { color: colors.warning, fontSize: 11, margin: `${spacing.xs}px 0 0 0` };
 
+// AI5R-PHASE4E4, Section K/P -- "Excel row 17: ..." style prefix for any
+// message rendered against a row that came from an import, matching the
+// mission's own worked examples verbatim. A manually-added row's
+// source/sourceRow are both null, so this is a no-op for it.
+function sourcePrefix(row) {
+  return row.source === "EXCEL_IMPORT" && row.sourceRow != null ? `Excel row ${row.sourceRow}: ` : "";
+}
+
 function StatusBadge({ level }) {
   if (!level) {
     return <span style={{ color: colors.textMuted, fontSize: 11 }}>Not validated</span>;
@@ -101,14 +109,21 @@ function ActivityEditorModal({ title, plannedMap, onToggle, onClose, onApply, ap
 // only after a clean (or warning-only) Validate pass with no rows changed
 // since (Section H: "Changing any validated row invalidates prior
 // validation").
-export default function BulkPMScheduleEditor({ onClose, onCreated, existingSchedules = [] }) {
+// AI5R-PHASE4E4, Section B/K -- `initialRows` seeds the SAME row model
+// Excel import produces (utils/pmExcelImport.js's buildImportPreview())
+// so imported rows are edited exactly like manually-added ones -- no
+// second editor, no Excel-specific creation path. Their ids already use
+// a distinct "import-row-" prefix from this component's own
+// "bulk-row-" counter, so there is no collision risk when the user adds
+// more rows manually afterward.
+export default function BulkPMScheduleEditor({ onClose, onCreated, existingSchedules = [], initialRows = [] }) {
   const idCounter = useRef(0);
   function nextId() {
     idCounter.current += 1;
     return `bulk-row-${idCounter.current}`;
   }
 
-  const [rows, setRows] = useState([]);
+  const [rows, setRows] = useState(initialRows);
   const [validation, setValidation] = useState(null);
   const [dirty, setDirty] = useState(true);
 
@@ -492,13 +507,29 @@ export default function BulkPMScheduleEditor({ onClose, onCreated, existingSched
                     </td>
                     <td style={tdStyle}>
                       <StatusBadge level={result?.level} />
+                      {/* AI5R-PHASE4E4, Section K/P -- import-time
+                          problems (no valid slot in the structured row,
+                          e.g. an unrecognized Activities token) are
+                          shown ALONGSIDE live validateBulkRows() errors,
+                          both prefixed with the originating Excel row
+                          when this row came from an import, so errors
+                          survive the transition into the Bulk Editor
+                          (Section P) instead of being silently dropped. */}
+                      {row.importErrors?.map((message, i) => (
+                        <p key={`import-err-${i}`} style={errorTextStyle}>
+                          {sourcePrefix(row)}
+                          {message}
+                        </p>
+                      ))}
                       {result?.errors.map((message, i) => (
                         <p key={`err-${i}`} style={errorTextStyle}>
+                          {sourcePrefix(row)}
                           {message}
                         </p>
                       ))}
                       {result?.warnings.map((message, i) => (
                         <p key={`warn-${i}`} style={warningTextStyle}>
+                          {sourcePrefix(row)}
                           {message}
                         </p>
                       ))}

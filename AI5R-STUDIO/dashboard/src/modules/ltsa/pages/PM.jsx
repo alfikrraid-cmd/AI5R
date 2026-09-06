@@ -6,6 +6,7 @@ import PMOpenDesignView from "../components/PMOpenDesignView";
 import PMOccurrenceDetailPanel from "../components/PMOccurrenceDetailPanel";
 import CreatePMScheduleModal from "../components/CreatePMScheduleModal";
 import BulkPMScheduleEditor from "../components/BulkPMScheduleEditor";
+import PMExcelImportPanel from "../components/PMExcelImportPanel";
 import EditPMScheduleModal from "../components/EditPMScheduleModal";
 import CreatePMOccurrenceModal from "../components/CreatePMOccurrenceModal";
 import SuccessToast from "../components/SuccessToast";
@@ -67,6 +68,12 @@ export default function PM({ onNavigate, navContext }) {
   // modal: replaces the whole PM workspace body while open, since a
   // spreadsheet-like table for ~10-100 rows needs real width.
   const [isBulkEditorOpen, setIsBulkEditorOpen] = useState(false);
+  // AI5R-PHASE4E4, Section B -- a third dedicated full-width view. Import
+  // never creates a schedule itself; its only exit is handing parsed rows
+  // to the SAME BulkPMScheduleEditor via bulkEditorInitialRows below
+  // (Section B: "Do not duplicate Bulk Editor").
+  const [isExcelImportOpen, setIsExcelImportOpen] = useState(false);
+  const [bulkEditorInitialRows, setBulkEditorInitialRows] = useState([]);
   // AI5R-PHASE4E2, Section H -- server-side create failures (unknown pump,
   // duplicate/conflict, API validation failure) shown INSIDE the still-
   // open modal, separate from `listError` above (which is about the list
@@ -321,6 +328,7 @@ export default function PM({ onNavigate, navContext }) {
   // data. ZERO pm_occurrence rows are created by this path (Section I).
   async function handleBulkCreated(createdRows) {
     setIsBulkEditorOpen(false);
+    setBulkEditorInitialRows([]);
     setSuccessMessage(`${createdRows.length} PM Schedule${createdRows.length === 1 ? "" : "s"} created.`);
     try {
       const records = await getPMSchedules();
@@ -413,12 +421,29 @@ export default function PM({ onNavigate, navContext }) {
     setSuccessMessage(`PM Schedule ${code} updated.`);
   }
 
+  if (isExcelImportOpen) {
+    return (
+      <PMExcelImportPanel
+        onClose={() => setIsExcelImportOpen(false)}
+        onReviewInBulkEditor={(rows) => {
+          setBulkEditorInitialRows(rows);
+          setIsExcelImportOpen(false);
+          setIsBulkEditorOpen(true);
+        }}
+      />
+    );
+  }
+
   if (isBulkEditorOpen) {
     return (
       <BulkPMScheduleEditor
-        onClose={() => setIsBulkEditorOpen(false)}
+        onClose={() => {
+          setIsBulkEditorOpen(false);
+          setBulkEditorInitialRows([]);
+        }}
         onCreated={handleBulkCreated}
         existingSchedules={pmSchedules}
+        initialRows={bulkEditorInitialRows}
       />
     );
   }
@@ -444,6 +469,10 @@ export default function PM({ onNavigate, navContext }) {
                 bulk endpoint enforces this independently regardless of
                 what the frontend shows. */}
             {canWriteMaintenance && <Button onClick={() => setIsBulkEditorOpen(true)}>Bulk Schedule</Button>}
+            {/* AI5R-PHASE4E4, Section B -- opens the import workflow;
+                its only exit into the Bulk Editor is
+                onReviewInBulkEditor above, never a direct create. */}
+            {canWriteMaintenance && <Button onClick={() => setIsExcelImportOpen(true)}>Import Excel</Button>}
           </span>
         }
       />
