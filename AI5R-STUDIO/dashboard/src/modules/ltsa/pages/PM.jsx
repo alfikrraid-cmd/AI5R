@@ -5,6 +5,8 @@ import PMScheduleTable from "../components/PMScheduleTable";
 import PMOpenDesignView from "../components/PMOpenDesignView";
 import PMOccurrenceDetailPanel from "../components/PMOccurrenceDetailPanel";
 import CreatePMScheduleModal from "../components/CreatePMScheduleModal";
+import BulkPMScheduleEditor from "../components/BulkPMScheduleEditor";
+import PMExcelImportPanel from "../components/PMExcelImportPanel";
 import EditPMScheduleModal from "../components/EditPMScheduleModal";
 import CreatePMOccurrenceModal from "../components/CreatePMOccurrenceModal";
 import SuccessToast from "../components/SuccessToast";
@@ -62,6 +64,21 @@ export default function PM({ onNavigate, navContext }) {
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [selectedId, setSelectedId] = useState(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  // AI5R-PHASE4E3 -- a dedicated full-width view (Section B/N), not a
+  // modal: replaces the whole PM workspace body while open, since a
+  // spreadsheet-like table for ~10-100 rows needs real width.
+  const [isBulkEditorOpen, setIsBulkEditorOpen] = useState(false);
+  // AI5R-PHASE4E4, Section B -- a third dedicated full-width view. Import
+  // never creates a schedule itself; its only exit is handing parsed rows
+  // to the SAME BulkPMScheduleEditor via bulkEditorInitialRows below
+  // (Section B: "Do not duplicate Bulk Editor").
+  const [isExcelImportOpen, setIsExcelImportOpen] = useState(false);
+  const [bulkEditorInitialRows, setBulkEditorInitialRows] = useState([]);
+  // AI5R-PHASE4E2, Section H -- server-side create failures (unknown pump,
+  // duplicate/conflict, API validation failure) shown INSIDE the still-
+  // open modal, separate from `listError` above (which is about the list
+  // failing to LOAD, not a create attempt failing).
+  const [createError, setCreateError] = useState(null);
   // MWO-LTSA-PM-CMON-OPERATIONAL-UI-014C -- editingSchedule holds the real
   // schedule record being edited (not just an id), so the modal can
   // prefill from it directly without a second lookup.
@@ -260,22 +277,39 @@ export default function PM({ onNavigate, navContext }) {
     onNavigate?.("drawing", { assetTag: selectedPM?.equipmentTag });
   }
 
-  // Backend create/update routes for pm_schedule were not built by
-  // WO-PM-001/WO-PM-002 (list/detail only) -- handleCreate remains
-  // client-state-only, the same as it was before this migration and the
-  // same as Pump's own Create PM/Create CM stubs.
+  // AI5R-PHASE4E2 -- clears any stale createError from a prior failed
+  // attempt whenever the modal is (re)opened or closed, so it never
+  // leaks into the next, unrelated create attempt.
+  function openCreateModal() {
+    setCreateError(null);
+    setIsCreateModalOpen(true);
+  }
+  function closeCreateModal() {
+    setCreateError(null);
+    setIsCreateModalOpen(false);
+  }
+
+  // AI5R-PHASE4E1 -- pm_schedule_code is no longer sent: the backend
+  // generates it (OWNER DECISIONS 1-3). `notes` maps onto the existing
+  // `procedure` column (OWNER DECISION 5 -- the smallest backward-
+  // compatible persistence mapping; no existing procedure value is ever
+  // rewritten by this). `planned_activities` is PLANNED work only,
+  // architecturally separate from pm_occurrence.activities (PERFORMED
+  // activities) -- see handleRecordOccurrence below, untouched by this.
   async function handleCreate(formValues) {
+    setCreateError(null);
     try {
       const result = await createPMSchedule({
-        pm_schedule_code: formValues.scheduleCode,
         asset_code: formValues.equipmentTag,
-        procedure: formValues.procedure,
+        procedure: formValues.notes || null,
         frequency: formValues.frequency,
         trigger_type: formValues.triggerType,
         interval_unit: formValues.intervalUnit,
         effective_date: formValues.startDate || null,
         next_due: formValues.startDate || null,
         assigned_to: formValues.assignedTechnician || null,
+        estimated_duration_hours: formValues.estimatedDurationHours ?? null,
+        planned_activities: formValues.plannedActivities,
       });
       const created = mapPMScheduleRecord(result.data);
       setPmSchedules((current) => [...current, created]);
@@ -283,7 +317,28 @@ export default function PM({ onNavigate, navContext }) {
       setSelectedId(created.id);
       setSuccessMessage(`PM Schedule ${created.id} created.`);
     } catch (error) {
-      setListError(error.message);
+      setCreateError(error.message);
+    }
+  }
+
+  // AI5R-PHASE4E3 -- the bulk endpoint returns only {client_row_id,
+  // pm_schedule_code} pairs per created row (Section I), not full
+  // records, so the authoritative schedule list is simply re-fetched from
+  // the canonical API rather than reconstructed client-side from partial
+  // data. ZERO pm_occurrence rows are created by this path (Section I).
+  async function handleBulkCreated(createdRows) {
+    setIsBulkEditorOpen(false);
+    setBulkEditorInitialRows([]);
+    setSuccessMessage(`${createdRows.length} PM Schedule${createdRows.length === 1 ? "" : "s"} created.`);
+    try {
+      const records = await getPMSchedules();
+      const resolved = await Promise.all(records.map(mapPMScheduleRecord).map(withResolvedArea));
+      setPmSchedules(resolved);
+    } catch {
+      // The bulk create itself already succeeded (this only refreshes the
+      // list) -- a transient refetch failure here is surfaced through the
+      // existing listError path, not treated as a create failure.
+      setListError("PM schedules could not be reloaded after bulk create.");
     }
   }
 
@@ -366,6 +421,33 @@ export default function PM({ onNavigate, navContext }) {
     setSuccessMessage(`PM Schedule ${code} updated.`);
   }
 
+  if (isExcelImportOpen) {
+    return (
+      <PMExcelImportPanel
+        onClose={() => setIsExcelImportOpen(false)}
+        onReviewInBulkEditor={(rows) => {
+          setBulkEditorInitialRows(rows);
+          setIsExcelImportOpen(false);
+          setIsBulkEditorOpen(true);
+        }}
+      />
+    );
+  }
+
+  if (isBulkEditorOpen) {
+    return (
+      <BulkPMScheduleEditor
+        onClose={() => {
+          setIsBulkEditorOpen(false);
+          setBulkEditorInitialRows([]);
+        }}
+        onCreated={handleBulkCreated}
+        existingSchedules={pmSchedules}
+        initialRows={bulkEditorInitialRows}
+      />
+    );
+  }
+
   return (
     <div>
       <PageHeader
@@ -381,7 +463,16 @@ export default function PM({ onNavigate, navContext }) {
             {selectedPM && canWriteMaintenance && (
               <Button onClick={() => setIsCreateOccurrenceModalOpen(true)}>+ Record PM Occurrence</Button>
             )}
-            <Button onClick={() => setIsCreateModalOpen(true)}>+ Create PM Schedule</Button>
+            <Button onClick={openCreateModal}>+ Create PM Schedule</Button>
+            {/* AI5R-PHASE4E3, Section K -- reuses maintenance.write, same
+                as every other write action on this page; the backend
+                bulk endpoint enforces this independently regardless of
+                what the frontend shows. */}
+            {canWriteMaintenance && <Button onClick={() => setIsBulkEditorOpen(true)}>Bulk Schedule</Button>}
+            {/* AI5R-PHASE4E4, Section B -- opens the import workflow;
+                its only exit into the Bulk Editor is
+                onReviewInBulkEditor above, never a direct create. */}
+            {canWriteMaintenance && <Button onClick={() => setIsExcelImportOpen(true)}>Import Excel</Button>}
           </span>
         }
       />
@@ -424,7 +515,7 @@ export default function PM({ onNavigate, navContext }) {
                     cmRecords={relatedCMRecords}
                     onOpenPump={handleOpenPump}
                     onOpenDrawing={handleOpenDrawing}
-                    onCreatePM={() => setIsCreateModalOpen(true)}
+                    onCreatePM={openCreateModal}
                     canDelete={canDeleteRecords}
                     onDelete={handleDeleteSchedule}
                     canEdit={canWriteMaintenance}
@@ -498,7 +589,7 @@ export default function PM({ onNavigate, navContext }) {
                 />
                 {canWriteMaintenance && (
                   <div style={{ marginTop: "var(--space-3)" }}>
-                    <Button onClick={() => setIsCreateModalOpen(true)}>Create PM Schedule</Button>
+                    <Button onClick={openCreateModal}>Create PM Schedule</Button>
                   </div>
                 )}
               </>
@@ -514,8 +605,9 @@ export default function PM({ onNavigate, navContext }) {
 
       <CreatePMScheduleModal
         isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
+        onClose={closeCreateModal}
         onCreate={handleCreate}
+        errorMessage={createError}
         initialEquipmentTag={noScheduleForAssetTag ? navContext.assetTag : ""}
       />
 

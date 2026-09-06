@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import PM from "./PM";
-import { getPMSchedules, getPump, getCMReports, getPMOccurrences, getPMCMEvidence, createPMSchedule } from "../../../api/ai5rClient";
+import { getPMSchedules, getPump, getCMReports, getPMOccurrences, getPMCMEvidence, createPMSchedule, getPumps } from "../../../api/ai5rClient";
 
 // MWO-LTSA-053 -- getCMReports added: PM.jsx now fetches Related CM
 // Reports (mirroring Pump.jsx/Seal.jsx's own Related Engineering pattern)
@@ -26,6 +26,7 @@ vi.mock("../../../api/ai5rClient", () => ({
   getPMOccurrences: vi.fn(),
   getPMCMEvidence: vi.fn(),
   createPMSchedule: vi.fn(),
+  getPumps: vi.fn(),
 }));
 
 function daysFromToday(offset) {
@@ -98,6 +99,7 @@ function loadPMSchedules(records = PM_SCHEDULES) {
   getPump.mockResolvedValue({ tag_number: null, area: "Boiler House" });
   getCMReports.mockResolvedValue([]);
   getPMOccurrences.mockResolvedValue([]);
+  getPumps.mockResolvedValue([{ tag_number: "533-P-1", name: "Standby Transfer Pump" }]);
 }
 
 describe("Preventive Maintenance workspace page", () => {
@@ -220,9 +222,8 @@ describe("Preventive Maintenance workspace page", () => {
     await screen.findByText("PM-2007");
 
     fireEvent.click(screen.getByRole("button", { name: "+ Create PM Schedule" }));
-    fireEvent.change(screen.getByLabelText("Schedule Code"), { target: { value: "PM-2008" } });
-    fireEvent.change(screen.getByLabelText("Procedure"), { target: { value: "Standard Lubrication" } });
-    fireEvent.change(screen.getByLabelText("Equipment"), { target: { value: "533-P-1" } });
+    fireEvent.change(screen.getByLabelText("Notes"), { target: { value: "Standard Lubrication" } });
+    fireEvent.change(await screen.findByLabelText("Pump *"), { target: { value: "533-P-1" } });
 
     fireEvent.click(screen.getByRole("button", { name: "Create PM Schedule" }));
 

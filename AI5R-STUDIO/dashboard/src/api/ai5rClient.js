@@ -322,6 +322,34 @@ export async function getPMSchedules() {
 export async function createPMSchedule(payload) {
     return _adminUsersRequest(`${API_URL}/api/ltsa/pm-schedules`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
 }
+// AI5R-PHASE4E3, Section I -- ONE atomic backend bulk endpoint. `rows` is
+// already in the exact wire shape (see utils/pmBulkSchedule.js's
+// toBulkCreatePayload()) -- this function does no request-loop, a single
+// POST creates every row or none.
+export async function bulkCreatePMSchedules(rows) {
+    return _adminUsersRequest(`${API_URL}/api/ltsa/pm-schedules/bulk`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rows }) });
+}
+// AI5R-PHASE4E4, Section C -- DECODE ONLY: turns an .xlsx upload into a
+// {headers, rows} JSON grid. No Content-Type header is set here -- the
+// browser sets its own multipart boundary for a FormData body, the same
+// convention dryRunPumpXlsx() already established.
+export async function parsePMScheduleExcel(file) {
+    const formData = new FormData();
+    formData.append("file", file);
+    return _adminUsersRequest(`${API_URL}/api/ltsa/pm-schedules/import/parse`, { method: "POST", body: formData });
+}
+// AI5R-PHASE4E4, Section D/O -- the template is a binary .xlsx, not
+// JSON, so this bypasses _adminUsersRequest (which always calls
+// response.json()) and returns a Blob for the caller to save via a
+// temporary <a download> element.
+export async function downloadPMScheduleImportTemplate() {
+    const response = await apiFetch(`${API_URL}/api/ltsa/pm-schedules/import/template`);
+    if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(formatApiErrorDetail(payload?.detail) || payload?.message || "PM Schedule import template API unavailable");
+    }
+    return response.blob();
+}
 export async function updatePMSchedule(code, payload) {
     return _adminUsersRequest(`${API_URL}/api/ltsa/pm-schedules/${encodeURIComponent(code)}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
 }
@@ -1095,18 +1123,55 @@ export async function dryRunPumpXlsx(file) {
     return payload;
 }
 
+// AI5R-PHASE4E2 -- FastAPI's own `detail` field is a STRING for a single
+// HTTPException (e.g. "Canonical pump not found") but a LIST of
+// {loc, msg, type} objects for a Pydantic 422 validation error (e.g. the
+// PMScheduleCreateRequest.planned_activities validator added in 4E.1).
+// `new Error(detail)` on that list coerces it via the array's own
+// toString(), which stringifies each object element as "[object Object]"
+// -- the exact "[object Object],[object Object]" seen in production on
+// the PM workspace. Normalizes both shapes into one readable string
+// before it ever reaches `new Error(...)`.
+function formatApiErrorDetail(detail) {
+    if (typeof detail === "string" && detail.trim()) return detail;
+    if (Array.isArray(detail)) {
+        const messages = detail
+            .map((entry) => (entry && typeof entry === "object" ? entry.msg : entry))
+            .filter((msg) => typeof msg === "string" && msg.trim());
+        if (messages.length > 0) return messages.join("; ");
+    }
+    if (detail && typeof detail === "object" && typeof detail.msg === "string") return detail.msg;
+    return null;
+}
+
 // MWO-LTSA-AUTH-003A-FINAL -- Admin Users API. Every call requires
 // admin.users (enforced server-side, routers/admin_users.py); a 403 here
 // always means the real backend denied it (delegation scope), never a
 // frontend-only gate -- errors surface `detail` (FastAPI's own field,
 // e.g. "TAP_ADMIN is not authorized to manage SUPERUSER accounts") the
 // same way dryRunPumpXlsx() already does above.
+//
+// Also the request path for PM Schedule create/update/delete (Phase4E) --
+// see formatApiErrorDetail() above for why `detail` is normalized before
+// being thrown.
 async function _adminUsersRequest(input, options) {
     const response = await apiFetch(input, options);
     const payload = await response.json().catch(() => null);
 
     if (!response.ok) {
-        throw new Error(payload?.detail || payload?.message || "Admin Users API unavailable");
+        const error = new Error(formatApiErrorDetail(payload?.detail) || payload?.message || "Admin Users API unavailable");
+        // AI5R-PHASE4E3 -- `.detail` carries FastAPI's raw (already-JSON-
+        // parsed) detail value alongside the flattened, always-readable
+        // `.message` string above. Additive/optional: every existing
+        // caller keeps reading `.message` unchanged; the PM bulk schedule
+        // editor uses `.detail` (an array of {client_row_id, msg}, see
+        // routers/pm_schedule.py's bulk_create_pm_schedules) to re-surface
+        // each server-side row error against the exact row that failed,
+        // instead of only a single flattened banner.
+        if (payload?.detail !== undefined) {
+            error.detail = payload.detail;
+        }
+        throw error;
     }
 
     return payload;

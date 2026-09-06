@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import PM from "./PM";
 import {
   getPMSchedules, getPump, getCMReports, getPMOccurrences, getPMCMEvidence,
-  updatePMSchedule, createPMSchedule,
+  updatePMSchedule, createPMSchedule, getPumps,
 } from "../../../api/ai5rClient";
 import { AuthProvider } from "../auth/AuthContext";
 
@@ -19,6 +19,7 @@ vi.mock("../../../api/ai5rClient", () => ({
   getPMCMEvidence: vi.fn(),
   updatePMSchedule: vi.fn(),
   createPMSchedule: vi.fn(),
+  getPumps: vi.fn(),
   onUnauthorized: vi.fn(),
 }));
 
@@ -67,6 +68,7 @@ function loadPMSchedules(schedules = [PM_SCHEDULE]) {
   getCMReports.mockResolvedValue([]);
   getPMOccurrences.mockResolvedValue([]);
   getPMCMEvidence.mockResolvedValue([]);
+  getPumps.mockResolvedValue([{ tag_number: "211-P-1A", name: "Boiler Feedwater Pump 1A" }]);
 }
 
 afterEach(() => {
@@ -176,7 +178,10 @@ describe("PM no-schedule flow (MWO-014C Gap C)", () => {
     await screen.findByText("No active PM Schedule is available for this pump.");
     fireEvent.click(screen.getByRole("button", { name: "Create PM Schedule" }));
 
-    expect(screen.getByDisplayValue("211-P-1A")).toBeTruthy();
+    // AI5R-PHASE4E2 -- pump is now a searchable/selectable AssetSelector
+    // (Section C), so the prefilled value renders as the selected
+    // option's full "tag — name" text, not the bare tag alone.
+    expect(await screen.findByDisplayValue(/211-P-1A/)).toBeTruthy();
   });
 
   it("does not offer Create PM Schedule to a read-only session", async () => {

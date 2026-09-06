@@ -142,3 +142,21 @@ export function buildActivitiesPayload(doneMap) {
     done: Boolean(doneMap[variant.code]),
   }));
 }
+
+// AI5R-PHASE4E1 -- builds a `pm_schedule.planned_activities` payload. Unlike
+// buildActivitiesPayload above (PERFORMED activities: every variant present,
+// each carrying a `done` flag), this emits ONLY the explicitly-selected
+// variants and NEVER a `done` field -- a schedule's planned activities are
+// not execution evidence, so the two payload shapes must never be
+// interchanged. Shape per selected variant: { family, variant, code }.
+export function buildPlannedActivitiesPayload(selectedMap) {
+  const planned = [];
+  for (const fam of PM_ACTIVITY_FAMILIES) {
+    for (const variant of fam.variants) {
+      if (selectedMap[variant.code]) {
+        planned.push({ family: fam.family, variant: variant.side ?? "GENERAL", code: variant.code });
+      }
+    }
+  }
+  return planned;
+}

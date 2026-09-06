@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from API.pm_activity_catalog import InvalidPlannedActivityError, validate_planned_activities
 
 # MWO-LTSA-AUTH-001
 
@@ -296,18 +298,136 @@ class PMOccurrenceCreateRequest(BaseModel):
 
 
 class PMScheduleCreateRequest(BaseModel):
-    pm_schedule_code: str
+    # AI5R-PHASE4E1, OWNER DECISIONS 1-2: pm_schedule_code is system-
+    # generated (PMScheduleRepository.create()'s own _new_pm_schedule_code())
+    # -- a human never types it, so it is optional here. A caller that
+    # supplies one anyway (e.g. a future historical-import path) is still
+    # honored unchanged, preserving existing FK/reference behavior.
+    pm_schedule_code: str | None = None
     asset_code: str
     asset_type: str | None = None
-    procedure: str
+    # OWNER DECISION 5: procedure is no longer a required user-facing
+    # field -- the new UI's optional "Notes" maps onto this same existing
+    # column (smallest backward-compatible persistence mapping; no
+    # existing historical procedure value is ever rewritten by this
+    # relaxation).
+    procedure: str | None = None
     frequency: str
     trigger_type: str
     interval_unit: str | None = None
     effective_date: str | None = None
     next_due: str | None = None
     assigned_to: str | None = None
+    # AI5R-PHASE4E3 -- previously collected by the UI but silently dropped
+    # (absent from both this model and PMScheduleRepository.create()'s own
+    # fields tuple, a pre-existing gap predating this phase); wired
+    # through now since the new bulk table's own Duration column needs
+    # the exact same field to actually persist.
+    estimated_duration_hours: float | None = None
     provenance: str = "MANUAL"
     source_reference: str | None = None
+    # OWNER DECISION 6/7: planned (not performed) activities -- validated
+    # and normalized against the canonical Phase4D catalog, architecturally
+    # separate from pm_occurrence.activities (PERFORMED activities), and
+    # never carrying a `done` flag (a plan is not execution evidence).
+    planned_activities: list[dict[str, Any]] | None = None
+
+    @field_validator("planned_activities")
+    @classmethod
+    def _validate_planned_activities(cls, value: list[dict[str, Any]] | None) -> list[dict[str, Any]] | None:
+        if value is None:
+            return None
+        try:
+            return validate_planned_activities(value)
+        except InvalidPlannedActivityError as exc:
+            raise ValueError(str(exc)) from exc
+
+
+# AI5R-PHASE4E3 -- the only frequencies the backend/UI actually support
+# (Section D: "Use only currently supported backend values"). Enforced
+# only on the new bulk row model below -- PMScheduleCreateRequest.frequency
+# above is left as a plain `str` to avoid any behavior change to the
+# already-shipped 4E.1/4E.2 single-create path.
+_SUPPORTED_FREQUENCIES = ("DAILY", "WEEKLY", "MONTHLY", "RUNTIME_BASED")
+
+
+class PMScheduleBulkRow(BaseModel):
+    # AI5R-PHASE4E3, Section I -- a frontend-generated correlation id (not
+    # persisted anywhere), echoed back in the bulk response so a caller
+    # can map each created pm_schedule_code (or validation error) back to
+    # the exact row that produced it, without relying on any assumed
+    # ordering of a multi-row INSERT's RETURNING output.
+    client_row_id: str
+    asset_code: str
+    # Section F: Notes -> procedure, same backward-compatible mapping
+    # 4E.1 established for the single-create path.
+    procedure: str | None = None
+    frequency: str
+    # Section B -- Trigger Type is derived client-side (4E.2) and simply
+    # carried through here; the same zero-business-logic-readers finding
+    # from 4E.2 still applies, so no server-side re-derivation is needed.
+    trigger_type: str
+    interval_unit: str | None = None
+    effective_date: str
+    next_due: str | None = None
+    assigned_to: str | None = None
+    estimated_duration_hours: float | None = None
+    provenance: str = "MANUAL"
+    source_reference: str | None = None
+    planned_activities: list[dict[str, Any]] | None = None
+
+    @field_validator("asset_code")
+    @classmethod
+    def _asset_code_required(cls, value: str) -> str:
+        if not value or not value.strip():
+            raise ValueError("asset_code is required")
+        return value
+
+    @field_validator("frequency")
+    @classmethod
+    def _validate_frequency(cls, value: str) -> str:
+        if value not in _SUPPORTED_FREQUENCIES:
+            raise ValueError(f"unsupported frequency: {value!r} (must be one of {_SUPPORTED_FREQUENCIES})")
+        return value
+
+    @field_validator("effective_date")
+    @classmethod
+    def _effective_date_required(cls, value: str) -> str:
+        if not value or not value.strip():
+            raise ValueError("effective_date (Start Date) is required")
+        return value
+
+    @field_validator("estimated_duration_hours")
+    @classmethod
+    def _validate_duration(cls, value: float | None) -> float | None:
+        if value is not None and value < 0:
+            raise ValueError("estimated_duration_hours must be zero or more")
+        return value
+
+    @field_validator("planned_activities")
+    @classmethod
+    def _validate_planned_activities(cls, value: list[dict[str, Any]] | None) -> list[dict[str, Any]] | None:
+        if value is None:
+            return None
+        try:
+            return validate_planned_activities(value)
+        except InvalidPlannedActivityError as exc:
+            raise ValueError(str(exc)) from exc
+
+
+class PMScheduleBulkCreateRequest(BaseModel):
+    # AI5R-PHASE4E3, Section I -- ONE atomic backend bulk endpoint: every
+    # row here is created in a single all-or-nothing transaction, or none
+    # are (Section M's own rollback test). NOT a staging/import schema
+    # (Section L) -- rows live only in this request body.
+    rows: list[PMScheduleBulkRow]
+
+    @field_validator("rows")
+    @classmethod
+    def _rows_non_empty(cls, value: list[PMScheduleBulkRow]) -> list[PMScheduleBulkRow]:
+        if not value:
+            raise ValueError("rows must not be empty")
+        return value
 
 
 class PMScheduleUpdateRequest(BaseModel):
