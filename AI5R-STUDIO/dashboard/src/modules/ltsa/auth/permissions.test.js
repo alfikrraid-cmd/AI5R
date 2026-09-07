@@ -34,6 +34,25 @@ describe("permissions", () => {
     expect(visibleTabKeys(tapEngineer)).not.toContain("historical-review");
   });
 
+  // AI5R-WHATSAPP-GROUP-ADMIN-001 -- the "whatsapp-groups" tab is gated
+  // on admin.users, reused verbatim (no new permission string). This is
+  // the same tab-level mechanism every other tab above already relies
+  // on -- the backend remains the actual security boundary regardless
+  // of what this list shows; these two assertions only prove the
+  // TAB_PERMISSIONS entry is wired correctly, matching the
+  // historical-batch-review precedent above (a real prior bug was a
+  // tab registered in TABS/PAGES with no TAB_PERMISSIONS entry at all,
+  // silently dropping it from every role).
+  it("TAP_ADMIN (admin.users) sees the WhatsApp Groups tab", () => {
+    const session = { role: ROLES.TAP_ADMIN };
+    expect(visibleTabKeys(session)).toContain("whatsapp-groups");
+  });
+
+  it("TAP_ENGINEER (no admin.users) does not see the WhatsApp Groups tab", () => {
+    const session = { role: ROLES.TAP_ENGINEER };
+    expect(visibleTabKeys(session)).not.toContain("whatsapp-groups");
+  });
+
   it("PERTAMINA_ENGINEER sees pump/seal/inventory/engineering AI but not import/admin/internal breakdown", () => {
     const session = { role: ROLES.PERTAMINA_ENGINEER };
     expect(can(session, PERMISSIONS.PUMP_READ)).toBe(true);
