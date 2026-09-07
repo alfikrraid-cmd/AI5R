@@ -247,6 +247,11 @@ export const TAB_PERMISSIONS = Object.freeze({
   // it remain separately gated on maintenance.write/maintenance.
   // technical_review (unchanged, HistoricalBatchReview.jsx's own RBAC).
   "historical-batch-review": PERMISSIONS.PM_READ,
+  // AI5R-WHATSAPP-GROUP-ADMIN-001 -- reuses admin.users verbatim, the
+  // same backend permission routers/whatsapp_group_agent_admin.py's own
+  // register/activate endpoints already require -- no new permission
+  // string invented for this tab.
+  "whatsapp-groups": PERMISSIONS.ADMIN_ACCESS,
 });
 
 export function visibleTabKeys(session) {

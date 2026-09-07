@@ -1214,6 +1214,49 @@ export async function resetAdminUserPassword(userId, newPassword) {
     });
 }
 
+// AI5R-WHATSAPP-GROUP-ADMIN-001 -- WhatsApp Group admin lifecycle
+// (register -> PENDING, activate -> ACTIVE), gated by the SAME
+// admin.users permission as the Admin Users API above
+// (routers/whatsapp_group_agent_admin.py). `.status` is attached to a
+// thrown error the same way askCopilot() already does below, so the UI
+// can distinguish a 403 (missing permission) from any other failure.
+// Never logs/echoes the raw group id: the backend's own response
+// projection (_public()) never returns it, and this wrapper doesn't
+// either.
+async function _whatsappGroupAdminRequest(input, options) {
+    const response = await apiFetch(input, options);
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok) {
+        const error = new Error(
+            formatApiErrorDetail(payload?.detail) || payload?.message || "WhatsApp Group Admin API unavailable"
+        );
+        if (payload?.detail !== undefined) {
+            error.detail = payload.detail;
+        }
+        error.status = response.status;
+        throw error;
+    }
+
+    return payload;
+}
+
+export async function registerWhatsAppGroup({ groupId, displayLabel }) {
+    return _whatsappGroupAdminRequest(`${API_URL}/api/ltsa/whatsapp-group/admin/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ group_id: groupId, display_label: displayLabel }),
+    });
+}
+
+export async function activateWhatsAppGroup({ groupHash, allowedScope }) {
+    return _whatsappGroupAdminRequest(`${API_URL}/api/ltsa/whatsapp-group/admin/activate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ group_hash: groupHash, allowed_scope: allowedScope ?? null }),
+    });
+}
+
 // MWO-LTSA-SEAL-INVENTORY-IDENTIFIERS-001 -- manual completion of KIMAP
 // Pertamina / GPN John Crane (PATCH /api/ltsa/seals/{seal_code},
 // master.edit). Same verbatim-backend-error-surfacing discipline as

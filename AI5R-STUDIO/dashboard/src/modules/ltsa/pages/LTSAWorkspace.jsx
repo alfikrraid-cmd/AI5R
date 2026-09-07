@@ -25,6 +25,7 @@ import MechanicalSealStock from "./MechanicalSealStock";
 import ImportWorkspace from "./ImportWorkspace";
 import HistoricalReview from "./HistoricalReview";
 import HistoricalBatchReview from "./HistoricalBatchReview";
+import WhatsAppGroupsView from "./WhatsAppGroupsView";
 import { WorkspaceProvider } from "../workspace/WorkspaceContext";
 import { parseWorkspaceLocation, workspaceLocation } from "../workspace/WorkspaceRegistry";
 import "./LTSAWorkspace.css";
@@ -82,6 +83,12 @@ const TABS = [
   // DFE candidate-extraction review) is unchanged; label only.
   { key: "historical-review", label: "Historical Candidate Review" },
   { key: "historical-batch-review", label: "Historical Batch Review" },
+  // AI5R-WHATSAPP-GROUP-ADMIN-001 -- gated on admin.users via
+  // TAB_PERMISSIONS (permissions.js), same as every other tab here; no
+  // nested "Admin" submenu exists in this flat Tabs bar today, so this
+  // is surfaced as its own top-level, permission-gated tab rather than
+  // inventing a new nav grouping concept for one entry.
+  { key: "whatsapp-groups", label: "WhatsApp Groups" },
 ];
 
 // "pm-workspace" (PM Work Order Workspace) is deep-link-only, not a TABS
@@ -218,6 +225,7 @@ const PAGES = {
   analytics: AnalyticsWorkspace,
   "historical-review": HistoricalReview,
   "historical-batch-review": HistoricalBatchReview,
+  "whatsapp-groups": WhatsAppGroupsView,
 };
 
 // `capabilities` is optional (MWO-LTSA-AUTH-OPEN-DESIGN-001) -- when
