@@ -67,6 +67,22 @@ class WhatsAppIntakeRepository:
         )
         return rows[0] if rows else None
 
+    def find_sender_identity_by_user_id(self, user_id: str) -> dict | None:
+        # A user can have zero, one, or MANY rows here -- migration 030's
+        # only uniqueness constraint is the hash itself (sender_e164_
+        # sha256 PRIMARY KEY), not user_id (idx_whatsapp_sender_identity_
+        # user is a plain index). Deterministic tie-break for the admin
+        # status screen: prefer an ACTIVE row over any PENDING one, then
+        # the most recently created row among ties.
+        rows = _json_query(
+            "SELECT sender_e164_sha256, user_id, provider, status, verified_at "
+            "FROM whatsapp_sender_identity "
+            f"WHERE user_id = {_sql(user_id)} "
+            "ORDER BY (status = 'ACTIVE') DESC, created_at DESC LIMIT 1",
+            self._runner,
+        )
+        return rows[0] if rows else None
+
     def create_pending_sender_identity(self, *, sender_hash: str, user_id: str, provider: str) -> None:
         # verified_at explicitly NULL -- migration 030's own column
         # default (NOW()) would otherwise mark an unverified PENDING row

@@ -70,6 +70,7 @@ class AuthRepositoryProtocol(Protocol):
 
 class WhatsAppRegistrationRepositoryProtocol(Protocol):
     def find_sender_identity_by_hash(self, sender_hash: str) -> dict | None: ...
+    def find_sender_identity_by_user_id(self, user_id: str) -> dict | None: ...
     def create_pending_sender_identity(self, *, sender_hash: str, user_id: str, provider: str) -> None: ...
     def activate_sender_identity(self, *, sender_hash: str, user_id: str) -> None: ...
 
@@ -177,6 +178,51 @@ def activate_whatsapp_identity(
     return {"sender_e164_sha256": sender_e164_sha256, "user_id": target_user_id, "status": _ACTIVE, "no_op": False}
 
 
+_NOT_REGISTERED = "NOT_REGISTERED"
+
+
+def get_whatsapp_identity_status(
+    *,
+    target_user_id: str,
+    auth_repository: AuthRepositoryProtocol,
+    whatsapp_repository: WhatsAppRegistrationRepositoryProtocol,
+) -> dict:
+    """READ-ONLY lookup for the admin Sender Access screen -- an existing
+    user has zero, one, or many whatsapp_sender_identity rows (no unique
+    constraint on user_id, only on the hash itself: migration 030 only
+    makes sender_e164_sha256 the primary key). find_sender_identity_by_
+    user_id resolves that to a single row deterministically (prefer an
+    ACTIVE one; else the most recently created row) -- this function
+    never itself decides between multiple rows.
+
+    Never mutates anything, never touches role/scope. The full one-way
+    SHA256 hash is returned ONLY when status is PENDING, because the
+    EXISTING activate_whatsapp_identity()/`.../whatsapp/activate`
+    contract already requires the caller to hold it (this is what makes
+    Activate work again after a page refresh, not a new exposure this
+    function invents) -- for ACTIVE it is never needed and never
+    returned; the phone number itself is never recoverable from the hash
+    either way (SHA256 is one-way)."""
+    user = auth_repository.find_user_by_id(target_user_id)
+    if user is None:
+        raise TargetUserNotFoundError(f"no user {target_user_id!r}")
+
+    identity = whatsapp_repository.find_sender_identity_by_user_id(target_user_id)
+    if identity is None:
+        return {"registered": False, "status": _NOT_REGISTERED}
+
+    result = {
+        "registered": True,
+        "status": identity["status"],
+        "provider": identity.get("provider"),
+        "identifier": "REDACTED",
+        "verified_at": identity.get("verified_at"),
+    }
+    if identity["status"] == _PENDING:
+        result["sender_e164_sha256"] = identity["sender_e164_sha256"]
+    return result
+
+
 __all__ = [
     "WhatsAppRegistrationError",
     "TargetUserNotFoundError",
@@ -186,4 +232,5 @@ __all__ = [
     "IdentityNotPendingError",
     "register_whatsapp_identity",
     "activate_whatsapp_identity",
+    "get_whatsapp_identity_status",
 ]

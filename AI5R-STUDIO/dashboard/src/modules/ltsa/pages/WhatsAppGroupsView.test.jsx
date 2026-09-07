@@ -15,6 +15,7 @@ vi.mock("../../../api/ai5rClient", () => ({
   getAdminUsers: vi.fn().mockResolvedValue([]),
   registerWhatsAppNumber: vi.fn(),
   activateWhatsAppNumber: vi.fn(),
+  getWhatsAppSenderStatus: vi.fn(),
 }));
 
 const SYNTHETIC_JID = "111222333444555666@g.us";

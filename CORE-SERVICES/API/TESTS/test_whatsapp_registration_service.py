@@ -20,6 +20,7 @@ from API.whatsapp_registration_service import (  # noqa: E402
     TargetUserInactiveError,
     TargetUserNotFoundError,
     activate_whatsapp_identity,
+    get_whatsapp_identity_status,
     register_whatsapp_identity,
 )
 
@@ -47,6 +48,18 @@ class FakeWhatsAppRepository:
 
     def find_sender_identity_by_hash(self, sender_hash):
         return self.rows.get(sender_hash)
+
+    def find_sender_identity_by_user_id(self, user_id):
+        # Mirrors the real repository's tie-break (prefer ACTIVE, else
+        # most recent) without needing a real created_at column -- dict
+        # insertion order stands in for "most recent" here.
+        candidates = [row for row in self.rows.values() if row["user_id"] == user_id]
+        if not candidates:
+            return None
+        for row in candidates:
+            if row["status"] == "ACTIVE":
+                return row
+        return candidates[-1]
 
     def create_pending_sender_identity(self, *, sender_hash, user_id, provider):
         self.rows[sender_hash] = {"sender_e164_sha256": sender_hash, "user_id": user_id, "provider": provider, "status": "PENDING"}
@@ -203,3 +216,73 @@ class TestActivateWhatsAppIdentity:
                 target_user_id="user-1", sender_e164_sha256=registered["sender_e164_sha256"],
                 actor_id="admin-1", whatsapp_repository=wa_repo, history_repository=history,
             )
+
+
+class TestGetWhatsAppIdentityStatus:
+    def test_unknown_target_user_is_rejected(self):
+        auth_repo, wa_repo, _ = _deps()
+        with pytest.raises(TargetUserNotFoundError):
+            get_whatsapp_identity_status(target_user_id="ghost", auth_repository=auth_repo, whatsapp_repository=wa_repo)
+
+    def test_no_identity_returns_not_registered(self):
+        auth_repo, wa_repo, _ = _deps()
+        result = get_whatsapp_identity_status(target_user_id="user-1", auth_repository=auth_repo, whatsapp_repository=wa_repo)
+        assert result == {"registered": False, "status": "NOT_REGISTERED"}
+
+    def test_pending_identity_returns_pending_with_hash_for_activation(self):
+        auth_repo, wa_repo, history = _deps()
+        registered = register_whatsapp_identity(
+            target_user_id="user-1", phone_number="081234567890", provider="whatsapp_cloud",
+            actor_id="admin-1", auth_repository=auth_repo, whatsapp_repository=wa_repo, history_repository=history,
+        )
+        result = get_whatsapp_identity_status(target_user_id="user-1", auth_repository=auth_repo, whatsapp_repository=wa_repo)
+        assert result["registered"] is True
+        assert result["status"] == "PENDING"
+        assert result["identifier"] == "REDACTED"
+        # The hash IS present for PENDING -- the existing activate
+        # endpoint's own contract already requires it to complete
+        # activation after a page refresh.
+        assert result["sender_e164_sha256"] == registered["sender_e164_sha256"]
+
+    def test_active_identity_returns_active_without_hash(self):
+        auth_repo, wa_repo, history = _deps()
+        registered = register_whatsapp_identity(
+            target_user_id="user-1", phone_number="081234567890", provider="whatsapp_cloud",
+            actor_id="admin-1", auth_repository=auth_repo, whatsapp_repository=wa_repo, history_repository=history,
+        )
+        activate_whatsapp_identity(
+            target_user_id="user-1", sender_e164_sha256=registered["sender_e164_sha256"],
+            actor_id="admin-1", whatsapp_repository=wa_repo, history_repository=history,
+        )
+        result = get_whatsapp_identity_status(target_user_id="user-1", auth_repository=auth_repo, whatsapp_repository=wa_repo)
+        assert result["status"] == "ACTIVE"
+        assert result["identifier"] == "REDACTED"
+        # No hash, no raw phone, anywhere in an ACTIVE response -- not
+        # functionally needed once activated.
+        assert "sender_e164_sha256" not in result
+        for value in result.values():
+            assert "081234567890" not in str(value)
+
+    def test_lookup_never_mutates_the_identity(self):
+        auth_repo, wa_repo, history = _deps()
+        registered = register_whatsapp_identity(
+            target_user_id="user-1", phone_number="081234567890", provider="whatsapp_cloud",
+            actor_id="admin-1", auth_repository=auth_repo, whatsapp_repository=wa_repo, history_repository=history,
+        )
+        get_whatsapp_identity_status(target_user_id="user-1", auth_repository=auth_repo, whatsapp_repository=wa_repo)
+        get_whatsapp_identity_status(target_user_id="user-1", auth_repository=auth_repo, whatsapp_repository=wa_repo)
+        # Still PENDING, still exactly one audit entry (the register
+        # itself) -- repeated status lookups wrote nothing.
+        assert wa_repo.rows[registered["sender_e164_sha256"]]["status"] == "PENDING"
+        assert len(history.entries) == 1
+
+    def test_result_is_bound_to_the_requested_user_not_another_ones_identity(self):
+        auth_repo, wa_repo, history = _deps()
+        auth_repo.users["user-2"] = _User(status="ACTIVE")
+        auth_repo.active_memberships.add("user-2")
+        register_whatsapp_identity(
+            target_user_id="user-1", phone_number="081234567890", provider="whatsapp_cloud",
+            actor_id="admin-1", auth_repository=auth_repo, whatsapp_repository=wa_repo, history_repository=history,
+        )
+        result = get_whatsapp_identity_status(target_user_id="user-2", auth_repository=auth_repo, whatsapp_repository=wa_repo)
+        assert result == {"registered": False, "status": "NOT_REGISTERED"}

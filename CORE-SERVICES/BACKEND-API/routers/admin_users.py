@@ -17,6 +17,7 @@ from API.whatsapp_registration_service import (
     TargetUserInactiveError,
     TargetUserNotFoundError,
     activate_whatsapp_identity,
+    get_whatsapp_identity_status,
     register_whatsapp_identity,
 )
 from dependencies import (
@@ -336,4 +337,31 @@ def activate_whatsapp_number(
         raise HTTPException(status_code=404, detail=str(error))
     except IdentityNotPendingError as error:
         raise HTTPException(status_code=409, detail=str(error))
+    return {"data": result}
+
+
+# AI5R-WHATSAPP-SENDER-STATUS-001 -- read-only lookup for the Sender
+# Access admin screen. Same admin.users gate and organization-boundary
+# check as register/activate above; never mutates, never returns the
+# raw phone number, never returns the full hash for an ACTIVE identity
+# (see get_whatsapp_identity_status's own docstring for why a PENDING
+# identity's hash IS returned -- the existing activate endpoint above
+# already requires it).
+@router.get("/api/admin/users/{user_id}/whatsapp/status")
+def get_whatsapp_number_status(
+    user_id: str,
+    current_user=Depends(get_current_user),
+    auth_repository=Depends(get_auth_repository),
+    whatsapp_repository=Depends(get_whatsapp_intake_repository),
+) -> Payload:
+    _require_admin_users(current_user)
+    _require_same_organization_as_target(current_user, auth_repository, user_id)
+    try:
+        result = get_whatsapp_identity_status(
+            target_user_id=user_id,
+            auth_repository=auth_repository,
+            whatsapp_repository=whatsapp_repository,
+        )
+    except TargetUserNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error))
     return {"data": result}

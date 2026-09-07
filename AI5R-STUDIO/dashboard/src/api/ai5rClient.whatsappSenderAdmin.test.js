@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { activateWhatsAppNumber, registerWhatsAppNumber, storeSession } from "./ai5rClient";
+import { activateWhatsAppNumber, getWhatsAppSenderStatus, registerWhatsAppNumber, storeSession } from "./ai5rClient";
 
 // AI5R-WHATSAPP-SENDER-ADMIN-001 -- proves registerWhatsAppNumber/
 // activateWhatsAppNumber go through the SAME canonical apiFetch()
@@ -88,5 +88,49 @@ describe("activateWhatsAppNumber", () => {
     await expect(activateWhatsAppNumber("u-42", "synthetic-hash-abc")).rejects.toMatchObject({
       message: "identity status 'DISABLED' cannot be activated",
     });
+  });
+});
+
+describe("getWhatsAppSenderStatus", () => {
+  it("GETs /api/admin/users/{user_id}/whatsapp/status with the correct user_id", async () => {
+    global.fetch.mockResolvedValue(jsonResponse(200, { data: { registered: false, status: "NOT_REGISTERED" } }));
+
+    const result = await getWhatsAppSenderStatus("u-42");
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/admin/users/u-42/whatsapp/status"),
+      expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer test-admin-token" }) })
+    );
+    expect(result.data.status).toBe("NOT_REGISTERED");
+  });
+
+  it("returns the sender_e164_sha256 for a PENDING identity (needed for Activate)", async () => {
+    global.fetch.mockResolvedValue(
+      jsonResponse(200, {
+        data: { registered: true, status: "PENDING", provider: "whatsapp_cloud", identifier: "REDACTED", sender_e164_sha256: "synthetic-hash-abc" },
+      })
+    );
+
+    const result = await getWhatsAppSenderStatus("u-42");
+
+    expect(result.data.status).toBe("PENDING");
+    expect(result.data.sender_e164_sha256).toBe("synthetic-hash-abc");
+  });
+
+  it("returns no hash for an ACTIVE identity", async () => {
+    global.fetch.mockResolvedValue(
+      jsonResponse(200, { data: { registered: true, status: "ACTIVE", provider: "whatsapp_cloud", identifier: "REDACTED" } })
+    );
+
+    const result = await getWhatsAppSenderStatus("u-42");
+
+    expect(result.data.status).toBe("ACTIVE");
+    expect(result.data.sender_e164_sha256).toBeUndefined();
+  });
+
+  it("surfaces a backend error verbatim (e.g. unknown user)", async () => {
+    global.fetch.mockResolvedValue(jsonResponse(404, { detail: "no user 'ghost'" }));
+
+    await expect(getWhatsAppSenderStatus("ghost")).rejects.toMatchObject({ message: "no user 'ghost'" });
   });
 });

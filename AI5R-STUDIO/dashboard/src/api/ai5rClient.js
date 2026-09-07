@@ -1238,6 +1238,16 @@ export async function activateWhatsAppNumber(userId, senderHash) {
     });
 }
 
+// AI5R-WHATSAPP-SENDER-STATUS-001 -- read-only lookup
+// (GET /api/admin/users/{user_id}/whatsapp/status, routers/admin_users.py),
+// same admin.users gate and canonical _adminUsersRequest helper as
+// register/activate above. Never mutates. The response never contains
+// the raw phone number; it contains the sender_e164_sha256 hash only
+// when status is PENDING (needed for Activate), never for ACTIVE.
+export async function getWhatsAppSenderStatus(userId) {
+    return _adminUsersRequest(`${API_URL}/api/admin/users/${encodeURIComponent(userId)}/whatsapp/status`);
+}
+
 // AI5R-WHATSAPP-GROUP-ADMIN-001 -- WhatsApp Group admin lifecycle
 // (register -> PENDING, activate -> ACTIVE), gated by the SAME
 // admin.users permission as the Admin Users API above

@@ -74,6 +74,15 @@ class FakeWhatsAppRepository:
     def find_sender_identity_by_hash(self, sender_hash):
         return self.rows.get(sender_hash)
 
+    def find_sender_identity_by_user_id(self, user_id):
+        candidates = [row for row in self.rows.values() if row["user_id"] == user_id]
+        if not candidates:
+            return None
+        for row in candidates:
+            if row["status"] == "ACTIVE":
+                return row
+        return candidates[-1]
+
     def create_pending_sender_identity(self, *, sender_hash, user_id, provider):
         self.rows[sender_hash] = {"sender_e164_sha256": sender_hash, "user_id": user_id, "provider": provider, "status": "PENDING"}
 
@@ -212,4 +221,93 @@ class TestOrganizationBoundary:
         )
         _override(role="TAP_ADMIN", auth_repo=auth_repo)
         response = client.post("/api/admin/users/user-1/whatsapp/register", json={"phone_number": "081234567890"})
+        assert response.status_code == 403
+
+
+# AI5R-WHATSAPP-SENDER-STATUS-001 -- GET .../whatsapp/status. Uses only
+# synthetic phone numbers, never a real captured identifier.
+class TestGetWhatsAppStatus:
+    def test_tap_engineer_cannot_view_status(self):
+        _override(role="TAP_ENGINEER")
+        response = client.get("/api/admin/users/user-1/whatsapp/status")
+        assert response.status_code == 403
+
+    def test_no_identity_returns_not_registered(self):
+        _override(role="TAP_ADMIN")
+        response = client.get("/api/admin/users/user-1/whatsapp/status")
+        assert response.status_code == 200
+        assert response.json()["data"] == {"registered": False, "status": "NOT_REGISTERED"}
+
+    def test_pending_identity_returns_pending(self):
+        wa_repo = FakeWhatsAppRepository()
+        _override(role="TAP_ADMIN", wa_repo=wa_repo)
+        register_response = client.post(
+            "/api/admin/users/user-1/whatsapp/register", json={"phone_number": "081234567890"}
+        )
+        sender_hash = register_response.json()["data"]["sender_e164_sha256"]
+
+        response = client.get("/api/admin/users/user-1/whatsapp/status")
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["registered"] is True
+        assert data["status"] == "PENDING"
+        assert data["identifier"] == "REDACTED"
+        # Hash present for PENDING -- needed to complete Activate.
+        assert data["sender_e164_sha256"] == sender_hash
+
+    def test_active_identity_returns_active_without_hash_or_phone(self):
+        wa_repo = FakeWhatsAppRepository()
+        _override(role="TAP_ADMIN", wa_repo=wa_repo)
+        register_response = client.post(
+            "/api/admin/users/user-1/whatsapp/register", json={"phone_number": "081234567890"}
+        )
+        sender_hash = register_response.json()["data"]["sender_e164_sha256"]
+        client.post("/api/admin/users/user-1/whatsapp/activate", json={"sender_e164_sha256": sender_hash})
+
+        response = client.get("/api/admin/users/user-1/whatsapp/status")
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["status"] == "ACTIVE"
+        assert data["identifier"] == "REDACTED"
+        assert "sender_e164_sha256" not in data
+        body_text = response.text
+        assert "081234567890" not in body_text
+        assert "@g.us" not in body_text
+        assert "@s.whatsapp.net" not in body_text
+        assert "Bearer" not in body_text
+
+    def test_unknown_target_user_returns_404_same_as_register(self):
+        _override(role="TAP_ADMIN")
+        response = client.get("/api/admin/users/ghost-user/whatsapp/status")
+        assert response.status_code == 404
+
+    def test_lookup_performs_no_mutation(self):
+        wa_repo = FakeWhatsAppRepository()
+        history_repo = FakeHistoryRepository()
+        _override(role="TAP_ADMIN", wa_repo=wa_repo, history_repo=history_repo)
+        client.post("/api/admin/users/user-1/whatsapp/register", json={"phone_number": "081234567890"})
+        entries_before = len(history_repo.entries)
+
+        client.get("/api/admin/users/user-1/whatsapp/status")
+        client.get("/api/admin/users/user-1/whatsapp/status")
+
+        assert len(history_repo.entries) == entries_before
+
+    def test_status_for_one_user_is_never_returned_for_another(self):
+        auth_repo = FakeAuthRepository(
+            memberships={"user-1": [FakeMembership("org-tap")], "user-2": [FakeMembership("org-tap")]}
+        )
+        auth_repo.users["user-2"] = _User()
+        wa_repo = FakeWhatsAppRepository()
+        _override(role="TAP_ADMIN", auth_repo=auth_repo, wa_repo=wa_repo)
+        client.post("/api/admin/users/user-1/whatsapp/register", json={"phone_number": "081234567890"})
+
+        response = client.get("/api/admin/users/user-2/whatsapp/status")
+        assert response.status_code == 200
+        assert response.json()["data"] == {"registered": False, "status": "NOT_REGISTERED"}
+
+    def test_cross_org_status_lookup_is_forbidden(self):
+        auth_repo = FakeAuthRepository(memberships={"user-1": [FakeMembership("org-other")]})
+        _override(role="TAP_ADMIN", auth_repo=auth_repo)
+        response = client.get("/api/admin/users/user-1/whatsapp/status")
         assert response.status_code == 403
