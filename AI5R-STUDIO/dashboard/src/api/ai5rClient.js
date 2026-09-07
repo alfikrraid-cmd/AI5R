@@ -1214,6 +1214,30 @@ export async function resetAdminUserPassword(userId, newPassword) {
     });
 }
 
+// AI5R-WHATSAPP-SENDER-ADMIN-001 -- WhatsApp sender identity admin
+// lifecycle (register -> PENDING, activate -> ACTIVE), same router
+// (routers/admin_users.py) and same admin.users gate as every other
+// function above -- reuses _adminUsersRequest verbatim rather than a
+// second request helper. Registration/activation never touch role or
+// scope (organization_memberships remains their only source of truth,
+// per whatsapp_registration_service.py's own header); the backend
+// response never echoes the raw phone number back either way.
+export async function registerWhatsAppNumber(userId, { phoneNumber, provider }) {
+    return _adminUsersRequest(`${API_URL}/api/admin/users/${encodeURIComponent(userId)}/whatsapp/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone_number: phoneNumber, provider: provider || "whatsapp_cloud" }),
+    });
+}
+
+export async function activateWhatsAppNumber(userId, senderHash) {
+    return _adminUsersRequest(`${API_URL}/api/admin/users/${encodeURIComponent(userId)}/whatsapp/activate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sender_e164_sha256: senderHash }),
+    });
+}
+
 // AI5R-WHATSAPP-GROUP-ADMIN-001 -- WhatsApp Group admin lifecycle
 // (register -> PENDING, activate -> ACTIVE), gated by the SAME
 // admin.users permission as the Admin Users API above

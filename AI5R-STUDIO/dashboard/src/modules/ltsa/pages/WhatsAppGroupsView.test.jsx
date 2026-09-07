@@ -1,13 +1,20 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import WhatsAppGroupsView from "./WhatsAppGroupsView";
-import { activateWhatsAppGroup, registerWhatsAppGroup } from "../../../api/ai5rClient";
+import { activateWhatsAppGroup, getAdminUsers, registerWhatsAppGroup } from "../../../api/ai5rClient";
 
 // AI5R-WHATSAPP-GROUP-ADMIN-001 -- uses only synthetic group ids, never
-// the real captured production JID.
+// the real captured production JID. getAdminUsers/registerWhatsAppNumber/
+// activateWhatsAppNumber are stubbed too (AI5R-WHATSAPP-SENDER-ADMIN-001)
+// since this view now also renders WhatsAppSenderAccessView, which calls
+// getAdminUsers() on mount -- WhatsAppSenderAccessView's own behavior is
+// covered by its dedicated test file, not re-tested here.
 vi.mock("../../../api/ai5rClient", () => ({
   registerWhatsAppGroup: vi.fn(),
   activateWhatsAppGroup: vi.fn(),
+  getAdminUsers: vi.fn().mockResolvedValue([]),
+  registerWhatsAppNumber: vi.fn(),
+  activateWhatsAppNumber: vi.fn(),
 }));
 
 const SYNTHETIC_JID = "111222333444555666@g.us";

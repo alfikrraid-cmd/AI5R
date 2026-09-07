@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Badge, Button, EmptyState, PageHeader } from "../../../design-system";
 import { activateWhatsAppGroup, registerWhatsAppGroup } from "../../../api/ai5rClient";
+import WhatsAppSenderAccessView from "./WhatsAppSenderAccessView";
 import "./LTSAOpenDesign.css";
 
 /**
@@ -99,6 +100,8 @@ export default function WhatsAppGroupsView() {
     <div className="ltsa-open-design" data-testid="whatsapp-groups-view">
       <PageHeader title="WhatsApp Groups" subtitle="LTSA Admin — WhatsApp group authorization" />
 
+      <h2 style={{ margin: 0 }}>Group Authorization</h2>
+
       {actionError && (
         <p
           className="confidence-label"
@@ -176,6 +179,8 @@ export default function WhatsAppGroupsView() {
           description="Paste the group's WhatsApp JID and a display label above, then Register."
         />
       )}
+
+      <WhatsAppSenderAccessView />
     </div>
   );
 }
