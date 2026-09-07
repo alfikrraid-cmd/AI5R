@@ -16,7 +16,23 @@
  *                          messages (remoteJid is the GROUP, never the
  *                          sender, for a group message -- this is exactly
  *                          why group id and sender id must be read from
- *                          two different fields, never conflated)
+ *                          two different fields, never conflated). In a
+ *                          group where WhatsApp's LID (Linked ID) privacy
+ *                          feature is active, this may be a "@lid"
+ *                          pseudonym instead of the classic phone-based
+ *                          "@s.whatsapp.net" JID.
+ *   msg.key.participantPn - Baileys' own phone-based alternative for a
+ *                          "@lid" participant, when it has one to offer
+ *                          (undefined otherwise, including for every
+ *                          already-phone-based participant). Backend
+ *                          authorization hashes a normalized PHONE
+ *                          NUMBER (see whatsapp_intake_service.
+ *                          normalize_sender_identifier); a raw "@lid"
+ *                          value hashes to digits that were never
+ *                          registered by anyone, which is exactly why an
+ *                          otherwise-ACTIVE, correctly-registered sender
+ *                          can still be told "Nomor Anda belum memiliki
+ *                          akses LTSA" -- see extractSenderId below.
  *   msg.key.id          - the provider message id
  *   msg.key.fromMe      - true when this transport's own linked account
  *                          sent the message
@@ -47,17 +63,46 @@ export function extractGroupId(msg) {
   return msg?.key?.remoteJid ?? null;
 }
 
-/** The actual individual sender. For a group message this is
+/** True only for a WhatsApp LID (Linked ID) participant JID -- see the
+ * module header's note on msg.key.participantPn. */
+function isLidJid(jid) {
+  return typeof jid === "string" && jid.endsWith("@lid");
+}
+
+/** A deliberately narrow shape check -- never trusts a malformed, empty,
+ * or non-phone-shaped participantPn as a stand-in identifier. Anything
+ * that fails this is treated exactly as if participantPn were absent. */
+function isPhoneJid(jid) {
+  return typeof jid === "string" && jid.trim() !== "" && jid.endsWith("@s.whatsapp.net");
+}
+
+/** The actual individual sender. For a group message this is normally
  * key.participant (never remoteJid, which is the group). For a personal
  * message Baileys does not set participant at all -- remoteJid IS the
  * individual in that case, but this agent only ever processes group
  * messages, so a missing participant on a message this module already
  * classified as a group message is treated as malformed (returns null,
  * never falls back to remoteJid -- that would silently misattribute the
- * sender as the group). */
+ * sender as the group).
+ *
+ * LID resolution: when participant is itself a "@lid" pseudonym AND
+ * Baileys supplies a genuinely phone-shaped participantPn alternative,
+ * that alternative is returned instead -- server-side authorization
+ * already hashes a normalized phone number, so this is what lets an
+ * otherwise-correctly-registered, ACTIVE sender actually resolve. This
+ * function performs no authorization decision of its own (that remains
+ * exclusively server-side, per this module's own header rule): a "@lid"
+ * participant with no usable phone alternative still returns the raw
+ * "@lid" value, completely unchanged from prior behavior -- it will
+ * still fail the backend's hash lookup exactly as it does today, never
+ * granting access on the strength of the LID itself. */
 export function extractSenderId(msg) {
   if (!isGroupMessage(msg)) return null;
-  return msg?.key?.participant ?? null;
+  const participant = msg?.key?.participant ?? null;
+  if (isLidJid(participant) && isPhoneJid(msg?.key?.participantPn)) {
+    return msg.key.participantPn;
+  }
+  return participant;
 }
 
 export function extractProviderMessageId(msg) {
