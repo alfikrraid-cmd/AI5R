@@ -27,13 +27,32 @@ import { activateWhatsAppNumber, getAdminUsers, registerWhatsAppNumber } from ".
  * The raw phone number lives only in local React state while the admin
  * is typing it, is sent once in the register request body, and is
  * cleared immediately after that request settles (success or failure
- * alike) -- never written to localStorage/sessionStorage, never logged.
- * The backend's own register/activate responses never echo the raw
- * phone back either. The returned sender_e164_sha256 (a one-way hash,
- * not the phone itself) is kept only long enough to pass to activate,
- * and is not displayed -- shown as "REDACTED" as an extra precaution,
- * consistent with how the Group Authorization section above treats its
- * own identifier.
+ * alike), and also whenever the selected user changes -- never written
+ * to localStorage/sessionStorage, never logged. The backend's own
+ * register/activate responses never echo the raw phone back either. The
+ * returned sender_e164_sha256 (a one-way hash, not the phone itself) is
+ * kept only long enough to pass to activate, and is not displayed --
+ * shown as "REDACTED" as an extra precaution, consistent with how the
+ * Group Authorization section above treats its own identifier.
+ *
+ * State-safety note (owner UAT finding): there is no GET endpoint that
+ * looks up an existing sender's status by user_id -- only POST register
+ * and POST activate exist on routers/admin_users.py -- so this screen
+ * cannot ask the backend "what is this user's current WhatsApp status"
+ * on selection; it can only know the outcome of a register/activate
+ * call made THIS session. Two things follow from that:
+ *   1. Switching the selected user must show a neutral "not loaded"
+ *      state, never a leftover ACTIVE/PENDING badge -- this was already
+ *      true synchronously (handleSelectUser clears `result`), but NOT
+ *      against a register/activate response that was still in flight
+ *      for the PREVIOUSLY selected user and resolves after the switch.
+ *   2. Every stored result is tagged with the user_id the request was
+ *      actually made for (`result.userId`), and every render of that
+ *      result is gated on `result.userId === selectedUserId` -- a
+ *      stale response for user A can still finish and get stored, but
+ *      it can never be displayed while user B is selected (nor can its
+ *      hash be handed to Activate for the wrong user), matching the
+ *      "result.userId === selectedUserId" guard.
  */
 function friendlyErrorMessage(error) {
   return error?.message || "Admin Users API unavailable";
@@ -49,7 +68,10 @@ export default function WhatsAppSenderAccessView() {
   const [actionError, setActionError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [activating, setActivating] = useState(false);
-  const [registration, setRegistration] = useState(null);
+  // { userId, sender_e164_sha256, status } | null -- always tagged with
+  // the user_id the request was made for; see the state-safety note
+  // above for why every render of this must check result.userId.
+  const [result, setResult] = useState(null);
 
   useEffect(() => {
     setUsersLoading(true);
@@ -61,10 +83,15 @@ export default function WhatsAppSenderAccessView() {
   }, []);
 
   const selectedUser = users.find((u) => u.id === selectedUserId) ?? null;
+  // Only ever non-null when it was produced BY and FOR the currently
+  // selected user -- a stale response for a previously selected user
+  // may still be sitting in `result`, but it never satisfies this.
+  const resultForSelectedUser = result && result.userId === selectedUserId ? result : null;
 
   function handleSelectUser(userId) {
     setSelectedUserId(userId);
-    setRegistration(null);
+    setPhoneInput("");
+    setResult(null);
     setActionError(null);
     setValidationError(null);
   }
@@ -72,10 +99,11 @@ export default function WhatsAppSenderAccessView() {
   async function handleRegisterSubmit(event) {
     event.preventDefault();
     const phoneNumber = phoneInput.trim();
+    const requestUserId = selectedUserId;
     setValidationError(null);
     setActionError(null);
 
-    if (!selectedUserId) {
+    if (!requestUserId) {
       setValidationError("Select a user first.");
       return;
     }
@@ -86,8 +114,11 @@ export default function WhatsAppSenderAccessView() {
 
     setSubmitting(true);
     try {
-      const response = await registerWhatsAppNumber(selectedUserId, { phoneNumber });
-      setRegistration(response?.data ?? null);
+      const response = await registerWhatsAppNumber(requestUserId, { phoneNumber });
+      // Tagged with the user this request was actually for -- if the
+      // admin has since selected a different user, resultForSelectedUser
+      // above will simply never match this entry.
+      setResult({ ...(response?.data ?? {}), userId: requestUserId });
     } catch (error) {
       setActionError(friendlyErrorMessage(error));
     } finally {
@@ -100,12 +131,16 @@ export default function WhatsAppSenderAccessView() {
   }
 
   async function handleActivate() {
-    if (!selectedUserId || !registration?.sender_e164_sha256) return;
+    // Only ever acts on the CURRENTLY selected user's own result -- the
+    // sender_e164_sha256 used here can never belong to a different user,
+    // because resultForSelectedUser is already gated above.
+    if (!resultForSelectedUser?.sender_e164_sha256) return;
+    const requestUserId = selectedUserId;
     setActionError(null);
     setActivating(true);
     try {
-      const response = await activateWhatsAppNumber(selectedUserId, registration.sender_e164_sha256);
-      setRegistration(response?.data ?? registration);
+      const response = await activateWhatsAppNumber(requestUserId, resultForSelectedUser.sender_e164_sha256);
+      setResult({ ...(response?.data ?? resultForSelectedUser), userId: requestUserId });
     } catch (error) {
       setActionError(friendlyErrorMessage(error));
     } finally {
@@ -200,21 +235,34 @@ export default function WhatsAppSenderAccessView() {
         </form>
       )}
 
-      {registration && (
-        <div data-testid="whatsapp-sender-registration-summary">
-          <p>
-            Identifier: <span data-testid="whatsapp-sender-redacted-id">REDACTED</span>
-          </p>
-          <p>
-            Status:{" "}
-            <Badge variant={registration.status === "ACTIVE" ? "success" : "warning"}>
-              {registration.status ?? "—"}
-            </Badge>
-          </p>
-          {registration.status !== "ACTIVE" && (
-            <Button onClick={handleActivate} disabled={activating}>
-              {activating ? "Activating…" : "Activate Number"}
-            </Button>
+      {selectedUser && (
+        <div data-testid="whatsapp-sender-status-card" style={{ marginTop: "var(--space-4)" }}>
+          {resultForSelectedUser ? (
+            <>
+              <p>
+                Identifier: <span data-testid="whatsapp-sender-redacted-id">REDACTED</span>
+              </p>
+              <p>
+                Status:{" "}
+                <Badge variant={resultForSelectedUser.status === "ACTIVE" ? "success" : "warning"}>
+                  {resultForSelectedUser.status ?? "—"}
+                </Badge>
+              </p>
+              {resultForSelectedUser.status !== "ACTIVE" && (
+                <Button onClick={handleActivate} disabled={activating}>
+                  {activating ? "Activating…" : "Activate Number"}
+                </Button>
+              )}
+            </>
+          ) : (
+            // Honest neutral state -- there is no backend lookup to ask
+            // "is this user already registered/active", so this never
+            // claims NOT_REGISTERED, and it is re-shown every time the
+            // selected user changes (never carries a previous user's
+            // result across a switch, see resultForSelectedUser above).
+            <p className="confidence-label" data-testid="whatsapp-sender-status-neutral">
+              Status not loaded for this user.
+            </p>
           )}
         </div>
       )}
