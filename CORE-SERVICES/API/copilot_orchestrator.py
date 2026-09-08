@@ -73,6 +73,7 @@ TOOL_CATALOG: dict[str, str] = {
     "recommendation": "Deterministic, rule-based engineering recommendations for this pump.",
     "condition_monitoring": "Latest Condition Monitoring reading/finding for this pump.",
     "seal_leak_diagnostic": "Evidence-based mechanical seal leak diagnosis for one tag-locked pump.",
+    "asset_directory": "Authoritative Area, Maintenance Area (MA), and directory information for the pump.",
 }
 
 _VALID_KINDS = (FACT, INTERPRETATION, RECOMMENDATION, DATA_GAP)
@@ -162,7 +163,7 @@ def orchestrate_copilot(
             handler = TOOL_HANDLERS.get(name)
             if handler is None:
                 continue  # not in the whitelist -- silently dropped, never executed
-            results[name] = handler(tag, **service_deps)
+            results[name] = handler(tag, scope=scope, **service_deps)
 
         if not results:
             return ask_copilot(question, tag, scope, **service_deps), []

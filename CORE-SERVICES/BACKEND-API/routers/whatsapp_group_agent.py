@@ -128,7 +128,10 @@ def receive_whatsapp_group_message(
             )
         if candidates:
             tag = _normalize_pump_tag(candidates[0]) or candidates[0]
-            _require_tag_in_scope(tag, pump_gateway, effective_scope)
+            try:
+                _require_tag_in_scope(tag, pump_gateway, effective_scope)
+            except HTTPException:
+                return f"Tag pompa {tag} tidak ditemukan."
         answer, _tools_used = orchestrate_copilot(
             question,
             tag,

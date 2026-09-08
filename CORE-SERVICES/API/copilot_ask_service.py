@@ -54,7 +54,15 @@ from .condition_monitoring_measurement_fields import (
     render_reading_lines,
 )
 from .condition_monitoring_time_range import parse_condition_monitoring_period
-from .pump_area_scope import filter_records_by_asset_scope
+from .pump_area_scope import (
+    MA_AREA_GROUPS,
+    filter_records_by_asset_scope,
+    format_area_display,
+    is_area_in_scope,
+    normalize_area_token,
+    resolve_area_ma,
+    resolve_ma_areas,
+)
 from .seal_leak_diagnostic_service import DATA_GAP as DIAGNOSTIC_DATA_GAP
 from .seal_leak_diagnostic_service import SealLeakDiagnosis
 
@@ -145,7 +153,7 @@ def _detect_intent(question: str, *, tag: str | None = None) -> str | None:
 
     is_current_or_latest = has("current", "terakhir", "latest", "terbaru", "most recent", "sekarang", r"\bnow\b")
     is_install_or_replace_wording = has(
-        "install", "pasang", "dipasang", "pemasangan", "ganti", "diganti", "replace", "replacement"
+        "install", "instalasi", "pasang", "dipasang", "pemasangan", "ganti", "diganti", "replace", "replacement"
     )
     is_fleet_question = has(r"pompa\s+mana", r"pump\s+mana", r"which\s+pump")
     is_diagnostic_question = has("kenapa", "mengapa", "analisa", "analisis", "diagnosa", "diagnose", "diagnostic", "penyebab", "cause", "why")
@@ -157,7 +165,7 @@ def _detect_intent(question: str, *, tag: str | None = None) -> str | None:
 
     if has(r"\bseal\b", r"\bsegel\b") and is_current_or_latest and not is_install_or_replace_wording:
         return "current_seal"
-    if has("install", "pasang", "dipasang", "pemasangan") or (
+    if has("install", "instalasi", "pasang", "dipasang", "pemasangan") or (
         has(r"\bseal\b", r"\bsegel\b") and has("ganti", "diganti", "replace", "replacement")
     ):
         return "installation"
@@ -217,7 +225,57 @@ def _detect_intent(question: str, *, tag: str | None = None) -> str | None:
         return "pump_history"
     if has("status", "kondisi"):
         return "pump_status"
+
+    # MWO-LTSA-ASSET-DIRECTORY-001 -- Scoped Asset Directory / Fleet Discovery.
+    # Deterministic intent routing for pump discovery by tag, Area, and Maintenance Area (MA).
+    # Checked strictly after all specific operational intents above (PM, CM, stock,
+    # current seal, installation, cmon, work orders, etc.) so no operational
+    # queries are ever hijacked into directory discovery.
+    is_ma_query = bool(re.search(r"\bma\s*\d*\b", q) or re.search(r"\bmaintenance\s+area\b", q))
+    is_area_code = bool(re.search(r"\b(hoc|hsc|hcc|utl|\bom\b|s[._\s]?pakning|spk)\b", q))
+    is_area_word = has(r"\barea\b", r"\blocation\b", r"\blokasi\b")
+    is_discovery_word = has(
+        "list", "daftar", "berapa", "hitung", "jumlah", "total", "cari", "temukan",
+        "mana", "masuk", "dimana", "di mana", "atau",
+    )
+    is_pump_word = has("pompa", "pump")
+
+    has_tag_in_text = tag is not None or bool(_PUMP_TAG_PATTERN.search(question or ""))
+    if has_tag_in_text and (is_area_word or is_ma_query or (is_area_code and has("atau", "mana", "masuk"))):
+        return "asset_directory"
+
+    if is_ma_query:
+        return "asset_directory"
+
+    if is_area_code and (is_pump_word or is_discovery_word):
+        return "asset_directory"
+
+    if is_pump_word and (has("list", "daftar", "semua") or is_area_word):
+        return "asset_directory"
+
     return None
+
+
+_PUMP_TAG_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9/-])(\d+)\s*-?\s*P\s*-?\s*(\d+)\s*([A-Z]{1,3})(?![A-Za-z0-9/-])",
+    re.IGNORECASE,
+)
+
+
+def _normalize_pump_tag(raw: str) -> str | None:
+    match = _PUMP_TAG_PATTERN.fullmatch((raw or "").strip())
+    if not match:
+        return None
+    return f"{match.group(1)}-P-{match.group(2)}{match.group(3).upper()}"
+
+
+def _extract_pump_tags(text: str) -> list[str]:
+    tags: list[str] = []
+    for m in _PUMP_TAG_PATTERN.finditer(text or ""):
+        tag = f"{m.group(1)}-P-{m.group(2)}{m.group(3).upper()}"
+        if tag not in tags:
+            tags.append(tag)
+    return tags
 
 
 # Entity extraction for a seal code mentioned near "seal"/"segel" OR
@@ -322,6 +380,33 @@ def ask_copilot(
     # tag-optional pattern): a fleet-wide question has no single asset for
     # the router to have extracted a tag from, and must not be rejected as
     # "needs a specific pump/asset" just because none was found.
+    if intent == "asset_directory" and tag is None:
+        candidates = _extract_pump_tags(question)
+        if len(candidates) > 1:
+            if language == "id":
+                return CopilotAnswer(
+                    "Saya menemukan beberapa tag pompa di pertanyaan itu. Sebutkan satu tag pompa saja dan tanyakan lagi.",
+                    DATA_GAP,
+                    (),
+                )
+            return CopilotAnswer(_MULTIPLE_TAGS_MESSAGE, DATA_GAP, ())
+        if candidates:
+            return _handle_asset_directory_find(
+                candidates[0],
+                question=question,
+                pump_gateway=pump_gateway,
+                equipment_timeline_service=equipment_timeline_service,
+                mechanical_seal_stock_repository=mechanical_seal_stock_repository,
+                scope=scope,
+                language=language,
+            )
+        return _handle_asset_directory_fleet(
+            question,
+            scope,
+            pump_gateway=pump_gateway,
+            language=language,
+        )
+
     if intent == "work_orders" and tag is None:
         return _handle_global_work_orders(
             scope, pump_gateway=pump_gateway, work_order_gateway=work_order_gateway, language=language
@@ -441,6 +526,7 @@ def ask_copilot(
     return handler(
         tag,
         question=question,
+        scope=scope,
         pump_gateway=pump_gateway,
         maintenance_history_gateway=maintenance_history_gateway,
         work_order_gateway=work_order_gateway,
@@ -2243,6 +2329,260 @@ def _handle_seal_leak_diagnostic(
     return CopilotAnswer(_render_seal_leak_diagnostic(diagnosis), kind, _diagnostic_evidence(diagnosis))
 
 
+def _handle_asset_directory_find(
+    tag: str,
+    *,
+    pump_gateway,
+    equipment_timeline_service=None,
+    mechanical_seal_stock_repository=None,
+    scope: frozenset[str] | None = None,
+    language: str = "id",
+    **_: Any,
+) -> CopilotAnswer:
+    norm_tag = _normalize_pump_tag(tag) or tag
+    result = mis.get_pump_status(norm_tag, pump_gateway=pump_gateway)
+    pump = result.get("data") if (isinstance(result, dict) and result.get("success")) else None
+
+    if not pump or (scope is not None and not is_area_in_scope(pump.get("area"), scope)):
+        if language == "id":
+            return CopilotAnswer(f"Tag pompa {norm_tag} tidak ditemukan.", DATA_GAP, ())
+        return CopilotAnswer(f"Pump {norm_tag} was not found.", DATA_GAP, ())
+
+    area = pump.get("area")
+    area_display = format_area_display(area)
+    ma = resolve_area_ma(area) or "N/A"
+    status = pump.get("status")
+    status_display = str(status).capitalize() if status else "N/A"
+
+    # Current seal (strictly via equipment_timeline_service.build_current_seal)
+    current_seal_code = "N/A"
+    if equipment_timeline_service is not None:
+        try:
+            cs = equipment_timeline_service.build_current_seal(norm_tag)
+            if cs and cs.seal_code:
+                current_seal_code = cs.seal_code
+        except Exception:
+            pass
+
+    # Seal stock (via mechanical_seal_stock_repository)
+    stock_display = "N/A"
+    if mechanical_seal_stock_repository is not None:
+        try:
+            resp = mechanical_seal_stock_repository.list_pools(limit=200)
+            if isinstance(resp, dict) and resp.get("success"):
+                rows = mis.flatten_stock_v1_fleet_rows(resp.get("data") or [])
+                matches = [r for r in rows if r.get("equipment_tag") == norm_tag]
+                if matches:
+                    total_qty = sum(
+                        int(r["quantity_available"])
+                        for r in matches
+                        if r.get("quantity_available") is not None
+                    )
+                    stock_display = str(total_qty)
+        except Exception:
+            pass
+
+    lines = [
+        norm_tag,
+        f"Area: {area_display}",
+        f"MA: {ma}",
+        f"Status: {status_display}",
+        f"Current Seal: {current_seal_code}",
+        f"Seal Stock: {stock_display}",
+    ]
+    answer = "\n".join(lines)
+    evidence = (
+        _evidence("PumpGateway", norm_tag, "area", area),
+        _evidence("PumpGateway", norm_tag, "ma", ma),
+        _evidence("PumpGateway", norm_tag, "status", status),
+    )
+    return CopilotAnswer(answer, FACT, evidence)
+
+
+def _handle_asset_directory_fleet(
+    question: str,
+    scope: frozenset[str] | None,
+    *,
+    pump_gateway,
+    language: str = "id",
+    **_: Any,
+) -> CopilotAnswer:
+    q = (question or "").lower()
+
+    # 1. Target MA extraction & validation
+    target_ma: str | None = None
+    ma_match = re.search(r"\bma\s*([0-9]+)\b", q)
+    if not ma_match:
+        ma_match = re.search(r"\bmaintenance\s+area\s*([0-9]+)\b", q)
+    if ma_match:
+        candidate_ma = f"MA{ma_match.group(1)}"
+        if candidate_ma in MA_AREA_GROUPS:
+            target_ma = candidate_ma
+        else:
+            if language == "id":
+                return CopilotAnswer(
+                    f"Maintenance Area {candidate_ma} tidak dikenali. Pilihan yang tersedia: MA1, MA2, MA3, MA4.",
+                    DATA_GAP,
+                    (),
+                )
+            return CopilotAnswer(
+                f"Maintenance Area {candidate_ma} is unrecognized. Available options: MA1, MA2, MA3, MA4.",
+                DATA_GAP,
+                (),
+            )
+
+    # 2. Target Area extraction & normalization
+    target_area: str | None = None
+    area_match = re.search(r"\b(s[._\s]?pakning|spk|hoc|hsc|hcc|utl|\bom\b)\b", q)
+    if area_match:
+        target_area = normalize_area_token(area_match.group(1))
+
+    # 3. Intersection validation for MA + Area
+    if target_ma and target_area:
+        ma_areas = resolve_ma_areas(target_ma) or frozenset()
+        if target_area not in ma_areas:
+            if language == "id":
+                return CopilotAnswer(
+                    f"Area {format_area_display(target_area)} bukan bagian dari {target_ma}.",
+                    DATA_GAP,
+                    (),
+                )
+            return CopilotAnswer(
+                f"Area {format_area_display(target_area)} is not part of {target_ma}.",
+                DATA_GAP,
+                (),
+            )
+
+    # 4. Resolve filter area set
+    if target_ma and target_area:
+        allowed_filter_areas: frozenset[str] | None = frozenset({target_area})
+    elif target_ma:
+        allowed_filter_areas = resolve_ma_areas(target_ma)
+    elif target_area:
+        allowed_filter_areas = frozenset({target_area})
+    else:
+        allowed_filter_areas = None
+
+    # 5. Fetch pump records
+    try:
+        resp = pump_gateway.list_pumps()
+        all_pumps = resp.get("data") or [] if (isinstance(resp, dict) and resp.get("success")) else []
+    except Exception:
+        all_pumps = []
+
+    # 6. Apply effective authorization scope (fail closed)
+    scoped_pumps = [p for p in all_pumps if is_area_in_scope(p.get("area"), scope)]
+
+    # 7. Apply directory area filter
+    if allowed_filter_areas is not None:
+        matching_pumps = [p for p in scoped_pumps if p.get("area") in allowed_filter_areas]
+    else:
+        matching_pumps = scoped_pumps
+
+    # 8. Check for COUNT operation
+    is_count = bool(re.search(r"\b(berapa|hitung|jumlah|total|count)\b", q))
+    if is_count:
+        count = len(matching_pumps)
+        if language == "id":
+            if target_ma and target_area:
+                msg = f"Terdapat {count} pompa di {format_area_display(target_area)} ({target_ma})."
+            elif target_ma:
+                msg = f"Terdapat {count} pompa di {target_ma}."
+            elif target_area:
+                msg = f"Terdapat {count} pompa di {format_area_display(target_area)}."
+            else:
+                msg = f"Terdapat {count} pompa terdaftar."
+        else:
+            if target_ma and target_area:
+                msg = f"There are {count} pumps in {format_area_display(target_area)} ({target_ma})."
+            elif target_ma:
+                msg = f"There are {count} pumps in {target_ma}."
+            elif target_area:
+                msg = f"There are {count} pumps in {format_area_display(target_area)}."
+            else:
+                msg = f"There are {count} pumps registered."
+        evidence = (_evidence("PumpGateway", target_ma or target_area or "fleet", "count", count),)
+        return CopilotAnswer(msg, FACT, evidence)
+
+    # 9. LIST operation
+    if not matching_pumps:
+        if language == "id":
+            return CopilotAnswer("Tidak ada pompa yang ditemukan untuk filter tersebut.", DATA_GAP, ())
+        return CopilotAnswer("No pumps found for the specified filter.", DATA_GAP, ())
+
+    total_count = len(matching_pumps)
+    if target_ma and target_area:
+        title = f"Pompa {target_ma} {format_area_display(target_area)} — {total_count}"
+    elif target_ma:
+        title = f"Pompa {target_ma} — {total_count}"
+    elif target_area:
+        title = f"Pompa {format_area_display(target_area)} — {total_count}"
+    else:
+        title = f"Daftar Pompa — {total_count}"
+
+    # Group pumps by area
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for p in matching_pumps:
+        a = p.get("area") or "UNKNOWN"
+        grouped.setdefault(a, []).append(p)
+
+    for a in grouped:
+        grouped[a].sort(key=lambda x: str(x.get("tag_number") or ""))
+
+    canonical_order = ["HOC", "HSC", "S_PAKNING", "HCC", "UTL", "OM"]
+    sorted_areas = sorted(
+        grouped.keys(),
+        key=lambda x: (canonical_order.index(x) if x in canonical_order else 999, x),
+    )
+
+    MAX_DISPLAY = 25
+    lines: list[str] = [title, ""]
+    displayed = 0
+    truncated = False
+
+    if len(sorted_areas) == 1 and target_area:
+        area_pumps = grouped[sorted_areas[0]]
+        for p in area_pumps:
+            if displayed >= MAX_DISPLAY:
+                truncated = True
+                break
+            tag_num = p.get("tag_number") or "N/A"
+            lines.append(f"• {tag_num}")
+            displayed += 1
+    else:
+        for a in sorted_areas:
+            if displayed >= MAX_DISPLAY:
+                truncated = True
+                break
+            area_pumps = grouped[a]
+            area_label = format_area_display(a)
+            lines.append(f"{area_label} — {len(area_pumps)}")
+            for p in area_pumps:
+                if displayed >= MAX_DISPLAY:
+                    truncated = True
+                    break
+                tag_num = p.get("tag_number") or "N/A"
+                lines.append(f"• {tag_num}")
+                displayed += 1
+            lines.append("")
+
+    if lines and lines[-1] == "":
+        lines.pop()
+
+    if truncated:
+        lines.append("")
+        if language == "id":
+            lines.append(f"Menampilkan {displayed} dari {total_count} pompa.")
+            lines.append("Gunakan filter Area untuk mempersempit hasil.")
+        else:
+            lines.append(f"Showing {displayed} of {total_count} pumps.")
+            lines.append("Use an Area filter to narrow down results.")
+
+    answer = "\n".join(lines)
+    evidence = (_evidence("PumpGateway", target_ma or target_area or "fleet", "count", total_count),)
+    return CopilotAnswer(answer, FACT, evidence)
+
+
 # MWO-AI5R-LTSA-AI-ORCHESTRATION-001 -- exported (was module-private) so
 # copilot_orchestrator.py can expose these exact same functions as
 # AI-selectable TOOLS, without duplicating a single one of them. The
@@ -2263,6 +2603,7 @@ TOOL_HANDLERS = {
     "recommendation": _handle_recommendation,
     "condition_monitoring": _handle_condition_monitoring,
     "seal_leak_diagnostic": _handle_seal_leak_diagnostic,
+    "asset_directory": _handle_asset_directory_find,
 }
 
 

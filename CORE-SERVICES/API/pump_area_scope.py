@@ -27,11 +27,77 @@ from typing import Any
 # The six physical Area codes this MWO's own SCOPE RULES name explicitly.
 AREA_CODES: frozenset[str] = frozenset({"HOC", "HSC", "S_PAKNING", "HCC", "OM", "UTL"})
 
-# MA -> areas. Only MA2 is provable (given directly, as authoritative,
-# in this MWO's own SCOPE RULES text: "MA2 = HSC + S_PAKNING + HCC").
+# MA -> areas canonical grouping.
+# MA1 = HOC
+# MA2 = HSC + S_PAKNING + HCC
+# MA3 = UTL
+# MA4 = OM
 MA_AREA_GROUPS: dict[str, frozenset[str]] = {
+    "MA1": frozenset({"HOC"}),
     "MA2": frozenset({"HSC", "S_PAKNING", "HCC"}),
+    "MA3": frozenset({"UTL"}),
+    "MA4": frozenset({"OM"}),
 }
+
+
+def resolve_ma_areas(ma: str | None) -> frozenset[str] | None:
+    """Returns the set of physical Area codes for a Maintenance Area (MA1-MA4),
+    or None if unrecognized/blank."""
+    if not ma:
+        return None
+    normalized = ma.strip().upper()
+    return MA_AREA_GROUPS.get(normalized)
+
+
+def resolve_area_ma(area: str | None) -> str | None:
+    """Returns the Maintenance Area code ('MA1'..'MA4') for an Area code,
+    or None if unrecognized/blank."""
+    if not area:
+        return None
+    normalized = area.strip().upper()
+    for ma_key, areas in MA_AREA_GROUPS.items():
+        if normalized in areas:
+            return ma_key
+    return None
+
+
+def format_area_display(area: str | None) -> str:
+    """Returns human display string for an Area code.
+    S_PAKNING -> 'S. PAKNING'
+    Unknown/blank -> 'N/A'"""
+    if not area:
+        return "N/A"
+    normalized = area.strip().upper()
+    if normalized == "S_PAKNING":
+        return "S. PAKNING"
+    if normalized in AREA_CODES:
+        return normalized
+    return area.strip()
+
+
+_AREA_TOKEN_MAP: dict[str, str] = {
+    "HOC": "HOC",
+    "HSC": "HSC",
+    "HCC": "HCC",
+    "OM": "OM",
+    "UTL": "UTL",
+    "S_PAKNING": "S_PAKNING",
+    "S. PAKNING": "S_PAKNING",
+    "S.PAKNING": "S_PAKNING",
+    "S PAKNING": "S_PAKNING",
+    "SPAKNING": "S_PAKNING",
+    "SPK": "S_PAKNING",
+}
+
+
+def normalize_area_token(token: str | None) -> str | None:
+    """Normalizes area query tokens (including aliases like SPK or human labels
+    like S. PAKNING) to canonical stored Area code (e.g. S_PAKNING)."""
+    if not token:
+        return None
+    import re
+    cleaned = re.sub(r"\s+", " ", token.strip()).upper()
+    return _AREA_TOKEN_MAP.get(cleaned)
 
 
 def is_area_in_scope(area: str | None, scope: frozenset[str] | None) -> bool:
@@ -130,6 +196,10 @@ def filter_records_by_asset_scope(
 __all__ = [
     "AREA_CODES",
     "MA_AREA_GROUPS",
+    "resolve_ma_areas",
+    "resolve_area_ma",
+    "format_area_display",
+    "normalize_area_token",
     "is_area_in_scope",
     "filter_records_by_scope",
     "resolve_asset_area",
