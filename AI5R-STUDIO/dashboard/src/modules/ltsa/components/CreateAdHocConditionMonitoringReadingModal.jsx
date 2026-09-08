@@ -1,11 +1,49 @@
 import { useEffect, useState } from "react";
 import { Button, Modal } from "../../../design-system";
+import colors from "../../../design-system/theme/colors";
 import spacing from "../../../design-system/theme/spacing";
 import { emptyMeasurementFormValues, buildMeasurementsPayload } from "../utils/conditionMonitoringMeasurementFields";
 import ConditionMonitoringMeasurementFieldsForm, { fieldStyle, labelStyle, Field } from "./ConditionMonitoringMeasurementFieldsForm";
 import AssetSelector from "./AssetSelector";
 import { getPumps } from "../../../api/ai5rClient";
 import { mapPumpRecord } from "../utils/pumpMapping";
+
+// AI5R-CMON-UX-001 -- persistent equipment context (Gate 3): once a pump
+// is selected, its tag stays the strongest visual element on screen
+// instead of being buried in a dropdown's current value. Only ever shows
+// metadata this component actually received from the canonical pump
+// source (getPumps() -> mapPumpRecord()) -- `area`/`name` are omitted
+// entirely, never fabricated as blank/placeholder text, when a given
+// pump's record doesn't have them.
+function SelectedEquipmentCard({ pump, onChange }) {
+  return (
+    <div
+      data-testid="cmon-selected-equipment-card"
+      style={{
+        border: `1px solid ${colors.border}`,
+        borderRadius: spacing.xs,
+        padding: spacing.sm,
+        marginBottom: spacing.md,
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "flex-start",
+        gap: spacing.sm,
+      }}
+    >
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 11, color: colors.textMuted, textTransform: "uppercase", letterSpacing: 0.5 }}>
+          Selected Equipment
+        </div>
+        <div style={{ fontSize: 22, fontWeight: 700, color: colors.text, wordBreak: "break-word" }}>{pump.tag}</div>
+        {pump.name && <div style={{ fontSize: 13, color: colors.textMuted }}>{pump.name}</div>}
+        {pump.area && <div style={{ fontSize: 12, color: colors.textMuted }}>Area {pump.area}</div>}
+      </div>
+      <Button type="button" onClick={onChange}>
+        Change
+      </Button>
+    </div>
+  );
+}
 
 // MWO-LTSA-CMON-ADHOC-ENTRY-001 -- the "+ Add Reading" flow: a Condition
 // Monitoring reading with NO schedule requirement at all, for the real
@@ -25,6 +63,12 @@ export default function CreateAdHocConditionMonitoringReadingModal({ isOpen, onC
   const [pumps, setPumps] = useState([]);
   const [pumpsError, setPumpsError] = useState(null);
   const [assetCode, setAssetCode] = useState(null);
+  // AI5R-CMON-UX-001 -- when true, show the equipment selector even
+  // though a pump is already chosen (the "Change" action from the
+  // equipment card). Distinct from assetCode itself so re-selecting the
+  // SAME pump still returns to the card, and so the card/selector swap
+  // never touches already-entered measurement values.
+  const [changingEquipment, setChangingEquipment] = useState(false);
   const [readingDate, setReadingDate] = useState("");
   const [finding, setFinding] = useState("");
   const [measurements, setMeasurements] = useState(emptyMeasurementFormValues());
@@ -38,7 +82,10 @@ export default function CreateAdHocConditionMonitoringReadingModal({ isOpen, onC
       .then((records) => records.map(mapPumpRecord))
       .then((mapped) => {
         if (active) {
-          setPumps(mapped.map((pump) => ({ tag: pump.tag, name: pump.name })));
+          // Only the fields the Selected Equipment card can honestly show
+          // are kept -- never more than the canonical source provides,
+          // never less than AssetSelector itself needs (tag/name).
+          setPumps(mapped.map((pump) => ({ tag: pump.tag, name: pump.name, area: pump.area })));
         }
       })
       .catch((error) => {
@@ -51,15 +98,24 @@ export default function CreateAdHocConditionMonitoringReadingModal({ isOpen, onC
     };
   }, [isOpen]);
 
+  const selectedPump = pumps.find((pump) => pump.tag === assetCode) ?? null;
+  const showSelector = !selectedPump || changingEquipment;
+
   function setMeasurementField(name) {
     return (event) => setMeasurements((current) => ({ ...current, [name]: event.target.value }));
   }
 
   function resetForm() {
     setAssetCode(null);
+    setChangingEquipment(false);
     setReadingDate("");
     setFinding("");
     setMeasurements(emptyMeasurementFormValues());
+  }
+
+  function handleSelectPump(tag) {
+    setAssetCode(tag);
+    setChangingEquipment(false);
   }
 
   function handleSubmit(event) {
@@ -88,7 +144,18 @@ export default function CreateAdHocConditionMonitoringReadingModal({ isOpen, onC
       <form onSubmit={handleSubmit}>
         {pumpsError ? <p role="alert">{pumpsError}</p> : null}
 
-        <AssetSelector assets={pumps} selectedTag={assetCode} onSelect={setAssetCode} label="Pump" id="cmon-adhoc-pump" />
+        {showSelector ? (
+          <AssetSelector
+            assets={pumps}
+            selectedTag={assetCode}
+            onSelect={handleSelectPump}
+            label="Pump"
+            id="cmon-adhoc-pump"
+            autoFocus={changingEquipment}
+          />
+        ) : (
+          <SelectedEquipmentCard pump={selectedPump} onChange={() => setChangingEquipment(true)} />
+        )}
 
         <Field id="cmon-adhoc-reading-date" label="Reading Date">
           <input

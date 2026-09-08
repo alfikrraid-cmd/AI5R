@@ -431,6 +431,12 @@ describe("Condition Monitoring workspace page", () => {
       await screen.findByRole("button", { name: "+ Add Reading" });
       fireEvent.click(screen.getByRole("button", { name: "+ Add Reading" }));
       await screen.findByLabelText("Pump");
+      // AI5R-CMON-UX-001 -- measurement sections now default to
+      // collapsed (Gate 5), so this test's fields must be expanded
+      // first. Expanding changes nothing about entered values.
+      for (const toggle of screen.getAllByRole("button", { expanded: false })) {
+        fireEvent.click(toggle);
+      }
 
       expect(screen.getByLabelText("Mechanical Seal Temp DE")).toHaveProperty("value", "");
       expect(screen.getByLabelText("Mechanical Seal Temp NDE")).toHaveProperty("value", "");

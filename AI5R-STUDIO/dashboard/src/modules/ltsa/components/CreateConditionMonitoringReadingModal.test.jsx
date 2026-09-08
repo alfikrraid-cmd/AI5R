@@ -8,11 +8,22 @@ import CreateConditionMonitoringReadingModal from "./CreateConditionMonitoringRe
 // semantics. First dedicated test file for this modal.
 const SCHEDULES = [{ id: "CMON-SCHED-001", equipmentTag: "641-P-5" }];
 
+// AI5R-CMON-UX-001 -- measurement sections now default to collapsed
+// (Gate 5: "should NOT initially face 38 equally-prominent inputs"), so
+// every field this test suite touches must be expanded first. Expanding
+// changes nothing about entered values or the submitted payload.
+function expandAllMeasurementSections() {
+  for (const toggle of screen.getAllByRole("button", { expanded: false })) {
+    fireEvent.click(toggle);
+  }
+}
+
 function renderModal(onCreate = vi.fn()) {
   render(
     <CreateConditionMonitoringReadingModal isOpen onClose={vi.fn()} onCreate={onCreate} schedules={SCHEDULES} />
   );
   fireEvent.change(screen.getByLabelText("Schedule"), { target: { value: "CMON-SCHED-001" } });
+  expandAllMeasurementSections();
   return onCreate;
 }
 

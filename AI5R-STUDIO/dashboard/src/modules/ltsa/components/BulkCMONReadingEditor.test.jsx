@@ -98,8 +98,15 @@ describe("BulkCMONReadingEditor -- Section 12 representative UAT (10 pumps, hete
     }
     fireEvent.click(screen.getByRole("button", { name: "Clear Selection" }));
 
+    // AI5R-CMON-UX-001 -- measurement sections now default to collapsed
+    // (Gate 5), so every "Edit" open must expand them before this test's
+    // change() helper can reach a specific field. Expanding changes
+    // nothing about entered values or the submitted payload.
     function openMeasurementsFor(rowIndex) {
       fireEvent.click(within(rows[rowIndex]).getByRole("button", { name: "Edit" }));
+      for (const toggle of screen.getAllByRole("button", { expanded: false })) {
+        fireEvent.click(toggle);
+      }
     }
     function change(label, value) {
       fireEvent.change(screen.getByLabelText(label), { target: { value } });
@@ -232,6 +239,9 @@ describe("BulkCMONReadingEditor -- no implicit measurement propagation", () => {
     const rows = screen.getAllByTestId(/^bulk-cmon-row-/);
 
     fireEvent.click(within(rows[0]).getByRole("button", { name: "Edit" }));
+    for (const toggle of screen.getAllByRole("button", { expanded: false })) {
+      fireEvent.click(toggle);
+    }
     fireEvent.change(screen.getByLabelText("Mechanical Seal Temp DE"), { target: { value: "75.2" } });
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     fireEvent.change(within(rows[0]).getByLabelText(/Finding for row/), { target: { value: "Row A note" } });
@@ -245,6 +255,9 @@ describe("BulkCMONReadingEditor -- no implicit measurement propagation", () => {
     // ...but row A's measurements/Finding never leaked to row B.
     expect(within(rows[1]).getByLabelText(/Finding for row/)).toHaveValue("");
     fireEvent.click(within(rows[1]).getByRole("button", { name: "Edit" }));
+    for (const toggle of screen.getAllByRole("button", { expanded: false })) {
+      fireEvent.click(toggle);
+    }
     expect(screen.getByLabelText("Mechanical Seal Temp DE")).toHaveValue(null);
   });
 

@@ -31,6 +31,17 @@ export default function Modal({ isOpen, onClose, title, children }) {
           boxShadow: shadows.lg,
           padding: spacing.lg,
           minWidth: 320,
+          // AI5R-CMON-UX-001 -- a hard viewport-relative ceiling so no
+          // modal (this component is shared across every LTSA feature)
+          // can ever force horizontal overflow on a narrow phone; taller
+          // content scrolls vertically instead of growing past the
+          // viewport. Purely a safety ceiling -- every existing modal
+          // already renders well under 480px wide, so this changes
+          // nothing for them.
+          maxWidth: "min(480px, calc(100vw - 32px))",
+          maxHeight: "calc(100vh - 64px)",
+          overflowY: "auto",
+          boxSizing: "border-box",
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>

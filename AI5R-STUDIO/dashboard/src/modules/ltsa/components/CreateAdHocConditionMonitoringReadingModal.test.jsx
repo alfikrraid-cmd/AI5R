@@ -1,3 +1,4 @@
+import "@testing-library/jest-dom";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import CreateAdHocConditionMonitoringReadingModal from "./CreateAdHocConditionMonitoringReadingModal";
@@ -19,6 +20,21 @@ function loadDefaults() {
     { tag_number: "641-P-5", name: "Pump 641-P-5" },
     { tag_number: "418-P-1", name: "Pump 418-P-1" },
   ]);
+}
+
+function loadDefaultsWithArea() {
+  getPumps.mockResolvedValue([{ tag_number: "641-P-5", name: "Pump 641-P-5", area: "641" }]);
+}
+
+// AI5R-CMON-UX-001 -- measurement sections now default to collapsed
+// (Gate 5: "should NOT initially face 38 equally-prominent inputs"), so
+// tests reaching into specific measurement fields must expand first.
+// Expanding changes nothing about entered values or the submitted
+// payload.
+function expandAllMeasurementSections() {
+  for (const toggle of screen.getAllByRole("button", { expanded: false })) {
+    fireEvent.click(toggle);
+  }
 }
 
 describe("CreateAdHocConditionMonitoringReadingModal", () => {
@@ -60,6 +76,7 @@ describe("CreateAdHocConditionMonitoringReadingModal", () => {
     loadDefaults();
     render(<CreateAdHocConditionMonitoringReadingModal isOpen onClose={vi.fn()} onCreate={vi.fn()} />);
     await screen.findByLabelText("Pump");
+    expandAllMeasurementSections();
 
     for (const label of [
       "Mechanical Seal Temp DE", "Mechanical Seal Temp NDE",
@@ -78,6 +95,7 @@ describe("CreateAdHocConditionMonitoringReadingModal", () => {
     const onCreate = vi.fn();
     render(<CreateAdHocConditionMonitoringReadingModal isOpen onClose={vi.fn()} onCreate={onCreate} />);
     await screen.findByLabelText("Pump");
+    expandAllMeasurementSections();
 
     fireEvent.change(screen.getByLabelText("Pump"), { target: { value: "641-P-5" } });
     fireEvent.change(screen.getByLabelText("Reading Date"), { target: { value: "2026-09-06" } });
@@ -117,6 +135,7 @@ describe("CreateAdHocConditionMonitoringReadingModal", () => {
     const onCreate = vi.fn();
     render(<CreateAdHocConditionMonitoringReadingModal isOpen onClose={vi.fn()} onCreate={onCreate} />);
     await screen.findByLabelText("Pump");
+    expandAllMeasurementSections();
     fireEvent.change(screen.getByLabelText("Pump"), { target: { value: "641-P-5" } });
     fireEvent.change(screen.getByLabelText("Reading Date"), { target: { value: "2026-09-06" } });
 
@@ -136,5 +155,54 @@ describe("CreateAdHocConditionMonitoringReadingModal", () => {
 
     expect(onClose).toHaveBeenCalledOnce();
     expect(onCreate).not.toHaveBeenCalled();
+  });
+});
+
+// AI5R-CMON-UX-001, Gate 3 -- persistent equipment context card.
+describe("CreateAdHocConditionMonitoringReadingModal -- Selected Equipment card", () => {
+  it("shows the canonical tag as the primary element once a pump is selected", async () => {
+    loadDefaults();
+    render(<CreateAdHocConditionMonitoringReadingModal isOpen onClose={vi.fn()} onCreate={vi.fn()} />);
+    await screen.findByLabelText("Pump");
+
+    fireEvent.change(screen.getByLabelText("Pump"), { target: { value: "641-P-5" } });
+
+    const card = screen.getByTestId("cmon-selected-equipment-card");
+    expect(card.textContent).toContain("641-P-5");
+    expect(screen.queryByLabelText("Pump")).toBeNull(); // selector replaced by the card
+  });
+
+  it("displays available canonical metadata (area) when the pump record has it", async () => {
+    loadDefaultsWithArea();
+    render(<CreateAdHocConditionMonitoringReadingModal isOpen onClose={vi.fn()} onCreate={vi.fn()} />);
+    await screen.findByLabelText("Pump");
+
+    fireEvent.change(screen.getByLabelText("Pump"), { target: { value: "641-P-5" } });
+
+    expect(screen.getByTestId("cmon-selected-equipment-card").textContent).toContain("641");
+  });
+
+  it("never fabricates metadata the canonical pump record does not have", async () => {
+    loadDefaults(); // no `area` field on either record
+    render(<CreateAdHocConditionMonitoringReadingModal isOpen onClose={vi.fn()} onCreate={vi.fn()} />);
+    await screen.findByLabelText("Pump");
+
+    fireEvent.change(screen.getByLabelText("Pump"), { target: { value: "641-P-5" } });
+
+    expect(screen.getByTestId("cmon-selected-equipment-card").textContent).not.toContain("Area");
+  });
+
+  it("Change returns to the searchable selector without losing entered measurement values", async () => {
+    loadDefaults();
+    render(<CreateAdHocConditionMonitoringReadingModal isOpen onClose={vi.fn()} onCreate={vi.fn()} />);
+    await screen.findByLabelText("Pump");
+    fireEvent.change(screen.getByLabelText("Pump"), { target: { value: "641-P-5" } });
+    expandAllMeasurementSections();
+    fireEvent.change(screen.getByLabelText("Vertical Vibration DE"), { target: { value: "4.2" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Change" }));
+
+    expect(await screen.findByLabelText("Pump")).toBeTruthy();
+    expect(screen.getByLabelText("Vertical Vibration DE")).toHaveValue(4.2);
   });
 });
