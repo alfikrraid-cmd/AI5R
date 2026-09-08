@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button, Modal } from "../../../design-system";
 import colors from "../../../design-system/theme/colors";
 import spacing from "../../../design-system/theme/spacing";
@@ -59,7 +59,7 @@ function SelectedEquipmentCard({ pump, onChange }) {
 // created-by field is ever shown -- those are entirely server-controlled
 // (routers/condition_monitoring.py's create_ad_hoc_ltsa_condition_
 // monitoring_reading, MANUAL provenance always hardcoded server-side).
-export default function CreateAdHocConditionMonitoringReadingModal({ isOpen, onClose, onCreate }) {
+export default function CreateAdHocConditionMonitoringReadingModal({ isOpen, onClose, onCreate, onSaved }) {
   const [pumps, setPumps] = useState([]);
   const [pumpsError, setPumpsError] = useState(null);
   const [assetCode, setAssetCode] = useState(null);
@@ -72,6 +72,24 @@ export default function CreateAdHocConditionMonitoringReadingModal({ isOpen, onC
   const [readingDate, setReadingDate] = useState("");
   const [finding, setFinding] = useState("");
   const [measurements, setMeasurements] = useState(emptyMeasurementFormValues());
+  // AI5R-CMON-UX-PHASE1B -- pending state for the two explicit save
+  // actions below. `savingRef` (checked/set synchronously, before any
+  // React re-render) is the actual double-submit guard; `isSaving` only
+  // drives the disabled UI, since state updates are not synchronous.
+  const [isSaving, setIsSaving] = useState(false);
+  const savingRef = useRef(false);
+  const formRef = useRef(null);
+  // Bumped after a successful Save & Add Another so a focus effect can
+  // move focus into the (now-cleared) measurement form without having to
+  // reach into ConditionMonitoringMeasurementFieldsForm's own state.
+  const [addAnotherFocusToken, setAddAnotherFocusToken] = useState(0);
+
+  useEffect(() => {
+    if (addAnotherFocusToken === 0) {
+      return;
+    }
+    formRef.current?.querySelector("[aria-expanded]")?.focus();
+  }, [addAnotherFocusToken]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -118,20 +136,55 @@ export default function CreateAdHocConditionMonitoringReadingModal({ isOpen, onC
     setChangingEquipment(false);
   }
 
-  function handleSubmit(event) {
-    event.preventDefault();
-
-    if (!assetCode || !readingDate) {
+  // AI5R-CMON-UX-PHASE1B -- the one place either save action reaches the
+  // canonical create call. `onCreate` (ConditionMonitoring.jsx's
+  // handleCreateAdHocReading) stays the ONLY place that performs the real
+  // API request and returns the created record on success / rejects on
+  // failure; this modal never guesses at success, and never resets any
+  // entered value until that promise has actually resolved.
+  async function submit(addAnother) {
+    if (!assetCode || !readingDate || savingRef.current) {
       return;
     }
 
-    onCreate({
-      assetCode,
-      readingDate,
-      finding: finding.trim() ? finding.trim() : null,
-      measurements: buildMeasurementsPayload(measurements),
-    });
-    resetForm();
+    savingRef.current = true;
+    setIsSaving(true);
+    try {
+      const created = await onCreate({
+        assetCode,
+        readingDate,
+        finding: finding.trim() ? finding.trim() : null,
+        measurements: buildMeasurementsPayload(measurements),
+      });
+
+      if (addAnother) {
+        // Save & Add Another: keep the pump, equipment card, and reading
+        // date -- only the per-reading fields are cleared.
+        setFinding("");
+        setMeasurements(emptyMeasurementFormValues());
+        setAddAnotherFocusToken((token) => token + 1);
+      } else {
+        resetForm();
+        onSaved?.(created);
+      }
+    } catch {
+      // Failure is already surfaced through the parent's existing error
+      // path (createError, via onCreate's rejection); this modal's job on
+      // failure is only to change nothing -- pump, date, measurements and
+      // notes all stay exactly as entered, and the modal stays open.
+    } finally {
+      savingRef.current = false;
+      setIsSaving(false);
+    }
+  }
+
+  function handleSubmit(event) {
+    event.preventDefault();
+    submit(false);
+  }
+
+  function handleSaveAndAddAnother() {
+    submit(true);
   }
 
   function handleClose() {
@@ -141,7 +194,7 @@ export default function CreateAdHocConditionMonitoringReadingModal({ isOpen, onC
 
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title="Add Condition Monitoring Reading">
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit} ref={formRef}>
         {pumpsError ? <p role="alert">{pumpsError}</p> : null}
 
         {showSelector ? (
@@ -183,8 +236,11 @@ export default function CreateAdHocConditionMonitoringReadingModal({ isOpen, onC
           <Button type="button" onClick={handleClose}>
             Cancel
           </Button>
-          <Button type="submit" disabled={!assetCode || !readingDate}>
-            Save Draft
+          <Button type="button" onClick={handleSaveAndAddAnother} disabled={!assetCode || !readingDate || isSaving}>
+            Save & Add Another
+          </Button>
+          <Button type="submit" disabled={!assetCode || !readingDate || isSaving}>
+            Save Reading
           </Button>
         </div>
       </form>

@@ -58,18 +58,18 @@ describe("CreateAdHocConditionMonitoringReadingModal", () => {
     expect(await screen.findByRole("option", { name: "641-P-5 — Pump 641-P-5" })).toBeTruthy();
   });
 
-  it("Save Draft is disabled until both pump and reading date are set", async () => {
+  it("Save Reading is disabled until both pump and reading date are set", async () => {
     loadDefaults();
     render(<CreateAdHocConditionMonitoringReadingModal isOpen onClose={vi.fn()} onCreate={vi.fn()} />);
     await screen.findByLabelText("Pump");
 
-    expect(screen.getByRole("button", { name: "Save Draft" })).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "Save Reading" })).toHaveProperty("disabled", true);
 
     fireEvent.change(screen.getByLabelText("Pump"), { target: { value: "641-P-5" } });
-    expect(screen.getByRole("button", { name: "Save Draft" })).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "Save Reading" })).toHaveProperty("disabled", true);
 
     fireEvent.change(screen.getByLabelText("Reading Date"), { target: { value: "2026-09-06" } });
-    expect(screen.getByRole("button", { name: "Save Draft" })).toHaveProperty("disabled", false);
+    expect(screen.getByRole("button", { name: "Save Reading" })).toHaveProperty("disabled", false);
   });
 
   it("all measurement fields start blank -- no auto-fill, no history/ConMon-based defaults", async () => {
@@ -107,7 +107,7 @@ describe("CreateAdHocConditionMonitoringReadingModal", () => {
     fireEvent.change(screen.getByLabelText("Mechanical Seal Leak DE"), { target: { value: "false" } });
     fireEvent.change(screen.getByLabelText("Finding / Notes"), { target: { value: "  routine check  " } });
 
-    fireEvent.click(screen.getByRole("button", { name: "Save Draft" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save Reading" }));
 
     expect(onCreate).toHaveBeenCalledTimes(1);
     const payload = onCreate.mock.calls[0][0];
@@ -139,7 +139,7 @@ describe("CreateAdHocConditionMonitoringReadingModal", () => {
     fireEvent.change(screen.getByLabelText("Pump"), { target: { value: "641-P-5" } });
     fireEvent.change(screen.getByLabelText("Reading Date"), { target: { value: "2026-09-06" } });
 
-    fireEvent.click(screen.getByRole("button", { name: "Save Draft" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save Reading" }));
 
     expect(onCreate.mock.calls[0][0].finding).toBeNull();
   });
@@ -204,5 +204,215 @@ describe("CreateAdHocConditionMonitoringReadingModal -- Selected Equipment card"
 
     expect(await screen.findByLabelText("Pump")).toBeTruthy();
     expect(screen.getByLabelText("Vertical Vibration DE")).toHaveValue(4.2);
+  });
+});
+
+// AI5R-CMON-UX-PHASE1B -- Save Reading / Save & Add Another contract.
+// `onCreate` is the only place a real create request happens; these tests
+// drive it with a controllable (deferred) promise so pending/success/
+// failure timing can be asserted precisely, instead of assuming it
+// resolves synchronously.
+function deferredPromise() {
+  let resolve;
+  let reject;
+  const promise = new Promise((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+async function fillMinimalValidForm() {
+  await screen.findByLabelText("Pump");
+  fireEvent.change(screen.getByLabelText("Pump"), { target: { value: "641-P-5" } });
+  fireEvent.change(screen.getByLabelText("Reading Date"), { target: { value: "2026-09-06" } });
+}
+
+describe("CreateAdHocConditionMonitoringReadingModal -- Save Reading / Save & Add Another contract", () => {
+  it("Save Reading sends exactly one request and calls onSaved with the created record on success", async () => {
+    loadDefaults();
+    const { promise, resolve } = deferredPromise();
+    const onCreate = vi.fn().mockReturnValue(promise);
+    const onSaved = vi.fn();
+    render(<CreateAdHocConditionMonitoringReadingModal isOpen onClose={vi.fn()} onCreate={onCreate} onSaved={onSaved} />);
+    await fillMinimalValidForm();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save Reading" }));
+    expect(onCreate).toHaveBeenCalledTimes(1);
+    expect(onSaved).not.toHaveBeenCalled();
+
+    resolve({ id: "CMONR-1" });
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith({ id: "CMONR-1" }));
+    expect(onCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it("Save & Add Another sends exactly one request, never calls onSaved, and keeps pump/date but clears measurements and notes only after success", async () => {
+    loadDefaults();
+    const { promise, resolve } = deferredPromise();
+    const onCreate = vi.fn().mockReturnValue(promise);
+    const onSaved = vi.fn();
+    render(<CreateAdHocConditionMonitoringReadingModal isOpen onClose={vi.fn()} onCreate={onCreate} onSaved={onSaved} />);
+    await fillMinimalValidForm();
+    expandAllMeasurementSections();
+    fireEvent.change(screen.getByLabelText("Mechanical Seal Temp DE"), { target: { value: "75.2" } });
+    fireEvent.change(screen.getByLabelText("Finding / Notes"), { target: { value: "routine check" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save & Add Another" }));
+
+    expect(onCreate).toHaveBeenCalledTimes(1);
+    // still pending -- nothing cleared yet
+    expect(screen.getByLabelText("Mechanical Seal Temp DE")).toHaveValue(75.2);
+    expect(screen.getByLabelText("Finding / Notes")).toHaveValue("routine check");
+    expect(screen.getByTestId("cmon-selected-equipment-card").textContent).toContain("641-P-5");
+
+    resolve({ id: "CMONR-1" });
+    await waitFor(() => expect(screen.getByLabelText("Mechanical Seal Temp DE")).toHaveValue(null));
+    expect(screen.getByLabelText("Finding / Notes")).toHaveValue("");
+    // pump, equipment card, and reading date all preserved
+    expect(screen.getByTestId("cmon-selected-equipment-card").textContent).toContain("641-P-5");
+    expect(screen.getByLabelText("Reading Date")).toHaveValue("2026-09-06");
+    // modal never asked to close/navigate for this action
+    expect(onSaved).not.toHaveBeenCalled();
+    expect(onCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it("a rejected Save Reading preserves every entered value and does not call onSaved", async () => {
+    loadDefaults();
+    const onCreate = vi.fn().mockRejectedValue(new Error("boom"));
+    const onSaved = vi.fn();
+    const onClose = vi.fn();
+    render(<CreateAdHocConditionMonitoringReadingModal isOpen onClose={onClose} onCreate={onCreate} onSaved={onSaved} />);
+    await fillMinimalValidForm();
+    expandAllMeasurementSections();
+    fireEvent.change(screen.getByLabelText("Mechanical Seal Temp DE"), { target: { value: "75.2" } });
+    fireEvent.change(screen.getByLabelText("Finding / Notes"), { target: { value: "routine check" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save Reading" }));
+    await waitFor(() => expect(onCreate).toHaveBeenCalledTimes(1));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save Reading" })).toHaveProperty("disabled", false));
+    expect(screen.getByTestId("cmon-selected-equipment-card").textContent).toContain("641-P-5");
+    expect(screen.getByLabelText("Reading Date")).toHaveValue("2026-09-06");
+    expect(screen.getByLabelText("Mechanical Seal Temp DE")).toHaveValue(75.2);
+    expect(screen.getByLabelText("Finding / Notes")).toHaveValue("routine check");
+    expect(onSaved).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("a rejected Save & Add Another preserves every entered value and does not call onSaved", async () => {
+    loadDefaults();
+    const onCreate = vi.fn().mockRejectedValue(new Error("boom"));
+    const onSaved = vi.fn();
+    render(<CreateAdHocConditionMonitoringReadingModal isOpen onClose={vi.fn()} onCreate={onCreate} onSaved={onSaved} />);
+    await fillMinimalValidForm();
+    expandAllMeasurementSections();
+    fireEvent.change(screen.getByLabelText("Mechanical Seal Temp DE"), { target: { value: "75.2" } });
+    fireEvent.change(screen.getByLabelText("Finding / Notes"), { target: { value: "routine check" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save & Add Another" }));
+    await waitFor(() => expect(onCreate).toHaveBeenCalledTimes(1));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save & Add Another" })).toHaveProperty("disabled", false));
+    expect(screen.getByTestId("cmon-selected-equipment-card").textContent).toContain("641-P-5");
+    expect(screen.getByLabelText("Reading Date")).toHaveValue("2026-09-06");
+    expect(screen.getByLabelText("Mechanical Seal Temp DE")).toHaveValue(75.2);
+    expect(screen.getByLabelText("Finding / Notes")).toHaveValue("routine check");
+    expect(onSaved).not.toHaveBeenCalled();
+  });
+
+  it("rapid double-click on Save Reading produces exactly one request, and both actions are disabled while pending", async () => {
+    loadDefaults();
+    const { promise, resolve } = deferredPromise();
+    const onCreate = vi.fn().mockReturnValue(promise);
+    render(<CreateAdHocConditionMonitoringReadingModal isOpen onClose={vi.fn()} onCreate={onCreate} onSaved={vi.fn()} />);
+    await fillMinimalValidForm();
+
+    const saveButton = screen.getByRole("button", { name: "Save Reading" });
+    fireEvent.click(saveButton);
+    fireEvent.click(saveButton);
+    fireEvent.click(saveButton);
+
+    expect(onCreate).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Save Reading" })).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "Save & Add Another" })).toHaveProperty("disabled", true);
+
+    // Save Reading's success path resets the form (pump/date included),
+    // so the buttons correctly stay disabled afterwards -- for "nothing
+    // entered" rather than "still pending". The pump selector reappearing
+    // is what proves the pending state actually resolved and only one
+    // request was ever in flight.
+    resolve({ id: "CMONR-1" });
+    await waitFor(() => expect(screen.getByLabelText("Pump")).toBeTruthy());
+    expect(onCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it("rapid double-click on Save & Add Another produces exactly one request, and both actions are disabled while pending", async () => {
+    loadDefaults();
+    const { promise, resolve } = deferredPromise();
+    const onCreate = vi.fn().mockReturnValue(promise);
+    render(<CreateAdHocConditionMonitoringReadingModal isOpen onClose={vi.fn()} onCreate={onCreate} onSaved={vi.fn()} />);
+    await fillMinimalValidForm();
+
+    const addAnotherButton = screen.getByRole("button", { name: "Save & Add Another" });
+    fireEvent.click(addAnotherButton);
+    fireEvent.click(addAnotherButton);
+
+    expect(onCreate).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Save Reading" })).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "Save & Add Another" })).toHaveProperty("disabled", true);
+
+    resolve({ id: "CMONR-1" });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save & Add Another" })).toHaveProperty("disabled", false));
+  });
+
+  it("clicking Save & Add Another while Save Reading is still pending produces exactly one request, then completes as a normal Save", async () => {
+    loadDefaults();
+    const { promise, resolve } = deferredPromise();
+    const onCreate = vi.fn().mockReturnValue(promise);
+    const onSaved = vi.fn();
+    render(<CreateAdHocConditionMonitoringReadingModal isOpen onClose={vi.fn()} onCreate={onCreate} onSaved={onSaved} />);
+    await fillMinimalValidForm();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save Reading" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save & Add Another" }));
+
+    expect(onCreate).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Save Reading" })).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "Save & Add Another" })).toHaveProperty("disabled", true);
+
+    resolve({ id: "CMONR-1" });
+    // Whichever click actually started the request (Save Reading), that
+    // action's own success behavior is what completes -- the second,
+    // ignored click never turns this into a Save & Add Another outcome.
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith({ id: "CMONR-1" }));
+    expect(onSaved).toHaveBeenCalledTimes(1);
+    expect(onCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it("clicking Save Reading while Save & Add Another is still pending produces exactly one request, then completes as a normal Save & Add Another", async () => {
+    loadDefaults();
+    const { promise, resolve } = deferredPromise();
+    const onCreate = vi.fn().mockReturnValue(promise);
+    const onSaved = vi.fn();
+    render(<CreateAdHocConditionMonitoringReadingModal isOpen onClose={vi.fn()} onCreate={onCreate} onSaved={onSaved} />);
+    await fillMinimalValidForm();
+    expandAllMeasurementSections();
+    fireEvent.change(screen.getByLabelText("Mechanical Seal Temp DE"), { target: { value: "75.2" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save & Add Another" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save Reading" }));
+
+    expect(onCreate).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Save Reading" })).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "Save & Add Another" })).toHaveProperty("disabled", true);
+
+    resolve({ id: "CMONR-1" });
+    // The Save & Add Another click actually started the request, so its
+    // own contract completes -- the modal stays open, pump preserved,
+    // measurements cleared, never treated as a normal Save.
+    await waitFor(() => expect(screen.getByLabelText("Mechanical Seal Temp DE")).toHaveValue(null));
+    expect(onSaved).not.toHaveBeenCalled();
+    expect(screen.getByTestId("cmon-selected-equipment-card").textContent).toContain("641-P-5");
+    expect(onCreate).toHaveBeenCalledTimes(1);
   });
 });

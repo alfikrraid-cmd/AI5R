@@ -318,6 +318,15 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
   // payload exactly. Never touches `schedules` or the schedule-required
   // create path -- that flow (handleCreateReading, isCreateModalOpen)
   // stays completely unmodified.
+  //
+  // AI5R-CMON-UX-PHASE1B -- this stays the ONLY place performing the real
+  // create call, for both the modal's "Save Reading" and "Save & Add
+  // Another" actions. It returns the created (mapped) record on success so
+  // the modal can decide what happens next, and re-throws on failure
+  // (after recording it in createError) rather than converting a failed
+  // request into a false success -- closing/selecting/navigating on
+  // success is no longer this function's decision; see
+  // handleAdHocReadingSaved below, invoked only for "Save Reading".
   async function handleCreateAdHocReading(formValues) {
     setCreateError(null);
     try {
@@ -329,13 +338,22 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
       });
       const newReading = mapConditionMonitoringReadingRecord(result.data);
       setReadings((current) => [...current, newReading]);
-      setIsAdHocCreateModalOpen(false);
-      setView("readings");
-      setSelectedReadingId(newReading.id);
-      setSuccessMessage(`Condition Monitoring reading ${newReading.id} created (DRAFT).`);
+      return newReading;
     } catch (err) {
       setCreateError(err.message);
+      throw err;
     }
+  }
+
+  // AI5R-CMON-UX-PHASE1B -- fired by the modal only after its own normal
+  // "Save Reading" action resolves successfully; "Save & Add Another"
+  // never calls this, so the modal stays open and the workspace stays on
+  // its current view/selection in that case.
+  function handleAdHocReadingSaved(newReading) {
+    setIsAdHocCreateModalOpen(false);
+    setView("readings");
+    setSelectedReadingId(newReading.id);
+    setSuccessMessage(`Condition Monitoring reading ${newReading.id} created (DRAFT).`);
   }
 
   // MWO-LTSA-CMON-BULK-ADHOC-ENTRY-001 -- the bulk create already
@@ -605,6 +623,7 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
         isOpen={isAdHocCreateModalOpen}
         onClose={() => setIsAdHocCreateModalOpen(false)}
         onCreate={handleCreateAdHocReading}
+        onSaved={handleAdHocReadingSaved}
       />
       <CreateConditionMonitoringScheduleModal
         isOpen={isCreateScheduleModalOpen}

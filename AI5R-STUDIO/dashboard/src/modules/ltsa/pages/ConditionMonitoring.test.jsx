@@ -413,8 +413,9 @@ describe("Condition Monitoring workspace page", () => {
       fireEvent.click(screen.getByRole("button", { name: "+ Add Reading" }));
       fireEvent.change(await screen.findByLabelText("Pump"), { target: { value: "641-P-5" } });
       fireEvent.change(screen.getByLabelText("Reading Date"), { target: { value: "2026-09-06" } });
-      fireEvent.click(screen.getByRole("button", { name: "Save Draft" }));
+      fireEvent.click(screen.getByRole("button", { name: "Save Reading" }));
 
+      expect(createAdHocConditionMonitoringReading).toHaveBeenCalledTimes(1);
       expect(createAdHocConditionMonitoringReading).toHaveBeenCalledWith(
         expect.objectContaining({ assetCode: "641-P-5", readingDate: "2026-09-06" })
       );
@@ -423,6 +424,34 @@ describe("Condition Monitoring workspace page", () => {
       await screen.findByRole("heading", { name: "CMONR-ADHOC-1" });
       expect(screen.queryByRole("heading", { name: "Add Condition Monitoring Reading" })).toBeNull();
       expect(screen.getByRole("status").textContent).toContain("CMONR-ADHOC-1 created (DRAFT).");
+    });
+
+    it("Save & Add Another creates exactly one reading, keeps the modal open, and does not navigate to the Readings view", async () => {
+      loadWithNoSchedules();
+      createAdHocConditionMonitoringReading.mockResolvedValue({
+        data: {
+          condition_monitoring_reading_code: "CMONR-ADHOC-1",
+          condition_monitoring_schedule_code: "UNSCHEDULED::MANUAL",
+          asset_code: "641-P-5",
+          reading_date: "2026-09-06",
+          workflow_status: "DRAFT",
+        },
+      });
+      renderWithWritePermission();
+      await screen.findByRole("button", { name: "+ Add Reading" });
+
+      fireEvent.click(screen.getByRole("button", { name: "+ Add Reading" }));
+      fireEvent.change(await screen.findByLabelText("Pump"), { target: { value: "641-P-5" } });
+      fireEvent.change(screen.getByLabelText("Reading Date"), { target: { value: "2026-09-06" } });
+      fireEvent.click(screen.getByRole("button", { name: "Save & Add Another" }));
+
+      await waitFor(() => expect(createAdHocConditionMonitoringReading).toHaveBeenCalledTimes(1));
+      // stays open on the create form, pump/date preserved, never
+      // switched to the Readings view or selected the new reading
+      expect(screen.getByRole("heading", { name: "Add Condition Monitoring Reading" })).toBeTruthy();
+      expect(screen.getByTestId("cmon-selected-equipment-card").textContent).toContain("641-P-5");
+      expect(screen.getByLabelText("Reading Date")).toHaveProperty("value", "2026-09-06");
+      expect(screen.queryByRole("heading", { name: "CMONR-ADHOC-1" })).toBeNull();
     });
 
     it("all measurement fields start blank/not-recorded and DE/NDE toggle independently without mutating each other", async () => {
@@ -461,10 +490,15 @@ describe("Condition Monitoring workspace page", () => {
       fireEvent.click(screen.getByRole("button", { name: "+ Add Reading" }));
       fireEvent.change(await screen.findByLabelText("Pump"), { target: { value: "641-P-5" } });
       fireEvent.change(screen.getByLabelText("Reading Date"), { target: { value: "2026-09-06" } });
-      fireEvent.click(screen.getByRole("button", { name: "Save Draft" }));
+      fireEvent.click(screen.getByRole("button", { name: "Save Reading" }));
 
       expect(await screen.findByTestId("cmon-create-error")).toHaveProperty("textContent", "Canonical pump not found");
       expect(screen.getByRole("heading", { name: "Add Condition Monitoring Reading" })).toBeTruthy();
+      // failure never converts into a false success: no navigation, no
+      // selection, and the entered pump/date are preserved exactly.
+      expect(screen.queryByRole("status")).toBeNull();
+      expect(screen.getByTestId("cmon-selected-equipment-card").textContent).toContain("641-P-5");
+      expect(screen.getByLabelText("Reading Date")).toHaveProperty("value", "2026-09-06");
     });
   });
 
