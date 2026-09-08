@@ -232,7 +232,7 @@ def _detect_intent(question: str, *, tag: str | None = None) -> str | None:
     # current seal, installation, cmon, work orders, etc.) so no operational
     # queries are ever hijacked into directory discovery.
     is_ma_query = bool(re.search(r"\bma\s*\d*\b", q) or re.search(r"\bmaintenance\s+area\b", q))
-    is_area_code = bool(re.search(r"\b(hoc|hsc|hcc|utl|\bom\b|s[._\s]?pakning|spk)\b", q))
+    is_area_code = bool(re.search(r"\b(hoc|hsc|hcc|utl|utilities|\bom\b|oil\s+movement|s[._\s]?pakning|spk)\b", q))
     is_area_word = has(r"\barea\b", r"\blocation\b", r"\blokasi\b")
     is_discovery_word = has(
         "list", "daftar", "berapa", "hitung", "jumlah", "total", "cari", "temukan",
@@ -2433,7 +2433,7 @@ def _handle_asset_directory_fleet(
 
     # 2. Target Area extraction & normalization
     target_area: str | None = None
-    area_match = re.search(r"\b(s[._\s]?pakning|spk|hoc|hsc|hcc|utl|\bom\b)\b", q)
+    area_match = re.search(r"\b(s[._\s]?pakning|spk|hoc|hsc|hcc|utl|utilities|\bom\b|oil\s+movement)\b", q)
     if area_match:
         target_area = normalize_area_token(area_match.group(1))
 
@@ -2475,7 +2475,12 @@ def _handle_asset_directory_fleet(
 
     # 7. Apply directory area filter
     if allowed_filter_areas is not None:
-        matching_pumps = [p for p in scoped_pumps if p.get("area") in allowed_filter_areas]
+        matching_pumps = [
+            p
+            for p in scoped_pumps
+            if (normalize_area_token(p.get("area")) or (p.get("area").strip().upper() if p.get("area") else None))
+            in allowed_filter_areas
+        ]
     else:
         matching_pumps = scoped_pumps
 
@@ -2523,8 +2528,9 @@ def _handle_asset_directory_fleet(
     # Group pumps by area
     grouped: dict[str, list[dict[str, Any]]] = {}
     for p in matching_pumps:
-        a = p.get("area") or "UNKNOWN"
-        grouped.setdefault(a, []).append(p)
+        raw_a = p.get("area")
+        canonical_a = normalize_area_token(raw_a) or (raw_a.strip().upper() if raw_a else "UNKNOWN")
+        grouped.setdefault(canonical_a, []).append(p)
 
     for a in grouped:
         grouped[a].sort(key=lambda x: str(x.get("tag_number") or ""))

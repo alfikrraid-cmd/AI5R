@@ -40,47 +40,14 @@ MA_AREA_GROUPS: dict[str, frozenset[str]] = {
 }
 
 
-def resolve_ma_areas(ma: str | None) -> frozenset[str] | None:
-    """Returns the set of physical Area codes for a Maintenance Area (MA1-MA4),
-    or None if unrecognized/blank."""
-    if not ma:
-        return None
-    normalized = ma.strip().upper()
-    return MA_AREA_GROUPS.get(normalized)
-
-
-def resolve_area_ma(area: str | None) -> str | None:
-    """Returns the Maintenance Area code ('MA1'..'MA4') for an Area code,
-    or None if unrecognized/blank."""
-    if not area:
-        return None
-    normalized = area.strip().upper()
-    for ma_key, areas in MA_AREA_GROUPS.items():
-        if normalized in areas:
-            return ma_key
-    return None
-
-
-def format_area_display(area: str | None) -> str:
-    """Returns human display string for an Area code.
-    S_PAKNING -> 'S. PAKNING'
-    Unknown/blank -> 'N/A'"""
-    if not area:
-        return "N/A"
-    normalized = area.strip().upper()
-    if normalized == "S_PAKNING":
-        return "S. PAKNING"
-    if normalized in AREA_CODES:
-        return normalized
-    return area.strip()
-
-
 _AREA_TOKEN_MAP: dict[str, str] = {
     "HOC": "HOC",
     "HSC": "HSC",
     "HCC": "HCC",
     "OM": "OM",
+    "OIL MOVEMENT": "OM",
     "UTL": "UTL",
+    "UTILITIES": "UTL",
     "S_PAKNING": "S_PAKNING",
     "S. PAKNING": "S_PAKNING",
     "S.PAKNING": "S_PAKNING",
@@ -100,6 +67,41 @@ def normalize_area_token(token: str | None) -> str | None:
     return _AREA_TOKEN_MAP.get(cleaned)
 
 
+def resolve_ma_areas(ma: str | None) -> frozenset[str] | None:
+    """Returns the set of physical Area codes for a Maintenance Area (MA1-MA4),
+    or None if unrecognized/blank."""
+    if not ma:
+        return None
+    normalized = ma.strip().upper()
+    return MA_AREA_GROUPS.get(normalized)
+
+
+def resolve_area_ma(area: str | None) -> str | None:
+    """Returns the Maintenance Area code ('MA1'..'MA4') for an Area code,
+    or None if unrecognized/blank."""
+    if not area:
+        return None
+    canonical = normalize_area_token(area) or area.strip().upper()
+    for ma_key, areas in MA_AREA_GROUPS.items():
+        if canonical in areas:
+            return ma_key
+    return None
+
+
+def format_area_display(area: str | None) -> str:
+    """Returns human display string for an Area code.
+    S_PAKNING -> 'S. PAKNING'
+    Unknown/blank -> 'N/A'"""
+    if not area:
+        return "N/A"
+    canonical = normalize_area_token(area) or area.strip().upper()
+    if canonical == "S_PAKNING":
+        return "S. PAKNING"
+    if canonical in AREA_CODES:
+        return canonical
+    return area.strip()
+
+
 def is_area_in_scope(area: str | None, scope: frozenset[str] | None) -> bool:
     """`scope` is the return value of auth_service.resolve_area_scope():
     None = unrestricted (always in scope); an empty/non-empty frozenset
@@ -110,7 +112,8 @@ def is_area_in_scope(area: str | None, scope: frozenset[str] | None) -> bool:
         return True
     if area is None:
         return False
-    return area in scope
+    canonical = normalize_area_token(area) or area.strip().upper()
+    return canonical in scope
 
 
 def filter_records_by_scope(

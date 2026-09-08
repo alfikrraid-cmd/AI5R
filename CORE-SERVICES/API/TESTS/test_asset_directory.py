@@ -441,3 +441,139 @@ def test_multiple_tags_asks_to_select_single_tag():
     answer = _ask_helper("211-P-10A atau 110-P-12B area mana")
     assert answer.kind == DATA_GAP
     assert "Saya menemukan beberapa tag pompa di pertanyaan itu" in answer.answer
+
+
+# ==============================================================================
+# PHASE 3C: PRODUCTION AREA NORMALIZATION REGRESSION TESTS
+# ==============================================================================
+
+PUMPS_WITH_SPK_AND_S_PAKNING = [
+    {"tag_number": "101-P-2B", "area": "SPK", "status": "ACTIVE"},
+    {"tag_number": "101-P-3A", "area": "SPK", "status": "ACTIVE"},
+    {"tag_number": "101-P-6A", "area": "S_PAKNING", "status": "ACTIVE"},
+    {"tag_number": "211-P-10A", "area": "HSC", "status": "ACTIVE"},
+    {"tag_number": "213-P-05A", "area": "HCC", "status": "ACTIVE"},
+    {"tag_number": "110-P-12A", "area": "HOC", "status": "ACTIVE"},
+    {"tag_number": "310-P-01A", "area": "UTL", "status": "ACTIVE"},
+    {"tag_number": "410-P-02A", "area": "OM", "status": "ACTIVE"},
+    {"tag_number": "999-P-01A", "area": "AMINE", "status": "ACTIVE"},
+]
+
+
+def test_phase3c_01_spk_normalizes_to_s_pakning():
+    assert normalize_area_token("SPK") == "S_PAKNING"
+    assert normalize_area_token("spk") == "S_PAKNING"
+
+
+def test_phase3c_02_s_pakning_remains_s_pakning():
+    assert normalize_area_token("S_PAKNING") == "S_PAKNING"
+    assert normalize_area_token("s_pakning") == "S_PAKNING"
+    assert normalize_area_token("S. PAKNING") == "S_PAKNING"
+
+
+def test_phase3c_03_list_s_pakning_includes_both_forms():
+    answer = _ask_helper("pompa S_PAKNING", pumps=PUMPS_WITH_SPK_AND_S_PAKNING)
+    assert answer.kind == FACT
+    assert "Pompa S. PAKNING — 3" in answer.answer
+    assert "• 101-P-2B" in answer.answer
+    assert "• 101-P-3A" in answer.answer
+    assert "• 101-P-6A" in answer.answer
+
+
+def test_phase3c_04_list_ma2_includes_both_forms():
+    answer = _ask_helper("list pompa di ma2", pumps=PUMPS_WITH_SPK_AND_S_PAKNING)
+    assert answer.kind == FACT
+    assert "Pompa MA2 — 5" in answer.answer
+    assert "• 101-P-2B" in answer.answer
+    assert "• 101-P-3A" in answer.answer
+    assert "• 101-P-6A" in answer.answer
+    assert "• 211-P-10A" in answer.answer
+    assert "• 213-P-05A" in answer.answer
+
+
+def test_phase3c_05_count_s_pakning_includes_both_forms():
+    answer = _ask_helper("berapa pompa di S_PAKNING", pumps=PUMPS_WITH_SPK_AND_S_PAKNING)
+    assert answer.kind == FACT
+    assert "Terdapat 3 pompa di S. PAKNING." in answer.answer
+    assert str(answer.evidence[0]["value"]) == "3"
+
+    answer_spk = _ask_helper("berapa pompa di SPK", pumps=PUMPS_WITH_SPK_AND_S_PAKNING)
+    assert answer_spk.kind == FACT
+    assert "Terdapat 3 pompa di S. PAKNING." in answer_spk.answer
+    assert str(answer_spk.evidence[0]["value"]) == "3"
+
+
+def test_phase3c_06_count_ma2_includes_both_forms():
+    answer = _ask_helper("berapa pompa di MA2", pumps=PUMPS_WITH_SPK_AND_S_PAKNING)
+    assert answer.kind == FACT
+    assert "Terdapat 5 pompa di MA2." in answer.answer
+    assert str(answer.evidence[0]["value"]) == "5"
+
+
+def test_phase3c_07_ma2_grouping_combines_both_under_one_s_pakning():
+    answer = _ask_helper("list pompa di ma2", pumps=PUMPS_WITH_SPK_AND_S_PAKNING)
+    assert answer.kind == FACT
+    assert "S. PAKNING — 3" in answer.answer
+    assert "SPK —" not in answer.answer
+
+
+def test_phase3c_08_find_pump_with_raw_spk_displays_canonical():
+    answer = _ask_helper("101-P-2B area mana", pumps=PUMPS_WITH_SPK_AND_S_PAKNING)
+    assert answer.kind == FACT
+    assert "Area: S. PAKNING" in answer.answer
+    assert "MA: MA2" in answer.answer
+
+
+def test_phase3c_09_authorization_operates_on_canonical_normalized_area():
+    scope_spk = frozenset({"S_PAKNING"})
+    assert is_area_in_scope("SPK", scope_spk) is True
+    assert is_area_in_scope("S_PAKNING", scope_spk) is True
+
+    answer = _ask_helper("101-P-2B area mana", scope=scope_spk, pumps=PUMPS_WITH_SPK_AND_S_PAKNING)
+    assert answer.kind == FACT
+    assert "Area: S. PAKNING" in answer.answer
+    assert "MA: MA2" in answer.answer
+
+    answer_list = _ask_helper("pompa S_PAKNING", scope=scope_spk, pumps=PUMPS_WITH_SPK_AND_S_PAKNING)
+    assert answer_list.kind == FACT
+    assert "• 101-P-2B" in answer_list.answer
+    assert "• 101-P-6A" in answer_list.answer
+
+
+def test_phase3c_10_spk_cannot_bypass_scope_restrictions():
+    scope_hsc = frozenset({"HSC"})
+    assert is_area_in_scope("SPK", scope_hsc) is False
+    assert is_area_in_scope("S_PAKNING", scope_hsc) is False
+
+    answer = _ask_helper("101-P-2B area mana", scope=scope_hsc, pumps=PUMPS_WITH_SPK_AND_S_PAKNING)
+    assert answer.kind == DATA_GAP
+    assert "tidak ditemukan" in answer.answer
+
+    answer_list = _ask_helper("pompa S_PAKNING", scope=scope_hsc, pumps=PUMPS_WITH_SPK_AND_S_PAKNING)
+    assert answer_list.kind == DATA_GAP or "101-P-2B" not in answer_list.answer
+
+
+def test_phase3c_11_unknown_areas_remain_na():
+    assert resolve_area_ma("AMINE") is None
+    assert resolve_area_ma("CDU") is None
+    assert resolve_area_ma("DCU") is None
+    assert format_area_display("AMINE") == "AMINE"
+
+    answer = _ask_helper("999-P-01A area mana", pumps=PUMPS_WITH_SPK_AND_S_PAKNING)
+    assert answer.kind == FACT
+    assert "Area: AMINE" in answer.answer
+    assert "MA: N/A" in answer.answer
+
+
+def test_phase3c_12_existing_areas_unchanged():
+    assert resolve_area_ma("HOC") == "MA1"
+    assert resolve_area_ma("HSC") == "MA2"
+    assert resolve_area_ma("HCC") == "MA2"
+    assert resolve_area_ma("UTL") == "MA3"
+    assert resolve_area_ma("OM") == "MA4"
+    assert format_area_display("HOC") == "HOC"
+    assert format_area_display("HSC") == "HSC"
+    assert format_area_display("HCC") == "HCC"
+    assert format_area_display("UTL") == "UTL"
+    assert format_area_display("OM") == "OM"
+
