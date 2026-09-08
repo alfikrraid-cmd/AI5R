@@ -60,6 +60,7 @@ services:
       AI5R_POSTGRES_HOST: postgres
       AI5R_POSTGRES_PORT: ${AI5R_POSTGRES_PORT}
       AI5R_POSTGRES_USER: ${AI5R_POSTGRES_USER}
+      AI5R_WHATSAPP_GROUP_INGRESS_SECRET: ${AI5R_WHATSAPP_GROUP_INGRESS_SECRET}
       AI5R_POSTGRES_PASSWORD: ${AI5R_POSTGRES_PASSWORD}
       # Still the LTSA-canonical database name (unchanged from MWO-LTSA-
       # IMPORT-PROD-COMPOSE-ENV-001) -- direct-connect mode needs it just
