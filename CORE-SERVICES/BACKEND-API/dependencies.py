@@ -33,6 +33,7 @@ from API.import_session_repository import ImportSessionRepository
 from API.installation_report_repository import InstallationReportRepository
 from API.mechanical_seal_stock_repository import MechanicalSealStockRepository
 from API.installation_gateway import InstallationGateway
+from API.ltsa_analytics_service import LTSAAnalyticsService
 from API.ltsa_knowledge_service import LTSAKnowledgeService
 from API.recommendation_engine import RecommendationEngine
 from API.maintenance_history_gateway import MaintenanceHistoryGateway
@@ -554,6 +555,13 @@ def get_seal_warranty_assessment_repository() -> SealWarrantyAssessmentRepositor
 
 def get_installation_report_fitment_repository() -> InstallationReportFitmentRepository:
     return _installation_report_fitment_repository
+
+
+_ltsa_analytics_service = LTSAAnalyticsService(_import_database_runner)
+
+
+def get_ltsa_analytics_service() -> LTSAAnalyticsService:
+    return _ltsa_analytics_service
 
 
 # MWO-LTSA-AUTH-001 -- the two reusable dependencies this MWO requires:

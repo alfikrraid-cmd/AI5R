@@ -43,6 +43,7 @@ from fastapi import FastAPI
 from API.auth_service import signing_secret
 from routers import (
     admin_users,
+    analytics,
     auth,
     cm_report,
     condition_monitoring,
@@ -138,6 +139,7 @@ app.include_router(engineering_ai.router)
 # constructed, real gateway singletons in dependencies.py (no placeholder/
 # None pattern).
 app.include_router(fleet.router)
+app.include_router(analytics.router)
 app.include_router(document.router)
 app.include_router(installation.router)
 app.include_router(pm_schedule.router)

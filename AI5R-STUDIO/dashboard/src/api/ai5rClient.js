@@ -1,4 +1,4 @@
-﻿const API_URL = import.meta.env.VITE_API_URL || "http://localhost:18000";
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:18000";
 
 // MWO-LTSA-AUTH-002 -- the one canonical session store + authenticated-
 // request mechanism every LTSA API call goes through (Authorization:
@@ -1713,4 +1713,64 @@ export async function askCopilot(question, assetContext) {
     }
 
     return payload;
+}
+
+function _buildAnalyticsQueryParams(params = {}) {
+    const searchParams = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+        if (value !== undefined && value !== null && value !== "") {
+            searchParams.append(key, value);
+        }
+    }
+    const qs = searchParams.toString();
+    return qs ? `?${qs}` : "";
+}
+
+export async function getLtsaAnalyticsFilters() {
+    const response = await apiFetch(`${API_URL}/api/ltsa/analytics/filters`);
+    if (!response.ok) {
+        throw new Error(`Failed to fetch analytics filters: ${response.statusText}`);
+    }
+    const payload = await response.json();
+    return payload?.data ?? { areas: [], pumps: [], date_range: {} };
+}
+
+export async function getLtsaAnalyticsExecutive(params = {}) {
+    const qs = _buildAnalyticsQueryParams(params);
+    const response = await apiFetch(`${API_URL}/api/ltsa/analytics/executive${qs}`);
+    if (!response.ok) {
+        throw new Error(`Failed to fetch executive analytics: ${response.statusText}`);
+    }
+    const payload = await response.json();
+    return payload?.data ?? null;
+}
+
+export async function getLtsaAnalyticsSeals(params = {}) {
+    const qs = _buildAnalyticsQueryParams(params);
+    const response = await apiFetch(`${API_URL}/api/ltsa/analytics/seals${qs}`);
+    if (!response.ok) {
+        throw new Error(`Failed to fetch seal analytics: ${response.statusText}`);
+    }
+    const payload = await response.json();
+    return payload?.data ?? null;
+}
+
+export async function getLtsaAnalyticsMaterials(params = {}) {
+    const qs = _buildAnalyticsQueryParams(params);
+    const response = await apiFetch(`${API_URL}/api/ltsa/analytics/materials${qs}`);
+    if (!response.ok) {
+        throw new Error(`Failed to fetch material analytics: ${response.statusText}`);
+    }
+    const payload = await response.json();
+    return payload?.data ?? null;
+}
+
+export async function getLtsaAnalyticsEffectiveness(params = {}) {
+    const qs = _buildAnalyticsQueryParams(params);
+    const response = await apiFetch(`${API_URL}/api/ltsa/analytics/effectiveness${qs}`);
+    if (!response.ok) {
+        throw new Error(`Failed to fetch maintenance effectiveness: ${response.statusText}`);
+    }
+    const payload = await response.json();
+    return payload?.data ?? null;
 }

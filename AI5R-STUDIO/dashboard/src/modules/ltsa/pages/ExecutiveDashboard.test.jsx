@@ -22,6 +22,11 @@ vi.mock("../../../api/ai5rClient", () => ({
   getFleetOverview: vi.fn(),
   getFleetReliability: vi.fn(),
   getFleetPowerBI: vi.fn(),
+  getLtsaAnalyticsFilters: vi.fn().mockResolvedValue({ areas: [], pumps: [], date_range: {} }),
+  getLtsaAnalyticsExecutive: vi.fn().mockResolvedValue(null),
+  getLtsaAnalyticsSeals: vi.fn().mockResolvedValue(null),
+  getLtsaAnalyticsMaterials: vi.fn().mockResolvedValue(null),
+  getLtsaAnalyticsEffectiveness: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock("../components/CopilotPanel", () => ({

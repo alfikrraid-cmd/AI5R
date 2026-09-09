@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Card, EmptyState, PageHeader } from "../../../design-system";
-import { getFleetOverview, getFleetPowerBI, getFleetReliability } from "../../../api/ai5rClient";
+import { getFleetOverview, getFleetPowerBI, getFleetReliability, getLtsaAnalyticsExecutive, getLtsaAnalyticsSeals, getLtsaAnalyticsMaterials, getLtsaAnalyticsEffectiveness } from "../../../api/ai5rClient";
+import colors from "../../../design-system/theme/colors";
 import FleetKpiStrip from "../components/FleetKpiStrip";
 import BasicFleetOverviewPanel from "../components/BasicFleetOverviewPanel";
 import AssetsAttentionPanel from "../components/AssetsAttentionPanel";
@@ -12,61 +13,19 @@ import FleetMainArea from "../components/FleetMainArea";
 import FleetExecutiveSummary from "../components/FleetExecutiveSummary";
 import QuickNavigationPanel from "../components/QuickNavigationPanel";
 import CopilotPanel from "../components/CopilotPanel";
+import LtsaGlobalFilterBar from "../components/LtsaGlobalFilterBar";
+import AnalyticsKpiStrip from "../components/AnalyticsKpiStrip";
+import TimeSeriesChart from "../components/charts/TimeSeriesChart";
+import BarChart from "../components/charts/BarChart";
+import BadActorsTable from "../components/BadActorsTable";
+import HistoricalFindingsFeed from "../components/HistoricalFindingsFeed";
+import DomainAnalyticsTabs from "../components/DomainAnalyticsTabs";
 import "./ExecutiveDashboard.css";
 
 /**
- * MWO-LTSA-040A -- Executive Dashboard Redesign. Replaces the previous
- * RC-002 dashboard's sample-data sections (KPI/Health/Alerts/Readiness/
- * Insight/Opportunity/Digital Twin, plus the two duplicated Fleet KPI
- * boxes FleetReliabilityPanel/FleetPowerBIPanel rendered side by side)
- * with the Hero/Metrics/Main Area/Bottom layout this mission specifies --
- * per its explicit "Remove old static executive cards... Remove
- * duplicated KPI sections." Every removed component remains on disk,
- * individually valid and still covered by its own dedicated test file
- * (KpiCardGrid.test.jsx etc.) -- simply no longer wired into this page,
- * the same "orphaned, not deleted" precedent MWO-LTSA-036M already
- * established for PMWorkspace.jsx. FleetReliabilityPanel.jsx and
- * FleetPowerBIPanel.jsx are untouched for the same reason: their own
- * internal grouping (one flat card of 6 metric tiles each) doesn't match
- * this Open Design's Hero/Metrics/Main Area/Bottom regions, so this page
- * builds new, focused presentational components instead of repurposing
- * them -- restructuring either panel in place would have broken its own
- * 25 passing tests for no benefit, since neither is rendered here anymore.
- *
- * QuickNavigationPanel is the one section kept from the old page,
- * unmodified: it isn't a "static executive card," a KPI section, or
- * sample/demo data -- it's this dashboard's real workspace-navigation
- * entry point, and LTSAWorkspace.test.jsx's own cross-page navigation
- * flows (e.g. "Open Pump Registry", "Open Asset 360") depend on it being
- * reachable from here, confirmed by running that suite against an earlier
- * draft of this page that omitted it.
- *
- * MWO-LTSA-DASHBOARD-COMMAND-CENTER-001 -- visual/layout redesign only,
- * data-fetch logic below is byte-identical to MWO-LTSA-DASHBOARD-RECOVERY-
- * 001's: FleetKpiStrip (always-visible top strip), the Fleet Overview /
- * Assets Attention / Maintenance Activity / Seal Inventory panels, and
- * Quick Actions (QuickNavigationPanel, retitled) replace the previous
- * flat stack of sections with the Command Center's KPI-strip -> two-
- * column (Fleet Overview + Copilot) -> two-column (Assets Attention +
- * Maintenance Activity) -> two-column (Seal Inventory + Quick Actions)
- * layout. No new fetch, no new field, no changed loading/error/empty
- * gate -- every one of these new panels reads fields BasicFleetOverview
- * already had (see basic_fleet_overview_service.py), just relocated
- * across more focused, denser panels instead of one long stack.
- *
- * MWO-LTSA-DASHBOARD-RECOVERY-001 -- Fleet Overview's REQUIRED data source
- * is now GET /api/ltsa/fleet/overview (BasicFleetOverviewService): one
- * call per canonical bulk-list gateway on the backend, no per-pump
- * LTSAKnowledgeService/n8n fan-out, so it stays fast and reliable at real
- * fleet size. GET /api/ltsa/fleet/reliability and .../powerbi (both still
- * backed by that per-pump fan-out) are now OPTIONAL: fetched separately,
- * and their failure/timeout never blocks or errors the core Fleet
- * Overview -- FleetHero/FleetMetricsGrid/FleetMainArea/
- * FleetExecutiveSummary simply do not render if that richer data isn't
- * available, exactly the "Power BI must be optional" requirement,
- * generalized to the Reliability call too since it shares the same
- * fan-out cost. No new calculation -- every displayed number is a field
- * an API already computed.
+ * MWO-LTSA-DASHBOARD-ANALYTICS-001 -- Production-grade maintenance and reliability
+ * analytics dashboard upgrade with server-side aggregated production data,
+ * interactive SVG charts, cascading filter bar, and Equipment360 drill-down.
  */
 export default function ExecutiveDashboard({ onNavigate }) {
   const [overview, setOverview] = useState(null);
@@ -75,11 +34,16 @@ export default function ExecutiveDashboard({ onNavigate }) {
   const [reliability, setReliability] = useState(null);
   const [summary, setSummary] = useState(null);
 
+  const [analyticsFilters, setAnalyticsFilters] = useState({});
+  const [analyticsData, setAnalyticsData] = useState(null);
+  const [sealData, setSealData] = useState(null);
+  const [materialData, setMaterialData] = useState(null);
+  const [effectivenessData, setEffectivenessData] = useState(null);
+
   useEffect(() => {
     let active = true;
 
-    // Required: the bounded core Fleet Overview. This is the only fetch
-    // the loading/error/empty gate below waits on.
+    // Required: the bounded core Fleet Overview.
     getFleetOverview()
       .then((result) => {
         if (active) {
@@ -98,10 +62,7 @@ export default function ExecutiveDashboard({ onNavigate }) {
         }
       });
 
-    // Optional: the richer, fan-out-backed Reliability/Power BI panels.
-    // Failure here is silently absorbed -- reliability/summary simply
-    // stay null and their panels don't render -- it must never surface
-    // as a page-level error or block the required overview above.
+    // Optional: fan-out backed reliability and Power BI calls
     Promise.all([getFleetReliability(), getFleetPowerBI()])
       .then(([reliabilityResult, powerbiResult]) => {
         if (active) {
@@ -110,13 +71,43 @@ export default function ExecutiveDashboard({ onNavigate }) {
         }
       })
       .catch(() => {
-        // intentionally no-op: optional data, no error state for it
+        // absorb optional failures
       });
 
     return () => {
       active = false;
     };
   }, []);
+
+  // Analytics Engine Fetcher: triggered on filter changes
+  useEffect(() => {
+    let active = true;
+    if (typeof getLtsaAnalyticsExecutive === "function") {
+      Promise.allSettled([
+        getLtsaAnalyticsExecutive(analyticsFilters),
+        typeof getLtsaAnalyticsSeals === "function" ? getLtsaAnalyticsSeals(analyticsFilters) : Promise.resolve(null),
+        typeof getLtsaAnalyticsMaterials === "function" ? getLtsaAnalyticsMaterials(analyticsFilters) : Promise.resolve(null),
+        typeof getLtsaAnalyticsEffectiveness === "function" ? getLtsaAnalyticsEffectiveness(analyticsFilters) : Promise.resolve(null),
+      ]).then(([execRes, sealRes, matRes, effRes]) => {
+        if (!active) return;
+        if (execRes.status === "fulfilled" && execRes.value) {
+          setAnalyticsData(execRes.value);
+        }
+        if (sealRes.status === "fulfilled" && sealRes.value) {
+          setSealData(sealRes.value);
+        }
+        if (matRes.status === "fulfilled" && matRes.value) {
+          setMaterialData(matRes.value);
+        }
+        if (effRes.status === "fulfilled" && effRes.value) {
+          setEffectivenessData(effRes.value);
+        }
+      });
+    }
+    return () => {
+      active = false;
+    };
+  }, [analyticsFilters]);
 
   return (
     <div className="executive-dashboard-layout">
@@ -146,18 +137,65 @@ export default function ExecutiveDashboard({ onNavigate }) {
         </>
       ) : (
         <>
+          {/* Row 1: Cascading Global Filter Bar */}
+          <LtsaGlobalFilterBar filters={analyticsFilters} onFilterChange={setAnalyticsFilters} />
+
+          {/* Row 2: Production Analytics KPI Strip */}
+          {analyticsData?.kpis && <AnalyticsKpiStrip kpis={analyticsData.kpis} />}
+
+          {/* Preserved Fleet KPI Strip for command center status */}
           <FleetKpiStrip overview={overview} summary={summary} />
 
-          {/* MWO-LTSA-GATE-C -- main fleet content + AI Engineering
-              Copilot as a right-side rail on desktop, stacking below on
-              narrow viewports (see ExecutiveDashboard.css's
-              .executive-dashboard-grid). DOM order is main-then-copilot
-              so the CSS grid's single-column fallback stacks Copilot
-              BELOW the primary content -- Copilot's own loading/answer
-              state is independent of the fleet fetches above, so this
-              placement does not change how soon it's usable, only where
-              it sits. */}
-          <div className="executive-dashboard-grid">
+          {/* Row 3: Interactive Visualizations (Time Series & Area Breakdown) */}
+          {analyticsData && (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: "16px", marginBottom: "16px" }}>
+              <Card title="Operational Activity & Incident Trends">
+                <TimeSeriesChart
+                  data={analyticsData.trends?.daily || []}
+                  title="Daily PMs vs Confirmed Seal Leaks & Inspections"
+                />
+              </Card>
+              <Card title="Contract Area Distribution & Compliance">
+                <BarChart
+                  data={analyticsData.area_breakdown || []}
+                  categoryKey="area"
+                  bars={[
+                    { key: "seal_leaks", label: "Leaks", color: colors.danger },
+                    { key: "pm_count", label: "PM Done", color: colors.success },
+                  ]}
+                  title="Seal Leaks & PMs by Area"
+                  onSelectCategory={(area) => setAnalyticsFilters((prev) => ({ ...prev, area }))}
+                />
+              </Card>
+            </div>
+          )}
+
+          {/* Row 4: Operational Intelligence (Bad Actors & Historical Observations) */}
+          {analyticsData && (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: "16px", marginBottom: "16px" }}>
+              <Card title="Top Bad Actor Pumps (Repeat Leaks & Incidents)">
+                <BadActorsTable badActors={analyticsData.top_bad_actors || []} onNavigate={onNavigate} />
+              </Card>
+              <Card title="Field Leak Findings & Observations">
+                <HistoricalFindingsFeed findings={analyticsData.historical_findings || []} onNavigate={onNavigate} />
+              </Card>
+            </div>
+          )}
+
+          {/* Row 5: Domain Analytics Tabs (Seals, Material Consumption, Effectiveness) */}
+          {analyticsData && (
+            <Card title="Domain Analytics & Reliability Engineering">
+              <DomainAnalyticsTabs
+                sealAnalytics={sealData}
+                materialAnalytics={materialData}
+                effectivenessAnalytics={effectivenessData}
+                kpis={analyticsData.kpis || {}}
+              />
+            </Card>
+          )}
+
+          {/* Row 6: Main Fleet Grid + Copilot */}
+          <div className="executive-dashboard-grid" style={{ marginTop: "16px" }}>
             <div className="executive-dashboard-main">
               <BasicFleetOverviewPanel overview={overview} />
 
@@ -171,10 +209,7 @@ export default function ExecutiveDashboard({ onNavigate }) {
                 <QuickNavigationPanel onNavigate={onNavigate} />
               </div>
 
-              {/* Optional richer overlay -- only rendered when the
-                  fan-out-backed Reliability/Power BI calls above
-                  succeeded. Their absence is silent: no error, no empty
-                  state, this section just doesn't appear. */}
+              {/* Optional richer overlay */}
               {reliability && summary ? (
                 <>
                   <FleetHero healthScore={reliability.fleet_health_score} status={summary.fleet_status} />
