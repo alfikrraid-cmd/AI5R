@@ -339,6 +339,9 @@ describe("AI Engineering Copilot section (J) -- existing Copilot behavior preser
     const section = screen.getByTestId("knowledge-section-ai-copilot");
     expect(within(section).getByText(`Asset context: ${TAG}`)).toBeInTheDocument();
     expect(within(section).getByPlaceholderText(`Ask about ${TAG}...`)).toBeInTheDocument();
+    expect(within(section).getByRole("button", { name: `Analisa ${TAG}` })).toBeInTheDocument();
+    expect(within(section).getByRole("button", { name: `Apa current seal ${TAG}?` })).toBeInTheDocument();
+    expect(within(section).queryByText(/940-P-2A/)).toBeNull();
   });
 
   it("does not call askCopilot (or any API beyond getPumpKnowledge) on mount", async () => {

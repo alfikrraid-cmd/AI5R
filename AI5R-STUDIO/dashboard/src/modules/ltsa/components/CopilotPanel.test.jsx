@@ -19,22 +19,59 @@ describe("CopilotPanel", () => {
     expect(screen.getByRole("button", { name: "Ask" })).toBeTruthy();
   });
 
-  it("renders all four suggested prompts", () => {
+  it("renders all four generic suggested prompts when no assetContext is provided", () => {
     render(<CopilotPanel />);
-    expect(screen.getByRole("button", { name: "Analisa 940-P-2A" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Apa current seal 940-P-2A?" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Tampilkan maintenance history 940-P-2A" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Ada rekomendasi untuk 940-P-2A?" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Ringkasan status pompa seluruh area" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Peralatan apa yang memerlukan perhatian segera?" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Tampilkan ringkasan work order terbuka" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Ada rekomendasi maintenance aktif?" })).toBeTruthy();
+    expect(screen.queryByText(/940-P-2A/)).toBeNull();
   });
 
-  it("clicking a suggested prompt asks that exact question, never a canned answer", async () => {
-    askCopilot.mockResolvedValue({ answer: "940-P-2A is RUNNING.", kind: "FACT", evidence: [] });
+  it("renders dynamic suggested prompts referencing the opened pump tag when assetContext is provided", () => {
+    render(<CopilotPanel assetContext="211-P-16B" />);
+    expect(screen.getByRole("button", { name: "Analisa 211-P-16B" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Apa current seal 211-P-16B?" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Tampilkan maintenance history 211-P-16B" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Ada rekomendasi untuk 211-P-16B?" })).toBeTruthy();
+    expect(screen.queryByText(/940-P-2A/)).toBeNull();
+  });
+
+  it("updates suggested prompts immediately when assetContext changes", () => {
+    const { rerender } = render(<CopilotPanel assetContext="211-P-16B" />);
+    expect(screen.getByRole("button", { name: "Analisa 211-P-16B" })).toBeTruthy();
+
+    rerender(<CopilotPanel assetContext="101-P-10A" />);
+    expect(screen.getByRole("button", { name: "Analisa 101-P-10A" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Apa current seal 101-P-10A?" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Analisa 211-P-16B" })).toBeNull();
+    expect(screen.queryByText(/940-P-2A/)).toBeNull();
+  });
+
+  it("renders 940-P-2A prompts only when 940-P-2A is explicitly the assetContext", () => {
+    render(<CopilotPanel assetContext="940-P-2A" />);
+    expect(screen.getByRole("button", { name: "Analisa 940-P-2A" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Apa current seal 940-P-2A?" })).toBeTruthy();
+  });
+
+  it("clicking a dynamic suggested prompt asks that exact question with assetContext", async () => {
+    askCopilot.mockResolvedValue({ answer: "211-P-16B is RUNNING.", kind: "FACT", evidence: [] });
+    render(<CopilotPanel assetContext="211-P-16B" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Analisa 211-P-16B" }));
+
+    await waitFor(() => expect(askCopilot).toHaveBeenCalledWith("Analisa 211-P-16B", "211-P-16B"));
+    expect(await screen.findByText("211-P-16B is RUNNING.")).toBeTruthy();
+  });
+
+  it("clicking a generic suggested prompt asks that exact question without assetContext", async () => {
+    askCopilot.mockResolvedValue({ answer: "Fleet overview is NORMAL.", kind: "FACT", evidence: [] });
     render(<CopilotPanel />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Analisa 940-P-2A" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ringkasan status pompa seluruh area" }));
 
-    await waitFor(() => expect(askCopilot).toHaveBeenCalledWith("Analisa 940-P-2A", undefined));
-    expect(await screen.findByText("940-P-2A is RUNNING.")).toBeTruthy();
+    await waitFor(() => expect(askCopilot).toHaveBeenCalledWith("Ringkasan status pompa seluruh area", undefined));
+    expect(await screen.findByText("Fleet overview is NORMAL.")).toBeTruthy();
   });
 
   it("shows a FACT answer on success", async () => {

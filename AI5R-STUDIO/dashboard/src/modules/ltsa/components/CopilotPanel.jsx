@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Badge, Card, Button } from "../../../design-system";
 import colors from "../../../design-system/theme/colors";
 import spacing from "../../../design-system/theme/spacing";
@@ -19,17 +19,23 @@ const KIND_VARIANT = {
   DATA_GAP: "purple",
 };
 
-// Suggested prompts are real questions submitted through the same
-// askCopilot() path as manual input -- never pre-baked with a canned
-// answer. Whatever the backend legitimately returns (including DATA_GAP
-// when asked without an asset context, per identity-safety: a tag is
-// never guessed out of question text) is what renders.
-const SUGGESTED_PROMPTS = [
-  "Analisa 940-P-2A",
-  "Apa current seal 940-P-2A?",
-  "Tampilkan maintenance history 940-P-2A",
-  "Ada rekomendasi untuk 940-P-2A?",
-];
+function getSuggestedPrompts(assetContext) {
+  const cleanTag = typeof assetContext === "string" ? assetContext.trim() : "";
+  if (cleanTag) {
+    return [
+      `Analisa ${cleanTag}`,
+      `Apa current seal ${cleanTag}?`,
+      `Tampilkan maintenance history ${cleanTag}`,
+      `Ada rekomendasi untuk ${cleanTag}?`,
+    ];
+  }
+  return [
+    "Ringkasan status pompa seluruh area",
+    "Peralatan apa yang memerlukan perhatian segera?",
+    "Tampilkan ringkasan work order terbuka",
+    "Ada rekomendasi maintenance aktif?",
+  ];
+}
 
 // Presentation-only label mapping over the backend's own real tool
 // identifiers (copilot_orchestrator.TOOL_CATALOG) -- never invents a
@@ -50,8 +56,14 @@ const TOOL_LABELS = {
 
 export default function CopilotPanel({ assetContext }) {
   const [question, setQuestion] = useState("");
-  const { status, result, errorMessage, ask } = useCopilot(assetContext);
+  const { status, result, errorMessage, ask, reset } = useCopilot(assetContext);
   const busy = status === "loading";
+  const prompts = getSuggestedPrompts(assetContext);
+
+  useEffect(() => {
+    setQuestion("");
+    reset();
+  }, [assetContext, reset]);
 
   function handleSubmit(event) {
     event.preventDefault();
@@ -98,7 +110,7 @@ export default function CopilotPanel({ assetContext }) {
       <div style={{ marginTop: spacing.md }}>
         <p style={{ color: colors.textMuted, fontSize: "0.85rem", marginBottom: spacing.xs }}>Suggested questions</p>
         <div style={{ display: "flex", flexDirection: "column", gap: spacing.xs }}>
-          {SUGGESTED_PROMPTS.map((prompt) => (
+          {prompts.map((prompt) => (
             <button
               key={prompt}
               type="button"

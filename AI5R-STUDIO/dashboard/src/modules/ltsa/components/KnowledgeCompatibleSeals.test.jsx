@@ -1,8 +1,8 @@
 import "@testing-library/jest-dom";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import KnowledgeCompatibleSeals from "./KnowledgeCompatibleSeals";
-import { resolveAreaMA, normalizeAreaToken } from "../utils/areaMapping";
+import { resolveAreaMA } from "../utils/areaMapping";
 
 describe("areaMapping -- canonical Area -> MA derivation", () => {
   it("maps HOC to MA1", () => {
@@ -59,7 +59,7 @@ describe("KnowledgeCompatibleSeals -- reverse compatibility discovery", () => {
     expect(screen.getByText("No compatible seals")).toBeInTheDocument();
   });
 
-  it("renders seal name, code, and resolves authorized pump count", () => {
+  it("renders seal name, variant code, and resolves distinct variant and family counts", () => {
     render(
       <KnowledgeCompatibleSeals
         items={SAMPLE_ITEMS}
@@ -72,8 +72,76 @@ describe("KnowledgeCompatibleSeals -- reverse compatibility discovery", () => {
     expect(screen.getByText("LTSA-SEAL-T48MP-2-3-8")).toBeInTheDocument();
     // UNAUTHORIZED-PUMP is excluded from the count (fleet leak prevention!)
     expect(screen.getByTestId("compat-count-LTSA-SEAL-T48MP-2-3-8")).toHaveTextContent(
-      "Compatible with 2 pumps"
+      "Compatible with 2 pumps (variant LTSA-SEAL-T48MP-2-3-8)"
     );
+    expect(screen.getByTestId("compat-family-count-LTSA-SEAL-T48MP-2-3-8")).toHaveTextContent(
+      "T48MP family: 2 distinct pumps in scope"
+    );
+  });
+
+  it("deduplicates multi-variant pumps and raw duplicates across variant and family scopes", () => {
+    const multiVariantCompatibility = [
+      // Pump 101-P-10B has TWO distinct T48MP variants
+      { seal_code: "LTSA-SEAL-T48MP-2-3-8", pump_tag_number: "101-P-10B" },
+      { seal_code: "LTSA-SEAL-T48MP-1-3-8", pump_tag_number: "101-P-10B" },
+      // Duplicate raw record for 101-P-10A with same variant
+      { seal_code: "LTSA-SEAL-T48MP-2-3-8", pump_tag_number: "101-P-10A" },
+      { seal_code: "LTSA-SEAL-T48MP-2-3-8", pump_tag_number: "101-P-10A" },
+      // Distinct pump on another variant of the same family
+      { seal_code: "LTSA-SEAL-T48MP-1-3-8", pump_tag_number: "103-P-30C" },
+      // Unauthorized pump
+      { seal_code: "LTSA-SEAL-T48MP-1-3-8", pump_tag_number: "UNAUTHORIZED-PUMP" },
+    ];
+
+    const authorizedFleet = [
+      { tag_number: "101-P-10A", area: "HOC", status: "ACTIVE" },
+      { tag_number: "101-P-10B", area: "HOC", status: "ACTIVE" },
+      { tag_number: "103-P-30C", area: "UTL", status: "STANDBY" },
+    ];
+
+    const sealRegistry = [
+      { seal_code: "LTSA-SEAL-T48MP-2-3-8", seal_name: "T48MP" },
+      { seal_code: "LTSA-SEAL-T48MP-1-3-8", seal_name: "T48MP" },
+    ];
+
+    render(
+      <KnowledgeCompatibleSeals
+        items={SAMPLE_ITEMS}
+        compatibilityRecords={multiVariantCompatibility}
+        pumps={authorizedFleet}
+        seals={sealRegistry}
+      />
+    );
+
+    // Variant LTSA-SEAL-T48MP-2-3-8 maps to 101-P-10A and 101-P-10B (2 pumps, despite duplicate raw row for 101-P-10A)
+    expect(screen.getByTestId("compat-count-LTSA-SEAL-T48MP-2-3-8")).toHaveTextContent(
+      "Compatible with 2 pumps (variant LTSA-SEAL-T48MP-2-3-8)"
+    );
+
+    // T48MP family maps to 101-P-10A, 101-P-10B, and 103-P-30C = 3 distinct pumps (101-P-10B only counted once!)
+    expect(screen.getByTestId("compat-family-count-LTSA-SEAL-T48MP-2-3-8")).toHaveTextContent(
+      "T48MP family: 3 distinct pumps in scope"
+    );
+
+    // Expand table
+    fireEvent.click(screen.getByTestId("compat-toggle-LTSA-SEAL-T48MP-2-3-8"));
+
+    // Check tabs appear because familyCount (3) > variantCount (2)
+    const variantTab = screen.getByTestId("compat-tab-variant-LTSA-SEAL-T48MP-2-3-8");
+    const familyTab = screen.getByTestId("compat-tab-family-LTSA-SEAL-T48MP-2-3-8");
+    expect(variantTab).toHaveTextContent("Variant (2)");
+    expect(familyTab).toHaveTextContent("All T48MP Family (3)");
+
+    // In default variant view: 101-P-10A and 101-P-10B are present, 103-P-30C is NOT in variant
+    expect(screen.getByText("101-P-10A")).toBeInTheDocument();
+    expect(screen.getByText("101-P-10B")).toBeInTheDocument();
+    expect(screen.queryByText("103-P-30C")).toBeNull();
+
+    // Switch to Family tab
+    fireEvent.click(familyTab);
+    expect(screen.getByText("103-P-30C")).toBeInTheDocument();
+    expect(screen.getByText("101-P-10B")).toBeInTheDocument();
+    expect(screen.queryByText("UNAUTHORIZED-PUMP")).toBeNull();
   });
 
   it("toggles the compatible pumps table drawer on click", () => {
