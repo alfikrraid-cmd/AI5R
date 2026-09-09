@@ -109,8 +109,59 @@ export function extractProviderMessageId(msg) {
   return msg?.key?.id ?? null;
 }
 
+export function unwrapMessage(msg) {
+  let m = msg?.message;
+  while (m) {
+    if (m.ephemeralMessage?.message) {
+      m = m.ephemeralMessage.message;
+    } else if (m.viewOnceMessage?.message) {
+      m = m.viewOnceMessage.message;
+    } else if (m.viewOnceMessageV2?.message) {
+      m = m.viewOnceMessageV2.message;
+    } else if (m.documentWithCaptionMessage?.message) {
+      m = m.documentWithCaptionMessage.message;
+    } else {
+      break;
+    }
+  }
+  return m ?? null;
+}
+
+export function extractMediaInfo(msg) {
+  const m = unwrapMessage(msg);
+  if (!m) return null;
+  if (m.imageMessage) {
+    const img = m.imageMessage;
+    const len = img.fileLength !== undefined && img.fileLength !== null ? Number(img.fileLength) : null;
+    return {
+      media_type: "image",
+      mimetype: typeof img.mimetype === "string" ? img.mimetype : "image/jpeg",
+      filename: typeof img.fileName === "string" ? img.fileName : "image.jpg",
+      file_length: Number.isFinite(len) ? len : null,
+    };
+  }
+  if (m.documentMessage) {
+    const doc = m.documentMessage;
+    const len = doc.fileLength !== undefined && doc.fileLength !== null ? Number(doc.fileLength) : null;
+    return {
+      media_type: "document",
+      mimetype: typeof doc.mimetype === "string" ? doc.mimetype : "application/octet-stream",
+      filename: typeof doc.fileName === "string" ? doc.fileName : "document.pdf",
+      file_length: Number.isFinite(len) ? len : null,
+    };
+  }
+  return null;
+}
+
 export function extractText(msg) {
-  const body = msg?.message?.conversation ?? msg?.message?.extendedTextMessage?.text ?? "";
+  const m = unwrapMessage(msg);
+  if (!m) return "";
+  const body =
+    m.conversation ??
+    m.extendedTextMessage?.text ??
+    m.imageMessage?.caption ??
+    m.documentMessage?.caption ??
+    "";
   return typeof body === "string" ? body : "";
 }
 
@@ -157,11 +208,23 @@ export function normalizeGroupMessageEvent(msg) {
   const providerMessageId = extractProviderMessageId(msg);
   if (!groupId || !senderId || !providerMessageId) return null;
 
-  return {
+  const mediaInfo = extractMediaInfo(msg);
+  const event = {
     group_id: groupId,
     sender_identifier: senderId,
     provider_message_id: providerMessageId,
     text: extractText(msg),
     is_from_self: false,
   };
+
+  if (mediaInfo) {
+    event.media_type = mediaInfo.media_type;
+    event.mimetype = mediaInfo.mimetype;
+    event.filename = mediaInfo.filename;
+    if (mediaInfo.file_length !== null) {
+      event.file_length = mediaInfo.file_length;
+    }
+  }
+
+  return event;
 }

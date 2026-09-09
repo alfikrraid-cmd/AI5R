@@ -672,10 +672,12 @@ def require_permission(permission: str):
 # InMemoryGroupAuthorizationRepository (Phase 1) remains available for
 # tests/CI, which do not have a live Postgres.
 from API.whatsapp_group_agent_service import InMemoryRateLimiter
+from API.whatsapp_group_media_store import WhatsAppGroupMediaStore
 from API.whatsapp_group_repository_postgres import WhatsAppGroupAuthorizationRepository
 
 _group_authorization_repository = WhatsAppGroupAuthorizationRepository(_import_database_runner)
 _group_message_rate_limiter = InMemoryRateLimiter()
+_group_media_store = WhatsAppGroupMediaStore()
 
 
 def get_group_authorization_repository() -> WhatsAppGroupAuthorizationRepository:
@@ -684,3 +686,8 @@ def get_group_authorization_repository() -> WhatsAppGroupAuthorizationRepository
 
 def get_group_message_rate_limiter() -> InMemoryRateLimiter:
     return _group_message_rate_limiter
+
+
+def get_group_media_store() -> WhatsAppGroupMediaStore:
+    return _group_media_store
+

@@ -29,7 +29,9 @@ const BACKEND_BASE_URL = process.env.AI5R_BACKEND_BASE_URL;
 const INGRESS_SECRET = process.env.AI5R_WHATSAPP_GROUP_INGRESS_SECRET;
 const AUTH_STATE_DIR = process.env.TAP_GROUP_AGENT_AUTH_STATE_DIR || "./auth_state";
 
-async function handleIncomingMessage(sock, msg, client) {
+const MAX_MEDIA_BYTES = 15 * 1024 * 1024;
+
+async function handleIncomingMessage(sock, msg, client, options = {}) {
   const event = normalizeGroupMessageEvent(msg);
   if (event === null) {
     // Not a group message, a self-message, or structurally incomplete --
@@ -44,6 +46,46 @@ async function handleIncomingMessage(sock, msg, client) {
     // message body is never logged or forwarded anywhere past this
     // point. This is the cheap fast path: a regex test, nothing else.
     return;
+  }
+
+  if (event.media_type) {
+    if (typeof event.file_length === "number" && event.file_length > MAX_MEDIA_BYTES) {
+      await sock.sendMessage(event.group_id, {
+        text: "Ukuran file terlalu besar. Maksimum 15 MB.",
+      });
+      return;
+    }
+
+    let buffer;
+    try {
+      if (options.downloadMedia) {
+        buffer = await options.downloadMedia(msg);
+      } else {
+        const { downloadMediaMessage } = await import("@whiskeysockets/baileys");
+        buffer = await downloadMediaMessage(msg, "buffer", {});
+      }
+    } catch (downloadErr) {
+      await sock.sendMessage(event.group_id, {
+        text: "Gagal mengunduh media dari WhatsApp. Silakan kirim ulang dokumen/gambar.",
+      });
+      return;
+    }
+
+    if (!buffer || buffer.length === 0) {
+      await sock.sendMessage(event.group_id, {
+        text: "Gagal memproses media (file kosong atau tidak terbaca).",
+      });
+      return;
+    }
+
+    if (buffer.length > MAX_MEDIA_BYTES) {
+      await sock.sendMessage(event.group_id, {
+        text: "Ukuran file terlalu besar. Maksimum 15 MB.",
+      });
+      return;
+    }
+
+    event.media_bytes_base64 = buffer.toString("base64");
   }
 
   // Only a message that already passed the local trigger check ever

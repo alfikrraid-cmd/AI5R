@@ -352,7 +352,7 @@ def test_20_21_22_event_has_no_forwarded_quoted_sender_or_display_name_fields():
     # the only sender-identifying field is sender_identifier itself
     assert field_names == {
         "group_id", "sender_identifier", "provider_message_id", "text", "is_from_self",
-        "is_group_message", "timestamp",
+        "is_group_message", "timestamp", "media_type", "media_bytes_base64", "mimetype", "filename",
     }
 
 

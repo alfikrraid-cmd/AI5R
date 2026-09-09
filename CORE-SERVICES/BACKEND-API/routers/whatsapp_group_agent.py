@@ -38,6 +38,7 @@ from dependencies import (
     get_equipment_360_service,
     get_fleet_executive_summary_service,
     get_group_authorization_repository,
+    get_group_media_store,
     get_group_message_rate_limiter,
     get_installation_gateway,
     get_installation_report_repository,
@@ -65,6 +66,10 @@ class WhatsAppGroupMessageRequest(BaseModel):
     provider_message_id: str
     text: str
     is_from_self: bool = False
+    media_type: str | None = None
+    media_bytes_base64: str | None = None
+    mimetype: str | None = None
+    filename: str | None = None
 
 
 class WhatsAppGroupMessageResponse(BaseModel):
@@ -87,11 +92,16 @@ def _require_group_ingress_secret(x_ai5r_whatsapp_group_ingress_secret: str | No
     "/api/ltsa/whatsapp-group/message",
     dependencies=[Depends(_require_group_ingress_secret)],
 )
+@router.post(
+    "/api/ltsa/whatsapp-group/media",
+    dependencies=[Depends(_require_group_ingress_secret)],
+)
 def receive_whatsapp_group_message(
     payload: WhatsAppGroupMessageRequest,
     group_repository=Depends(get_group_authorization_repository),
     sender_identity_repository=Depends(get_whatsapp_intake_repository),
     rate_limiter=Depends(get_group_message_rate_limiter),
+    media_store=Depends(get_group_media_store),
     pump_gateway=Depends(get_pump_gateway),
     maintenance_history_gateway=Depends(get_maintenance_history_gateway),
     work_order_gateway=Depends(get_work_order_gateway),
@@ -114,11 +124,6 @@ def receive_whatsapp_group_message(
     ai_client=Depends(get_copilot_ai_client),
 ) -> WhatsAppGroupMessageResponse:
     def _ask_ltsa_question(question: str, effective_scope: "frozenset[str] | None") -> str:
-        # Identical shape to routers/copilot.py's ask_copilot_endpoint:
-        # explicit tag wins, else extract from text (reject >1 candidate
-        # the same "ask again" way), else fleet-wide (tag=None) --
-        # orchestrate_copilot() itself decides how to answer a tag-less
-        # question, exactly as it already does for the dashboard.
         candidates = _extract_pump_tag_candidates(question)
         tag: str | None = None
         if len(candidates) > 1:
@@ -166,6 +171,10 @@ def receive_whatsapp_group_message(
         text=payload.text,
         is_from_self=payload.is_from_self,
         is_group_message=True,
+        media_type=payload.media_type,
+        media_bytes_base64=payload.media_bytes_base64,
+        mimetype=payload.mimetype,
+        filename=payload.filename,
     )
     result = process_group_message(
         event,
@@ -173,6 +182,11 @@ def receive_whatsapp_group_message(
         sender_identity_repository=sender_identity_repository,
         rate_limiter=rate_limiter,
         ask_ltsa_question=_ask_ltsa_question,
+        media_store=media_store,
+        pm_cm_evidence_repository=pm_cm_evidence_repository,
+        condition_monitoring_reading_repository=condition_monitoring_reading_repository,
+        pm_occurrence_repository=pm_occurrence_repository,
+        pump_gateway=pump_gateway,
     )
     return WhatsAppGroupMessageResponse(status=result.status, reply=result.reply, ack=result.ack)
 

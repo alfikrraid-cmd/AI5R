@@ -90,3 +90,129 @@ test("unauthorized sender denial sends only the denial text, no acknowledgement"
     ["Nomor Anda belum memiliki akses LTSA."]
   );
 });
+
+test("triggered media message downloads media and forwards base64 payload to backend", async () => {
+  const calls = [];
+  const client = {
+    async sendGroupMessage(event) {
+      calls.push(event);
+      return { status: "MEDIA_STAGED", reply: "Preview media...", ack: null };
+    },
+  };
+  const sock = fakeSock();
+  const mediaMsg = {
+    key: { remoteJid: GROUP_JID, participant: SENDER_JID, id: "wamid.MEDIA-1", fromMe: false },
+    message: {
+      imageMessage: {
+        caption: "/ltsa cm 211-P-16B",
+        mimetype: "image/jpeg",
+        fileName: "pump.jpg",
+        fileLength: 1024,
+      },
+    },
+  };
+  const fakeDownload = async () => Buffer.from("fake-jpeg-bytes");
+  await handleIncomingMessage(sock, mediaMsg, client, { downloadMedia: fakeDownload });
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].media_type, "image");
+  assert.equal(calls[0].mimetype, "image/jpeg");
+  assert.equal(calls[0].filename, "pump.jpg");
+  assert.equal(calls[0].media_bytes_base64, Buffer.from("fake-jpeg-bytes").toString("base64"));
+  assert.deepEqual(sock.sent.map((m) => m.content.text), ["Preview media..."]);
+});
+
+test("non-triggered media message never downloads and never calls backend", async () => {
+  let downloaded = false;
+  let clientCalled = false;
+  const client = {
+    async sendGroupMessage() {
+      clientCalled = true;
+      return {};
+    },
+  };
+  const sock = fakeSock();
+  const chatterMediaMsg = {
+    key: { remoteJid: GROUP_JID, participant: SENDER_JID, id: "wamid.CHATTER-1", fromMe: false },
+    message: {
+      imageMessage: {
+        caption: "foto pompa kemarin nih",
+        mimetype: "image/jpeg",
+      },
+    },
+  };
+  await handleIncomingMessage(sock, chatterMediaMsg, client, {
+    downloadMedia: async () => {
+      downloaded = true;
+      return Buffer.from("data");
+    },
+  });
+
+  assert.equal(downloaded, false);
+  assert.equal(clientCalled, false);
+  assert.deepEqual(sock.sent, []);
+});
+
+test("oversized media message is rejected before backend call", async () => {
+  let clientCalled = false;
+  const client = {
+    async sendGroupMessage() {
+      clientCalled = true;
+      return {};
+    },
+  };
+  const sock = fakeSock();
+  const oversizedMsg = {
+    key: { remoteJid: GROUP_JID, participant: SENDER_JID, id: "wamid.OVERSIZE-1", fromMe: false },
+    message: {
+      documentMessage: {
+        caption: "/ltsa pm 211-P-16B",
+        mimetype: "application/pdf",
+        fileName: "huge.pdf",
+        fileLength: 20 * 1024 * 1024, // 20 MB
+      },
+    },
+  };
+  await handleIncomingMessage(sock, oversizedMsg, client, {
+    downloadMedia: async () => Buffer.alloc(20 * 1024 * 1024),
+  });
+
+  assert.equal(clientCalled, false);
+  assert.deepEqual(
+    sock.sent.map((m) => m.content.text),
+    ["Ukuran file terlalu besar. Maksimum 15 MB."]
+  );
+});
+
+test("media download error yields safe error reply and does not crash", async () => {
+  let clientCalled = false;
+  const client = {
+    async sendGroupMessage() {
+      clientCalled = true;
+      return {};
+    },
+  };
+  const sock = fakeSock();
+  const mediaMsg = {
+    key: { remoteJid: GROUP_JID, participant: SENDER_JID, id: "wamid.FAIL-1", fromMe: false },
+    message: {
+      imageMessage: {
+        caption: "/ltsa cm 211-P-16B",
+        mimetype: "image/jpeg",
+        fileName: "pump.jpg",
+      },
+    },
+  };
+  await handleIncomingMessage(sock, mediaMsg, client, {
+    downloadMedia: async () => {
+      throw new Error("Baileys stream timeout");
+    },
+  });
+
+  assert.equal(clientCalled, false);
+  assert.deepEqual(
+    sock.sent.map((m) => m.content.text),
+    ["Gagal mengunduh media dari WhatsApp. Silakan kirim ulang dokumen/gambar."]
+  );
+});
+

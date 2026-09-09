@@ -100,3 +100,75 @@ test("extendedTextMessage body is read the same as a plain conversation body", (
   const event = normalizeGroupMessageEvent(msg);
   assert.equal(event.text, "/ltsa status 212-P-8A");
 });
+
+test("imageMessage with caption is extracted and normalized", () => {
+  const msg = {
+    key: { remoteJid: GROUP_JID, participant: SENDER_JID, id: "wamid.IMG-1", fromMe: false },
+    message: {
+      imageMessage: {
+        caption: "/ltsa cm 211-P-16B",
+        mimetype: "image/jpeg",
+        fileName: "pump_leak.jpg",
+        fileLength: 10240,
+      },
+    },
+  };
+  assert.equal(extractText(msg), "/ltsa cm 211-P-16B");
+  assert.equal(extractLtsaTrigger(extractText(msg)), "cm 211-P-16B");
+  const event = normalizeGroupMessageEvent(msg);
+  assert.ok(event);
+  assert.equal(event.media_type, "image");
+  assert.equal(event.mimetype, "image/jpeg");
+  assert.equal(event.filename, "pump_leak.jpg");
+  assert.equal(event.file_length, 10240);
+  assert.equal(event.text, "/ltsa cm 211-P-16B");
+});
+
+test("documentMessage (PDF) inside ephemeralMessage is unwrapped and normalized", () => {
+  const msg = {
+    key: { remoteJid: GROUP_JID, participant: SENDER_JID, id: "wamid.DOC-1", fromMe: false },
+    message: {
+      ephemeralMessage: {
+        message: {
+          documentMessage: {
+            caption: "/ltsa pm 211-P-16B checklist",
+            mimetype: "application/pdf",
+            fileName: "pm_report.pdf",
+            fileLength: 204800,
+          },
+        },
+      },
+    },
+  };
+  assert.equal(extractText(msg), "/ltsa pm 211-P-16B checklist");
+  assert.equal(extractLtsaTrigger(extractText(msg)), "pm 211-P-16B checklist");
+  const event = normalizeGroupMessageEvent(msg);
+  assert.ok(event);
+  assert.equal(event.media_type, "document");
+  assert.equal(event.mimetype, "application/pdf");
+  assert.equal(event.filename, "pm_report.pdf");
+  assert.equal(event.file_length, 204800);
+});
+
+test("viewOnce image with no caption yields empty text and no trigger", () => {
+  const msg = {
+    key: { remoteJid: GROUP_JID, participant: SENDER_JID, id: "wamid.VO-1", fromMe: false },
+    message: {
+      viewOnceMessage: {
+        message: {
+          imageMessage: {
+            mimetype: "image/jpeg",
+            fileLength: 5000,
+          },
+        },
+      },
+    },
+  };
+  assert.equal(extractText(msg), "");
+  assert.equal(extractLtsaTrigger(extractText(msg)), null);
+  const event = normalizeGroupMessageEvent(msg);
+  assert.ok(event);
+  assert.equal(event.media_type, "image");
+  assert.equal(event.text, "");
+});
+

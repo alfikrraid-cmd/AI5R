@@ -35,6 +35,7 @@ ACTIVE-ness, rate-limit counters keyed by current time window).
 """
 from __future__ import annotations
 
+import base64
 import hashlib
 import logging
 import re
@@ -43,6 +44,14 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
 
 from .auth_service import AuthenticatedIdentity, resolve_area_scope
+from .pump_area_scope import is_area_in_scope
+from .whatsapp_group_media_store import (
+    extract_pump_tag_candidates,
+    format_file_size,
+    normalize_pump_tag,
+    sanitize_filename,
+    validate_media_file,
+)
 from .whatsapp_intake_service import hash_sender_identifier, normalize_sender_identifier
 
 logger = logging.getLogger(__name__)
@@ -72,6 +81,10 @@ class GroupMessageEvent:
     is_from_self: bool = False
     is_group_message: bool = True
     timestamp: float | None = None
+    media_type: str | None = None
+    media_bytes_base64: str | None = None
+    mimetype: str | None = None
+    filename: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,6 +106,19 @@ _STATUS_UNAUTHORIZED_SENDER = "UNAUTHORIZED_SENDER"
 _STATUS_RATE_LIMITED = "RATE_LIMITED"
 _STATUS_ANSWERED = "ANSWERED"
 _STATUS_UNAVAILABLE = "UNAVAILABLE"
+_STATUS_MEDIA_STAGED = "MEDIA_STAGED"
+_STATUS_MEDIA_CONFIRMED = "MEDIA_CONFIRMED"
+_STATUS_MEDIA_CANCELLED = "MEDIA_CANCELLED"
+_STATUS_UNAUTHORIZED_MEDIA = "UNAUTHORIZED_MEDIA"
+_STATUS_UNSUPPORTED_GENERIC_ATTACHMENT = "UNSUPPORTED_GENERIC_ATTACHMENT"
+_STATUS_NO_PENDING_MEDIA = "NO_PENDING_MEDIA"
+_STATUS_PARENT_RECORD_NOT_FOUND = "PARENT_RECORD_NOT_FOUND"
+_STATUS_INVALID_MEDIA = "INVALID_MEDIA"
+_STATUS_MALFORMED_MEDIA = "MALFORMED_MEDIA"
+_STATUS_MISSING_PUMP_TAG = "MISSING_PUMP_TAG"
+_STATUS_MULTIPLE_PUMP_TAGS = "MULTIPLE_PUMP_TAGS"
+_STATUS_PUMP_NOT_FOUND = "PUMP_NOT_FOUND"
+_STATUS_PUMP_OUT_OF_SCOPE = "PUMP_OUT_OF_SCOPE"
 
 
 def hash_group_identifier(group_id: str) -> str:
@@ -172,6 +198,56 @@ class SenderIdentityRepositoryProtocol(Protocol):
     def find_identity_by_sender_hash(self, sender_hash: str) -> AuthenticatedIdentity | None: ...
 
 
+class WhatsAppGroupMediaStoreProtocol(Protocol):
+    def stage_media(
+        self,
+        *,
+        sender_user_id: str,
+        sender_hash: str,
+        group_hash: str,
+        raw_bytes: bytes,
+        mimetype: str,
+        filename: str,
+        pump_tag: str,
+        target_type: str,
+        target_record_code: str,
+        target_record_id: int | None = None,
+        target_record_date: str | None = None,
+        category: str = "OTHER",
+    ) -> Any: ...
+
+    def get_pending(self, sender_user_id: str, group_hash: str) -> Any | None: ...
+
+    def discard_pending(self, sender_user_id: str, group_hash: str) -> Any | None: ...
+
+
+class PMCMEvidenceRepositoryProtocol(Protocol):
+    def create(
+        self,
+        *,
+        record_type: str,
+        record_code: str,
+        file_name: str,
+        content_type: str,
+        file_bytes: bytes,
+        category: str | None,
+        source: str,
+        uploaded_by: str,
+    ) -> dict: ...
+
+
+class ConditionMonitoringReadingRepositoryProtocol(Protocol):
+    def list_by_asset(self, asset_code: str) -> list[dict]: ...
+
+
+class PMOccurrenceRepositoryProtocol(Protocol):
+    def list_by_asset(self, asset_code: str) -> list[dict]: ...
+
+
+class PumpGatewayProtocol(Protocol):
+    def get_pump(self, tag: str) -> dict: ...
+
+
 # --------------------------------------------------------------------------
 # Rate limiting -- conservative, configurable, in-memory sliding counters.
 # A dedicated Protocol so a future shared/multi-process limiter (e.g.
@@ -236,6 +312,11 @@ def process_group_message(
     sender_identity_repository: SenderIdentityRepositoryProtocol,
     rate_limiter: RateLimiterProtocol,
     ask_ltsa_question: Callable[[str, "frozenset[str] | None"], str],
+    media_store: WhatsAppGroupMediaStoreProtocol | None = None,
+    pm_cm_evidence_repository: PMCMEvidenceRepositoryProtocol | None = None,
+    condition_monitoring_reading_repository: ConditionMonitoringReadingRepositoryProtocol | None = None,
+    pm_occurrence_repository: PMOccurrenceRepositoryProtocol | None = None,
+    pump_gateway: PumpGatewayProtocol | None = None,
 ) -> GroupAgentResult:
     """`ask_ltsa_question(question, effective_scope) -> answer_text` is the
     ONLY point where this module calls into LTSA reasoning -- the caller
@@ -295,6 +376,256 @@ def process_group_message(
         # "number exists but inactive" in the reply text.
         return GroupAgentResult(status=_STATUS_UNAUTHORIZED_SENDER, reply=_UNAUTHORIZED_SENDER_REPLY)
 
+    lower_q = question.strip().lower()
+
+    # ----------------------------------------------------------------------
+    # Flow A: /ltsa confirm -> commit pending media
+    # ----------------------------------------------------------------------
+    if lower_q == "confirm":
+        if "maintenance.write" not in identity.permissions:
+            return GroupAgentResult(
+                status=_STATUS_UNAUTHORIZED_MEDIA,
+                reply="Nomor Anda tidak memiliki izin untuk mengonfirmasi penyimpanan media (diperlukan izin maintenance.write).",
+            )
+        if not rate_limiter.allow(sender_hash=sender_hash, group_hash=group_hash):
+            return GroupAgentResult(status=_STATUS_RATE_LIMITED, reply=_RATE_LIMITED_REPLY)
+        if not media_store:
+            return GroupAgentResult(status=_STATUS_UNAVAILABLE, reply=_UNAVAILABLE_REPLY)
+
+        pending = media_store.get_pending(sender_user_id=identity.user_id, group_hash=group_hash)
+        if not pending:
+            return GroupAgentResult(
+                status=_STATUS_NO_PENDING_MEDIA,
+                reply="Tidak ada media yang sedang menunggu konfirmasi atau sesi telah kedaluwarsa (15 menit).",
+            )
+        if not pm_cm_evidence_repository:
+            return GroupAgentResult(status=_STATUS_UNAVAILABLE, reply=_UNAVAILABLE_REPLY)
+
+        file_bytes = pending.get_bytes()
+        if not file_bytes:
+            media_store.discard_pending(sender_user_id=identity.user_id, group_hash=group_hash)
+            return GroupAgentResult(
+                status=_STATUS_MALFORMED_MEDIA,
+                reply="File sementara tidak ditemukan atau rusak. Silakan unggah kembali.",
+            )
+
+        try:
+            pm_cm_evidence_repository.create(
+                record_type=pending.target_type,
+                record_code=pending.target_record_code,
+                file_name=pending.filename,
+                content_type=pending.mimetype,
+                file_bytes=file_bytes,
+                category=pending.category,
+                source="WHATSAPP_GROUP",
+                uploaded_by=identity.user_id,
+            )
+        except Exception:
+            logger.exception("Failed to insert evidence into pm_cm_evidence")
+            return GroupAgentResult(status=_STATUS_UNAVAILABLE, reply=_UNAVAILABLE_REPLY)
+
+        media_store.discard_pending(sender_user_id=identity.user_id, group_hash=group_hash)
+        target_label = (
+            "Condition Monitoring"
+            if pending.target_type == "CONDITION_MONITORING_READING"
+            else "Preventive Maintenance"
+        )
+        reply_text = (
+            f"Dokumen/media *{pending.filename}* berhasil disimpan dan dikaitkan ke catatan "
+            f"{target_label} (`{pending.target_record_code}`) untuk pompa *{pending.pump_tag}*."
+        )
+        return GroupAgentResult(status=_STATUS_MEDIA_CONFIRMED, reply=reply_text)
+
+    # ----------------------------------------------------------------------
+    # Flow B: /ltsa cancel -> discard pending media
+    # ----------------------------------------------------------------------
+    if lower_q == "cancel":
+        if "maintenance.write" not in identity.permissions:
+            return GroupAgentResult(
+                status=_STATUS_UNAUTHORIZED_MEDIA,
+                reply="Nomor Anda tidak memiliki izin untuk membatalkan unggahan media (diperlukan izin maintenance.write).",
+            )
+        if not rate_limiter.allow(sender_hash=sender_hash, group_hash=group_hash):
+            return GroupAgentResult(status=_STATUS_RATE_LIMITED, reply=_RATE_LIMITED_REPLY)
+        if not media_store:
+            return GroupAgentResult(status=_STATUS_UNAVAILABLE, reply=_UNAVAILABLE_REPLY)
+
+        discarded = media_store.discard_pending(sender_user_id=identity.user_id, group_hash=group_hash)
+        if discarded:
+            return GroupAgentResult(
+                status=_STATUS_MEDIA_CANCELLED,
+                reply=f"Unggahan media untuk pompa *{discarded.pump_tag}* telah dibatalkan.",
+            )
+        return GroupAgentResult(
+            status=_STATUS_NO_PENDING_MEDIA,
+            reply="Tidak ada media yang sedang menunggu konfirmasi.",
+        )
+
+    # ----------------------------------------------------------------------
+    # Flow C: Inbound media ingestion (image/document attached)
+    # ----------------------------------------------------------------------
+    if event.media_type is not None or event.media_bytes_base64 is not None:
+        if "maintenance.write" not in identity.permissions:
+            return GroupAgentResult(
+                status=_STATUS_UNAUTHORIZED_MEDIA,
+                reply="Nomor Anda tidak memiliki izin untuk mengunggah dokumen/bukti media (diperlukan izin maintenance.write).",
+            )
+        if not rate_limiter.allow(sender_hash=sender_hash, group_hash=group_hash):
+            return GroupAgentResult(status=_STATUS_RATE_LIMITED, reply=_RATE_LIMITED_REPLY)
+
+        if question == "":
+            return GroupAgentResult(
+                status=_STATUS_USAGE,
+                reply="Silakan sertakan perintah dan tag pompa pada caption media.\nContoh:\n/ltsa cm 211-P-16B\n/ltsa pm 211-P-16B",
+            )
+
+        tokens = question.strip().split()
+        subcmd = tokens[0].lower()
+        if subcmd in ("cm", "cmon"):
+            target_type = "CONDITION_MONITORING_READING"
+            target_label = "Condition Monitoring"
+        elif subcmd == "pm":
+            target_type = "PM_OCCURRENCE"
+            target_label = "Preventive Maintenance"
+        elif subcmd in ("laporan", "foto", "doc", "document"):
+            candidates = extract_pump_tag_candidates(question)
+            tag_hint = f" ({candidates[0]})" if candidates else ""
+            return GroupAgentResult(
+                status=_STATUS_UNSUPPORTED_GENERIC_ATTACHMENT,
+                reply=(
+                    f"Lampiran media umum untuk pompa{tag_hint} belum didukung pada skema database saat ini tanpa relasi CM/PM.\n"
+                    "Silakan kaitkan media dengan catatan CM atau PM:\n"
+                    "• /ltsa cm [TAG]\n"
+                    "• /ltsa pm [TAG]"
+                ),
+            )
+        else:
+            return GroupAgentResult(
+                status=_STATUS_USAGE,
+                reply=(
+                    "Perintah media tidak dikenali. Silakan gunakan perintah:\n"
+                    "• /ltsa cm [TAG] (untuk Condition Monitoring)\n"
+                    "• /ltsa pm [TAG] (untuk Preventive Maintenance)"
+                ),
+            )
+
+        candidates = extract_pump_tag_candidates(question)
+        if not candidates:
+            return GroupAgentResult(
+                status=_STATUS_MISSING_PUMP_TAG,
+                reply=f"Mohon sertakan tag pompa pada caption. Contoh: /ltsa {subcmd} 211-P-16B",
+            )
+        if len(candidates) > 1:
+            return GroupAgentResult(
+                status=_STATUS_MULTIPLE_PUMP_TAGS,
+                reply="Saya menemukan beberapa tag pompa di caption. Sebutkan satu tag pompa saja dan kirim ulang.",
+            )
+
+        pump_tag = normalize_pump_tag(candidates[0]) or candidates[0]
+        sender_scope = resolve_area_scope(identity)
+        effective_scope = intersect_scope(sender_scope, group.allowed_scope)
+
+        if pump_gateway:
+            response = pump_gateway.get_pump(pump_tag)
+            pump_data = response.get("data") if isinstance(response, dict) else None
+            if not isinstance(pump_data, dict):
+                return GroupAgentResult(
+                    status=_STATUS_PUMP_NOT_FOUND,
+                    reply=f"Tag pompa {pump_tag} tidak ditemukan.",
+                )
+            pump_area = pump_data.get("area")
+            if not is_area_in_scope(pump_area, effective_scope):
+                return GroupAgentResult(
+                    status=_STATUS_PUMP_OUT_OF_SCOPE,
+                    reply=f"Tag pompa {pump_tag} berada di luar area wewenang Anda.",
+                )
+
+        # Resolve parent record
+        if target_type == "CONDITION_MONITORING_READING":
+            if not condition_monitoring_reading_repository:
+                return GroupAgentResult(status=_STATUS_UNAVAILABLE, reply=_UNAVAILABLE_REPLY)
+            readings = condition_monitoring_reading_repository.list_by_asset(pump_tag)
+            if not readings:
+                return GroupAgentResult(
+                    status=_STATUS_PARENT_RECORD_NOT_FOUND,
+                    reply=f"Tidak ditemukan catatan Condition Monitoring aktif untuk pompa {pump_tag}. Bukti media tidak dapat dikaitkan tanpa catatan CM induk.",
+                )
+            target_record = readings[0]
+            target_record_code = target_record.get("condition_monitoring_reading_code") or ""
+            target_record_id = target_record.get("reading_id")
+            target_record_date = target_record.get("reading_date") or target_record.get("created_at") or "-"
+        else:
+            if not pm_occurrence_repository:
+                return GroupAgentResult(status=_STATUS_UNAVAILABLE, reply=_UNAVAILABLE_REPLY)
+            occurrences = pm_occurrence_repository.list_by_asset(pump_tag)
+            if not occurrences:
+                return GroupAgentResult(
+                    status=_STATUS_PARENT_RECORD_NOT_FOUND,
+                    reply=f"Tidak ditemukan catatan Preventive Maintenance aktif untuk pompa {pump_tag}. Bukti media tidak dapat dikaitkan tanpa catatan PM induk.",
+                )
+            target_record = occurrences[0]
+            target_record_code = target_record.get("pm_occurrence_code") or ""
+            target_record_id = target_record.get("occurrence_id")
+            target_record_date = target_record.get("occurrence_date") or target_record.get("created_at") or "-"
+
+        if not event.media_bytes_base64:
+            return GroupAgentResult(status=_STATUS_MALFORMED_MEDIA, reply="Data media tidak ditemukan dalam pesan.")
+        try:
+            media_bytes = base64.b64decode(event.media_bytes_base64)
+        except Exception:
+            return GroupAgentResult(status=_STATUS_MALFORMED_MEDIA, reply="Data media rusak atau gagal didekode.")
+
+        is_valid, err_msg = validate_media_file(media_bytes, declared_mimetype=event.mimetype or "")
+        if not is_valid:
+            return GroupAgentResult(status=_STATUS_INVALID_MEDIA, reply=err_msg or "Validasi media gagal.")
+
+        if event.media_type == "image":
+            category = "PHOTO"
+        elif event.media_type == "document" and (
+            event.mimetype == "application/pdf" or (event.filename or "").lower().endswith(".pdf")
+        ):
+            category = "REPORT"
+        else:
+            category = "OTHER"
+
+        safe_name = sanitize_filename(
+            event.filename or f"{subcmd}_{pump_tag}",
+            fallback_ext=".jpg" if category == "PHOTO" else ".pdf",
+        )
+        if not media_store:
+            return GroupAgentResult(status=_STATUS_UNAVAILABLE, reply=_UNAVAILABLE_REPLY)
+
+        pending_rec = media_store.stage_media(
+            sender_user_id=identity.user_id,
+            sender_hash=sender_hash,
+            group_hash=group_hash,
+            raw_bytes=media_bytes,
+            mimetype=event.mimetype or "application/octet-stream",
+            filename=safe_name,
+            pump_tag=pump_tag,
+            target_type=target_type,
+            target_record_code=target_record_code,
+            target_record_id=target_record_id,
+            target_record_date=str(target_record_date),
+            category=category,
+        )
+
+        preview_text = (
+            f"*Preview Bukti Media:*\n"
+            f"• *File:* {pending_rec.filename} ({format_file_size(len(media_bytes))})\n"
+            f"• *Target:* {target_label} (`{target_record_code}`)\n"
+            f"• *Tanggal Catatan:* {target_record_date}\n"
+            f"• *Pompa:* {pump_tag}\n\n"
+            f"Ketik:\n"
+            f"*/ltsa confirm* -> untuk menyimpan ke catatan\n"
+            f"*/ltsa cancel* -> untuk membatalkan\n"
+            f"_(Berlaku selama 15 menit)_"
+        )
+        return GroupAgentResult(status=_STATUS_MEDIA_STAGED, reply=preview_text)
+
+    # ----------------------------------------------------------------------
+    # Flow D: Standard text query flow
+    # ----------------------------------------------------------------------
     if question == "":
         return GroupAgentResult(status=_STATUS_USAGE, reply=_USAGE_REPLY)
 
@@ -330,6 +661,11 @@ __all__ = [
     "GroupNotFoundError",
     "GroupAuthorizationRepositoryProtocol",
     "SenderIdentityRepositoryProtocol",
+    "WhatsAppGroupMediaStoreProtocol",
+    "PMCMEvidenceRepositoryProtocol",
+    "ConditionMonitoringReadingRepositoryProtocol",
+    "PMOccurrenceRepositoryProtocol",
+    "PumpGatewayProtocol",
     "RateLimiterProtocol",
     "RateLimitConfig",
     "InMemoryRateLimiter",
@@ -338,3 +674,4 @@ __all__ = [
     "intersect_scope",
     "process_group_message",
 ]
+

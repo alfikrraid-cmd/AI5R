@@ -31,8 +31,8 @@ if TYPE_CHECKING:
 # Phase 6's own explicit list -- JPG/JPEG/PNG/PDF only. image/jpg is a
 # common but non-standard alias browsers/phones sometimes send; accepted
 # alongside the correct image/jpeg so a real photo upload is never
-# rejected on a technicality.
-ALLOWED_CONTENT_TYPES = frozenset({"image/jpeg", "image/jpg", "image/png", "application/pdf"})
+# rejected on a technicality. image/webp added for WhatsApp media support.
+ALLOWED_CONTENT_TYPES = frozenset({"image/jpeg", "image/jpg", "image/png", "image/webp", "application/pdf"})
 MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024  # 15 MB -- generous for a phone photo/scanned PDF, not unbounded
 ALLOWED_CATEGORIES = frozenset({"PHOTO", "REPORT", "MEASUREMENT", "OTHER"})
 
