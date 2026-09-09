@@ -93,4 +93,32 @@ describe("ConditionMonitoringMeasurementFieldsForm -- grouping", () => {
 
     expect(sectionToggle.textContent).toContain("1 reading");
   });
+
+  it("renders Drive End (DE) and Non-Drive End (NDE) table headers in paired sections", () => {
+    render(<Harness />);
+    expandAll();
+
+    expect(screen.getAllByText("Drive End (DE)").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Non-Drive End (NDE)").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Parameter").length).toBeGreaterThan(0);
+  });
+
+  it("toggles all sections via the Expand All / Collapse All action", () => {
+    render(<Harness />);
+
+    // Initially collapsed
+    expect(screen.queryByLabelText("Vertical Vibration DE")).toBeNull();
+
+    // Click Expand All
+    const toggleAllBtn = screen.getByRole("button", { name: "Expand All ▾" });
+    fireEvent.click(toggleAllBtn);
+
+    expect(screen.getByLabelText("Vertical Vibration DE")).toBeInTheDocument();
+    expect(screen.getByLabelText("Bearing Temp DE")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Collapse All ▴" })).toBeInTheDocument();
+
+    // Click Collapse All
+    fireEvent.click(screen.getByRole("button", { name: "Collapse All ▴" }));
+    expect(screen.queryByLabelText("Vertical Vibration DE")).toBeNull();
+  });
 });

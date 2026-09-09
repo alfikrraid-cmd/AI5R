@@ -3,26 +3,6 @@ import colors from "../../../design-system/theme/colors";
 import spacing from "../../../design-system/theme/spacing";
 import { MEASUREMENT_PAIR_FIELDS, MEASUREMENT_SINGLE_FIELDS, LEAK_FIELD } from "../utils/conditionMonitoringMeasurementFields";
 
-// MWO-LTSA-CMON-ADHOC-ENTRY-001 -- extracted, unchanged, from
-// CreateConditionMonitoringReadingModal.jsx (which now imports this same
-// component instead of its own inline copy) so the schedule-based Create
-// form and the new ad-hoc Create form render the exact same DE/NDE grid
-// and leak tri-state control -- one implementation, never two that could
-// drift apart. Every field still comes from the one shared data module
-// (conditionMonitoringMeasurementFields.js); this file adds no new field,
-// no new catalog, only presentation.
-//
-// AI5R-CMON-UX-001 -- the ~38 fields this form renders (15 DE/NDE pairs,
-// 5 single fields, operating state, leak DE/NDE) previously appeared as
-// one long undifferentiated list -- the confirmed root cause of the
-// owner's "visually confusing" complaint. Grouped into named sections
-// below, PRESENTATION ONLY: no field is renamed, removed, or invented,
-// payload keys/units are exactly as `conditionMonitoringMeasurementFields.js`
-// already defines them, and every section is independently collapsible
-// -- collapsing a section never clears its values (they live in the
-// parent's `measurements` state, entirely untouched by this component's
-// own expand/collapse UI state).
-
 export const OPERATING_STATE_OPTIONS = ["Running", "Standby", "Repair"];
 
 export const fieldStyle = {
@@ -36,6 +16,18 @@ export const fieldStyle = {
 };
 
 export const labelStyle = { display: "block", color: colors.textMuted, fontSize: 12, marginBottom: spacing.xs };
+
+export const srOnlyStyle = {
+  position: "absolute",
+  width: "1px",
+  height: "1px",
+  padding: "0",
+  margin: "-1px",
+  overflow: "hidden",
+  clip: "rect(0, 0, 0, 0)",
+  whiteSpace: "nowrap",
+  border: "0",
+};
 
 export function Field({ id, label, children }) {
   return (
@@ -54,10 +46,6 @@ export const LEAK_OPTIONS = [
   { value: "true", label: "Leak Detected" },
 ];
 
-// Grouping metadata only -- references MEASUREMENT_PAIR_FIELDS entries by
-// their existing `group` label, invents nothing. Every pair field is
-// assigned to exactly one section; this array is verified 1:1 against
-// the canonical list by a dedicated test (no field silently dropped).
 const PAIR_SECTIONS = [
   { title: "Vibration", groups: ["Vertical Vibration", "Horizontal Vibration", "Axial Vibration"] },
   { title: "Bearing Temperature", groups: ["Bearing Temp"] },
@@ -74,14 +62,17 @@ function countRecorded(values) {
   return values.filter((value) => value !== "" && value !== null && value !== undefined).length;
 }
 
-function CollapsibleSection({ title, count, defaultOpen = false, children }) {
-  const [open, setOpen] = useState(defaultOpen);
+function CollapsibleSection({ title, count, isOpen, onToggle, defaultOpen = false, children }) {
+  const [localOpen, setLocalOpen] = useState(defaultOpen);
+  const open = isOpen !== undefined ? isOpen : localOpen;
+  const toggle = onToggle ? onToggle : () => setLocalOpen((current) => !current);
   const bodyId = `cmon-section-${title.replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase()}`;
+
   return (
-    <div style={{ marginBottom: spacing.sm, border: `1px solid ${colors.border}`, borderRadius: spacing.xs }}>
+    <div style={{ marginBottom: spacing.sm, border: `1px solid ${colors.border}`, borderRadius: spacing.xs, background: colors.panel }}>
       <button
         type="button"
-        onClick={() => setOpen((current) => !current)}
+        onClick={toggle}
         aria-expanded={open}
         aria-controls={bodyId}
         style={{
@@ -114,40 +105,137 @@ function CollapsibleSection({ title, count, defaultOpen = false, children }) {
   );
 }
 
-function PairFieldRow({ field, measurements, onFieldChange, idPrefix }) {
+function PairFieldTableRow({ field, measurements, onFieldChange, idPrefix }) {
   return (
-    <div style={{ marginBottom: spacing.sm }}>
-      <div style={labelStyle}>
-        {field.group} ({field.unit})
-      </div>
-      <div style={{ display: "flex", gap: spacing.sm, flexWrap: "wrap" }}>
-        <Field id={`${idPrefix}-${field.deKey}`} label={`${field.group} DE`}>
-          <div style={{ display: "flex", alignItems: "center", gap: spacing.xs }}>
-            <input
-              id={`${idPrefix}-${field.deKey}`}
-              type="number"
-              step="any"
-              style={{ ...fieldStyle, flex: 1, minWidth: 0 }}
-              value={measurements[field.deKey]}
-              onChange={onFieldChange(field.deKey)}
+    <tr style={{ borderBottom: `1px solid ${colors.border}44` }}>
+      <td style={{ padding: "6px 8px", color: colors.text, verticalAlign: "middle" }}>
+        <span style={{ fontWeight: 500 }}>{field.group} ({field.unit})</span>
+      </td>
+      <td style={{ padding: "6px 8px", verticalAlign: "middle" }}>
+        <div>
+          <label htmlFor={`${idPrefix}-${field.deKey}`} style={srOnlyStyle}>
+            {field.group} DE
+          </label>
+          <input
+            id={`${idPrefix}-${field.deKey}`}
+            aria-label={`${field.group} DE`}
+            type="number"
+            step="any"
+            placeholder="—"
+            style={{ ...fieldStyle, padding: "4px 8px", fontSize: 12 }}
+            value={measurements[field.deKey]}
+            onChange={onFieldChange(field.deKey)}
+          />
+        </div>
+      </td>
+      <td style={{ padding: "6px 8px", verticalAlign: "middle" }}>
+        <div>
+          <label htmlFor={`${idPrefix}-${field.ndeKey}`} style={srOnlyStyle}>
+            {field.group} NDE
+          </label>
+          <input
+            id={`${idPrefix}-${field.ndeKey}`}
+            aria-label={`${field.group} NDE`}
+            type="number"
+            step="any"
+            placeholder="—"
+            style={{ ...fieldStyle, padding: "4px 8px", fontSize: 12 }}
+            value={measurements[field.ndeKey]}
+            onChange={onFieldChange(field.ndeKey)}
+          />
+        </div>
+      </td>
+      <td style={{ padding: "6px 8px", color: colors.textMuted, fontSize: 12, verticalAlign: "middle" }}>
+        {field.unit}
+      </td>
+    </tr>
+  );
+}
+
+function LeakTableRow({ idPrefix, measurements, onFieldChange }) {
+  return (
+    <tr style={{ borderBottom: `1px solid ${colors.border}44` }}>
+      <td style={{ padding: "6px 8px", color: colors.text, verticalAlign: "middle" }}>
+        <span style={{ fontWeight: 500 }}>{LEAK_FIELD.group}</span>
+      </td>
+      <td style={{ padding: "6px 8px", verticalAlign: "middle" }}>
+        <div>
+          <label htmlFor={`${idPrefix}-${LEAK_FIELD.deKey}`} style={srOnlyStyle}>
+            {LEAK_FIELD.group} DE
+          </label>
+          <select
+            id={`${idPrefix}-${LEAK_FIELD.deKey}`}
+            aria-label={`${LEAK_FIELD.group} DE`}
+            style={{ ...fieldStyle, padding: "4px 8px", fontSize: 12 }}
+            value={measurements[LEAK_FIELD.deKey]}
+            onChange={onFieldChange(LEAK_FIELD.deKey)}
+          >
+            {LEAK_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </td>
+      <td style={{ padding: "6px 8px", verticalAlign: "middle" }}>
+        <div>
+          <label htmlFor={`${idPrefix}-${LEAK_FIELD.ndeKey}`} style={srOnlyStyle}>
+            {LEAK_FIELD.group} NDE
+          </label>
+          <select
+            id={`${idPrefix}-${LEAK_FIELD.ndeKey}`}
+            aria-label={`${LEAK_FIELD.group} NDE`}
+            style={{ ...fieldStyle, padding: "4px 8px", fontSize: 12 }}
+            value={measurements[LEAK_FIELD.ndeKey]}
+            onChange={onFieldChange(LEAK_FIELD.ndeKey)}
+          >
+            {LEAK_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </td>
+      <td style={{ padding: "6px 8px", color: colors.textMuted, fontSize: 12, verticalAlign: "middle" }}>
+        Status
+      </td>
+    </tr>
+  );
+}
+
+function PairSectionTable({ fields, includeLeak, measurements, onFieldChange, idPrefix }) {
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+        <thead>
+          <tr style={{ borderBottom: `1px solid ${colors.border}`, color: colors.textMuted }}>
+            <th style={{ padding: "6px 8px", textAlign: "left", fontWeight: 600 }}>Parameter</th>
+            <th style={{ padding: "6px 8px", textAlign: "left", width: "30%", fontWeight: 600 }}>Drive End (DE)</th>
+            <th style={{ padding: "6px 8px", textAlign: "left", width: "30%", fontWeight: 600 }}>Non-Drive End (NDE)</th>
+            <th style={{ padding: "6px 8px", textAlign: "left", width: "12%", fontWeight: 600 }}>Unit</th>
+          </tr>
+        </thead>
+        <tbody>
+          {fields.map((field) => (
+            <PairFieldTableRow
+              key={field.group}
+              field={field}
+              measurements={measurements}
+              onFieldChange={onFieldChange}
+              idPrefix={idPrefix}
             />
-            <span style={{ color: colors.textMuted, fontSize: 12, whiteSpace: "nowrap" }}>{field.unit}</span>
-          </div>
-        </Field>
-        <Field id={`${idPrefix}-${field.ndeKey}`} label={`${field.group} NDE`}>
-          <div style={{ display: "flex", alignItems: "center", gap: spacing.xs }}>
-            <input
-              id={`${idPrefix}-${field.ndeKey}`}
-              type="number"
-              step="any"
-              style={{ ...fieldStyle, flex: 1, minWidth: 0 }}
-              value={measurements[field.ndeKey]}
-              onChange={onFieldChange(field.ndeKey)}
+          ))}
+          {includeLeak && (
+            <LeakTableRow
+              idPrefix={idPrefix}
+              measurements={measurements}
+              onFieldChange={onFieldChange}
             />
-            <span style={{ color: colors.textMuted, fontSize: 12, whiteSpace: "nowrap" }}>{field.unit}</span>
-          </div>
-        </Field>
-      </div>
+          )}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -158,9 +246,11 @@ function SingleFieldRow({ field, measurements, onFieldChange, idPrefix }) {
       <div style={{ display: "flex", alignItems: "center", gap: spacing.xs }}>
         <input
           id={`${idPrefix}-${field.key}`}
+          aria-label={`${field.label} (${field.unit})`}
           type="number"
           step="any"
-          style={{ ...fieldStyle, flex: 1, minWidth: 0 }}
+          placeholder="—"
+          style={{ ...fieldStyle, flex: 1, minWidth: 0, padding: "4px 8px", fontSize: 12 }}
           value={measurements[field.key]}
           onChange={onFieldChange(field.key)}
         />
@@ -170,66 +260,93 @@ function SingleFieldRow({ field, measurements, onFieldChange, idPrefix }) {
   );
 }
 
-function LeakRow({ idPrefix, measurements, onFieldChange }) {
+export default function ConditionMonitoringMeasurementFieldsForm({ measurements, onFieldChange, idPrefix = "cmon" }) {
+  const pairFieldsByGroup = new Map(MEASUREMENT_PAIR_FIELDS.map((field) => [field.group, field]));
+
+  const [sectionOpenStates, setSectionOpenStates] = useState({
+    Vibration: false,
+    "Bearing Temperature": false,
+    "Mechanical Seal / Gland": false,
+    "Flushing / Quench": false,
+    Cooling: false,
+    "Process Conditions": false,
+  });
+
+  const allOpen = Object.values(sectionOpenStates).every(Boolean);
+
+  function toggleAll() {
+    const nextState = !allOpen;
+    setSectionOpenStates({
+      Vibration: nextState,
+      "Bearing Temperature": nextState,
+      "Mechanical Seal / Gland": nextState,
+      "Flushing / Quench": nextState,
+      Cooling: nextState,
+      "Process Conditions": nextState,
+    });
+  }
+
+  function toggleSection(title) {
+    setSectionOpenStates((prev) => ({ ...prev, [title]: !prev[title] }));
+  }
+
   return (
-    <div style={{ marginBottom: spacing.sm }}>
-      <div style={labelStyle}>{LEAK_FIELD.group}</div>
-      <div style={{ display: "flex", gap: spacing.sm, flexWrap: "wrap" }}>
-        <Field id={`${idPrefix}-${LEAK_FIELD.deKey}`} label={`${LEAK_FIELD.group} DE`}>
+    <>
+      <div
+        style={{
+          marginBottom: spacing.md,
+          padding: spacing.sm,
+          border: `1px solid ${colors.border}`,
+          borderRadius: spacing.xs,
+          background: colors.panel,
+        }}
+      >
+        <Field id={`${idPrefix}-operating-state`} label="Pump Operating State">
           <select
-            id={`${idPrefix}-${LEAK_FIELD.deKey}`}
+            id={`${idPrefix}-operating-state`}
+            aria-label="Pump Operating State"
             style={fieldStyle}
-            value={measurements[LEAK_FIELD.deKey]}
-            onChange={onFieldChange(LEAK_FIELD.deKey)}
+            value={measurements.pumpOperatingState}
+            onChange={onFieldChange("pumpOperatingState")}
           >
-            {LEAK_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field id={`${idPrefix}-${LEAK_FIELD.ndeKey}`} label={`${LEAK_FIELD.group} NDE`}>
-          <select
-            id={`${idPrefix}-${LEAK_FIELD.ndeKey}`}
-            style={fieldStyle}
-            value={measurements[LEAK_FIELD.ndeKey]}
-            onChange={onFieldChange(LEAK_FIELD.ndeKey)}
-          >
-            {LEAK_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
+            <option value="">Not Recorded</option>
+            {OPERATING_STATE_OPTIONS.map((option) => (
+              <option key={option} value={option}>
+                {option}
               </option>
             ))}
           </select>
         </Field>
       </div>
-    </div>
-  );
-}
 
-// `idPrefix` keeps element ids unique when this form is rendered more
-// than once on the same page/test tree.
-export default function ConditionMonitoringMeasurementFieldsForm({ measurements, onFieldChange, idPrefix = "cmon" }) {
-  const pairFieldsByGroup = new Map(MEASUREMENT_PAIR_FIELDS.map((field) => [field.group, field]));
-
-  return (
-    <>
-      <Field id={`${idPrefix}-operating-state`} label="Pump Operating State">
-        <select
-          id={`${idPrefix}-operating-state`}
-          style={fieldStyle}
-          value={measurements.pumpOperatingState}
-          onChange={onFieldChange("pumpOperatingState")}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: spacing.xs,
+          padding: `0 ${spacing.xs}px`,
+        }}
+      >
+        <span style={{ fontSize: 11, color: colors.textMuted, fontWeight: 600, letterSpacing: 0.5 }}>
+          MEASUREMENT GROUPS (DE / NDE)
+        </span>
+        <button
+          type="button"
+          onClick={toggleAll}
+          style={{
+            background: "transparent",
+            border: "none",
+            color: colors.info,
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: "pointer",
+            padding: "2px 6px",
+          }}
         >
-          <option value="">Not Recorded</option>
-          {OPERATING_STATE_OPTIONS.map((option) => (
-            <option key={option} value={option}>
-              {option}
-            </option>
-          ))}
-        </select>
-      </Field>
+          {allOpen ? "Collapse All ▴" : "Expand All ▾"}
+        </button>
+      </div>
 
       {PAIR_SECTIONS.map((section) => {
         const fields = section.groups.map((group) => pairFieldsByGroup.get(group)).filter(Boolean);
@@ -238,11 +355,20 @@ export default function ConditionMonitoringMeasurementFieldsForm({ measurements,
           values.push(measurements[LEAK_FIELD.deKey], measurements[LEAK_FIELD.ndeKey]);
         }
         return (
-          <CollapsibleSection key={section.title} title={section.title} count={countRecorded(values)}>
-            {fields.map((field) => (
-              <PairFieldRow key={field.group} field={field} measurements={measurements} onFieldChange={onFieldChange} idPrefix={idPrefix} />
-            ))}
-            {section.includeLeak && <LeakRow idPrefix={idPrefix} measurements={measurements} onFieldChange={onFieldChange} />}
+          <CollapsibleSection
+            key={section.title}
+            title={section.title}
+            count={countRecorded(values)}
+            isOpen={sectionOpenStates[section.title]}
+            onToggle={() => toggleSection(section.title)}
+          >
+            <PairSectionTable
+              fields={fields}
+              includeLeak={section.includeLeak}
+              measurements={measurements}
+              onFieldChange={onFieldChange}
+              idPrefix={idPrefix}
+            />
           </CollapsibleSection>
         );
       })}
@@ -250,10 +376,21 @@ export default function ConditionMonitoringMeasurementFieldsForm({ measurements,
       <CollapsibleSection
         title={PROCESS_CONDITIONS_TITLE}
         count={countRecorded(MEASUREMENT_SINGLE_FIELDS.map((field) => measurements[field.key]))}
+        isOpen={sectionOpenStates[PROCESS_CONDITIONS_TITLE]}
+        onToggle={() => toggleSection(PROCESS_CONDITIONS_TITLE)}
       >
-        {MEASUREMENT_SINGLE_FIELDS.map((field) => (
-          <SingleFieldRow key={field.key} field={field} measurements={measurements} onFieldChange={onFieldChange} idPrefix={idPrefix} />
-        ))}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+            gap: spacing.sm,
+            paddingTop: spacing.xs,
+          }}
+        >
+          {MEASUREMENT_SINGLE_FIELDS.map((field) => (
+            <SingleFieldRow key={field.key} field={field} measurements={measurements} onFieldChange={onFieldChange} idPrefix={idPrefix} />
+          ))}
+        </div>
       </CollapsibleSection>
     </>
   );

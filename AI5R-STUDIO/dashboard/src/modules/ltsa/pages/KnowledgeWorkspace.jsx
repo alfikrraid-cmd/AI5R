@@ -14,6 +14,7 @@ import KnowledgeConditionMonitoringSection from "../components/KnowledgeConditio
 import KnowledgeUnifiedHistory from "../components/KnowledgeUnifiedHistory";
 import KnowledgePmHistorySection from "../components/KnowledgePmHistorySection";
 import KnowledgeWorkOrdersSection from "../components/KnowledgeWorkOrdersSection";
+import KnowledgeCompatibleSeals from "../components/KnowledgeCompatibleSeals";
 import CopilotPanel from "../components/CopilotPanel";
 import { useKnowledgeWorkspace } from "../hooks/useKnowledgeWorkspace";
 import WorkspaceShell from "../workspace/WorkspaceShell";
@@ -292,7 +293,7 @@ export default function KnowledgeWorkspace({ tag }) {
 
               <KnowledgeSection id="compat-seals" title="Compatible Seals" badge={String(data.compatibleSeals.length)}>
                 <KnowledgeCard variant="row-list">
-                  <RefRows items={data.compatibleSeals} emptyTitle="Belum ada seal kompatibel" />
+                  <KnowledgeCompatibleSeals items={data.compatibleSeals} emptyTitle="Belum ada seal kompatibel" />
                 </KnowledgeCard>
               </KnowledgeSection>
 
