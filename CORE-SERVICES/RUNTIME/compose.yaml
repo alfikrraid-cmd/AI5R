@@ -267,6 +267,37 @@ services:
       retries: ${AI5R_HEALTHCHECK_RETRIES}
       start_period: ${AI5R_HEALTHCHECK_START_PERIOD}
 
+  # MWO-LTSA-069 -- formalizes an out-of-band production deployment into
+  # tracked IaC. Verified against the live container by read-only `docker
+  # inspect`/`docker logs` audit before this entry was written (see
+  # ENGINEERING/MWO/MWO-LTSA-069-Group-Agent-Deployment-Stability-Closure.md)
+  # -- every field below matches what was already running, nothing here
+  # is aspirational. No healthcheck: the running container has none
+  # (`docker inspect --format '{{json .Config.Healthcheck}}'` -> null) --
+  # Baileys is an outbound WebSocket client, not an HTTP server, so no
+  # fabricated check is added. Applying this compose file to production is
+  # a separate, explicit operator action outside this MWO's scope (see
+  # that MWO's Rollback Requirements) -- in particular, the currently
+  # running image is tagged by git SHA (ai5r/tap-ltsa-group-agent:3e85b9b7)
+  # rather than ${AI5R_VERSION}; reconciling that tag convention is an
+  # operator/CI decision, not made here.
+  tap-ltsa-group-agent:
+    image: ${AI5R_GROUP_AGENT_IMAGE_REPO}:${AI5R_VERSION}
+    build:
+      context: ../..
+      dockerfile: CORE-SERVICES/RUNTIME/docker/group-agent.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      AI5R_BACKEND_BASE_URL: ${AI5R_BACKEND_BASE_URL}
+      TAP_GROUP_AGENT_AUTH_STATE_DIR: ${TAP_GROUP_AGENT_AUTH_STATE_DIR}
+      AI5R_WHATSAPP_GROUP_INGRESS_SECRET: ${AI5R_WHATSAPP_GROUP_INGRESS_SECRET}
+    volumes:
+      - group_agent_auth_state:/app/auth_state
+    networks:
+      - edge
+
   minio:
     image: ${AI5R_MINIO_IMAGE}
     restart: unless-stopped
@@ -310,4 +341,15 @@ volumes:
     name: ${AI5R_VOLUME_PREFIX}-n8n-data
   minio_data:
     name: ${AI5R_VOLUME_PREFIX}-minio-data
+  group_agent_auth_state:
+    # MWO-LTSA-069 -- deliberately NOT ${AI5R_VOLUME_PREFIX}-prefixed like
+    # every other volume above. This is the exact, already-existing
+    # production volume created out-of-band on 2026-09-04, holding the
+    # live, already-paired Baileys WhatsApp session for a real phone
+    # number. `external: true` makes `docker compose up` refuse to run if
+    # this volume is missing, rather than silently creating an empty one
+    # and forcing WhatsApp re-pairing -- see PRODUCTION_VOLUME_MAPPING.md
+    # and MWO-LTSA-069's Rollback Requirements.
+    name: tap_ltsa_group_agent_auth_state
+    external: true
 

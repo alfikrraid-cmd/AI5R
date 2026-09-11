@@ -13,6 +13,7 @@ only this contract and the non-secret example file; the real production
 | `AI5R_REDIS_PASSWORD` | Production operator | Rotate before cutover | Must match reused or migrated Redis. |
 | `AI5R_N8N_ENCRYPTION_KEY` | Production operator | Do not rotate casually after migration | Must match existing n8n key to decrypt migrated credentials. |
 | `AI5R_MINIO_ROOT_PASSWORD` | Production operator | Rotate before public object storage use | Required if MinIO retains production data. |
+| `AI5R_WHATSAPP_GROUP_INGRESS_SECRET` | Production operator | Rotate if ever exposed in a log/ticket | MWO-LTSA-069 -- shared verbatim between the `api` and `tap-ltsa-group-agent` services (same variable, same value); gates the one internal endpoint the group agent calls. Already referenced by `compose.yaml`'s `api` service before this MWO; missing from this contract until now. |
 
 
 ## Required Non-Secret Database Names

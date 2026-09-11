@@ -163,9 +163,17 @@ def intersect_scope(
 
 # --------------------------------------------------------------------------
 # Group authorization -- a separate, explicit model. NOT the user database.
-# Phase 1: in-memory only (see whatsapp_group_repository_inmemory.py). A
-# production-backed implementation is a proposed, NOT-applied migration
-# (see ENGINEERING/MWO/MWO-LTSA-TAP-GROUP-AGENT-001-Proposed-Migration.md).
+# Two GroupAuthorizationRepositoryProtocol implementations exist:
+# whatsapp_group_repository_inmemory.py (tests/CI, no live Postgres there)
+# and whatsapp_group_repository_postgres.py (production). CORRECTION
+# (MWO-LTSA-069, 2026-09-11): this comment used to say the in-memory
+# implementation was the only one wired anywhere and that the
+# Postgres-backed one was a "proposed, NOT-applied migration." Both halves
+# are stale -- CORE-SERVICES/BACKEND-API/dependencies.py wires the
+# Postgres-backed repository for real, and a read-only production audit
+# confirmed its schema (migration 032) is already applied in production
+# with real ACTIVE rows. See
+# PRODUCTS/LTSA-BRAIN/DATABASE/MIGRATIONS/034_KNOWN_MIGRATION_STATE.md.
 # --------------------------------------------------------------------------
 @dataclass(frozen=True, slots=True)
 class GroupAuthorizationRecord:

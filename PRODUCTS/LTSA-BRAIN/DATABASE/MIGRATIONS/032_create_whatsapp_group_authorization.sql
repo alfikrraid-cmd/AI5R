@@ -12,6 +12,16 @@
 --
 -- NOT applied to production by this MWO -- report only, per instruction
 -- (Phase 2A: build + test only, no real number paired, no deploy).
+--
+-- CORRECTION (MWO-LTSA-069, 2026-09-11): the claim above, true when
+-- written, is now known to be FALSE. A read-only production audit
+-- confirmed both tables below already exist in the production `ltsa_brain`
+-- database, applied out-of-band at an unknown time by an unknown
+-- mechanism -- `public.whatsapp_group_authorization` holds 2 real ACTIVE
+-- rows, `public.whatsapp_group_message_seen` holds 45 real dedupe rows.
+-- Left as a correction rather than an edit to the original text, to
+-- preserve the record of what was true/believed at each point in time.
+-- See PRODUCTS/LTSA-BRAIN/DATABASE/MIGRATIONS/034_KNOWN_MIGRATION_STATE.md.
 
 CREATE TABLE IF NOT EXISTS public.whatsapp_group_authorization (
     group_hash      TEXT PRIMARY KEY,

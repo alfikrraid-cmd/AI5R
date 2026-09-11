@@ -4,8 +4,15 @@ GroupAuthorizationRepositoryProtocol. Used for CI-runnable tests and as a
 Phase-1-compatible fallback (see dependencies.py's own wiring note); the
 production-persistent implementation is
 CORE-SERVICES/API/whatsapp_group_repository_postgres.py, backed by
-PRODUCTS/LTSA-BRAIN/DATABASE/MIGRATIONS/032_create_whatsapp_group_authorization.sql
-(NOT applied to any database by this MWO).
+PRODUCTS/LTSA-BRAIN/DATABASE/MIGRATIONS/032_create_whatsapp_group_authorization.sql.
+That migration file's own header still says "NOT applied to any database
+by this MWO" -- true when written, but confirmed FALSE by a read-only
+production audit for MWO-LTSA-069 (2026-09-11): the table already exists
+in production with real ACTIVE rows, applied out-of-band. See
+PRODUCTS/LTSA-BRAIN/DATABASE/MIGRATIONS/034_KNOWN_MIGRATION_STATE.md. This
+in-memory class remains the correct choice for tests/CI regardless (no
+live Postgres there) -- only the "is 032 applied anywhere" claim was
+stale.
 
 Admin-facing methods (register/activate/disable) return a plain dict with
 the SAME keys the Postgres implementation's rows have (group_hash,

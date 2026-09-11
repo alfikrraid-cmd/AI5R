@@ -2,6 +2,20 @@
 
 MWO-LTSA-TAP-GROUP-AGENT-001 — Phase 1 (build + test only).
 
+> **CORRECTION (MWO-LTSA-069, 2026-09-11):** everything below describing
+> Phase 1/2A as not-yet-deployed is stale. A read-only production audit
+> found the service already running in production -- paired to a real
+> WhatsApp number, connected, and processing real group traffic (2 real
+> ACTIVE authorized groups, 45 dedupe-ledger entries) -- deployed
+> out-of-band (bare `docker run`, not via `compose.yaml`, by an unknown
+> operator at an unknown time). MWO-LTSA-069 formalizes this into
+> `CORE-SERVICES/RUNTIME/compose.yaml` and adds bounded in-process
+> reconnect handling for the transient disconnect loop this deployment was
+> observed crash-looping on. See
+> `ENGINEERING/MWO/MWO-LTSA-069-Group-Agent-Deployment-Stability-Closure.md`
+> for the full evidence. Left in place below rather than rewritten, to
+> preserve the record of what this document claimed and when.
+
 Lets authorized TAP personnel inside authorized WhatsApp groups ask LTSA /
 Equipment360 questions with `/ltsa <question>`. Reuses the existing LTSA
 Copilot engine (`API.copilot_orchestrator.orchestrate_copilot`, the exact

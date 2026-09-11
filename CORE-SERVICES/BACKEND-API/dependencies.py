@@ -663,12 +663,14 @@ def require_permission(permission: str):
 # now wired to the real, persistent Postgres-backed repository (reuses
 # the SAME _import_database_runner singleton every other direct-DB
 # repository above already shares -- no new connection/config). Schema:
-# PRODUCTS/LTSA-BRAIN/DATABASE/MIGRATIONS/032_create_whatsapp_group_authorization.sql
-# -- NOT applied to any database by this MWO (see that file's own
-# header); this wiring is safe to merge/ship unexercised because the
-# DatabaseRunner connects lazily, per-call, exactly like every other
-# repository already built on it (e.g. _mechanical_seal_stock_repository
-# above) -- importing this module performs no network/DB I/O.
+# PRODUCTS/LTSA-BRAIN/DATABASE/MIGRATIONS/032_create_whatsapp_group_authorization.sql.
+# CORRECTION (MWO-LTSA-069, 2026-09-11): this comment used to say that
+# migration was "NOT applied to any database by this MWO" and that this
+# wiring was therefore "safe to merge/ship unexercised." A read-only
+# production audit found the opposite is now true: the migration's tables
+# already exist in production, actively exercised, holding 2 real ACTIVE
+# authorization rows and 45 real dedupe rows -- this wiring is live, not
+# dormant. See PRODUCTS/LTSA-BRAIN/DATABASE/MIGRATIONS/034_KNOWN_MIGRATION_STATE.md.
 # InMemoryGroupAuthorizationRepository (Phase 1) remains available for
 # tests/CI, which do not have a live Postgres.
 from API.whatsapp_group_agent_service import InMemoryRateLimiter

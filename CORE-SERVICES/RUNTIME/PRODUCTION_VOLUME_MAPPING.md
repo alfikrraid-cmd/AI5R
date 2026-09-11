@@ -14,6 +14,7 @@ acceptance.
 | Neo4j data | `${AI5R_VOLUME_PREFIX}-neo4j-data` | Existing Neo4j data if present | Retain only when production dependency is confirmed. |
 | Neo4j logs | `${AI5R_VOLUME_PREFIX}-neo4j-logs` | Existing Neo4j logs if present | Retain only with Neo4j. |
 | Neo4j plugins | `${AI5R_VOLUME_PREFIX}-neo4j-plugins` | Existing Neo4j plugins if present | Retain only with Neo4j. |
+| TAP LTSA WhatsApp Group Agent | `tap_ltsa_group_agent_auth_state` (literal name, `external: true` -- deliberately NOT `${AI5R_VOLUME_PREFIX}`-prefixed) | Existing production volume, created out-of-band 2026-09-04, holding the live, already-paired Baileys session for a real WhatsApp number | MWO-LTSA-069 -- reuse only, by exact name. This volume must NEVER be recreated/renamed/replaced: doing so forces WhatsApp re-pairing against a real phone number, which is a human, explicit, out-of-band decision, never an automatic or incidental one. |
 
 ## Ownership Rules
 
