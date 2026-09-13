@@ -16,10 +16,18 @@ the caller passed an explicit --database or set AI5R_LTSA_POSTGRES_DB,
 printing the resolved target before doing anything. `dry-run` is always
 safe (zero-write) and never requires that guard.
 
-Canonical pump tags are read live from the resolved database's
-ltsa_pumps table (same `SELECT tag_number FROM ltsa_pumps` query
-ltsa_hoc_pm_cm_db_upsert.py::load_state() already uses) -- never
-hardcoded, never guessed.
+Canonical asset tags are read live from the resolved database's
+ltsa_pumps table UNION asset_registry table -- never hardcoded, never
+guessed. MWO-LTSA-CM-R2 -- LTSA historical CM/CMON coverage is NOT
+pump-only (Chief Architect domain correction, CM-R1C/CM-R2): a source
+CM Measuring Report row may legitimately describe any LTSA-covered
+asset (a pump, a motor, a compressor, ...), so the canonical identity
+universe fed to match_pump_tag() must be the union of both master
+tables, not ltsa_pumps alone. ltsa_pumps stays queried too (not
+replaced) so nothing already matchable via the pump roster regresses
+even where asset_registry has not yet caught up with it (a real,
+pre-existing gap independently confirmed this session -- see
+CM-R2 report, 101-P-6A).
 """
 
 from __future__ import annotations
@@ -79,15 +87,23 @@ def _build_config(args: argparse.Namespace, database: str) -> DatabaseConfig:
     return DatabaseConfig(env_file=args.env_file, compose_file=args.compose_file, database=database)
 
 
-def _fetch_canonical_pump_tags(runner: DatabaseRunner) -> set[str]:
-    rows = _json_query("SELECT tag_number FROM ltsa_pumps", runner)
-    return {r["tag_number"] for r in rows}
+def _fetch_canonical_asset_tags(runner: DatabaseRunner) -> set[str]:
+    """Union of ltsa_pumps.tag_number and asset_registry.asset_code -- the
+    full LTSA-covered asset universe, not pumps alone. See this module's
+    own docstring (MWO-LTSA-CM-R2) for why ltsa_pumps is queried too
+    rather than replaced."""
+    rows = _json_query(
+        "SELECT tag_number AS tag FROM ltsa_pumps "
+        "UNION SELECT asset_code AS tag FROM asset_registry",
+        runner,
+    )
+    return {r["tag"] for r in rows}
 
 
 def _build_result(args: argparse.Namespace, runner: DatabaseRunner):
     source = register_source_document(Path(args.pdf), Path(args.xlsx), area_label=args.area)
-    canonical_pump_tags = _fetch_canonical_pump_tags(runner)
-    print(f"Canonical pump roster loaded from DB: {len(canonical_pump_tags)} tags", file=sys.stderr)
+    canonical_pump_tags = _fetch_canonical_asset_tags(runner)
+    print(f"Canonical LTSA asset universe loaded from DB (ltsa_pumps UNION asset_registry): {len(canonical_pump_tags)} tags", file=sys.stderr)
     known_hashes = {
         r["file_hash"] for r in _json_query(
             "SELECT file_hash FROM pdf_document UNION SELECT file_hash FROM knowledge_source_registry", runner

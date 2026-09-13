@@ -377,10 +377,15 @@ def promote_candidate(
                 pm_schedule_code=schedule_code, promoted_by=actor_id,
             )
         else:
+            # MWO-LTSA-ATOMIC-CMON-PROMOTION-001 -- now atomic, same
+            # candidate_id-only call shape as the PM branch above
+            # (promote_historical_cmon_atomic() does its own fresh,
+            # row-locked read + both writes in one statement; passing the
+            # already-fetched `candidate` dict or a separate
+            # staging_repository call is no longer needed or correct).
             record = promote_cmon_reading_candidate(
-                candidate, cmon_repository=cmon_repository,
+                candidate_id, cmon_repository=cmon_repository,
                 condition_monitoring_schedule_code=schedule_code, promoted_by=actor_id,
-                staging_repository=staging_repository,
             )
     except AlreadyPromotedError:
         raise HTTPException(status_code=409, detail="candidate already promoted (SAVED) -- cannot promote again")

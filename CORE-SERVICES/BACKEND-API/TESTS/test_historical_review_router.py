@@ -277,8 +277,49 @@ class FakeMultiPMOccurrenceRepository:
 
 
 class FakeCMONRepository:
-    def create_draft(self, **kwargs):
-        return {"condition_monitoring_reading_code": "CMONR-NEW", **kwargs}
+    """MWO-LTSA-ATOMIC-CMON-PROMOTION-001 -- fakes promote_historical_
+    cmon_atomic()'s own real contract, exact CMON mirror of
+    FakePMOccurrenceRepository above (same staging-driven eligibility
+    computation, same SAVED-mutation-on-success, same idempotent-retry
+    behavior via _promoted_source_refs)."""
+
+    def __init__(self, staging=None):
+        self.staging = staging
+        self.promote_calls = []
+        self._promoted_source_refs: set[str] = set()
+
+    def promote_historical_cmon_atomic(self, candidate_id, *, condition_monitoring_schedule_code, promoted_by):
+        self.promote_calls.append(
+            {"candidate_id": candidate_id, "condition_monitoring_schedule_code": condition_monitoring_schedule_code, "promoted_by": promoted_by}
+        )
+        source_reference = f"document_field_extraction:{candidate_id}"
+        candidate = self.staging.find_by_id(candidate_id) if self.staging else None
+        empty = {"candidate_found": False, "eligible": False, "already": None, "conflict": None, "inserted": None, "marked_saved": False}
+        if candidate is None:
+            return empty
+        if candidate.get("status") == "SAVED" or source_reference in self._promoted_source_refs:
+            return {"candidate_found": True, "eligible": False, "already": {"condition_monitoring_reading_code": "CMONR-NEW"}, "conflict": None, "inserted": None, "marked_saved": False}
+        fields = candidate.get("reviewed_fields") or candidate.get("extracted_fields") or {}
+        eligible = bool(
+            candidate.get("status") == "REVIEWED"
+            and candidate.get("detected_document_type") == "HISTORICAL_CMON_READING_CANDIDATE"
+            and candidate.get("pump_tag_number")
+            and fields.get("reading_date")
+        )
+        if not eligible:
+            return {**empty, "candidate_found": True}
+        inserted = {
+            "condition_monitoring_reading_code": "CMONR-NEW",
+            "asset_code": candidate["pump_tag_number"],
+            "reading_date": fields.get("reading_date"),
+            "provenance": "HISTORICAL_IMPORT",
+            "source_reference": source_reference,
+            "finding": fields.get("finding"),
+        }
+        self._promoted_source_refs.add(source_reference)
+        if self.staging is not None:
+            self.staging.candidate["status"] = "SAVED"
+        return {"candidate_found": True, "eligible": True, "already": None, "conflict": None, "inserted": inserted, "marked_saved": True}
 
 
 class FakeHistoryRepository:
@@ -497,6 +538,78 @@ class TestPromotion:
         try:
             response = client.post("/api/ltsa/historical-review/candidates/DFE-1/promote")
             assert response.status_code == 422
+        finally:
+            _clear()
+
+
+def _cmon_candidate(**overrides):
+    base = {
+        "detected_document_type": "HISTORICAL_CMON_READING_CANDIDATE",
+        "extracted_fields": {"reading_date": "2026-07-01", "asset_type": "PUMP", "mechseal_temp_de": 58.0},
+    }
+    base.update(overrides)
+    return _candidate(**base)
+
+
+class TestCMONPromotion:
+    """MWO-LTSA-ATOMIC-CMON-PROMOTION-001 -- exact CMON mirror of
+    TestPromotion above, exercised through the real /promote endpoint
+    (not just the service-layer unit tests in
+    test_historical_pm_cmon_promotion_service.py)."""
+
+    def test_unresolved_pending_review_candidate_cannot_promote(self):
+        staging = FakeStagingRepository(_cmon_candidate(status="PENDING_REVIEW"))
+        cmon_repo = FakeCMONRepository(staging)
+        _override(identity=_identity("SUPERUSER"), staging=staging, cmon_repo=cmon_repo)
+        try:
+            response = client.post("/api/ltsa/historical-review/candidates/DFE-1/promote")
+            assert response.status_code == 422
+            assert len(cmon_repo.promote_calls) == 1
+        finally:
+            _clear()
+
+    def test_reviewed_candidate_with_resolved_pump_promotes(self):
+        staging = FakeStagingRepository(_cmon_candidate(status="REVIEWED", pump_tag_number="110-P-9A"))
+        cmon_repo = FakeCMONRepository(staging)
+        _override(identity=_identity("SUPERUSER"), staging=staging, cmon_repo=cmon_repo)
+        try:
+            response = client.post("/api/ltsa/historical-review/candidates/DFE-1/promote")
+            assert response.status_code == 200
+            assert response.json()["data"]["condition_monitoring_reading_code"] == "CMONR-NEW"
+            assert response.json()["data"]["provenance"] == "HISTORICAL_IMPORT"
+            assert len(cmon_repo.promote_calls) == 1
+            # The atomic path marks SAVED inside its own single statement,
+            # never via a separate staging_repository.mark_saved() call.
+            assert staging.mark_saved_calls == []
+            assert staging.candidate["status"] == "SAVED"
+        finally:
+            _clear()
+
+    def test_already_saved_candidate_cannot_promote_again(self):
+        staging = FakeStagingRepository(_cmon_candidate(status="SAVED", pump_tag_number="110-P-9A"))
+        cmon_repo = FakeCMONRepository(staging)
+        _override(identity=_identity("SUPERUSER"), staging=staging, cmon_repo=cmon_repo)
+        try:
+            response = client.post("/api/ltsa/historical-review/candidates/DFE-1/promote")
+            assert response.status_code == 409
+            assert cmon_repo._promoted_source_refs == set()  # no new canonical write attempted
+        finally:
+            _clear()
+
+    def test_retry_after_success_is_rejected_not_a_second_canonical_write(self):
+        # The real idempotency proof at the router level: promote once,
+        # then hit /promote again against the SAME repository state (as a
+        # real retry would see, since the candidate is now SAVED) --
+        # must be 409, never a second CMONR-NEW.
+        staging = FakeStagingRepository(_cmon_candidate(status="REVIEWED", pump_tag_number="110-P-9A"))
+        cmon_repo = FakeCMONRepository(staging)
+        _override(identity=_identity("SUPERUSER"), staging=staging, cmon_repo=cmon_repo)
+        try:
+            first = client.post("/api/ltsa/historical-review/candidates/DFE-1/promote")
+            assert first.status_code == 200
+            second = client.post("/api/ltsa/historical-review/candidates/DFE-1/promote")
+            assert second.status_code == 409
+            assert len(cmon_repo._promoted_source_refs) == 1
         finally:
             _clear()
 

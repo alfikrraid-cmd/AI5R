@@ -34,18 +34,21 @@ exist, and a retry is recognized (via pm_occurrence.source_reference,
 an existing column/lookup, no schema change) as ALREADY_PROMOTED rather
 than risking a duplicate.
 
-promote_cmon_reading_candidate() (CMON) is UNCHANGED -- CMON recovery is
-out of scope for this fix; it still performs create_draft() + the
-optional mark_saved() as two separate writes, exactly as before.
-
-Idempotency (Phase 15, CMON only now): the optional `staging_repository`
-kwarg, when passed, transitions the candidate to SAVED (via
-HistoricalPMCMONStagingRepository.mark_saved()) immediately after a
-successful create_draft() -- so a second promotion attempt on the same
-CMON candidate hits the AlreadyPromotedError gate above instead of
-silently creating a second canonical record. mark_saved() is called
-only AFTER create_draft() succeeds (never before), so a failed canonical
-write leaves the candidate REVIEWED and still promotable.
+MWO-LTSA-ATOMIC-CMON-PROMOTION-001 -- promote_cmon_reading_candidate()
+is now ALSO atomic, closing the gap this module's own docstring
+previously disclosed as deliberately left open ("CMON recovery is out
+of scope for this fix"). Same defect this module's PM fix already
+solved: two separate, non-transactional writes (create_draft(), then a
+SEPARATE staging_repository.mark_saved()) meant a failure between them
+left a real condition_monitoring_reading row with its source candidate
+still REVIEWED, and condition_monitoring_reading carries no unique
+constraint on (asset_code, reading_date) to catch a resulting
+duplicate on retry. Signature changed accordingly: takes only
+`candidate_id` (not a pre-fetched candidate dict) and no longer takes
+`staging_repository` -- condition_monitoring_reading_repository.
+promote_historical_cmon_atomic() does its own fresh, row-locked (FOR
+UPDATE) read of the candidate and both writes in the SAME statement,
+exactly mirroring promote_pm_occurrence_atomic() below.
 """
 
 from __future__ import annotations
@@ -54,7 +57,6 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from condition_monitoring_reading_repository import ConditionMonitoringReadingRepository
-    from historical_pm_cmon_staging_repository import HistoricalPMCMONStagingRepository
     from pm_occurrence_repository import PMOccurrenceRepository
 
 PROVENANCE_HISTORICAL_IMPORT = "HISTORICAL_IMPORT"
@@ -120,41 +122,57 @@ def promote_pm_occurrence_atomic(
 
 
 def promote_cmon_reading_candidate(
-    candidate: dict,
+    candidate_id: str,
     *,
     cmon_repository: "ConditionMonitoringReadingRepository",
     condition_monitoring_schedule_code: str,
     promoted_by: str,
-    staging_repository: "HistoricalPMCMONStagingRepository | None" = None,
 ) -> dict:
-    if candidate["status"] == "SAVED":
-        raise AlreadyPromotedError(candidate["document_field_extraction_id"])
-    if candidate["status"] != "REVIEWED":
-        raise PromotionError(f"candidate {candidate['document_field_extraction_id']} is not REVIEWED (status={candidate['status']!r})")
-    if not candidate.get("pump_tag_number"):
-        raise PromotionError(
-            f"candidate {candidate['document_field_extraction_id']} has no resolved pump_tag_number -- "
-            "cannot promote an unmatched pump (Phase 6: only a real match may be promoted)"
-        )
-
-    fields = candidate.get("reviewed_fields") or candidate.get("extracted_fields") or {}
-    measurements = {
-        k: v for k, v in fields.items() if k not in ("reading_date", "asset_type", "finding")
-    }
-    record = cmon_repository.create_draft(
+    """Atomic, retry-safe. Takes only `candidate_id` (not a pre-fetched
+    candidate dict) -- condition_monitoring_reading_repository.
+    promote_historical_cmon_atomic() does its own fresh, row-locked (FOR
+    UPDATE) read of the candidate inside the same statement that inserts
+    condition_monitoring_reading and marks it SAVED, so there is no gap
+    between "caller read the candidate" and "the write happens" for a
+    concurrent promote of the same id to land in. Mirrors
+    promote_pm_occurrence_atomic() above exactly."""
+    result = cmon_repository.promote_historical_cmon_atomic(
+        candidate_id,
         condition_monitoring_schedule_code=condition_monitoring_schedule_code,
-        asset_code=candidate["pump_tag_number"],
-        asset_type=fields.get("asset_type", "PUMP"),
-        reading_date=fields.get("reading_date"),
-        measurements=measurements,
-        created_by=promoted_by,
-        provenance=PROVENANCE_HISTORICAL_IMPORT,
-        source_reference=_source_reference(candidate["document_field_extraction_id"]),
-        finding=fields.get("finding"),
+        promoted_by=promoted_by,
     )
-    if staging_repository is not None:
-        staging_repository.mark_saved(candidate["document_field_extraction_id"])
-    return record
+    if not result["candidate_found"]:
+        raise PromotionError(f"candidate {candidate_id} not found")
+    if result["already"] is not None:
+        raise AlreadyPromotedError(candidate_id)
+    if result.get("candidate_status") == "SAVED":
+        # FOR UPDATE can see the winner's SAVED row while the statement
+        # snapshot predates its CMON INSERT. Confirm it with a fresh read.
+        existing = cmon_repository.find_by_source_reference(_source_reference(candidate_id))
+        if existing is not None:
+            raise AlreadyPromotedError(candidate_id)
+        raise PromotionError(f"candidate {candidate_id} is SAVED but has no active canonical CMON record")
+    if result["conflict"] is not None:
+        conflict = result["conflict"]
+        raise PromotionError(
+            f"candidate {candidate_id} conflicts with existing condition_monitoring_reading "
+            f"{conflict['condition_monitoring_reading_code']} for the same asset/date"
+        )
+    if not result["eligible"]:
+        raise PromotionError(
+            f"candidate {candidate_id} is not eligible for promotion "
+            "(must be REVIEWED, HISTORICAL_CMON_READING_CANDIDATE, a resolved pump, and a set reading_date)"
+        )
+    if result["inserted"] is None:
+        raise PromotionError(
+            f"candidate {candidate_id} failed a promotion precondition (unknown pump or missing schedule)"
+        )
+    if not result["marked_saved"]:
+        raise PromotionError(
+            f"candidate {candidate_id} was promoted but the atomic statement did not mark it SAVED -- "
+            "this should be unreachable (mark_saved is gated on the same insert); investigate"
+        )
+    return result["inserted"]
 
 
 __all__ = [

@@ -95,6 +95,33 @@ class TestBuildConfigPrefersDirectConnect:
         assert config.database == "some_db"
 
 
+class TestFetchCanonicalAssetTags:
+    """MWO-LTSA-CM-R2 -- canonical identity source must be the LTSA-wide
+    asset universe (ltsa_pumps UNION asset_registry), not pumps alone."""
+
+    class _FakeRunner:
+        def __init__(self, rows):
+            self._rows = rows
+            self.last_sql = None
+
+        def query_scalar(self, sql):
+            self.last_sql = sql
+            import json
+            return json.dumps([{"tag": r} for r in self._rows])
+
+    def test_queries_union_of_both_master_tables(self):
+        runner = self._FakeRunner(["110-P-9A", "701-MM-51", "101-LRC-102"])
+        tags = cli._fetch_canonical_asset_tags(runner)
+        assert tags == {"110-P-9A", "701-MM-51", "101-LRC-102"}
+        assert "ltsa_pumps" in runner.last_sql
+        assert "asset_registry" in runner.last_sql
+        assert "UNION" in runner.last_sql
+
+    def test_empty_result_is_empty_set_not_an_error(self):
+        runner = self._FakeRunner([])
+        assert cli._fetch_canonical_asset_tags(runner) == set()
+
+
 class TestArgparseWiring:
     def test_stage_requires_pdf_xlsx_area(self):
         with pytest.raises(SystemExit):

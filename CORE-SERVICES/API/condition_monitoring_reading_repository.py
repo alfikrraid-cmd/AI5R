@@ -236,6 +236,151 @@ class ConditionMonitoringReadingRepository:
         )
         return rows[0]
 
+    def promote_historical_cmon_atomic(
+        self,
+        candidate_id: str,
+        *,
+        condition_monitoring_schedule_code: str,
+        promoted_by: str,
+    ) -> dict:
+        """MWO-LTSA-ATOMIC-CMON-PROMOTION-001 -- CMON sibling of
+        pm_occurrence_repository.PMOccurrenceRepository.
+        promote_historical_pm_atomic(), same shape, same reasoning: fixes
+        the two-separate-writes defect in the old promote_cmon_reading_
+        candidate() (create_draft() INSERT, then a SEPARATE
+        staging_repository.mark_saved() UPDATE -- see historical_pm_cmon_
+        promotion_service.py's own pre-existing docstring, which already
+        disclosed this as CMON-only, deliberately left unfixed pending
+        this MWO). One single Postgres statement (a WITH-chain --
+        Postgres's own per-statement atomicity guarantee, no explicit
+        BEGIN/COMMIT needed) that re-reads the candidate FOR UPDATE
+        (locks it against a concurrent promote of the same id),
+        validates it, checks for an existing promotion or conflict,
+        inserts condition_monitoring_reading, and marks the candidate
+        SAVED -- all or nothing.
+
+        Retry-safe idempotency key: source_reference =
+        'document_field_extraction:<candidate_id>' -- an EXISTING column
+        (condition_monitoring_reading.source_reference) and an EXISTING
+        lookup pattern (find_by_source_reference(), already proven for
+        the WhatsApp CMON writer's own idempotency) -- exact same
+        identity convention promote_historical_pm_atomic() already uses
+        for pm_occurrence, no schema change.
+
+        Asset identity and type come from asset_registry, including
+        non-pump LTSA assets and nullable asset types. Historical
+        UNSCHEDULED:: references need no schedule row; real schedule
+        codes retain validation, following PM's schedule convention.
+
+        Returns a dict:
+          candidate_found: bool
+          eligible: bool (REVIEWED, CMON-type-caller's responsibility to
+                    only call this for CMON, resolved pump, reading_date
+                    set)
+          already: the existing condition_monitoring_reading row if this
+                    exact candidate was already promoted (safe no-op
+                    retry), else None
+          conflict: an existing condition_monitoring_reading row for the
+                    same (asset_code, reading_date) from a DIFFERENT
+                    candidate, else None
+          inserted: the newly-inserted condition_monitoring_reading row,
+                    else None
+          marked_saved: bool -- True only when the candidate was
+                    transitioned REVIEWED -> SAVED in this same statement
+        """
+        source_reference = f"document_field_extraction:{candidate_id}"
+        requires_real_schedule = not condition_monitoring_schedule_code.startswith("UNSCHEDULED::")
+        schedule_guard = (
+            f"AND EXISTS (SELECT 1 FROM condition_monitoring_schedule WHERE condition_monitoring_schedule_code = {_sql(condition_monitoring_schedule_code)})"
+            if requires_real_schedule else ""
+        )
+        code = _new_code()
+
+        _BOOLEAN_MEASUREMENT_COLUMNS = {"mechanical_seal_leak_de", "mechanical_seal_leak_nde"}
+        _TEXT_MEASUREMENT_COLUMNS = {"pump_operating_state"}
+
+        def _field_cast(col: str) -> str:
+            if col in _BOOLEAN_MEASUREMENT_COLUMNS:
+                return f"NULLIF(e.fields->>{_sql(col)}, '')::boolean"
+            if col in _TEXT_MEASUREMENT_COLUMNS:
+                return f"e.fields->>{_sql(col)}"
+            return f"NULLIF(e.fields->>{_sql(col)}, '')::numeric"
+
+        measurement_cols_sql = ", ".join(_MEASUREMENT_COLUMNS)
+        measurement_select_sql = ", ".join(_field_cast(col) for col in _MEASUREMENT_COLUMNS)
+
+        raw = self._runner.query_scalar(f"""
+WITH cand AS (
+    SELECT document_field_extraction_id, status, detected_document_type, pump_tag_number,
+           COALESCE(reviewed_fields, extracted_fields) AS fields
+    FROM document_field_extraction
+    WHERE document_field_extraction_id = {_sql(candidate_id)}
+    FOR UPDATE
+),
+eligible AS (
+    SELECT * FROM cand
+    WHERE status = 'REVIEWED'
+      AND detected_document_type = 'HISTORICAL_CMON_READING_CANDIDATE'
+      AND pump_tag_number IS NOT NULL
+      AND fields->>'reading_date' IS NOT NULL
+),
+already AS (
+    SELECT {_SELECT_COLUMNS} FROM condition_monitoring_reading
+    WHERE source_reference = {_sql(source_reference)} AND deleted_at IS NULL
+),
+conflict AS (
+    SELECT {_SELECT_COLUMNS} FROM condition_monitoring_reading
+    WHERE deleted_at IS NULL
+      AND source_reference IS DISTINCT FROM {_sql(source_reference)}
+      AND asset_code = (SELECT pump_tag_number FROM eligible)
+      AND reading_date = (SELECT (fields->>'reading_date')::date FROM eligible)
+),
+ins AS (
+    INSERT INTO condition_monitoring_reading
+        (condition_monitoring_reading_code, condition_monitoring_schedule_code, asset_code, asset_type,
+         reading_date, {measurement_cols_sql}, workflow_status, provenance, created_by, updated_by,
+         source_reference, finding)
+    SELECT {_sql(code)}, {_sql(condition_monitoring_schedule_code)}, e.pump_tag_number,
+           (SELECT asset_type FROM asset_registry WHERE asset_code = e.pump_tag_number), (e.fields->>'reading_date')::date,
+           {measurement_select_sql},
+           'DRAFT', 'HISTORICAL_IMPORT', {_sql(promoted_by)}, {_sql(promoted_by)}, {_sql(source_reference)},
+           e.fields->>'finding'
+    FROM eligible e
+    WHERE NOT EXISTS (SELECT 1 FROM already)
+      AND NOT EXISTS (SELECT 1 FROM conflict)
+      AND EXISTS (SELECT 1 FROM asset_registry WHERE asset_code = e.pump_tag_number)
+      {schedule_guard}
+    RETURNING {_SELECT_COLUMNS}
+),
+mark_saved AS (
+    UPDATE document_field_extraction
+    SET status = 'SAVED', updated_at = NOW()
+    WHERE document_field_extraction_id = {_sql(candidate_id)}
+      AND EXISTS (SELECT 1 FROM ins)
+    RETURNING document_field_extraction_id
+),
+audit AS (
+    INSERT INTO record_change_history
+        (entity_type, entity_id, field_name, old_value, new_value, changed_by, reason)
+    SELECT 'CONDITION_MONITORING_READING', condition_monitoring_reading_code, '__record__', NULL,
+           row_to_json(ins)::text, {_sql(promoted_by)}, 'HISTORICAL_PROMOTE'
+    FROM ins
+)
+SELECT json_build_object(
+    'candidate_found', (SELECT count(*) FROM cand) > 0,
+    'candidate_status', (SELECT status FROM cand),
+    'eligible', (SELECT count(*) FROM eligible) > 0,
+    'already', (SELECT row_to_json(a) FROM already a),
+    'conflict', (SELECT row_to_json(k) FROM conflict k),
+    'inserted', (SELECT row_to_json(i) FROM ins i),
+    'marked_saved', (SELECT count(*) FROM mark_saved) > 0
+)::text;
+""")
+        return json.loads(raw) if raw else {
+            "candidate_found": False, "candidate_status": None, "eligible": False, "already": None,
+            "conflict": None, "inserted": None, "marked_saved": False,
+        }
+
     def create_ad_hoc_draft(
         self,
         *,

@@ -167,6 +167,23 @@ class PumpMatchResult:
     matched_tag: str | None = None
 
 
+# MWO-LTSA-CM-R1C/CM-R2 -- curated, reusable raw-form -> canonical-identity
+# aliases for known LTSA assets whose source workbooks write the same
+# tag's tokens in a different order than the canonical roster (e.g. a
+# prefix-first vs suffix-first area code). This is NOT a general fuzzy/
+# reordering algorithm -- token-reordering is too easy to over-match
+# (e.g. accidentally aliasing two genuinely different tags that merely
+# share the same characters). Each entry here is a specific, human-
+# verified 1:1 identity established from direct evidence (an existing
+# asset_registry row under the target spelling, matched against every
+# source occurrence of the raw spelling -- see CM-R1B/CM-R1C). Extend
+# this dict only with equally-verified pairs, never a pattern rule.
+_KNOWN_ASSET_ALIASES: dict[str, str] = {
+    "DMI-P-201A": "P-201A-DMI",
+    "DMI-P-201B": "P-201B-DMI",
+}
+
+
 def _collapse_whitespace(tag: str) -> str:
     """Removes spaces the source workbook inserted around hyphens (e.g.
     real HSC CM Measuring Report rows print '200 - P - 1A' while HSC's own
@@ -203,6 +220,18 @@ def match_pump_tag(extracted_tag: str, canonical_tags: set[str]) -> PumpMatchRes
     if len(whitespace_matches) == 1:
         (only_match,) = whitespace_matches
         return PumpMatchResult(outcome="EXACT_MATCH", extracted_tag=tag, matched_tag=only_match)
+
+    # Curated alias table (see _KNOWN_ASSET_ALIASES docstring above).
+    # Checked against both the raw and whitespace-collapsed forms so an
+    # aliased tag is still recognized even if the source adds stray
+    # spacing around it. Fails safe: if the alias's OWN target is not
+    # actually present in canonical_tags (a stale/wrong dict entry, or a
+    # roster that genuinely doesn't have it yet), this never fabricates a
+    # match -- it falls through to the near-miss/NO_MATCH checks below,
+    # exactly like any other unresolved tag.
+    alias_target = _KNOWN_ASSET_ALIASES.get(tag) or _KNOWN_ASSET_ALIASES.get(collapsed)
+    if alias_target is not None and alias_target in canonical_tags:
+        return PumpMatchResult(outcome="EXACT_MATCH", extracted_tag=tag, matched_tag=alias_target)
 
     # A near-miss (same digits, different/missing suffix) is exactly the
     # case that must NEVER be auto-resolved -- flagged for human review,

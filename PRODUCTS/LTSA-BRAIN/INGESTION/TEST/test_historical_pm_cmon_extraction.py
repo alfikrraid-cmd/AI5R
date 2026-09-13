@@ -162,6 +162,79 @@ class TestMatchPumpTag:
         assert result.outcome != "EXACT_MATCH"
 
 
+class TestMatchPumpTagLtsaWideAssetCoverage:
+    """MWO-LTSA-CM-R2 -- LTSA historical CM is NOT pump-only. These prove
+    match_pump_tag() itself was never the bottleneck (it already matches
+    against whatever canonical_tags set it's given) -- the real fix is the
+    caller now feeding it the full LTSA asset universe (see
+    historical_pm_cmon_cli.py's own regression tests for that half)."""
+
+    def test_existing_pump_tag_still_matches_unchanged(self):
+        # Regression guard: nothing about existing pump matching changes.
+        result = match_pump_tag("211-P-23A", {"211-P-23A", "211-P-23B"})
+        assert result.outcome == "EXACT_MATCH"
+        assert result.matched_tag == "211-P-23A"
+
+    def test_motor_tag_matches_when_present_in_canonical_set(self):
+        # Unlike test_motor_tag_is_not_converted_into_a_pump_tag above
+        # (which proves a motor is never forced onto a DIFFERENT pump's
+        # identity), this proves a motor CAN match its own real identity
+        # once the canonical set legitimately includes it (e.g. sourced
+        # from asset_registry, not ltsa_pumps).
+        result = match_pump_tag("701-MM-51", {"701-MM-51", "701-P-51"})
+        assert result.outcome == "EXACT_MATCH"
+        assert result.matched_tag == "701-MM-51"
+
+    def test_compressor_tag_matches_when_present_in_canonical_set(self):
+        result = match_pump_tag("101-LRC-102", {"101-LRC-102"})
+        assert result.outcome == "EXACT_MATCH"
+        assert result.matched_tag == "101-LRC-102"
+
+    def test_unknown_asset_still_rejected(self):
+        # Broadening the universe must not weaken NO_MATCH for something
+        # genuinely absent from it.
+        result = match_pump_tag("999-XX-99", {"701-MM-51", "101-LRC-102", "211-P-23A"})
+        assert result.outcome == "NO_MATCH"
+        assert result.matched_tag is None
+
+
+class TestMatchPumpTagKnownAliases:
+    """MWO-LTSA-CM-R2 -- curated DMI-P-201A/B <-> P-201A/B-DMI aliases."""
+
+    def test_dmi_alias_resolves_to_canonical_target(self):
+        result = match_pump_tag("DMI-P-201A", {"P-201A-DMI"})
+        assert result.outcome == "EXACT_MATCH"
+        assert result.matched_tag == "P-201A-DMI"
+
+    def test_second_dmi_alias_resolves_to_canonical_target(self):
+        result = match_pump_tag("DMI-P-201B", {"P-201B-DMI"})
+        assert result.outcome == "EXACT_MATCH"
+        assert result.matched_tag == "P-201B-DMI"
+
+    def test_canonical_form_itself_is_unaffected_by_alias_table(self):
+        # The canonical spelling must keep matching itself directly, not
+        # be redirected by the alias table (P-201A-DMI is a value, not a
+        # key, in _KNOWN_ASSET_ALIASES).
+        result = match_pump_tag("P-201A-DMI", {"P-201A-DMI"})
+        assert result.outcome == "EXACT_MATCH"
+        assert result.matched_tag == "P-201A-DMI"
+
+    def test_unrelated_dmi_shaped_tag_is_not_silently_rewritten(self):
+        # A different DMI tag not in the curated table must never be
+        # guessed at via pattern-matching -- only the exact, verified
+        # pairs in _KNOWN_ASSET_ALIASES are ever resolved.
+        result = match_pump_tag("DMI-P-999Z", {"P-201A-DMI", "P-999Z-DMI"})
+        assert result.outcome != "EXACT_MATCH"
+
+    def test_alias_fails_safe_when_target_not_in_canonical_set(self):
+        # If the alias table's own target isn't actually present in the
+        # canonical universe (stale entry, or a roster that hasn't caught
+        # up), this must NEVER fabricate a match.
+        result = match_pump_tag("DMI-P-201A", {"110-P-9A"})
+        assert result.outcome != "EXACT_MATCH"
+        assert result.matched_tag is None
+
+
 class TestResolveArea:
     def test_explicit_source_ma_is_trusted(self):
         result = resolve_area("MA-1", "HOC")
