@@ -368,6 +368,7 @@ export default function Seal({ seals: sealsProp, onNavigate }) {
               onUpdateIdentifiers={handleUpdateIdentifiers}
               onOpenPump={handleOpenPump}
               onOpenDrawing={handleOpenDrawing}
+              onBack={() => onNavigate?.("dashboard")}
               aiResponse={aiResponse}
               aiReady={aiReady}
               aiStatusText={aiStatusText}

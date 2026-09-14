@@ -252,6 +252,23 @@ export const TAB_PERMISSIONS = Object.freeze({
   // register/activate endpoints already require -- no new permission
   // string invented for this tab.
   "whatsapp-groups": PERMISSIONS.ADMIN_ACCESS,
+  // UI/UX Redesign Phase B -- three new sidebar-only nav entries, each
+  // reusing an existing permission verbatim (no new backend permission
+  // invented, same discipline as every other entry above):
+  // "knowledge" is a thin landing page linking the existing Knowledge
+  // Review and Document Library tabs -- gated on DOCUMENT_READ (the
+  // broader-held of the two; the page itself further hides the Knowledge
+  // Review link via can(session, KNOWLEDGEREVIEW_READ) for roles that
+  // lack it, same presentation-only pattern this whole file documents).
+  knowledge: PERMISSIONS.DOCUMENT_READ,
+  // "ai-insight" surfaces the existing global CopilotPanel (already
+  // gated on engineering_ai.ask wherever else it's mounted).
+  "ai-insight": PERMISSIONS.ENGINEERING_AI_ASK,
+  // "failure" is a Corrective Maintenance report picker in front of the
+  // existing, previously deep-link-only FailureAnalysisWorkspace (its
+  // own data source is getCMReports()) -- reuses CM_READ (condition.read),
+  // the same permission the "cm" tab already gates on.
+  failure: PERMISSIONS.CM_READ,
 });
 
 export function visibleTabKeys(session) {

@@ -1,0 +1,184 @@
+/* UI-D1.2 -- light operational sidebar, replacing UI-D1's dark navy
+   panel per Chief's supplied reference. Compact width, small icon+label
+   rows, active item = solid engineering-blue block with white text
+   (exactly the reference's treatment) -- everything else (grouping,
+   "More" section, responsive collapse) is UI-D1's own structure, kept
+   unchanged; only the color language and item density change here. */
+.ltsa-sidebar {
+  display: flex;
+  flex-direction: column;
+  width: 208px;
+  flex: 0 0 208px;
+  background: var(--ltsa-surface, #ffffff);
+  color: var(--ltsa-text, #0f172a);
+  min-height: 100%;
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  border-right: 1px solid var(--ltsa-border, #e2e8f0);
+}
+
+.ltsa-sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 16px;
+  border-bottom: 1px solid var(--ltsa-border, #e2e8f0);
+}
+
+.ltsa-sidebar-brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  background: var(--ltsa-navy, #1d4ed8);
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  flex: 0 0 auto;
+}
+
+.ltsa-sidebar-brand-name {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+
+.ltsa-sidebar-brand-name strong {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ltsa-text, #0f172a);
+}
+
+.ltsa-sidebar-brand-name span {
+  font-size: 10px;
+  color: var(--ltsa-text-muted, #64748b);
+  letter-spacing: 0.04em;
+}
+
+.ltsa-sidebar-scroll {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 10px 8px 16px;
+}
+
+.ltsa-sidebar-group + .ltsa-sidebar-group {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--ltsa-border, #e2e8f0);
+}
+
+.ltsa-sidebar-heading {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ltsa-text-muted, #64748b);
+  padding: 4px 10px 6px;
+}
+
+.ltsa-sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: var(--ltsa-text-muted, #64748b);
+  font-size: 13px;
+  padding: 8px 10px;
+  border-radius: var(--ltsa-radius-sm, 6px);
+  cursor: pointer;
+  line-height: 1.3;
+}
+
+.ltsa-sidebar-item-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: 17px;
+  height: 17px;
+  color: inherit;
+}
+
+.ltsa-sidebar-item-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.ltsa-sidebar-item:hover {
+  background: #f1f5f9;
+  color: var(--ltsa-text, #0f172a);
+}
+
+.ltsa-sidebar-item.is-active {
+  background: var(--ltsa-navy, #1d4ed8);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+/* Tablet/mobile: collapse to a horizontal, scrollable strip rather than
+   a full-height column, per the redesign's "do not destroy engineering
+   information merely to fit mobile" responsive rule -- every item stays
+   reachable, just laid out horizontally. */
+@media (max-width: 900px) {
+  .ltsa-sidebar {
+    width: 100%;
+    /* UI-D1 fix -- min-width:0 overrides the flex default (min-width:
+       auto), which otherwise refuses to let this item shrink below its
+       own content's natural width -- exactly what caused the page-wide
+       horizontal overflow this query's `overflow-x: auto` below was
+       supposed to prevent. Paired with LTSAWorkspace.css's own
+       `align-items: stretch` fix at this same breakpoint. */
+    min-width: 0;
+    flex: 0 0 auto;
+    min-height: 0;
+    position: static;
+    flex-direction: row;
+    align-items: center;
+    overflow-x: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--ltsa-border, #e2e8f0);
+  }
+
+  .ltsa-sidebar-brand {
+    border-bottom: none;
+    border-right: 1px solid var(--ltsa-border, #e2e8f0);
+    flex: 0 0 auto;
+  }
+
+  .ltsa-sidebar-scroll {
+    display: flex;
+    flex-direction: row;
+    gap: 4px;
+    overflow-x: auto;
+    padding: 8px;
+  }
+
+  .ltsa-sidebar-group {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .ltsa-sidebar-group + .ltsa-sidebar-group {
+    margin-top: 0;
+    margin-left: 10px;
+    padding-top: 0;
+    border-top: none;
+    border-left: 1px solid var(--ltsa-border, #e2e8f0);
+    padding-left: 10px;
+  }
+
+  .ltsa-sidebar-heading {
+    padding: 0 6px 0 0;
+    white-space: nowrap;
+  }
+
+  .ltsa-sidebar-item {
+    white-space: nowrap;
+  }
+}

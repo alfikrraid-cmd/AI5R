@@ -1,0 +1,222 @@
+/* UI-D1.2 -- identity header / health cards / tab strip / 3-column
+   overview grid for the Pump and Mechanical Seal Workspaces, matching
+   Chief's reference. Deliberately reuses the EXISTING .ltsa-open-design
+   token scope (--bg/--surface/--fg/--muted/--border/--accent/
+   --status-*, LTSAOpenDesign.css) rather than inventing a parallel color
+   system -- that file's own header comment traces it to the originally
+   approved DESIGN/LTSA design-tokens.css source, i.e. it is already the
+   canonical light/blue palette the reference was built from. New
+   classnames only, so nothing here collides with or overrides the
+   existing shared .workspace-grid/.object-column/.inspector-rail rules
+   other Open Design views (Document/CM/Drawing) still use unchanged. */
+
+.workspace-identity-shell {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: var(--space-4) var(--space-6) 0;
+}
+
+.workspace-back-link {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  padding: 0 0 var(--space-3);
+}
+
+.workspace-back-link:hover {
+  color: var(--fg);
+}
+
+.workspace-identity-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-5);
+  flex-wrap: wrap;
+  padding-bottom: var(--space-4);
+}
+
+.workspace-identity-main {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.workspace-identity-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  flex: 0 0 auto;
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--accent);
+}
+
+.workspace-identity-icon svg {
+  width: 30px;
+  height: 30px;
+}
+
+.workspace-identity-tag {
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  margin: 0;
+  color: var(--fg);
+}
+
+.workspace-identity-subtitle {
+  margin: 2px 0 0;
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+.workspace-identity-subtitle-sep {
+  color: var(--muted);
+}
+
+.workspace-health-cards {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.workspace-health-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 128px;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.workspace-health-card-label {
+  font-size: var(--text-xs);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.workspace-health-card-value {
+  font-size: var(--text-lg);
+  font-weight: 650;
+  color: var(--fg);
+}
+
+.workspace-health-card.tone-normal .workspace-health-card-value { color: var(--status-normal); }
+.workspace-health-card.tone-attention .workspace-health-card-value { color: var(--status-attention); }
+.workspace-health-card.tone-high .workspace-health-card-value { color: var(--status-high); }
+.workspace-health-card.tone-critical .workspace-health-card-value { color: var(--status-critical); }
+
+/* ---------- Tab strip ---------- */
+.workspace-tab-strip {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 0 var(--space-6);
+  display: flex;
+  gap: var(--space-5);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+}
+
+.workspace-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  padding: var(--space-3) 0;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.workspace-tab:hover {
+  color: var(--fg);
+}
+
+.workspace-tab.is-active {
+  color: var(--accent);
+  font-weight: 600;
+  border-bottom-color: var(--accent);
+}
+
+/* ---------- Overview: 3-column grid (Asset Information / Operating
+   Conditions / Quick Actions) ---------- */
+.workspace-overview-grid {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-6) var(--space-7);
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-5);
+  align-items: start;
+}
+
+.workspace-overview-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-4);
+}
+
+.workspace-overview-card .eyebrow {
+  margin-bottom: var(--space-3);
+}
+
+.workspace-quick-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.workspace-quick-action-btn {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--accent);
+  font-size: var(--text-sm);
+  font-weight: 550;
+  cursor: pointer;
+}
+
+.workspace-quick-action-btn:hover {
+  background: var(--surface);
+  border-color: var(--accent);
+}
+
+/* ---------- Generic single-width tab body (Performance/Documents/
+   History/AI Insight tabs, and any tab that doesn't need the 3-column
+   overview shape) ---------- */
+.workspace-tab-body {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-6) var(--space-7);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+@media (max-width: 900px) {
+  .workspace-overview-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .workspace-identity-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

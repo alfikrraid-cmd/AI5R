@@ -9,1080 +9,567 @@ exports[`Snapshot > matches the PumpOpenDesignView Engineering AI section snapsh
     data-testid="pump-open-design"
   >
     <div
-      class="chrome-bar"
-      data-od-id="chrome-bar"
+      class="workspace-identity-shell"
     >
+      <button
+        class="workspace-back-link"
+        type="button"
+      >
+        ‹ 
+        Back to Dashboard
+      </button>
       <div
-        class="chrome-inner"
+        class="workspace-identity-row"
       >
         <div
-          class="crumb"
+          class="workspace-identity-main"
         >
-          <span>
-            LTSA
-          </span>
-          <span
-            class="sep"
+          <div
+            class="workspace-identity-icon"
           >
-            ›
-          </span>
-          <span>
-            Pump Registry
-          </span>
-          <span
-            class="sep"
-          >
-            ›
-          </span>
-          <button
-            class="crumb-link"
-            data-od-id="crumb-pump-link"
-            type="button"
-          >
-            <b>
+            <svg
+              fill="none"
+              stroke="currentColor"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="1.6"
+              viewBox="0 0 24 24"
+            >
+              <path
+                d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2-2z"
+              />
+            </svg>
+          </div>
+          <div>
+            <h1
+              class="workspace-identity-tag"
+            >
               305-P-2
-            </b>
-          </button>
+            </h1>
+            <p
+              class="workspace-identity-subtitle"
+            >
+              Cooling Water Circulation Pump
+              <span
+                class="workspace-identity-subtitle-sep"
+              >
+                 · 
+                Located in Utilities
+              </span>
+            </p>
+          </div>
+        </div>
+        <div
+          class="workspace-health-cards"
+        >
+          <div
+            class="workspace-health-card tone-normal"
+          >
+            <span
+              class="workspace-health-card-label"
+            >
+              Status
+            </span>
+            <strong
+              class="workspace-health-card-value"
+            >
+              Running
+            </strong>
+          </div>
+          <div
+            class="workspace-health-card tone-attention"
+          >
+            <span
+              class="workspace-health-card-label"
+            >
+              Criticality
+            </span>
+            <strong
+              class="workspace-health-card-value"
+            >
+              Medium
+            </strong>
+          </div>
         </div>
       </div>
     </div>
     <div
-      class="workspace-grid"
+      class="workspace-tab-strip"
+      role="tablist"
     >
-      <main
-        class="object-column"
+      <button
+        aria-selected="false"
+        class="workspace-tab"
+        role="tab"
+        type="button"
       >
-        <section
-          class="identity"
-          data-od-id="identity-section"
-        >
-          <h1>
-            Cooling Water Circulation Pump
-          </h1>
-          <div
-            class="identity-status"
-          >
-            <span
-              class="status-signal normal"
-            >
-              <span
-                class="dot-lg"
-              />
-               
-              Running
-            </span>
-            <span
-              class="running-line"
-            >
-              <span
-                class="dot-sm"
-              />
-              Located in Utilities
-            </span>
-          </div>
-          <div
-            style="margin-top: var(--space-4);"
-          >
-            <div
-              class="eyebrow"
-              style="margin-bottom: var(--space-2);"
-            >
-              Identity
-            </div>
-            <div
-              class="info-row"
-            >
-              <span
-                class="k"
-              >
-                Tag
-              </span>
-              <span
-                class="v mono"
-              >
-                305-P-2
-              </span>
-            </div>
-            <div
-              class="info-row"
-            >
-              <span
-                class="k"
-              >
-                Manufacturer
-              </span>
-              <span
-                class="v"
-              >
-                Flowserve
-              </span>
-            </div>
-            <div
-              class="info-row"
-            >
-              <span
-                class="k"
-              >
-                Area
-              </span>
-              <span
-                class="v"
-              >
-                Utilities
-              </span>
-            </div>
-          </div>
-          <div
-            style="margin-top: var(--space-4);"
-          >
-            <div
-              class="eyebrow"
-              style="margin-bottom: var(--space-2);"
-            >
-              Technical
-            </div>
-            <div
-              class="info-row"
-            >
-              <span
-                class="k"
-              >
-                Pump Type
-              </span>
-              <span
-                class="v"
-              >
-                Vertical Turbine
-              </span>
-            </div>
-            <div
-              class="info-row"
-            >
-              <span
-                class="k"
-              >
-                API Plan
-              </span>
-              <span
-                class="v"
-              >
-                —
-              </span>
-            </div>
-            <div
-              class="info-row"
-            >
-              <span
-                class="k"
-              >
-                Seal
-              </span>
-              <span
-                class="v"
-              >
-                Flowserve ISC2
-              </span>
-            </div>
-            <div
-              class="info-row"
-            >
-              <span
-                class="k"
-              >
-                Location
-              </span>
-              <span
-                class="v"
-              >
-                Utilities - Cooling Tower Basin
-              </span>
-            </div>
-          </div>
-        </section>
-        <section
-          class="assessment-section"
-          data-od-id="seal-inventory-section"
-        >
-          <span
-            class="eyebrow"
-          >
-            Seal & Inventory
-          </span>
-          <div
-            style="margin-top: var(--space-3);"
-          >
-            <div
-              class="info-row"
-            >
-              <span
-                class="v ref-group-empty"
-              >
-                0 · 
-                No engineering data
-              </span>
-            </div>
-          </div>
-        </section>
-        <section
-          class="assessment-section"
-          data-od-id="current-status-section"
-        >
-          <span
-            class="eyebrow"
-          >
-            Current Status
-          </span>
-          <div
-            class="info-panel"
-            style="margin-top: var(--space-3);"
-          >
-            <div
-              class="info-row"
-            >
-              <span
-                class="k"
-              >
-                Pump Health
-              </span>
-              <span
-                class="v"
-              >
-                Running
-              </span>
-            </div>
-            <div
-              class="info-row"
-            >
-              <span
-                class="k"
-              >
-                Criticality
-              </span>
-              <span
-                class="v"
-              >
-                Medium
-              </span>
-            </div>
-            <div
-              class="info-row"
-            >
-              <span
-                class="k"
-              >
-                Coverage
-              </span>
-              <span
-                class="v"
-              >
-                LTSA Covered
-              </span>
-            </div>
-            <div
-              class="info-row"
-            >
-              <span
-                class="k"
-              >
-                Elapsed Service Days
-              </span>
-              <span
-                class="v"
-              >
-                Not Available
-              </span>
-            </div>
-            <div
-              class="info-row"
-            >
-              <span
-                class="k"
-              >
-                Last PM
-              </span>
-              <span
-                class="v"
-              >
-                Not Available
-              </span>
-            </div>
-            <div
-              class="info-row"
-            >
-              <span
-                class="k"
-              >
-                Next PM
-              </span>
-              <span
-                class="v"
-              >
-                Not Available
-              </span>
-            </div>
-            <div
-              class="info-row"
-            >
-              <span
-                class="k"
-              >
-                Last CM
-              </span>
-              <span
-                class="v"
-              >
-                Not Available
-              </span>
-            </div>
-            <div
-              class="info-row"
-            >
-              <span
-                class="k"
-              >
-                Last Failure
-              </span>
-              <span
-                class="v"
-              >
-                Not Available
-              </span>
-            </div>
-            <div
-              class="info-row"
-            >
-              <span
-                class="k"
-              >
-                Open Work Orders
-              </span>
-              <span
-                class="v"
-              >
-                0
-              </span>
-            </div>
-          </div>
-        </section>
-        <section
-          class="assessment-section"
-          data-od-id="current-installation-section"
-        >
-          <span
-            class="eyebrow"
-          >
-            Current Installation
-          </span>
-          <div
-            class="info-panel"
-            style="margin-top: var(--space-3);"
-          >
-            <div
-              class="info-row"
-            >
-              <span
-                class="k"
-              >
-                Installation
-              </span>
-              <span
-                class="v"
-              >
-                Not Available
-              </span>
-            </div>
-          </div>
-        </section>
-        <section
-          class="assessment-section"
-          data-od-id="current-seal-section"
-        >
-          <span
-            class="eyebrow"
-          >
-            Current Seal
-          </span>
-          <div
-            class="info-panel"
-            style="margin-top: var(--space-3);"
-          >
-            <div
-              class="info-row"
-            >
-              <span
-                class="k"
-              >
-                Current Seal
-              </span>
-              <span
-                class="v"
-              >
-                Not Available
-              </span>
-            </div>
-          </div>
-        </section>
-        <section
-          class="assessment-section"
-          data-od-id="coverage-section"
-        >
-          <span
-            class="eyebrow"
-          >
-            LTSA Coverage
-          </span>
-          <div
-            class="identity-status"
-            style="margin-top: var(--space-3);"
-          >
-            <span
-              class="status-signal normal"
-            >
-              <span
-                class="dot-lg"
-              />
-               
-              LTSA Covered
-            </span>
-          </div>
-          <p
-            class="confidence-label"
-            style="margin-top: var(--space-2);"
-          >
-            This pump is a registered LTSA asset.
-          </p>
-        </section>
-        <section
-          class="assessment-section"
-          data-od-id="recommended-replacement-section"
-        >
-          <span
-            class="eyebrow"
-          >
-            Engineering Recommendation
-          </span>
-          <p
-            class="confidence-label"
-            style="margin-top: var(--space-2);"
-          >
-            No recommendation available.
-          </p>
-        </section>
-        <section
-          class="assessment-section"
-          data-od-id="engineering-ai-section"
-        >
-          <span
-            class="eyebrow"
-          >
-            Engineering AI
-          </span>
-          <div
-            class="info-panel"
-            style="margin-top: var(--space-3);"
-          >
-            <span
-              class="status-signal normal"
-            >
-              SUCCESS
-            </span>
-            <p
-              class="v"
-            >
-              Pump 305-P-2 is operating within normal parameters.
-            </p>
-            <div
-              class="info-row"
-            >
-              <span
-                class="k"
-              >
-                Provider
-              </span>
-              <span
-                class="v"
-              >
-                CLAUDE
-              </span>
-            </div>
-            <div
-              class="info-row"
-            >
-              <span
-                class="k"
-              >
-                Latency
-              </span>
-              <span
-                class="v"
-              >
-                842 ms
-              </span>
-            </div>
-            <div
-              class="info-row"
-            >
-              <span
-                class="k"
-              >
-                Trace ID
-              </span>
-              <span
-                class="v"
-              >
-                trace-pump-001
-              </span>
-            </div>
-            <div
-              class="info-row"
-            >
-              <span
-                class="k"
-              >
-                Confidence
-              </span>
-              <span
-                class="v"
-              >
-                77%
-              </span>
-            </div>
-            <div
-              class="info-row"
-            >
-              <span
-                class="k"
-              >
-                Risk
-              </span>
-              <span
-                class="v"
-              >
-                LOW
-              </span>
-            </div>
-            <div
-              class="info-row"
-            >
-              <span
-                class="k"
-              >
-                Remaining Life
-              </span>
-              <span
-                class="v"
-              >
-                180 days
-              </span>
-            </div>
-          </div>
-        </section>
-        <section
-          class="assessment-section"
-          data-testid="ai-findings"
-        >
-          <div
-            class="section-head"
-          >
-            <h2>
-              Engineering Findings
-            </h2>
-          </div>
-          <div
-            class="info-row"
-          >
-            <span
-              class="v"
-            >
-              No abnormal vibration trend over the last 30 days.
-            </span>
-          </div>
-        </section>
-        <section
-          class="assessment-section"
-          data-testid="ai-evidence"
-        >
-          <div
-            class="section-head"
-          >
-            <h2>
-              Evidence Strip
-            </h2>
-          </div>
-          <div
-            class="info-row"
-          >
-            <span
-              class="v"
-            >
-              CMON-1001
-            </span>
-          </div>
-        </section>
-        <section
-          class="assessment-section"
-          data-testid="ai-recommendation"
-        >
-          <div
-            class="section-head"
-          >
-            <h2>
-              Recommendation
-            </h2>
-          </div>
-          <div
-            class="info-row"
-          >
-            <span
-              class="v"
-            >
-              Continue routine monitoring.
-            </span>
-          </div>
-        </section>
-        <section
-          class="rail-section"
-          data-testid="ai-source-references"
-        >
-          <h3>
-            Source References
-          </h3>
-          <div
-            class="info-row"
-          >
-            <span
-              class="v"
-            >
-              CMON-1001
-            </span>
-          </div>
-        </section>
-        <section
-          class="assessment-section"
-          data-od-id="related-engineering-section"
-        >
-          <span
-            class="eyebrow"
-          >
-            Related Engineering
-          </span>
-          <div
-            style="margin-top: var(--space-3);"
-          >
-            <div
-              class="info-row"
-            >
-              <span
-                class="k"
-              >
-                Related PM
-              </span>
-              <span
-                class="v ref-group-empty"
-              >
-                0
-                 · No engineering data
-              </span>
-            </div>
-            <div
-              class="info-row"
-            >
-              <span
-                class="k"
-              >
-                Related CM Reports
-              </span>
-              <span
-                class="v ref-group-empty"
-              >
-                0
-                 · No engineering data
-              </span>
-            </div>
-            <div
-              class="info-row"
-            >
-              <span
-                class="k"
-              >
-                Related Work Orders
-              </span>
-              <span
-                class="v ref-group-empty"
-              >
-                0
-                 · No engineering data
-              </span>
-            </div>
-            <div
-              class="info-row"
-            >
-              <span
-                class="k"
-              >
-                Drawings
-              </span>
-              <span
-                class="v ref-group-empty"
-              >
-                0
-                 · No engineering data
-              </span>
-            </div>
-            <div
-              class="info-row"
-            >
-              <span
-                class="k"
-              >
-                Documents
-              </span>
-              <span
-                class="v ref-group-empty"
-              >
-                0
-                 · No engineering data
-              </span>
-            </div>
-          </div>
-        </section>
-        <section
-          class="assessment-section"
-          data-od-id="timeline-section"
-        >
-          <span
-            class="eyebrow"
-          >
-            Timeline
-          </span>
-          <div
-            style="margin-top: var(--space-3);"
-          >
-            <div
-              class="info-row"
-            >
-              <span
-                class="k"
-              >
-                Lifecycle Events
-              </span>
-              <span
-                class="v ref-group-empty"
-              >
-                0
-                 · No engineering data
-              </span>
-            </div>
-          </div>
-        </section>
-        <section
-          class="assessment-section"
-          data-od-id="analytics-section"
-        >
-          <span
-            class="eyebrow"
-          >
-            Analytics
-          </span>
-          <div
-            class="info-panel"
-            style="margin-top: var(--space-3);"
-          >
-            <div
-              class="info-row"
-            >
-              <span
-                class="k"
-              >
-                Elapsed Service Days
-              </span>
-              <span
-                class="v"
-              >
-                Not Available
-              </span>
-            </div>
-            <div
-              class="info-row"
-            >
-              <span
-                class="k"
-              >
-                PM Count
-              </span>
-              <span
-                class="v"
-              >
-                0
-              </span>
-            </div>
-            <div
-              class="info-row"
-            >
-              <span
-                class="k"
-              >
-                CM Count
-              </span>
-              <span
-                class="v"
-              >
-                0
-              </span>
-            </div>
-            <div
-              class="info-row"
-            >
-              <span
-                class="k"
-              >
-                Failure Count
-              </span>
-              <span
-                class="v"
-              >
-                0
-              </span>
-            </div>
-            <div
-              class="info-row"
-            >
-              <span
-                class="k"
-              >
-                MTBF
-              </span>
-              <span
-                class="v"
-              >
-                Not Available
-              </span>
-            </div>
-            <div
-              class="info-row"
-            >
-              <span
-                class="k"
-              >
-                MTBR
-              </span>
-              <span
-                class="v"
-              >
-                Not Available
-              </span>
-            </div>
-            <div
-              class="info-row"
-            >
-              <span
-                class="k"
-              >
-                Average Seal Life
-              </span>
-              <span
-                class="v"
-              >
-                Not Available
-              </span>
-            </div>
-            <div
-              class="info-row"
-            >
-              <span
-                class="k"
-              >
-                Health Index
-              </span>
-              <span
-                class="v"
-              >
-                Not Available
-              </span>
-            </div>
-            <div
-              class="info-row"
-            >
-              <span
-                class="k"
-              >
-                Availability
-              </span>
-              <span
-                class="v"
-              >
-                Not Available
-              </span>
-            </div>
-            <div
-              class="info-row"
-            >
-              <span
-                class="k"
-              >
-                Reliability
-              </span>
-              <span
-                class="v"
-              >
-                Not Available
-              </span>
-            </div>
-          </div>
-        </section>
-        <section
-          class="assessment-section"
-          data-od-id="documents-section"
-        >
-          <div
-            class="section-head"
-          >
-            <span
-              class="eyebrow"
-            >
-              Documents
-            </span>
-            <button
-              class="btn-link"
-              data-od-id="open-drawing-link"
-              type="button"
-            >
-              Buka Drawing →
-            </button>
-          </div>
-          <p
-            class="confidence-label"
-            style="margin-top: var(--space-2);"
-          >
-            No document types available yet.
-          </p>
-        </section>
-      </main>
-      <aside
-        class="inspector-rail"
-        data-od-id="inspector-rail"
+        Overview
+      </button>
+      <button
+        aria-selected="true"
+        class="workspace-tab is-active"
+        role="tab"
+        type="button"
       >
+        Performance
+      </button>
+      <button
+        aria-selected="false"
+        class="workspace-tab"
+        role="tab"
+        type="button"
+      >
+        Asset360
+      </button>
+      <button
+        aria-selected="false"
+        class="workspace-tab"
+        role="tab"
+        type="button"
+      >
+        Documents
+      </button>
+      <button
+        aria-selected="false"
+        class="workspace-tab"
+        role="tab"
+        type="button"
+      >
+        History
+      </button>
+    </div>
+    <div
+      class="workspace-tab-body"
+    >
+      <section
+        class="assessment-section"
+        data-od-id="current-status-section"
+      >
+        <span
+          class="eyebrow"
+        >
+          Current Status
+        </span>
         <div
-          class="rail-section"
-          data-od-id="pump-health-section"
+          class="info-panel"
+          style="margin-top: var(--space-3);"
         >
-          <h3
-            class="rail-title"
+          <div
+            class="info-row"
           >
-            Pump Health
-          </h3>
+            <span
+              class="k"
+            >
+              Last PM
+            </span>
+            <span
+              class="v"
+            >
+              Not Available
+            </span>
+          </div>
+          <div
+            class="info-row"
+          >
+            <span
+              class="k"
+            >
+              Next PM
+            </span>
+            <span
+              class="v"
+            >
+              Not Available
+            </span>
+          </div>
+          <div
+            class="info-row"
+          >
+            <span
+              class="k"
+            >
+              Last CM
+            </span>
+            <span
+              class="v"
+            >
+              Not Available
+            </span>
+          </div>
+          <div
+            class="info-row"
+          >
+            <span
+              class="k"
+            >
+              Last Failure
+            </span>
+            <span
+              class="v"
+            >
+              Not Available
+            </span>
+          </div>
+        </div>
+      </section>
+      <section
+        class="assessment-section"
+        data-od-id="analytics-section"
+      >
+        <span
+          class="eyebrow"
+        >
+          Analytics
+        </span>
+        <div
+          class="info-panel"
+          style="margin-top: var(--space-3);"
+        >
+          <div
+            class="info-row"
+          >
+            <span
+              class="k"
+            >
+              Elapsed Service Days
+            </span>
+            <span
+              class="v"
+            >
+              Not Available
+            </span>
+          </div>
+          <div
+            class="info-row"
+          >
+            <span
+              class="k"
+            >
+              PM Count
+            </span>
+            <span
+              class="v"
+            >
+              0
+            </span>
+          </div>
+          <div
+            class="info-row"
+          >
+            <span
+              class="k"
+            >
+              CM Count
+            </span>
+            <span
+              class="v"
+            >
+              0
+            </span>
+          </div>
+          <div
+            class="info-row"
+          >
+            <span
+              class="k"
+            >
+              Failure Count
+            </span>
+            <span
+              class="v"
+            >
+              0
+            </span>
+          </div>
+          <div
+            class="info-row"
+          >
+            <span
+              class="k"
+            >
+              MTBF
+            </span>
+            <span
+              class="v"
+            >
+              Not Available
+            </span>
+          </div>
+          <div
+            class="info-row"
+          >
+            <span
+              class="k"
+            >
+              MTBR
+            </span>
+            <span
+              class="v"
+            >
+              Not Available
+            </span>
+          </div>
+          <div
+            class="info-row"
+          >
+            <span
+              class="k"
+            >
+              Average Seal Life
+            </span>
+            <span
+              class="v"
+            >
+              Not Available
+            </span>
+          </div>
+          <div
+            class="info-row"
+          >
+            <span
+              class="k"
+            >
+              Health Index
+            </span>
+            <span
+              class="v"
+            >
+              Not Available
+            </span>
+          </div>
+          <div
+            class="info-row"
+          >
+            <span
+              class="k"
+            >
+              Availability
+            </span>
+            <span
+              class="v"
+            >
+              Not Available
+            </span>
+          </div>
+          <div
+            class="info-row"
+          >
+            <span
+              class="k"
+            >
+              Reliability
+            </span>
+            <span
+              class="v"
+            >
+              Not Available
+            </span>
+          </div>
+          <div
+            class="info-row"
+          >
+            <span
+              class="k"
+            >
+              Open Work Orders
+            </span>
+            <span
+              class="v"
+            >
+              0
+            </span>
+          </div>
+        </div>
+      </section>
+      <section
+        class="assessment-section"
+        data-od-id="engineering-ai-section"
+      >
+        <span
+          class="eyebrow"
+        >
+          Engineering AI
+        </span>
+        <div
+          class="info-panel"
+          style="margin-top: var(--space-3);"
+        >
           <span
             class="status-signal normal"
           >
-            <span
-              class="dot-lg"
-            />
-             
-            Running
+            SUCCESS
           </span>
-        </div>
-        <div
-          class="rail-section"
-          data-od-id="criticality-section"
-        >
-          <h3
-            class="rail-title"
+          <p
+            class="v"
           >
-            Criticality
-          </h3>
-          <span
-            class="status-signal attention"
+            Pump 305-P-2 is operating within normal parameters.
+          </p>
+          <div
+            class="info-row"
           >
             <span
-              class="dot-lg"
-            />
-             
-            Medium
-          </span>
-        </div>
-        <div
-          class="rail-section"
-          data-od-id="recommendation-section"
-        >
-          <h3
-            class="rail-title"
-          >
-            Recommendation
-          </h3>
+              class="k"
+            >
+              Provider
+            </span>
+            <span
+              class="v"
+            >
+              CLAUDE
+            </span>
+          </div>
           <div
-            class="confidence-label"
+            class="info-row"
           >
-            No recommendation available.
+            <span
+              class="k"
+            >
+              Latency
+            </span>
+            <span
+              class="v"
+            >
+              842 ms
+            </span>
+          </div>
+          <div
+            class="info-row"
+          >
+            <span
+              class="k"
+            >
+              Trace ID
+            </span>
+            <span
+              class="v"
+            >
+              trace-pump-001
+            </span>
+          </div>
+          <div
+            class="info-row"
+          >
+            <span
+              class="k"
+            >
+              Confidence
+            </span>
+            <span
+              class="v"
+            >
+              77%
+            </span>
+          </div>
+          <div
+            class="info-row"
+          >
+            <span
+              class="k"
+            >
+              Risk
+            </span>
+            <span
+              class="v"
+            >
+              LOW
+            </span>
+          </div>
+          <div
+            class="info-row"
+          >
+            <span
+              class="k"
+            >
+              Remaining Life
+            </span>
+            <span
+              class="v"
+            >
+              180 days
+            </span>
           </div>
         </div>
-        <div
-          class="rail-section"
-          data-od-id="recent-activities-section"
-        >
-          <h3
-            class="rail-title"
-          >
-            Recent Activities
-          </h3>
-          <div
-            class="confidence-label ref-group-empty"
-          >
-            No recent activity available.
-          </div>
-        </div>
-      </aside>
-    </div>
-    <div
-      class="action-bar"
-      data-od-id="action-bar"
-    >
-      <div
-        class="action-bar-inner"
+      </section>
+      <section
+        class="assessment-section"
+        data-testid="ai-findings"
       >
         <div
-          class="action-bar-status"
+          class="section-head"
         >
-          <span
-            class="label"
-          >
-            305-P-2 · Running
-          </span>
-          <span
-            class="meta"
-          >
-            LTSA Covered
-             · 
-            Criticality
-             
-            Medium
-          </span>
+          <h2>
+            Engineering Findings
+          </h2>
         </div>
         <div
-          class="action-bar-actions"
+          class="info-row"
         >
-          <button
-            class="btn-link"
-            data-od-id="action-bar-view-history"
-            type="button"
+          <span
+            class="v"
           >
-            View History →
-          </button>
-          <button
-            class="btn-link"
-            data-od-id="action-bar-create-cm"
-            type="button"
-          >
-            Create CM
-          </button>
-          <button
-            class="btn-primary"
-            data-od-id="action-bar-create-pm"
-            type="button"
-          >
-            Create PM
-          </button>
+            No abnormal vibration trend over the last 30 days.
+          </span>
         </div>
-      </div>
+      </section>
+      <section
+        class="assessment-section"
+        data-testid="ai-evidence"
+      >
+        <div
+          class="section-head"
+        >
+          <h2>
+            Evidence Strip
+          </h2>
+        </div>
+        <div
+          class="info-row"
+        >
+          <span
+            class="v"
+          >
+            CMON-1001
+          </span>
+        </div>
+      </section>
+      <section
+        class="assessment-section"
+        data-testid="ai-recommendation"
+      >
+        <div
+          class="section-head"
+        >
+          <h2>
+            Recommendation
+          </h2>
+        </div>
+        <div
+          class="info-row"
+        >
+          <span
+            class="v"
+          >
+            Continue routine monitoring.
+          </span>
+        </div>
+      </section>
+      <section
+        class="rail-section"
+        data-testid="ai-source-references"
+      >
+        <h3>
+          Source References
+        </h3>
+        <div
+          class="info-row"
+        >
+          <span
+            class="v"
+          >
+            CMON-1001
+          </span>
+        </div>
+      </section>
     </div>
     <div
       class="drawer-overlay"

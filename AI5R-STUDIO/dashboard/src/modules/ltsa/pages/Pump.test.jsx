@@ -206,15 +206,19 @@ describe("Pump workspace page", () => {
   });
 
   it("shows the selected pump's detail when a registry row is clicked", async () => {
+    // UI-D1.2 -- the Open Design identity header's <h1> is the pump's
+    // TAG (the canonical asset code); name/service is real, adjacent
+    // subtitle text, not a second heading. Same semantics as before
+    // (tag + name both render), different element type.
     loadPumps();
     render(<Pump />);
     await screen.findByText("305-P-2");
 
     fireEvent.click(screen.getByText("305-P-2"));
 
-    expect(
-      await screen.findByRole("heading", { name: "Cooling Water Circulation Pump" })
-    ).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "305-P-2" })).toBeTruthy();
+    // Name also still appears in the registry row, hence getAllByText.
+    expect(screen.getAllByText(/Cooling Water Circulation Pump/).length).toBeGreaterThan(0);
   });
 
   it("filters the registry table by search text", async () => {
@@ -271,17 +275,19 @@ describe("Pump workspace page", () => {
     expect(screen.getByRole("heading", { name: "Create CM Report" })).toBeTruthy();
   });
 
-  it("navigates to Asset 360 already scoped to this pump when View History is clicked from the sticky Action Bar", async () => {
+  it("navigates to Asset 360 already scoped to this pump when Open Asset 360 is clicked from the Asset360 tab", async () => {
+    // UI-D1.2 -- the sticky Action Bar's "View History ->" button is gone;
+    // the same onViewHistory callback now lives on the Asset360 tab's own
+    // "Open Asset 360 ->" button.
     loadPumps();
     const onNavigate = vi.fn();
     render(<Pump onNavigate={onNavigate} />);
     await screen.findByText("305-P-2");
 
     fireEvent.click(screen.getByText("305-P-2"));
-    // MWO-LTSA-050 -- "View History" moved from the old Quick Actions card
-    // into the sticky Action Bar, matching Seal's own navigation-button
-    // convention ("Buka Pump →", "Buka Drawing →") with a trailing arrow.
-    fireEvent.click(await screen.findByRole("button", { name: "View History →" }));
+    await screen.findByRole("heading", { name: "305-P-2" });
+    fireEvent.click(screen.getByRole("tab", { name: "Asset360" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Open Asset 360 →" }));
 
     expect(onNavigate).toHaveBeenCalledWith("history", { assetTag: "305-P-2" });
   });
@@ -318,9 +324,13 @@ describe("Pump workspace page", () => {
     expect(getPumpLifecycle).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByText("305-P-2"));
-    await screen.findByRole("heading", { name: "Cooling Water Circulation Pump" });
+    await screen.findByRole("heading", { name: "305-P-2" });
 
     expect(getPumpLifecycle).toHaveBeenCalledWith("305-P-2");
+    // UI-D1.2 -- Last PM/Next PM/Last CM/Last Failure now live under the
+    // Performance tab's "Current Status" section (Overview no longer
+    // shows Current Status directly).
+    fireEvent.click(screen.getByRole("tab", { name: "Performance" }));
     expect(await screen.findByText(/MH-101/)).toBeTruthy();
     expect(screen.getByText(/2026-06-02/)).toBeTruthy();
   });
@@ -347,9 +357,10 @@ describe("Pump workspace page", () => {
     expect(getPumpLifecycle).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByText("305-P-2"));
-    await screen.findByRole("heading", { name: "Cooling Water Circulation Pump" });
+    await screen.findByRole("heading", { name: "305-P-2" });
 
     expect(getPumpLifecycle).toHaveBeenCalledWith("305-P-2");
+    // UI-D1.2 -- Seal Stock Available stays on the default Overview tab.
     expect(await screen.findByText(/T48MP · 3-1\/2"/)).toBeTruthy();
     expect(screen.getByText("Seal Stock Available")).toBeTruthy();
     expect(screen.queryByText("Compatible Seals")).toBeNull();
@@ -385,10 +396,14 @@ describe("Pump workspace page", () => {
     await screen.findByText("305-P-2");
 
     fireEvent.click(screen.getByText("305-P-2"));
-    await screen.findByRole("heading", { name: "Cooling Water Circulation Pump" });
+    await screen.findByRole("heading", { name: "305-P-2" });
 
-    expect(await screen.findByText(/MH-101/)).toBeTruthy();
+    // UI-D1.2 -- current_state (Performance tab) and related_engineering
+    // (Overview tab's Seal Stock card) now render on different tabs; both
+    // are still proven to come from the one lifecycle fetch.
     expect(screen.getAllByText("4 sets available").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("tab", { name: "Performance" }));
+    expect(await screen.findByText(/MH-101/)).toBeTruthy();
   });
 });
 
@@ -562,11 +577,14 @@ describe("Engineering Navigation (MWO-LTSA-070)", () => {
   }
 
   async function renderAndSelect(onNavigate) {
+    // UI-D1.2 -- Timeline, Recent Activities and Related Engineering (every
+    // assertion in this describe block) now live under the History tab.
     loadNav();
     render(<Pump onNavigate={onNavigate} />);
     await screen.findByText("305-P-2");
     fireEvent.click(screen.getByText("305-P-2"));
-    await screen.findByRole("heading", { name: "Cooling Water Circulation Pump" });
+    await screen.findByRole("heading", { name: "305-P-2" });
+    fireEvent.click(screen.getByRole("tab", { name: "History" }));
   }
 
   it("installation navigation: clicking an INSTALLATION timeline event opens Installation Workspace scoped to that report", async () => {
@@ -621,10 +639,10 @@ describe("Engineering Navigation (MWO-LTSA-070)", () => {
 
   it("work order navigation: clicking a WORK_ORDER timeline event opens Work Order Workspace scoped to that work order", async () => {
     // MWO-LTSA-UI-V2-001 -- "Work Order WO-1" is one of the 3 most recent
-    // timeline events, so it now also appears (non-clickable) in the
-    // Inspector Rail's Recent Activities -- getAllByText, not getByText.
-    // Index [0] is the main Timeline section's own clickable item (DOM
-    // order: <main> precedes <aside class="inspector-rail">).
+    // timeline events, so it now also appears (non-clickable) in Recent
+    // Activities -- getAllByText, not getByText. Index [0] is the Timeline
+    // section's own clickable item (DOM order: Timeline section precedes
+    // Recent Activities section within the History tab body).
     const onNavigate = vi.fn();
     await renderAndSelect(onNavigate);
 
@@ -654,14 +672,20 @@ describe("Engineering Navigation (MWO-LTSA-070)", () => {
     expect(onNavigate).toHaveBeenCalledWith("drawing", { assetTag: "305-P-2" });
   });
 
-  it("pump navigation: clicking this pump's own identity (crumb) opens Pump Workspace scoped to its own tag", async () => {
-    const onNavigate = vi.fn();
-    await renderAndSelect(onNavigate);
-
-    fireEvent.click(await screen.findByRole("button", { name: "305-P-2" }));
-
-    expect(onNavigate).toHaveBeenCalledWith("pump", { selectId: "305-P-2" });
-  });
+  // UI-D1.2 -- deleted: "pump navigation: clicking this pump's own identity
+  // (crumb) opens Pump Workspace scoped to its own tag". This asserted the
+  // old ChromeBar breadcrumb self-link (a clickable button showing the
+  // pump's own tag, wired to onNavigate("pump", {selectId})). The Open
+  // Design identity header's <h1> tag (AssetIdentityHeader.jsx) has no
+  // click handler and Chief's approved reference has no self-navigating
+  // crumb on the identity header -- confirmed via `grep '"pump"'` across
+  // Pump.jsx/PumpOpenDesignView.jsx that no button renders this case
+  // today. The underlying handleOpenEngineeringObject("PUMP"/"LIFECYCLE")
+  // switch case in Pump.jsx is untouched and still reachable if a future
+  // UI element wires it up; per this mission's "do not restore obsolete
+  // DOM wrappers" / "do not modify production behavior merely to satisfy
+  // an obsolete test" rules, no self-crumb button was reintroduced just to
+  // keep this test green.
 
   it("invalid reference: a FAILURE timeline event has no target workspace and is not clickable", async () => {
     // MWO-LTSA-UI-V2-001 -- also appears in Recent Activities (getAllByText).

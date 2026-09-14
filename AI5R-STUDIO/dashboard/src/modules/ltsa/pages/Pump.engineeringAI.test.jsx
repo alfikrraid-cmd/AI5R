@@ -128,12 +128,20 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-async function renderAndSelect(tag = "305-P-2") {
+// UI-D1.2 -- the identity header's <h1> is the pump's tag, not its name
+// (AssetIdentityHeader.jsx); name is adjacent subtitle text. Engineering
+// AI (status/summary/findings/evidence/recommendation/source references)
+// now lives under the Performance tab, not always-visible -- callers that
+// need it pass tab="Performance".
+async function renderAndSelect(tag = "305-P-2", tab = null) {
   loadPumps();
   render(<Pump />);
   await screen.findByText(tag);
   fireEvent.click(screen.getByText(tag));
-  await screen.findByRole("heading", { name: PUMPS.find((p) => p.tag_number === tag).name });
+  await screen.findByRole("heading", { name: tag });
+  if (tab) {
+    fireEvent.click(screen.getByRole("tab", { name: tab }));
+  }
 }
 
 describe("EngineeringAIRequest construction", () => {
@@ -225,69 +233,69 @@ describe("POST invocation", () => {
 describe("Response rendering", () => {
   it("renders the response summary", async () => {
     postEngineeringAI.mockResolvedValue(AI_RESPONSE);
-    await renderAndSelect();
+    await renderAndSelect("305-P-2", "Performance");
     expect(await screen.findByText(AI_RESPONSE.summary)).toBeTruthy();
   });
 
   it("renders execution_status as the status badge", async () => {
     postEngineeringAI.mockResolvedValue(AI_RESPONSE);
-    await renderAndSelect();
+    await renderAndSelect("305-P-2", "Performance");
     expect(await screen.findByText("SUCCESS")).toBeTruthy();
   });
 
   it("renders provider metadata", async () => {
     postEngineeringAI.mockResolvedValue(AI_RESPONSE);
-    await renderAndSelect();
+    await renderAndSelect("305-P-2", "Performance");
     expect(await screen.findByText("CLAUDE")).toBeTruthy();
   });
 
   it("renders latency formatted in milliseconds", async () => {
     postEngineeringAI.mockResolvedValue(AI_RESPONSE);
-    await renderAndSelect();
+    await renderAndSelect("305-P-2", "Performance");
     expect(await screen.findByText("842 ms")).toBeTruthy();
   });
 
   it("renders trace_id from the response", async () => {
     postEngineeringAI.mockResolvedValue(AI_RESPONSE);
-    await renderAndSelect();
+    await renderAndSelect("305-P-2", "Performance");
     expect(await screen.findByText("trace-pump-001")).toBeTruthy();
   });
 
   it("renders confidence as a rounded percentage", async () => {
     postEngineeringAI.mockResolvedValue(AI_RESPONSE);
-    await renderAndSelect();
+    await renderAndSelect("305-P-2", "Performance");
     expect(await screen.findByText("77%")).toBeTruthy();
   });
 
   it("renders risk", async () => {
     postEngineeringAI.mockResolvedValue(AI_RESPONSE);
-    await renderAndSelect();
+    await renderAndSelect("305-P-2", "Performance");
     expect(await screen.findByText("LOW")).toBeTruthy();
   });
 
   it("renders remaining_life", async () => {
     postEngineeringAI.mockResolvedValue(AI_RESPONSE);
-    await renderAndSelect();
+    await renderAndSelect("305-P-2", "Performance");
     expect(await screen.findByText("180 days")).toBeTruthy();
   });
 
   it("renders findings via the packaged EngineeringAIFindings component", async () => {
     postEngineeringAI.mockResolvedValue(AI_RESPONSE);
-    await renderAndSelect();
+    await renderAndSelect("305-P-2", "Performance");
     expect(await screen.findByText(AI_RESPONSE.findings[0])).toBeTruthy();
     expect(await screen.findByRole("heading", { name: "Engineering Findings" })).toBeTruthy();
   });
 
   it("renders evidence via the packaged EngineeringAIEvidence component", async () => {
     postEngineeringAI.mockResolvedValue(AI_RESPONSE);
-    await renderAndSelect();
+    await renderAndSelect("305-P-2", "Performance");
     const heading = await screen.findByRole("heading", { name: "Evidence Strip" });
     expect(heading.closest("section").textContent).toContain("CMON-1001");
   });
 
   it("renders recommendations via the packaged EngineeringAIRecommendation component", async () => {
     postEngineeringAI.mockResolvedValue(AI_RESPONSE);
-    await renderAndSelect();
+    await renderAndSelect("305-P-2", "Performance");
     // MWO-LTSA-050 -- "Recommendation" is also the Inspector Rail's own
     // section title (<h3 class="rail-title">Recommendation</h3>) alongside
     // the packaged component's own heading -- findAllByRole, not
@@ -298,19 +306,22 @@ describe("Response rendering", () => {
 
   it("renders source references via the packaged EngineeringAISourceReferences component", async () => {
     postEngineeringAI.mockResolvedValue(AI_RESPONSE);
-    await renderAndSelect();
+    await renderAndSelect("305-P-2", "Performance");
     expect(await screen.findByRole("heading", { name: "Source References" })).toBeTruthy();
   });
 });
 
 describe("Loading state (reuses the Failure Analysis model)", () => {
   it("shows a generating message while the AI request is in flight", async () => {
+    // UI-D1.2 -- Engineering AI status now lives under the Performance tab.
     let resolvePromise;
     postEngineeringAI.mockReturnValue(new Promise((resolve) => { resolvePromise = resolve; }));
     loadPumps();
     render(<Pump />);
     await screen.findByText("305-P-2");
     fireEvent.click(screen.getByText("305-P-2"));
+    await screen.findByRole("heading", { name: "305-P-2" });
+    fireEvent.click(screen.getByRole("tab", { name: "Performance" }));
 
     expect(await screen.findByText("Generating pump summary…")).toBeTruthy();
     resolvePromise(AI_RESPONSE);
@@ -324,6 +335,8 @@ describe("Loading state (reuses the Failure Analysis model)", () => {
     render(<Pump />);
     await screen.findByText("305-P-2");
     fireEvent.click(screen.getByText("305-P-2"));
+    await screen.findByRole("heading", { name: "305-P-2" });
+    fireEvent.click(screen.getByRole("tab", { name: "Performance" }));
 
     expect(await screen.findByText("Generating…")).toBeTruthy();
     resolvePromise(AI_RESPONSE);
@@ -348,19 +361,19 @@ describe("Retry (Golden Reference has none -- faithfully not replicated)", () =>
 describe("Error state", () => {
   it("renders a network error message", async () => {
     postEngineeringAI.mockRejectedValue(new Error("Engineering AI API unavailable"));
-    await renderAndSelect();
+    await renderAndSelect("305-P-2", "Performance");
     expect(await screen.findByText("Engineering AI API unavailable")).toBeTruthy();
   });
 
   it("renders an Error status label on network failure", async () => {
     postEngineeringAI.mockRejectedValue(new Error("boom"));
-    await renderAndSelect();
+    await renderAndSelect("305-P-2", "Performance");
     expect(await screen.findByText("Error")).toBeTruthy();
   });
 
   it("falls back to a generic message when the rejected error has no message", async () => {
     postEngineeringAI.mockRejectedValue({});
-    await renderAndSelect();
+    await renderAndSelect("305-P-2", "Performance");
     expect(await screen.findByText("Engineering AI request failed")).toBeTruthy();
   });
 });
@@ -372,14 +385,14 @@ describe("Invalid response (business-level error)", () => {
       execution_status: "ERROR",
       error: "Asset context could not be built",
     });
-    await renderAndSelect();
+    await renderAndSelect("305-P-2", "Performance");
     expect(await screen.findByText("Asset context could not be built")).toBeTruthy();
     expect(screen.queryByText(AI_RESPONSE.summary)).toBeNull();
   });
 
   it("does not render Findings/Evidence/Recommendation/SourceReferences panels on business error", async () => {
     postEngineeringAI.mockResolvedValue({ ...AI_RESPONSE, execution_status: "ERROR", error: "boom" });
-    await renderAndSelect();
+    await renderAndSelect("305-P-2", "Performance");
     await screen.findByText("boom");
     expect(screen.queryByRole("heading", { name: "Engineering Findings" })).toBeNull();
   });
@@ -390,7 +403,7 @@ describe("Trace propagation", () => {
     postEngineeringAI.mockImplementation((request) =>
       Promise.resolve({ ...AI_RESPONSE, trace_id: request.trace_id })
     );
-    await renderAndSelect();
+    await renderAndSelect("305-P-2", "Performance");
     await waitFor(() => expect(postEngineeringAI).toHaveBeenCalled());
     const sentTraceId = postEngineeringAI.mock.calls[0][0].trace_id;
     expect(await screen.findByText(sentTraceId)).toBeTruthy();
@@ -408,33 +421,50 @@ describe("Trace propagation", () => {
 // assertion below.
 describe("Regression: existing Pump Workspace behavior is preserved under the new Open Design hierarchy", () => {
   it("still renders the pump's identity fields (Hero)", async () => {
+    // UI-D1.2 -- identity header's <h1> is the tag; name is subtitle text.
     postEngineeringAI.mockResolvedValue(AI_RESPONSE);
     await renderAndSelect();
-    expect(screen.getByRole("heading", { name: "Cooling Water Circulation Pump" })).toBeTruthy();
-    // "Flowserve"/"Vertical Turbine" also appear in the registry table's
-    // own row for this pump -- getAllByText, not getByText.
+    expect(screen.getByRole("heading", { name: "305-P-2" })).toBeTruthy();
+    // "Cooling Water Circulation Pump"/"Flowserve"/"Vertical Turbine" also
+    // appear in the registry table's own row for this pump -- getAllByText,
+    // not getByText.
+    expect(screen.getAllByText("Cooling Water Circulation Pump").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Flowserve").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Vertical Turbine").length).toBeGreaterThan(0);
   });
 
   it("still renders real maintenance data (Current Status: Health, Criticality, Open Work Orders)", async () => {
+    // UI-D1.2 -- "Current Status" (Last PM/Next PM/Last CM/Last Failure)
+    // and "Open Work Orders" (Analytics) both moved to the Performance tab;
+    // Criticality ("Medium") is a HealthCard on the always-visible identity
+    // header.
     postEngineeringAI.mockResolvedValue(AI_RESPONSE);
-    await renderAndSelect();
+    await renderAndSelect("305-P-2", "Performance");
     expect(screen.getByText("Current Status")).toBeTruthy();
     expect(screen.getAllByText("Medium").length).toBeGreaterThan(0);
+    // Also the registry table's own column header -- getAllByText.
+    expect(screen.getAllByText("Open Work Orders").length).toBeGreaterThan(0);
   });
 
-  it("still renders Engineering Recommendation alongside the Engineering AI card", async () => {
+  it("still renders a recommendation alongside the Engineering AI card", async () => {
+    // UI-D1.2 -- the old standalone "Engineering Recommendation" section
+    // was folded into the Overview tab's "LTSA Coverage & Recommendation"
+    // card (pump.recommendation renders there when present); Engineering
+    // AI stayed on the Performance tab.
     postEngineeringAI.mockResolvedValue(AI_RESPONSE);
     await renderAndSelect();
-    expect(screen.getByText("Engineering Recommendation")).toBeTruthy();
+    expect(screen.getByText("LTSA Coverage & Recommendation")).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: "Performance" }));
     expect(screen.getAllByText("Engineering AI").length).toBeGreaterThan(0);
   });
 
-  it("still renders Seal & Inventory (MWO-LTSA-UI-V2-001, replacing the old Compatibility/Inventory duplicate)", async () => {
+  it("still renders Seal Stock availability (MWO-LTSA-UI-V2-001, replacing the old Compatibility/Inventory duplicate)", async () => {
+    // UI-D1.2 -- the card was renamed "Seal Stock Available" to match
+    // Chief's approved reference; still the same real sealInventoryGroups
+    // data, still on the Overview tab.
     postEngineeringAI.mockResolvedValue(AI_RESPONSE);
     await renderAndSelect();
-    expect(screen.getByText("Seal & Inventory")).toBeTruthy();
+    expect(screen.getByText("Seal Stock Available")).toBeTruthy();
   });
 
   it("still renders working action callbacks (now on the sticky Action Bar)", async () => {
@@ -454,11 +484,17 @@ describe("Regression: existing Pump Workspace behavior is preserved under the ne
 
 describe("Snapshot", () => {
   it("matches the PumpOpenDesignView Engineering AI section snapshot when ready", async () => {
+    // UI-D1.2 -- Engineering AI now renders under the Performance tab.
+    // Snapshot regenerated intentionally: the old snapshot captured the
+    // pre-UI-D1.2 ChromeBar/crumb DOM, which no longer exists anywhere in
+    // this component (SNAPSHOT_SEMANTIC_CHANGE, not CRLF noise).
     postEngineeringAI.mockResolvedValue(AI_RESPONSE);
     const { container } = render(<Pump />);
     loadPumps();
     await screen.findByText("305-P-2");
     fireEvent.click(screen.getByText("305-P-2"));
+    await screen.findByRole("heading", { name: "305-P-2" });
+    fireEvent.click(screen.getByRole("tab", { name: "Performance" }));
     await screen.findByText(AI_RESPONSE.summary);
 
     expect(container.querySelector(".pump-workspace-detail")).toMatchSnapshot();
@@ -541,6 +577,8 @@ describe("Self-audit: only postEngineeringAI is used, no duplication, no forbidd
     render(<Pump />);
     await screen.findByText("305-P-2");
     fireEvent.click(screen.getByText("305-P-2"));
+    await screen.findByRole("heading", { name: "305-P-2" });
+    fireEvent.click(screen.getByRole("tab", { name: "Performance" }));
     await screen.findByText(AI_RESPONSE.summary);
 
     let resolveSecond;

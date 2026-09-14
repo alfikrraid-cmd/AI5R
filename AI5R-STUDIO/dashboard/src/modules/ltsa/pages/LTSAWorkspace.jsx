@@ -1,8 +1,15 @@
-import { useEffect, useState } from "react";
-import { EmptyState, PageHeader, Panel, Tabs } from "../../../design-system";
+import { useEffect, useMemo, useState } from "react";
+import { EmptyState, PageHeader, Panel } from "../../../design-system";
 import AssetSelector from "../components/AssetSelector";
-import { getPumps } from "../../../api/ai5rClient";
+import { getCMReports, getPumps } from "../../../api/ai5rClient";
 import { mapPumpRecord } from "../utils/pumpMapping";
+import { mapCMReportRecord, withResolvedArea } from "../utils/cmMapping";
+import LTSASidebar from "../components/LTSASidebar";
+import { IconSun } from "../components/PumpWorkspaceIcons";
+import { IconBell } from "../components/LTSANavIcons";
+import CopilotPanel from "../components/CopilotPanel";
+import { can, PERMISSIONS } from "../auth/permissions";
+import { useOptionalAuth } from "../auth/AuthContext";
 import ExecutiveDashboard from "./ExecutiveDashboard";
 import Pump from "./Pump";
 import WorkOrder from "./WorkOrder";
@@ -28,6 +35,7 @@ import HistoricalBatchReview from "./HistoricalBatchReview";
 import WhatsAppGroupsView from "./WhatsAppGroupsView";
 import { WorkspaceProvider } from "../workspace/WorkspaceContext";
 import { parseWorkspaceLocation, workspaceLocation } from "../workspace/WorkspaceRegistry";
+import "../design/ltsaTokens.css";
 import "./LTSAWorkspace.css";
 
 // "history"'s label is "Asset 360" (renamed under APP-ASSET360-001) --
@@ -71,6 +79,15 @@ const TABS = [
   { key: "pm", label: "Preventive Maintenance" },
   { key: "cm", label: "Corrective Maintenance" },
   { key: "cmon", label: "Condition Monitoring" },
+  // UI/UX Redesign Phase B -- three new sidebar-only entries. Each is a
+  // thin routing adapter over existing pages/data (see PAGES below and
+  // the KnowledgeLanding/AIInsightRoute/FailureAnalysisRoute components
+  // further down this file), not new business logic or a new backend
+  // call. Reachability rules unchanged: TAB_PERMISSIONS gates visibility
+  // exactly like every tab above.
+  { key: "failure", label: "Failure Analysis" },
+  { key: "knowledge", label: "Knowledge" },
+  { key: "ai-insight", label: "AI Insight" },
   { key: "knowledgereview", label: "Knowledge Review" },
   { key: "import", label: "Import" },
   { key: "history", label: "Asset 360" },
@@ -89,6 +106,34 @@ const TABS = [
   // is surfaced as its own top-level, permission-gated tab rather than
   // inventing a new nav grouping concept for one entry.
   { key: "whatsapp-groups", label: "WhatsApp Groups" },
+];
+
+// UI/UX Redesign Phase B -- the persistent left sidebar groups the same
+// TABS entries above under the mission's target navigation taxonomy
+// (Dashboard/Pump/Mechanical Seal/Work Order/PM/Condition Monitoring/
+// Failure Analysis/Inventory/Knowledge/AI Insight, plus the existing
+// "history" tab under the forward-looking "Asset360" position -- it is
+// already the real, working Asset 360 surface, just previously reachable
+// only via Pump -> View History or the tab bar, never fabricated). Every
+// other pre-existing tab (Drawing, Document, Installation, Corrective
+// Maintenance, Knowledge Review, Import, Reports, Analytics, both
+// Historical Review tabs, WhatsApp Groups) stays fully reachable under
+// "More" -- nothing above is hidden or removed, only regrouped for
+// display. TABS/PAGES themselves are unchanged in shape, so
+// LTSAWorkspace.consolidation.test.jsx's source-text assertions keep
+// passing unmodified.
+const PRIMARY_NAV_KEYS = [
+  "dashboard",
+  "pump",
+  "seal",
+  "workorder",
+  "pm",
+  "cmon",
+  "failure",
+  "inventory",
+  "knowledge",
+  "ai-insight",
+  "history",
 ];
 
 // "pm-workspace" (PM Work Order Workspace) is deep-link-only, not a TABS
@@ -200,6 +245,142 @@ function KnowledgeWorkspaceRoute({ navContext, onNavigate }) {
   return <KnowledgeWorkspace tag={navContext.assetTag} />;
 }
 
+// UI/UX Redesign Phase B -- "Knowledge" sidebar entry. Both destinations
+// (Knowledge Review, Document Library) already exist as their own TABS/
+// PAGES entries, unchanged; this is only a new landing page linking to
+// them (mission decision: preserve both existing capabilities under one
+// nav item rather than picking a single winner). Knowledge Review is
+// only offered when the session actually holds that permission --
+// useOptionalAuth() never throws without a provider (see its own header
+// comment), degrading to "link hidden" for any render without one (e.g.
+// a bare unit test), never a crash.
+function KnowledgeLanding({ onNavigate }) {
+  const session = useOptionalAuth()?.session ?? null;
+  const showKnowledgeReview = can(session, PERMISSIONS.KNOWLEDGEREVIEW_READ);
+
+  return (
+    <div className="ltsa-landing">
+      <PageHeader title="Knowledge" subtitle="Engineering knowledge and document capabilities" />
+      <div className="ltsa-landing-grid">
+        <Panel>
+          <h2>Document Library</h2>
+          <p>Engineering documents, drawings, and reference material already on file.</p>
+          <button type="button" onClick={() => onNavigate("document")}>
+            Open Document Library
+          </button>
+        </Panel>
+        {showKnowledgeReview ? (
+          <Panel>
+            <h2>Knowledge Review</h2>
+            <p>Curation queue for engineering knowledge under internal review.</p>
+            <button type="button" onClick={() => onNavigate("knowledgereview")}>
+              Open Knowledge Review
+            </button>
+          </Panel>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+// UI/UX Redesign Phase B -- "AI Insight" sidebar entry. Mounts the same
+// global CopilotPanel already embedded in ExecutiveDashboard (unscoped
+// -- no assetContext, same as that existing usage), just as its own
+// first-class destination instead of only appearing inside the
+// Dashboard. No new AI capability, no new backend call.
+function AIInsightRoute() {
+  return (
+    <div className="ltsa-landing">
+      <PageHeader
+        title="AI Insight"
+        subtitle="Fact, inference, and recommendation over existing equipment, PM/CM, seal, and inventory data."
+      />
+      <CopilotPanel />
+    </div>
+  );
+}
+
+// UI/UX Redesign Phase B -- "Failure Analysis" sidebar entry.
+// FailureAnalysisWorkspace itself is pre-existing and untouched (it was
+// deep-link-only, reachable solely from a Corrective Maintenance
+// report); this adapter reuses the same getCMReports() data source and
+// mapping utilities FailureAnalysisWorkspace already imports to offer a
+// picker in front of it, mirroring the AssetLauncher pattern above --
+// no new backend endpoint, no new business logic.
+function FailureAnalysisLauncher({ onSelect }) {
+  const [reports, setReports] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+
+    getCMReports()
+      .then((items) => Promise.all(items.map(mapCMReportRecord).map(withResolvedArea)))
+      .then((mapped) => {
+        if (active) {
+          setReports(mapped);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setReports([]);
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  return (
+    <div className="ltsa-landing">
+      <PageHeader title="Failure Analysis" subtitle="Select a Corrective Maintenance report to open its failure analysis." />
+      {loading ? (
+        <Panel>
+          <p>Loading corrective maintenance reports...</p>
+        </Panel>
+      ) : reports.length === 0 ? (
+        <EmptyState
+          title="No corrective maintenance reports"
+          description="Failure analysis opens from an existing Corrective Maintenance report."
+        />
+      ) : (
+        <Panel>
+          <ul className="ltsa-failure-picker-list">
+            {reports.map((report) => (
+              <li key={report.id}>
+                <button type="button" onClick={() => onSelect(report)}>
+                  {report.equipmentTag ?? "N/A"} — {report.failureDescription ?? "Failure report"}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </Panel>
+      )}
+    </div>
+  );
+}
+
+function FailureAnalysisRoute({ navContext }) {
+  const [selected, setSelected] = useState(
+    navContext?.selectId ? { selectId: navContext.selectId, assetTag: navContext.assetTag } : null
+  );
+
+  if (!selected) {
+    return (
+      <FailureAnalysisLauncher
+        onSelect={(report) => setSelected({ selectId: report.id, assetTag: report.equipmentTag })}
+      />
+    );
+  }
+
+  return <FailureAnalysisWorkspace navContext={selected} />;
+}
 
 const PAGES = {
   dashboard: ExecutiveDashboard,
@@ -217,6 +398,9 @@ const PAGES = {
   cmon: ConditionMonitoring,
   "cmon-workspace": ConditionMonitoringWorkspace,
   "failure-analysis-workspace": FailureAnalysisWorkspace,
+  failure: FailureAnalysisRoute,
+  knowledge: KnowledgeLanding,
+  "ai-insight": AIInsightRoute,
   "knowledge-workspace": KnowledgeWorkspaceRoute,
   history: KnowledgeWorkspaceRoute,
   "history-legacy": MaintenanceHistory,
@@ -257,6 +441,25 @@ export default function LTSAWorkspace({ initialActiveKey = "dashboard", capabili
     ? TABS.filter((tab) => capabilities.allowedKeys.includes(tab.key))
     : TABS;
 
+  // UI/UX Redesign Phase B -- split the already permission-filtered
+  // `visibleTabs` into the sidebar's two display groups. Order within
+  // "primary" follows PRIMARY_NAV_KEYS (the mission's nav taxonomy), not
+  // TABS' own declaration order; "more" keeps every remaining visible
+  // tab, in its existing TABS order.
+  const navGroups = useMemo(() => {
+    const byKey = new Map(visibleTabs.map((tab) => [tab.key, tab]));
+    const primary = PRIMARY_NAV_KEYS.map((key) => byKey.get(key)).filter(Boolean);
+    const more = visibleTabs.filter((tab) => !PRIMARY_NAV_KEYS.includes(tab.key));
+    const groups = [{ heading: null, items: primary }];
+    if (more.length > 0) {
+      groups.push({ heading: "More", items: more });
+    }
+    return groups;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleTabs]);
+
+  const activeTabLabel = TABS.find((tab) => tab.key === activeKey)?.label ?? "";
+
   // Extended under APP-ASSET360-001 (per ADR-ASSET360-001) with an
   // optional payload -- { assetTag, selectId } -- carrying cross-domain
   // navigation context (e.g. "jump to Asset 360 already scoped to this
@@ -273,15 +476,32 @@ export default function LTSAWorkspace({ initialActiveKey = "dashboard", capabili
   useEffect(() => { const onPopState = () => { const location = parseWorkspaceLocation(window.location.pathname); if (location) { setActiveKey(location.key); setNavContext(location.context); } }; window.addEventListener("popstate", onPopState); return () => window.removeEventListener("popstate", onPopState); }, []);
 
   return (
-    <WorkspaceProvider value={{ navigate: handleNavigate }}><div>
-      <div className="no-print ltsa-tabs-row">
-        <Tabs items={visibleTabs} activeKey={activeKey} onChange={handleNavigate} />
-      </div>
+    <WorkspaceProvider value={{ navigate: handleNavigate }}>
+      <div className="ltsa-shell">
+        <div className="no-print">
+          <LTSASidebar groups={navGroups} activeKey={activeKey} onChange={handleNavigate} />
+        </div>
 
-      <div className="ltsa-workspace-content">
-        <ActivePage onNavigate={handleNavigate} navContext={navContext} />
+        <div className="ltsa-main">
+          <div className="no-print ltsa-topbar">
+            <span className="ltsa-topbar-title">{activeTabLabel}</span>
+            {/* UI-D1.2 -- decorative icon row matching Chief's reference
+                topbar (theme toggle / notifications). No real dark-mode or
+                notification backend exists yet -- these are visual-parity
+                placeholders only, not wired to any behavior, so they never
+                claim a capability this phase doesn't actually add. */}
+            <div className="ltsa-topbar-icons" aria-hidden="true">
+              <span className="ltsa-topbar-icon"><IconSun /></span>
+              <span className="ltsa-topbar-icon"><IconBell /></span>
+            </div>
+          </div>
+
+          <div className="ltsa-workspace-content">
+            <ActivePage onNavigate={handleNavigate} navContext={navContext} />
+          </div>
+        </div>
       </div>
-    </div></WorkspaceProvider>
+    </WorkspaceProvider>
   );
 }
 

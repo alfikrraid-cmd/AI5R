@@ -1,13 +1,94 @@
-.ltsa-workspace-content {
-  margin-top: 16px;
+/* UI/UX Redesign Phase B -- persistent left sidebar shell, replacing the
+   former horizontal Tabs row (MWO-LTSA-AUTH-OPEN-DESIGN-002B's own
+   overflow-x fix is superseded: LTSASidebar.css handles the equivalent
+   "everything still reachable" concern for its own layout instead). */
+.ltsa-shell {
+  display: flex;
+  align-items: flex-start;
+  min-height: 100%;
 }
 
-/* MWO-LTSA-AUTH-OPEN-DESIGN-002B -- TAP's full tab set (15 tabs) overflows
-   and clips at 1440px width (evidenced in screenshot review: "Import" and
-   "Analytics" cut off past the container edge). Scoped to this one wrapper,
-   not the shared Tabs.jsx primitive, so no other Tabs consumer is affected.
-   Scrolls horizontally instead of clipping; unaffected when tabs fit. */
-.ltsa-tabs-row {
-  overflow-x: auto;
-  scrollbar-width: thin;
+.ltsa-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0 20px 20px;
+}
+
+.ltsa-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 4px;
+  border-bottom: 1px solid var(--ltsa-border, #e2e8f0);
+  margin-bottom: 16px;
+  background: var(--ltsa-surface, #ffffff);
+}
+
+.ltsa-topbar-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ltsa-text, #1a2433);
+}
+
+.ltsa-topbar-icons {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ltsa-topbar-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  color: var(--ltsa-text-muted, #64748b);
+}
+
+.ltsa-topbar-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.ltsa-workspace-content {
+  margin-top: 0;
+}
+
+.ltsa-landing-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.ltsa-failure-picker-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+@media (max-width: 900px) {
+  .ltsa-shell {
+    flex-direction: column;
+    /* UI-D1 fix -- .ltsa-shell's own `align-items: flex-start` above is
+       correct for the desktop row layout (top-aligns the sticky sidebar
+       against taller main content) but flips meaning once flex-direction
+       becomes column: it then governs the HORIZONTAL axis, letting each
+       child (the now-full-width sidebar strip, then main) shrink-to-fit
+       its own content instead of being given a definite 100% width to
+       lay out against. Without a definite width, .ltsa-sidebar's inner
+       `overflow-x: auto` strip (LTSASidebar.css) had nothing to clip
+       against and the whole page grew to fit every nav item in one row
+       -- a real horizontal page-overflow bug, caught in visual QA at
+       700px, not present at desktop width. `stretch` restores a definite
+       100% cross-size for both children at this breakpoint only. */
+    align-items: stretch;
+  }
+
+  .ltsa-main {
+    padding: 0 12px 16px;
+  }
 }

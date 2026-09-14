@@ -94,13 +94,36 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-async function renderAndSelect(code = "SC-001") {
+// UI-D1.2 -- the identity header's <h1> is the seal's CODE, not its name
+// (AssetIdentityHeader.jsx); name is adjacent subtitle text. Engineering
+// AI (status/summary/findings/evidence/recommendation/source references)
+// now lives under the "AI Insight" tab, not always-visible -- callers that
+// need it pass tab="AI Insight".
+async function renderAndSelect(code = "SC-001", tab = null) {
   render(<Seal seals={sampleSeals} />);
-  const seal = sampleSeals.find((item) => item.code === code);
   fireEvent.click(screen.getByText(code));
-  await screen.findByRole("heading", { name: seal.name });
+  await screen.findByRole("heading", { name: code });
+  if (tab) {
+    fireEvent.click(screen.getByRole("tab", { name: tab }));
+  }
 }
 
+// UI-D1.2 -- PRE_EXISTING_UNRELATED, not touched: "posts asset_code
+// resolved..." and "resolves asset_code from the FIRST compatible pump..."
+// below both expect SC-001's resolved asset_code to be "211-P-1A", but
+// sampleSeals.js's real SC-001.compatiblePumps is ["PMP-001","PMP-002"],
+// so resolveAssetCode() (seal.compatiblePumps[0]) actually resolves to
+// "PMP-001" -- the same fixture/test drift already identified in
+// Seal.test.jsx's "Buka Pump"/"Buka Drawing" tests and this file's own
+// "re-fetches with a fresh trace_id" test below (SC-003 -> "PMP-003" vs
+// expected "305-P-2"). sampleSeals.js and this file are both byte-
+// identical to HEAD; resolveAssetCode() is untouched -- confirmed via
+// `git diff HEAD` before this migration touched anything. These two tests
+// were previously blocked earlier (by the old seal.name heading query)
+// and never reached this assertion; fixing that DOM-structure block
+// surfaced the pre-existing data mismatch rather than introducing it.
+// Left failing and reported, per this mission's section 8 instruction not
+// to silently absorb known pre-existing fixture drift.
 describe("EngineeringAIRequest construction", () => {
   it("posts asset_code resolved from the seal's first compatible pump's tag", async () => {
     postEngineeringAI.mockResolvedValue(AI_RESPONSE);
@@ -181,7 +204,7 @@ describe("POST invocation", () => {
     expect(seal).toBeTruthy();
     render(<Seal seals={sampleSeals} />);
     fireEvent.click(screen.getByText(seal.code));
-    await screen.findByRole("heading", { name: seal.name });
+    await screen.findByRole("heading", { name: seal.code });
     expect(postEngineeringAI).not.toHaveBeenCalled();
   });
 
@@ -205,69 +228,69 @@ describe("POST invocation", () => {
 describe("Response rendering", () => {
   it("renders the response summary", async () => {
     postEngineeringAI.mockResolvedValue(AI_RESPONSE);
-    await renderAndSelect("SC-001");
+    await renderAndSelect("SC-001", "AI Insight");
     expect(await screen.findByText(AI_RESPONSE.summary)).toBeTruthy();
   });
 
   it("renders execution_status as the status badge", async () => {
     postEngineeringAI.mockResolvedValue(AI_RESPONSE);
-    await renderAndSelect("SC-001");
+    await renderAndSelect("SC-001", "AI Insight");
     expect(await screen.findByText("SUCCESS")).toBeTruthy();
   });
 
   it("renders provider metadata", async () => {
     postEngineeringAI.mockResolvedValue(AI_RESPONSE);
-    await renderAndSelect("SC-001");
+    await renderAndSelect("SC-001", "AI Insight");
     expect(await screen.findByText("CLAUDE")).toBeTruthy();
   });
 
   it("renders latency formatted in milliseconds", async () => {
     postEngineeringAI.mockResolvedValue(AI_RESPONSE);
-    await renderAndSelect("SC-001");
+    await renderAndSelect("SC-001", "AI Insight");
     expect(await screen.findByText("615 ms")).toBeTruthy();
   });
 
   it("renders trace_id from the response", async () => {
     postEngineeringAI.mockResolvedValue(AI_RESPONSE);
-    await renderAndSelect("SC-001");
+    await renderAndSelect("SC-001", "AI Insight");
     expect(await screen.findByText("trace-seal-001")).toBeTruthy();
   });
 
   it("renders confidence as a rounded percentage", async () => {
     postEngineeringAI.mockResolvedValue(AI_RESPONSE);
-    await renderAndSelect("SC-001");
+    await renderAndSelect("SC-001", "AI Insight");
     expect(await screen.findByText("81%")).toBeTruthy();
   });
 
   it("renders risk", async () => {
     postEngineeringAI.mockResolvedValue(AI_RESPONSE);
-    await renderAndSelect("SC-001");
+    await renderAndSelect("SC-001", "AI Insight");
     expect(await screen.findByText("LOW")).toBeTruthy();
   });
 
   it("renders remaining_life", async () => {
     postEngineeringAI.mockResolvedValue(AI_RESPONSE);
-    await renderAndSelect("SC-001");
+    await renderAndSelect("SC-001", "AI Insight");
     expect(await screen.findByText("240 days")).toBeTruthy();
   });
 
   it("renders findings via the packaged EngineeringAIFindings component", async () => {
     postEngineeringAI.mockResolvedValue(AI_RESPONSE);
-    await renderAndSelect("SC-001");
+    await renderAndSelect("SC-001", "AI Insight");
     expect(await screen.findByText(AI_RESPONSE.findings[0])).toBeTruthy();
     expect(await screen.findByRole("heading", { name: "Engineering Findings" })).toBeTruthy();
   });
 
   it("renders evidence via the packaged EngineeringAIEvidence component", async () => {
     postEngineeringAI.mockResolvedValue(AI_RESPONSE);
-    await renderAndSelect("SC-001");
+    await renderAndSelect("SC-001", "AI Insight");
     const heading = await screen.findByRole("heading", { name: "Evidence Strip" });
     expect(heading.closest("section").textContent).toContain("CMON-2001");
   });
 
   it("renders recommendations via the packaged EngineeringAIRecommendation component", async () => {
     postEngineeringAI.mockResolvedValue(AI_RESPONSE);
-    await renderAndSelect("SC-001");
+    await renderAndSelect("SC-001", "AI Insight");
     // "Recommendation" is now also the Inspector Rail's own section title
     // (<h3 class="rail-title">Recommendation</h3>) alongside the packaged
     // EngineeringAIRecommendation component's own heading -- findAllByRole,
@@ -278,17 +301,20 @@ describe("Response rendering", () => {
 
   it("renders source references via the packaged EngineeringAISourceReferences component", async () => {
     postEngineeringAI.mockResolvedValue(AI_RESPONSE);
-    await renderAndSelect("SC-001");
+    await renderAndSelect("SC-001", "AI Insight");
     expect(await screen.findByRole("heading", { name: "Source References" })).toBeTruthy();
   });
 });
 
 describe("Loading state (reuses the Failure Analysis / Pump model)", () => {
   it("shows a generating message while the AI request is in flight", async () => {
+    // UI-D1.2 -- Engineering AI status now lives under the AI Insight tab.
     let resolvePromise;
     postEngineeringAI.mockReturnValue(new Promise((resolve) => { resolvePromise = resolve; }));
     render(<Seal seals={sampleSeals} />);
     fireEvent.click(screen.getByText("SC-001"));
+    await screen.findByRole("heading", { name: "SC-001" });
+    fireEvent.click(screen.getByRole("tab", { name: "AI Insight" }));
 
     expect(await screen.findByText("Generating seal summary…")).toBeTruthy();
     resolvePromise(AI_RESPONSE);
@@ -300,6 +326,8 @@ describe("Loading state (reuses the Failure Analysis / Pump model)", () => {
     postEngineeringAI.mockReturnValue(new Promise((resolve) => { resolvePromise = resolve; }));
     render(<Seal seals={sampleSeals} />);
     fireEvent.click(screen.getByText("SC-001"));
+    await screen.findByRole("heading", { name: "SC-001" });
+    fireEvent.click(screen.getByRole("tab", { name: "AI Insight" }));
 
     expect(await screen.findByText("Generating…")).toBeTruthy();
     resolvePromise(AI_RESPONSE);
@@ -324,19 +352,19 @@ describe("Retry (Golden Reference has none -- faithfully not replicated)", () =>
 describe("Error state", () => {
   it("renders a network error message", async () => {
     postEngineeringAI.mockRejectedValue(new Error("Engineering AI API unavailable"));
-    await renderAndSelect("SC-001");
+    await renderAndSelect("SC-001", "AI Insight");
     expect(await screen.findByText("Engineering AI API unavailable")).toBeTruthy();
   });
 
   it("renders an Error status label on network failure", async () => {
     postEngineeringAI.mockRejectedValue(new Error("boom"));
-    await renderAndSelect("SC-001");
+    await renderAndSelect("SC-001", "AI Insight");
     expect(await screen.findByText("Error")).toBeTruthy();
   });
 
   it("falls back to a generic message when the rejected error has no message", async () => {
     postEngineeringAI.mockRejectedValue({});
-    await renderAndSelect("SC-001");
+    await renderAndSelect("SC-001", "AI Insight");
     expect(await screen.findByText("Engineering AI request failed")).toBeTruthy();
   });
 });
@@ -348,14 +376,14 @@ describe("Invalid response (business-level error)", () => {
       execution_status: "ERROR",
       error: "Asset context could not be built",
     });
-    await renderAndSelect("SC-001");
+    await renderAndSelect("SC-001", "AI Insight");
     expect(await screen.findByText("Asset context could not be built")).toBeTruthy();
     expect(screen.queryByText(AI_RESPONSE.summary)).toBeNull();
   });
 
   it("does not render Findings/Evidence/Recommendation/SourceReferences panels on business error", async () => {
     postEngineeringAI.mockResolvedValue({ ...AI_RESPONSE, execution_status: "ERROR", error: "boom" });
-    await renderAndSelect("SC-001");
+    await renderAndSelect("SC-001", "AI Insight");
     await screen.findByText("boom");
     expect(screen.queryByRole("heading", { name: "Engineering Findings" })).toBeNull();
   });
@@ -363,16 +391,19 @@ describe("Invalid response (business-level error)", () => {
 
 describe("No compatible pump (Seal-specific edge case)", () => {
   it("shows the short Coverage reason and a Required Action instead of the generic 'has not run yet' message", async () => {
+    // UI-D1.2 -- Engineering AI's Reason/Required Action now live under the
+    // AI Insight tab; "Outside LTSA Contract" also still appears in the
+    // Overview tab's Status card, but that's unmounted once AI Insight is
+    // active -- getAllByText, not getByText, since Reason alone is >= 1.
     const seal = sampleSeals.find((item) => item.compatiblePumps.length === 0);
     render(<Seal seals={sampleSeals} />);
     fireEvent.click(screen.getByText(seal.code));
-    await screen.findByRole("heading", { name: seal.name });
+    await screen.findByRole("heading", { name: seal.code });
+    fireEvent.click(screen.getByRole("tab", { name: "AI Insight" }));
     // MWO-LTSA-046 P1 -- Engineering AI's "Reason" now shows the short
     // coverageMeta.label ("Outside LTSA Contract") instead of the full
     // sentence when that's the real cause, plus a "Required Action" line --
     // same underlying meaning (no resolvable LTSA-covered asset), reworded.
-    // "Outside LTSA Contract" also appears in the LTSA Coverage card and
-    // Action Bar -- getAllByText, not getByText.
     expect(screen.getAllByText("Outside LTSA Contract").length).toBeGreaterThan(0);
     expect(
       await screen.findByText(/associate this seal with an ltsa-covered asset/i)
@@ -383,10 +414,8 @@ describe("No compatible pump (Seal-specific edge case)", () => {
     const seal = sampleSeals.find((item) => item.compatiblePumps.length === 0);
     render(<Seal seals={sampleSeals} />);
     fireEvent.click(screen.getByText(seal.code));
-    await screen.findByRole("heading", { name: seal.name });
-    // MWO-LTSA-047 -- "Unavailable" also appears as the LTSA Coverage
-    // card's own bold lead-in label above its capability list --
-    // findAllByText, not findByText.
+    await screen.findByRole("heading", { name: seal.code });
+    fireEvent.click(screen.getByRole("tab", { name: "AI Insight" }));
     expect((await screen.findAllByText("Unavailable")).length).toBeGreaterThan(0);
     expect(screen.queryByText("Error")).toBeNull();
   });
@@ -397,7 +426,7 @@ describe("Trace propagation", () => {
     postEngineeringAI.mockImplementation((request) =>
       Promise.resolve({ ...AI_RESPONSE, trace_id: request.trace_id })
     );
-    await renderAndSelect("SC-001");
+    await renderAndSelect("SC-001", "AI Insight");
     await waitFor(() => expect(postEngineeringAI).toHaveBeenCalled());
     const sentTraceId = postEngineeringAI.mock.calls[0][0].trace_id;
     expect(await screen.findByText(sentTraceId)).toBeTruthy();
@@ -437,30 +466,35 @@ describe("Regression: existing Seal Workspace behavior is unchanged", () => {
   });
 
   it("still renders the seal's recommendation alongside the Engineering AI section", async () => {
+    // UI-D1.2 -- both the recommendation headline (Engineering
+    // Recommendation section) and "Engineering AI" (eyebrow label) now
+    // live under the AI Insight tab.
     postEngineeringAI.mockResolvedValue(AI_RESPONSE);
-    await renderAndSelect("SC-001");
+    await renderAndSelect("SC-001", "AI Insight");
     const seal = sampleSeals.find((item) => item.code === "SC-001");
-    // seal.recommendation legitimately appears twice in the Open Design
-    // layout (Recommended Replacement headline + Inspector Rail's
-    // Recommendation section) -- getAllByText, not getByText.
     expect(screen.getAllByText(seal.recommendation).length).toBeGreaterThan(0);
-    // "Engineering AI" is a section eyebrow label (<span class="eyebrow">),
-    // not a heading, in the Open Design layout.
     expect(screen.getByText("Engineering AI")).toBeTruthy();
   });
 
   it("still renders compatible pumps and compatible seals as badges", async () => {
+    // UI-D1.2 -- Compatible Pumps now render under the Compatible tab.
     postEngineeringAI.mockResolvedValue(AI_RESPONSE);
-    await renderAndSelect("SC-001");
+    await renderAndSelect("SC-001", "Compatible");
     expect(screen.getByText("PMP-001")).toBeTruthy();
   });
 });
 
 describe("Snapshot", () => {
   it("matches the SealOpenDesignView Engineering AI section snapshot when ready", async () => {
+    // UI-D1.2 -- Engineering AI now renders under the AI Insight tab.
+    // Snapshot regenerated intentionally: the old snapshot captured the
+    // pre-UI-D1.2 ChromeBar/crumb DOM, which no longer exists anywhere in
+    // this component (SNAPSHOT_SEMANTIC_CHANGE, not CRLF noise).
     postEngineeringAI.mockResolvedValue(AI_RESPONSE);
     const { container } = render(<Seal seals={sampleSeals} />);
     fireEvent.click(screen.getByText("SC-001"));
+    await screen.findByRole("heading", { name: "SC-001" });
+    fireEvent.click(screen.getByRole("tab", { name: "AI Insight" }));
     await screen.findByText(AI_RESPONSE.summary);
 
     expect(container.querySelector(".seal-workspace-detail")).toMatchSnapshot();
@@ -538,6 +572,8 @@ describe("Self-audit: only postEngineeringAI is used, no duplication, no forbidd
     postEngineeringAI.mockResolvedValue(AI_RESPONSE);
     render(<Seal seals={sampleSeals} />);
     fireEvent.click(screen.getByText("SC-001"));
+    await screen.findByRole("heading", { name: "SC-001" });
+    fireEvent.click(screen.getByRole("tab", { name: "AI Insight" }));
     await screen.findByText(AI_RESPONSE.summary);
 
     let resolveSecond;

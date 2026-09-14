@@ -1,0 +1,50 @@
+/* AI5R LTSA — engineering workspace design tokens.
+   Scoped entirely to .ltsa-shell (this module only). Deliberately NOT
+   added to the shared design-system/theme (that dark palette backs the
+   platform AgentOps/CommandCenter console and other products — CENTER,
+   UMKM_OS — and stays untouched here).
+
+   UI-D1.2 -- REPLACES the prior navy+cyan direction (UI-D1) per Chief's
+   supplied multi-screen reference: a LIGHT operational sidebar/shell,
+   strong engineering blue as the primary/active color, white surfaces,
+   dark navy-near-black text. The reference supersedes UI-D1's dark-navy
+   sidebar assumption outright -- this is not a variant, it is the
+   replacement token set. Every token name is unchanged from UI-D1 so
+   every consumer (LTSASidebar.css, ExecutiveDashboard.css, etc.) picks
+   up the new values without a second rename pass. */
+.ltsa-shell {
+  --ltsa-navy: #1d4ed8;       /* was #0e2a47 (navy fill) -- now the strong engineering blue the reference uses for active/primary */
+  --ltsa-navy-700: #1e40af;   /* darker blue, hover/pressed states */
+  --ltsa-navy-800: #0f172a;   /* reference's near-black text color, reused where a "very dark" tone is needed */
+  --ltsa-cyan: #2563eb;       /* was #00b8d4 (cyan accent) -- now the same engineering blue family, used for links/accents */
+  --ltsa-cyan-600: #1d4ed8;
+  --ltsa-bg: #f4f6f9;         /* page background: very light neutral, unchanged in spirit from UI-D1 */
+  --ltsa-surface: #ffffff;    /* white cards/surfaces, unchanged */
+  --ltsa-border: #e2e8f0;     /* thin/subtle borders, unchanged */
+  --ltsa-text: #0f172a;       /* dark navy/near-black primary text (was #1a2433) */
+  --ltsa-text-muted: #64748b; /* gray-blue secondary text, unchanged */
+  /* UI-D1.2 -- sidebar is now LIGHT, so "on-navy" text tokens now mean
+     "on the blue active block" (a small area), not "on a large navy
+     panel" (UI-D1's assumption). Kept for consumers that still reference
+     them (e.g. the active nav item's own text), retargeted to work on a
+     blue, not navy, background -- white still reads correctly on either. */
+  --ltsa-text-on-navy: #ffffff;
+  --ltsa-text-on-navy-muted: #dbeafe;
+  --ltsa-radius-sm: 6px;
+  --ltsa-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --ltsa-shadow-md: 0 2px 8px rgba(15, 23, 42, 0.08);
+
+  /* UI-D1.2 -- new tokens the reference's status/semantic language needs
+     (KPI numbers, status badges, health signals) that UI-D1 never
+     defined explicitly (it relied on design-system's own dark-theme
+     colors.js for these). Named plainly, not "--ltsa-*", since they are
+     semantic, not LTSA-specific -- but still scoped to .ltsa-shell only,
+     same isolation guarantee as every token above. */
+  --ltsa-success: #16a34a;
+  --ltsa-warning: #f59e0b;
+  --ltsa-danger: #dc2626;
+  --ltsa-info: #2563eb;
+
+  background: var(--ltsa-bg);
+  color: var(--ltsa-text);
+}

@@ -4,18 +4,35 @@ import { fileURLToPath } from "url";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ExecutiveDashboard from "./ExecutiveDashboard";
-import { getFleetPowerBI, getFleetReliability } from "../../../api/ai5rClient";
+import { getFleetOverview, getFleetPowerBI, getFleetReliability } from "../../../api/ai5rClient";
 
 // MWO-LTSA-037D -- FleetReliabilityPanel is this page's only real (non-
 // sample-data) section; every other section here still derives from
 // utils/executiveDashboard.js's static sample data, unmocked, unchanged.
 // MWO-LTSA-038B -- FleetPowerBIPanel is a second, separate real section.
+// UI-D1 -- getFleetOverview was missing from this mock (a pre-existing
+// drift bug, unrelated to this phase's own changes: the component's
+// required, blocking fetch was never mocked, so every test in this file
+// crashed in useEffect with "No getFleetOverview export is defined on
+// the mock" before any assertion ran). Added so the whole file can
+// actually execute again; the mock's own shape matches exactly what
+// FleetKpiStrip.jsx reads (pump_count, work_order_count,
+// status_distribution) -- no other field is fabricated.
 vi.mock("../../../api/ai5rClient", () => ({
+  getFleetOverview: vi.fn(),
   getFleetReliability: vi.fn(),
   getFleetPowerBI: vi.fn(),
 }));
 
 beforeEach(() => {
+  getFleetOverview.mockResolvedValue({
+    success: true,
+    data: {
+      pump_count: 4,
+      work_order_count: 2,
+      status_distribution: { RUNNING: 3, STANDBY: 1 },
+    },
+  });
   getFleetReliability.mockResolvedValue({
     success: true,
     data: {
@@ -193,9 +210,16 @@ describe("Navigation", () => {
     expect(onNavigate).toHaveBeenCalledWith("cmon");
   });
 
-  it("renders a disabled button for Inventory only (Drawing live as of RC-003A, Document live as of RC-004)", () => {
+  it("UI-D1: Inventory is no longer disabled -- its 'inventory' key has a real page (Mechanical Seal Stock) in LTSAWorkspace's own TABS, so the QuickNavigationPanel `disabled: true` placeholder from before that page existed was stale, not a genuine gap", () => {
     render(<ExecutiveDashboard onNavigate={() => {}} />);
-    expect(screen.getByRole("button", { name: /Open Inventory/ }).disabled).toBe(true);
+    expect(screen.getByRole("button", { name: /Open Mechanical Seal Stock/ }).disabled).toBe(false);
+  });
+
+  it("navigates to Mechanical Seal Stock from Quick Navigation (UI-D1: corrected from disabled)", () => {
+    const onNavigate = vi.fn();
+    render(<ExecutiveDashboard onNavigate={onNavigate} />);
+    fireEvent.click(screen.getByRole("button", { name: /Open Mechanical Seal Stock/ }));
+    expect(onNavigate).toHaveBeenCalledWith("inventory");
   });
 
   it("navigates to Drawing from Quick Navigation (live as of RC-003A)", () => {
@@ -210,13 +234,6 @@ describe("Navigation", () => {
     render(<ExecutiveDashboard onNavigate={onNavigate} />);
     fireEvent.click(screen.getByRole("button", { name: "Open Document" }));
     expect(onNavigate).toHaveBeenCalledWith("document");
-  });
-
-  it("does not call onNavigate when a disabled destination is clicked", () => {
-    const onNavigate = vi.fn();
-    render(<ExecutiveDashboard onNavigate={onNavigate} />);
-    fireEvent.click(screen.getByRole("button", { name: /Open Inventory/ }));
-    expect(onNavigate).not.toHaveBeenCalledWith("inventory");
   });
 
   it("navigates via the Workspace Selector in the Top Bar", () => {
@@ -387,11 +404,11 @@ describe("Accessibility", () => {
     expect(screen.getByRole("heading", { name: "Total Pumps" }).tagName).toBe("H3");
   });
 
-  it("disabled navigation buttons are real disabled buttons, not styled-only", () => {
+  it("UI-D1: Quick Navigation has zero disabled destinations now that Inventory is live -- every button is a real, enabled BUTTON element", () => {
     render(<ExecutiveDashboard onNavigate={() => {}} />);
-    const button = screen.getByRole("button", { name: /Open Inventory/ });
+    const button = screen.getByRole("button", { name: /Open Mechanical Seal Stock/ });
     expect(button.tagName).toBe("BUTTON");
-    expect(button.disabled).toBe(true);
+    expect(button.disabled).toBe(false);
   });
 });
 

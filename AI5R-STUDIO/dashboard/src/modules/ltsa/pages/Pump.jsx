@@ -424,6 +424,7 @@ export default function Pump({ onNavigate, navContext }) {
                 onCreatePM={() => setIsCreatePMOpen(true)}
                 onCreateCM={() => setIsCreateCMOpen(true)}
                 onViewHistory={() => onNavigate?.("history", { assetTag: selectedPump.tag })}
+                onBack={() => onNavigate?.("dashboard")}
                 aiResponse={aiResponse}
                 aiReady={aiReady}
                 aiStatusText={aiStatusText}

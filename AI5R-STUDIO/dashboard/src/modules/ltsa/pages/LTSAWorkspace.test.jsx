@@ -409,14 +409,17 @@ describe("LTSAWorkspace navigation shell", () => {
     expect(screen.getByRole("heading", { name: "Pump Workspace" })).toBeTruthy();
 
     fireEvent.click(await screen.findByText("305-P-2"));
-    expect(screen.getByRole("heading", { name: "Cooling Water Circulation Pump" })).toBeTruthy();
+    // UI-D1.2 -- identity header's <h1> is the pump's tag; name is subtitle.
+    expect(screen.getByRole("heading", { name: "305-P-2" })).toBeTruthy();
 
-    // Follow the pump's "View History" quick action into Asset 360, already
-    // scoped to this pump (APP-ASSET360-001's assetTag navigation payload).
-    // MWO-LTSA-036D: Asset 360 is now KnowledgeWorkspace -- with an assetTag
-    // in context (unlike a bare tab click), it renders real content, not
-    // the no-tag empty state.
-    fireEvent.click(screen.getByRole("button", { name: /View History/i }));
+    // Follow the pump's "Open Asset 360" action (now on the Asset360 tab,
+    // was the sticky Action Bar's "View History ->") into Asset 360,
+    // already scoped to this pump (APP-ASSET360-001's assetTag navigation
+    // payload). MWO-LTSA-036D: Asset 360 is now KnowledgeWorkspace -- with
+    // an assetTag in context (unlike a bare tab click), it renders real
+    // content, not the no-tag empty state.
+    fireEvent.click(screen.getByRole("tab", { name: "Asset360" }));
+    fireEvent.click(screen.getByRole("button", { name: /Open Asset 360/i }));
     await screen.findByTestId("knowledge-workspace-success");
     expect(screen.getByRole("heading", { name: "Cooling Water Circulation Pump" })).toBeTruthy();
 
@@ -433,7 +436,13 @@ describe("LTSAWorkspace navigation shell", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Executive Dashboard" }));
     fireEvent.click(screen.getByRole("button", { name: "Open Analytics" }));
     expect(screen.getByRole("heading", { level: 1, name: "Analytics" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Are we healthy?" })).toBeTruthy();
+    // AnalyticsWorkspace resolves its questions asynchronously (see its own
+    // dedicated test file, which already awaits this) -- this walkthrough
+    // never reached this far before (it always failed earlier, at the old
+    // Pump identity heading assertion), so this pre-existing async gap was
+    // never previously exercised. Not a UI-D1.2 change; a plain findByRole
+    // fixes it.
+    expect(await screen.findByRole("heading", { name: "Are we healthy?" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "What should managers do next?" })).toBeTruthy();
 
     // Every outer LTSA tab remains reachable after this journey.
@@ -670,7 +679,8 @@ describe("Equipment nav retirement (MWO-LTSA-EQUIPMENT-TAB-RESOLUTION-001)", () 
 
     expect(screen.getByRole("heading", { name: "Pump Workspace" })).toBeTruthy();
     fireEvent.click(await screen.findByText("305-P-2"));
-    expect(screen.getByRole("heading", { name: "Cooling Water Circulation Pump" })).toBeTruthy();
+    // UI-D1.2 -- identity header's <h1> is the pump's tag; name is subtitle.
+    expect(screen.getByRole("heading", { name: "305-P-2" })).toBeTruthy();
   });
 
   it("Asset 360 (Equipment History) remains reachable through the canonical asset flow, scoped to the selected pump", async () => {
@@ -678,7 +688,10 @@ describe("Equipment nav retirement (MWO-LTSA-EQUIPMENT-TAB-RESOLUTION-001)", () 
 
     fireEvent.click(screen.getByRole("tab", { name: "Pump" }));
     fireEvent.click(await screen.findByText("305-P-2"));
-    fireEvent.click(screen.getByRole("button", { name: /View History/i }));
+    // UI-D1.2 -- "View History ->" moved to the Asset360 tab's own
+    // "Open Asset 360 ->" button.
+    fireEvent.click(screen.getByRole("tab", { name: "Asset360" }));
+    fireEvent.click(screen.getByRole("button", { name: /Open Asset 360/i }));
 
     await screen.findByTestId("knowledge-workspace-success");
     expect(getPumpKnowledge).toHaveBeenCalledWith("305-P-2");
@@ -758,7 +771,8 @@ describe("Asset identity & history closure (MWO-LTSA-DEMO-READINESS-CLOSURE-001)
     render(<LTSAWorkspace />);
     fireEvent.click(screen.getByRole("tab", { name: "Pump" }));
     fireEvent.click(await screen.findByText("212-P-7B"));
-    fireEvent.click(screen.getByRole("button", { name: /View History/i }));
+    fireEvent.click(screen.getByRole("tab", { name: "Asset360" }));
+    fireEvent.click(screen.getByRole("button", { name: /Open Asset 360/i }));
 
     await screen.findByTestId("knowledge-workspace-success");
     expect(getPumpKnowledge).toHaveBeenCalledWith("212-P-7B");
@@ -774,7 +788,8 @@ describe("Asset identity & history closure (MWO-LTSA-DEMO-READINESS-CLOSURE-001)
     render(<LTSAWorkspace />);
     fireEvent.click(screen.getByRole("tab", { name: "Pump" }));
     fireEvent.click(await screen.findByText("211-P-7B"));
-    fireEvent.click(screen.getByRole("button", { name: /View History/i }));
+    fireEvent.click(screen.getByRole("tab", { name: "Asset360" }));
+    fireEvent.click(screen.getByRole("button", { name: /Open Asset 360/i }));
 
     await screen.findByTestId("knowledge-workspace-success");
     expect(getPumpKnowledge).toHaveBeenCalledWith("211-P-7B");

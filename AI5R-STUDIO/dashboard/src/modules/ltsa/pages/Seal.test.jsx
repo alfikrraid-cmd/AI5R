@@ -140,13 +140,16 @@ describe("Seal workspace page -- real backend fetch (MWO-LTSA-041)", () => {
   });
 
   it("shows the selected seal's detail, mapped from the real API record, when a row is clicked", async () => {
+    // UI-D1.2 -- the identity header's <h1> is the seal's CODE; name is
+    // adjacent subtitle text, not a second heading.
     getSeals.mockResolvedValue(RAW_SEALS);
     render(<Seal />);
     await screen.findByText("SC-101");
 
     fireEvent.click(screen.getByText("SC-101"));
 
-    expect(screen.getByRole("heading", { name: "Flowserve ISC2" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "SC-101" })).toBeTruthy();
+    expect(screen.getAllByText("Flowserve ISC2").length).toBeGreaterThan(0);
   });
 
   it("never calls getSeals when a seals prop is explicitly provided (override, not the default path)", () => {
@@ -170,7 +173,8 @@ describe("Seal workspace page -- with injected data (fixture, not shown to real 
 
     fireEvent.click(screen.getByText("SC-003"));
 
-    expect(screen.getByRole("heading", { name: "Flowserve ISC2" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "SC-003" })).toBeTruthy();
+    expect(screen.getAllByText("Flowserve ISC2").length).toBeGreaterThan(0);
   });
 
   it("filters the registry table by search text", () => {
@@ -205,11 +209,10 @@ describe("Seal workspace -- Compatible Pumps resolved from getSealCompatibility 
     await screen.findByText("SC-101");
 
     fireEvent.click(screen.getByText("SC-101"));
+    // UI-D1.2 -- Compatible Pumps now render inside the Compatible tab's
+    // "Related Pumps" RefGroup, not always-visible.
+    fireEvent.click(screen.getByRole("tab", { name: "Compatible" }));
 
-    // "211-P-1A" now legitimately appears twice (ChromeBar breadcrumb link
-    // and the Compatibility section's "Related Pumps" RefGroup entry) --
-    // findAllByText, not findByText, since both are correct per the Open
-    // Design's own component hierarchy.
     expect((await screen.findAllByText("211-P-1A")).length).toBeGreaterThan(0);
   });
 
@@ -220,6 +223,7 @@ describe("Seal workspace -- Compatible Pumps resolved from getSealCompatibility 
     // compatiblePumps silently reset to [].
     render(<Seal seals={sampleSeals} />);
     fireEvent.click(screen.getByText("SC-001"));
+    fireEvent.click(screen.getByRole("tab", { name: "Compatible" }));
 
     expect(screen.getByText("PMP-001")).toBeTruthy();
   });
@@ -236,16 +240,31 @@ describe("Seal workspace -- Compatible Pumps resolved from getSealCompatibility 
 // Related Engineering RefGroup sections (covered by the dedicated
 // describe block below), not via a click-to-navigate button.
 describe("Seal workspace -- Open Pump / Open Drawing navigation (MWO-LTSA-042A)", () => {
-  it("calls onNavigate('pump', {selectId}) when the breadcrumb pump link is clicked", () => {
-    const onNavigate = vi.fn();
-    render(<Seal seals={sampleSeals} onNavigate={onNavigate} />);
-    fireEvent.click(screen.getByText("SC-001"));
+  // UI-D1.2 -- deleted: "calls onNavigate('pump', {selectId}) when the
+  // breadcrumb pump link is clicked". This asserted the old ChromeBar
+  // breadcrumb's clickable pump-tag button (bare tag text as a <button>,
+  // separate from the Action Bar's "Buka Pump ->"). The Compatible tab's
+  // "Related Pumps" RefGroup items carry no onClick (compatibilityGroups
+  // in SealOpenDesignView.jsx), so they render as plain <span>, and no
+  // other element renders a bare resolved-pump-tag button anywhere in the
+  // current file -- confirmed by reading the full component source. Per
+  // this mission's "do not restore obsolete DOM wrappers" / "do not modify
+  // production behavior merely to satisfy an obsolete test" rules, no
+  // breadcrumb button was reintroduced just to keep this test green; the
+  // same onNavigate("pump", {selectId}) behavior remains fully covered by
+  // the Action Bar's "Buka Pump ->" test directly below.
 
-    fireEvent.click(screen.getByRole("button", { name: "211-P-1A" }));
-
-    expect(onNavigate).toHaveBeenCalledWith("pump", { selectId: "211-P-1A" });
-  });
-
+  // UI-D1.2 -- known PRE_EXISTING_UNRELATED failure, not touched: the
+  // "Buka Pump ->" button (unconditional, not tab-gated) still calls
+  // onNavigate("pump", {selectId: resolvedAssetCode}) exactly as before.
+  // This test's own expected value ("211-P-1A") does not match
+  // sampleSeals.js's real SC-001.compatiblePumps (["PMP-001","PMP-002"]),
+  // so resolvedAssetCode actually resolves to "PMP-001" -- a fixture/test
+  // drift that predates this phase (sampleSeals.js, Seal.test.jsx, and
+  // resolveAssetCode() are byte-identical to HEAD; confirmed via
+  // `git diff HEAD` before this migration touched anything). Left failing
+  // and reported, per this mission's own section 8 instruction not to
+  // silently absorb known pre-existing fixture drift.
   it("calls onNavigate('pump', {selectId}) when the Action Bar's 'Buka Pump' is clicked", () => {
     const onNavigate = vi.fn();
     render(<Seal seals={sampleSeals} onNavigate={onNavigate} />);
@@ -256,31 +275,41 @@ describe("Seal workspace -- Open Pump / Open Drawing navigation (MWO-LTSA-042A)"
     expect(onNavigate).toHaveBeenCalledWith("pump", { selectId: "211-P-1A" });
   });
 
+  // UI-D1.2 -- "Buka Drawing ->" now lives under the Documents tab (fixed
+  // below). Once reachable, this test hits the SAME PRE_EXISTING_UNRELATED
+  // fixture drift as "Buka Pump" above (assetTag also derives from
+  // resolvedAssetCode = seal.compatiblePumps[0] = "PMP-001", not the
+  // test's expected "211-P-1A") -- left failing and reported, not touched.
   it("calls onNavigate('drawing', {assetTag}) when 'Buka Drawing' is clicked -- MWO-LTSA-051A: passes the resolved pump tag so Drawing Workspace can fetch that pump's real drawings", () => {
     const onNavigate = vi.fn();
     render(<Seal seals={sampleSeals} onNavigate={onNavigate} />);
     fireEvent.click(screen.getByText("SC-001"));
+    fireEvent.click(screen.getByRole("tab", { name: "Documents" }));
 
     fireEvent.click(screen.getByText("Buka Drawing →"));
 
     expect(onNavigate).toHaveBeenCalledWith("drawing", { assetTag: "211-P-1A" });
   });
 
-  it("shows no pump link (breadcrumb or Action Bar) when the seal has no compatible pump", () => {
+  it("shows no pump link (Action Bar) when the seal has no compatible pump", () => {
+    // UI-D1.2 -- the old standalone `<span>Outside LTSA</span>` badge was
+    // folded into the identity header's subtitle text ("Outside LTSA
+    // scope", AssetIdentityHeader.jsx), a wording refinement made as part
+    // of this phase's redesign, not a lost fact -- same real
+    // !resolvedAssetCode signal, still an unambiguous positive statement.
     const seal = sampleSeals.find((item) => item.compatiblePumps.length === 0);
     render(<Seal seals={sampleSeals} onNavigate={vi.fn()} />);
 
     fireEvent.click(screen.getByText(seal.code));
 
-    // MWO-LTSA-048 -- "Pompa Tidak Diketahui" ("Pump Unknown") replaced
-    // with "Outside LTSA" (definite fact, not missing/uncertain data).
-    expect(screen.getByText("Outside LTSA")).toBeTruthy();
+    expect(screen.getByText(/Outside LTSA scope/)).toBeTruthy();
     expect(screen.queryByText("Buka Pump →")).toBeNull();
   });
 
   it("does not throw when 'Buka Drawing' is clicked with no onNavigate prop supplied", () => {
     render(<Seal seals={sampleSeals} />);
     fireEvent.click(screen.getByText("SC-001"));
+    fireEvent.click(screen.getByRole("tab", { name: "Documents" }));
 
     expect(() => fireEvent.click(screen.getByText("Buka Drawing →"))).not.toThrow();
   });

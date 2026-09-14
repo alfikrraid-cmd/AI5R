@@ -1,21 +1,25 @@
+/* UI-D1.2 -- stacked layout, matching Pump.css's own identical fix
+   (MWO-LTSA-050, see that file's header comment for the full reasoning):
+   SealOpenDesignView is a continuous-document layout with its own
+   internal max-width: 1240px grid (UI-D1.2: now also a 3-column Overview
+   grid) -- side by side with the registry table at flex:2/flex:1, that
+   internal grid never has the room it needs, and no responsive
+   breakpoint inside it can compensate for a *container* that is narrow
+   only because its flex sibling took most of the space. This mismatch
+   (Pump got the stacked fix, Seal never did) was found during this
+   phase's own visual QA -- confirmed via screenshot, not assumed. */
 .seal-workspace-layout {
   display: flex;
+  flex-direction: column;
   gap: 24px;
-  align-items: flex-start;
 }
 
 .seal-workspace-registry {
-  flex: 2;
-  min-width: 0;
+  width: 100%;
+  max-height: 440px;
+  overflow-y: auto;
 }
 
 .seal-workspace-detail {
-  flex: 1;
-  min-width: 280px;
-}
-
-@media (max-width: 768px) {
-  .seal-workspace-layout {
-    flex-direction: column;
-  }
+  width: 100%;
 }

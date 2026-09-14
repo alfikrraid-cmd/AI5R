@@ -1,6 +1,9 @@
 import { useState } from "react";
 import PumpWorkspaceDrawer from "./PumpWorkspaceDrawer";
-import { Section, InfoRow, StatusSignal, RailSection, ActionBar, RefGroup } from "./open-design";
+import AssetIdentityHeader, { HealthCard } from "./AssetIdentityHeader";
+import WorkspaceTabStrip from "./WorkspaceTabStrip";
+import { IconSeal } from "./LTSANavIcons";
+import { Section, InfoRow, StatusSignal, RefGroup } from "./open-design";
 import {
   EngineeringAIStatus,
   EngineeringAISummary,
@@ -47,6 +50,8 @@ import {
  * seal-specific data/logic are unchanged.
  */
 
+const NOT_AVAILABLE = "N/A";
+
 const STATUS_META = {
   ACTIVE: { tier: "normal", label: "Sesuai Spesifikasi" },
   STANDBY: { tier: "attention", label: "Dipantau" },
@@ -89,6 +94,7 @@ export default function SealOpenDesignView({
   onUpdateIdentifiers,
   onOpenPump,
   onOpenDrawing,
+  onBack,
   aiResponse,
   aiReady,
   aiStatusText,
@@ -98,6 +104,18 @@ export default function SealOpenDesignView({
   const [drawer, setDrawer] = useState(null); // null | "drawing" | "recommendation"
   const [toast, setToast] = useState(null);
   const [reviewed, setReviewed] = useState(false);
+  // UI-D1.2 -- Overview/Compatible/Documents/History/AI Insight, matching
+  // Chief's reference tab list for the Mechanical Seal Workspace. Purely a
+  // display grouping over sections that already existed -- see each tab's
+  // own comment below for exactly which pre-existing section moved where.
+  const [activeTab, setActiveTab] = useState("overview");
+  const SEAL_TABS = [
+    { key: "overview", label: "Overview" },
+    { key: "compatible", label: "Compatible" },
+    { key: "documents", label: "Documents" },
+    { key: "history", label: "History" },
+    { key: "ai-insight", label: "AI Insight" },
+  ];
 
   // MWO-LTSA-SEAL-INVENTORY-IDENTIFIERS-001 -- KIMAP Pertamina / GPN John
   // Crane manual completion. View mode always renders (every role with
@@ -208,151 +226,60 @@ export default function SealOpenDesignView({
 
   return (
     <div className="ltsa-open-design" data-testid="seal-open-design">
-      <div className="chrome-bar" data-od-id="chrome-bar">
-        <div className="chrome-inner">
-          <div className="crumb">
-            {resolvedAssetCode ? (
-              <button type="button" className="crumb-link" onClick={() => onOpenPump?.(resolvedAssetCode)} data-od-id="crumb-pump-link">
-                {resolvedAssetCode}
-              </button>
-            ) : (
-              <span>Outside LTSA</span>
-            )}
-            <span className="sep">›</span><span>Mechanical Seal</span>
-            <span className="sep">›</span><b>{seal.code}</b>
+      <AssetIdentityHeader
+        icon={<IconSeal />}
+        tag={seal.code}
+        name={seal.name}
+        subtitle={
+          resolvedAssetCode
+            ? (installedSince ? `Installed on ${resolvedAssetCode} since ${installedSince}` : `Installed on ${resolvedAssetCode}`)
+            : "Outside LTSA scope"
+        }
+        onBack={onBack}
+      >
+        <HealthCard label="Status" value={meta.label} tone={meta.tier} />
+        <HealthCard label="Stock" value={stock ? (stock.quantityOnHand ?? "Unknown") : "Unknown"} />
+      </AssetIdentityHeader>
+
+      <WorkspaceTabStrip items={SEAL_TABS} activeKey={activeTab} onChange={setActiveTab} />
+
+      {activeTab === "overview" && (
+        <div className="workspace-overview-grid">
+          <div className="workspace-overview-card">
+            <div className="eyebrow">Seal Overview</div>
+            <InfoRow label="Seal Family" value={seal.type ?? "—"} />
+            <InfoRow label="Pressure Max" value={seal.pressureLimit != null ? `${seal.pressureLimit} bar` : NOT_AVAILABLE} />
+            <InfoRow label="Temperature" value={seal.temperatureLimit != null ? `${seal.temperatureLimit}°C` : NOT_AVAILABLE} />
+            {/* UI-D1.2 -- Chief's reference names Installed Date/MTBF/
+                Operating Hours as example real fields for this card. No
+                field for any of the three exists anywhere in this
+                codebase's seal data model (sealMapping.js/seal registry
+                schema confirmed during this MWO's own audit) -- shown
+                honestly as N/A, never fabricated. */}
+            <InfoRow label="Installed Date" value={NOT_AVAILABLE} />
+            <InfoRow label="MTBF" value={NOT_AVAILABLE} />
+            <InfoRow label="Operating Hours" value={NOT_AVAILABLE} />
           </div>
-        </div>
-      </div>
 
-      <div className="workspace-grid">
-        <main className="object-column">
-          <section className="identity" data-od-id="identity-section">
-            <h1>{seal.name}</h1>
-            <div className="identity-status">
-              <StatusSignal tier={meta.tier} label={meta.label} />
-              {resolvedAssetCode && (
-                <span className="running-line">
-                  <span className="dot-sm" />
-                  {installedSince ? `Terpasang di ${resolvedAssetCode} sejak ${installedSince}` : `Terpasang di ${resolvedAssetCode}`}
-                </span>
-              )}
-              {stock && (
-                <span className="running-line">
-                  <span className="dot-sm" />
-                  Stock: {stock.quantityOnHand ?? "—"}
-                </span>
-              )}
-            </div>
-            <div style={{ marginTop: "var(--space-4)" }}>
-              <div className="eyebrow" style={{ marginBottom: "var(--space-2)" }}>Identity</div>
-              <InfoRow label="Code" value={seal.code} valueClassName="mono" />
-              <InfoRow label="Manufacturer" value={seal.manufacturer ?? "—"} />
-              <InfoRow label="Model" value={seal.model ?? "—"} />
-            </div>
+          <div className="workspace-overview-card">
+            <div className="eyebrow">Construction</div>
+            <InfoRow label="Material" value={seal.material ?? "—"} />
+            <InfoRow label="Shaft Size" value={seal.shaftSize != null ? `${seal.shaftSize} mm` : "—"} />
+            {/* Faces/Elastomer/Spring/Balanced/Rotation -- reference's
+                example construction fields; no field for any exists in
+                this seal data model (only Material/Shaft do). N/A, not
+                fabricated. */}
+            <InfoRow label="Faces" value={NOT_AVAILABLE} />
+            <InfoRow label="Elastomer" value={NOT_AVAILABLE} />
+            <InfoRow label="Spring" value={NOT_AVAILABLE} />
+            <InfoRow label="Balanced" value={NOT_AVAILABLE} />
+            <InfoRow label="Rotation" value={NOT_AVAILABLE} />
+          </div>
 
-            <div style={{ marginTop: "var(--space-4)" }} data-od-id="seal-identifiers-section">
-              <div className="eyebrow" style={{ marginBottom: "var(--space-2)" }}>Identifiers</div>
-              {!editingIdentifiers ? (
-                <>
-                  <InfoRow
-                    label="KIMAP Pertamina"
-                    value={seal.kimapPertamina ?? "Not yet completed"}
-                    valueClassName={seal.kimapPertamina ? undefined : "ref-group-empty"}
-                  />
-                  <InfoRow
-                    label="GPN John Crane"
-                    value={seal.gpnJohnCrane ?? "Not yet completed"}
-                    valueClassName={seal.gpnJohnCrane ? undefined : "ref-group-empty"}
-                  />
-                  <InfoRow
-                    label="Last Updated"
-                    value={seal.updatedAt ? String(seal.updatedAt).slice(0, 19).replace("T", " ") : "—"}
-                  />
-                  <InfoRow
-                    label="Updated By (User ID)"
-                    value={seal.updatedBy ?? "Imported / system data"}
-                  />
-                  {canEditIdentifiers && (
-                    <button
-                      type="button"
-                      className="btn-link"
-                      onClick={startEditingIdentifiers}
-                      data-od-id="edit-identifiers-btn"
-                    >
-                      Edit KIMAP / GPN →
-                    </button>
-                  )}
-                </>
-              ) : (
-                <form onSubmit={handleSaveIdentifiers} data-testid="seal-identifiers-form">
-                  {identifierError && (
-                    <p
-                      className="confidence-label"
-                      style={{ color: "var(--color-danger, #d33)" }}
-                      data-testid="seal-identifiers-error"
-                    >
-                      {identifierError}
-                    </p>
-                  )}
-                  <label htmlFor={`kimap-${seal.code}`} className="confidence-label">KIMAP Pertamina</label>
-                  <input
-                    id={`kimap-${seal.code}`}
-                    value={identifierForm.kimapPertamina}
-                    onChange={(e) => setIdentifierForm((f) => ({ ...f, kimapPertamina: e.target.value }))}
-                  />
-                  <label htmlFor={`gpn-${seal.code}`} className="confidence-label">GPN John Crane</label>
-                  <input
-                    id={`gpn-${seal.code}`}
-                    value={identifierForm.gpnJohnCrane}
-                    onChange={(e) => setIdentifierForm((f) => ({ ...f, gpnJohnCrane: e.target.value }))}
-                  />
-                  <div style={{ display: "flex", gap: "var(--space-2)", marginTop: "var(--space-2)" }}>
-                    <button type="submit" className="btn-primary" disabled={savingIdentifiers}>
-                      {savingIdentifiers ? "Saving…" : "Save"}
-                    </button>
-                    <button type="button" className="btn-link" onClick={() => setEditingIdentifiers(false)}>
-                      Cancel
-                    </button>
-                  </div>
-                </form>
-              )}
-            </div>
-
-            <div style={{ marginTop: "var(--space-4)" }}>
-              <div className="eyebrow" style={{ marginBottom: "var(--space-2)" }}>Technical</div>
-              <InfoRow label="Seal Type" value={seal.type ?? "—"} />
-              <InfoRow label="Material" value={seal.material ?? "—"} />
-              <InfoRow label="Shaft" value={seal.shaftSize != null ? `${seal.shaftSize} mm` : "—"} />
-              <InfoRow label="Operating Temperature" value={seal.temperatureLimit != null ? `${seal.temperatureLimit}°C` : "—"} />
-            </div>
-          </section>
-
-          <Section id="engineering-overview-section" title="Seal Engineering Overview">
-            <div className="assessment-columns" style={{ marginTop: "var(--space-3)" }}>
-              <div>
-                <div className="eyebrow">Operating Limits</div>
-                <InfoRow label="Suhu Operasi" value={seal.temperatureLimit != null ? `${seal.temperatureLimit}°C` : "—"} />
-                <InfoRow label="Tekanan Maks." value={seal.pressureLimit != null ? `${seal.pressureLimit} bar` : "—"} />
-              </div>
-              <div>
-                <div className="eyebrow">Materials &amp; Construction</div>
-                <InfoRow label="Material" value={seal.material ?? "—"} />
-                <InfoRow label="Shaft Size" value={seal.shaftSize ?? "—"} />
-              </div>
-            </div>
-          </Section>
-
-          <Section id="current-status-section" title="Current Status">
-            <div className="info-panel" style={{ marginTop: "var(--space-3)" }}>
-              <InfoRow label="Stock" value={stock ? (stock.quantityOnHand ?? "Unknown") : "Unknown"} />
-              <InfoRow label="Coverage" value={coverageMeta.label} />
-            </div>
-          </Section>
-
-          <Section id="coverage-section" title="LTSA Coverage">
-            <div className="identity-status" style={{ marginTop: "var(--space-3)" }}>
-              <StatusSignal tier={coverageMeta.tier} label={coverageMeta.label} />
-            </div>
+          <div className="workspace-overview-card">
+            <div className="eyebrow">Status</div>
+            <InfoRow label="Health" value={meta.label} />
+            <InfoRow label="Coverage" value={coverageMeta.label} />
             <p className="confidence-label" style={{ marginTop: "var(--space-2)" }}>{coverageMeta.message}</p>
             {!resolvedAssetCode && (
               <>
@@ -364,34 +291,175 @@ export default function SealOpenDesignView({
                 </ul>
               </>
             )}
-          </Section>
+            {/* Risk Level/Confidence -- reference's example status fields;
+                no risk-scoring/confidence model exists for seals in this
+                codebase. N/A, not fabricated. */}
+            <InfoRow label="Risk Level" value={NOT_AVAILABLE} />
+            <InfoRow label="Confidence" value={NOT_AVAILABLE} />
+          </div>
 
-          <Section id="engineering-context-section" title="Engineering Context">
+          <div className="workspace-overview-card" style={{ gridColumn: "1 / -1" }}>
+            <div className="eyebrow">Identity &amp; Identifiers</div>
+            <div className="assessment-columns" style={{ marginTop: "var(--space-2)" }}>
+              <div>
+                <InfoRow label="Code" value={seal.code} valueClassName="mono" />
+                <InfoRow label="Manufacturer" value={seal.manufacturer ?? "—"} />
+                <InfoRow label="Model" value={seal.model ?? "—"} />
+              </div>
+              <div data-od-id="seal-identifiers-section">
+                {!editingIdentifiers ? (
+                  <>
+                    <InfoRow
+                      label="KIMAP Pertamina"
+                      value={seal.kimapPertamina ?? "Not yet completed"}
+                      valueClassName={seal.kimapPertamina ? undefined : "ref-group-empty"}
+                    />
+                    <InfoRow
+                      label="GPN John Crane"
+                      value={seal.gpnJohnCrane ?? "Not yet completed"}
+                      valueClassName={seal.gpnJohnCrane ? undefined : "ref-group-empty"}
+                    />
+                    <InfoRow
+                      label="Last Updated"
+                      value={seal.updatedAt ? String(seal.updatedAt).slice(0, 19).replace("T", " ") : "—"}
+                    />
+                    <InfoRow
+                      label="Updated By (User ID)"
+                      value={seal.updatedBy ?? "Imported / system data"}
+                    />
+                    {canEditIdentifiers && (
+                      <button
+                        type="button"
+                        className="btn-link"
+                        onClick={startEditingIdentifiers}
+                        data-od-id="edit-identifiers-btn"
+                      >
+                        Edit KIMAP / GPN →
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <form onSubmit={handleSaveIdentifiers} data-testid="seal-identifiers-form">
+                    {identifierError && (
+                      <p
+                        className="confidence-label"
+                        style={{ color: "var(--color-danger, #d33)" }}
+                        data-testid="seal-identifiers-error"
+                      >
+                        {identifierError}
+                      </p>
+                    )}
+                    <label htmlFor={`kimap-${seal.code}`} className="confidence-label">KIMAP Pertamina</label>
+                    <input
+                      id={`kimap-${seal.code}`}
+                      value={identifierForm.kimapPertamina}
+                      onChange={(e) => setIdentifierForm((f) => ({ ...f, kimapPertamina: e.target.value }))}
+                    />
+                    <label htmlFor={`gpn-${seal.code}`} className="confidence-label">GPN John Crane</label>
+                    <input
+                      id={`gpn-${seal.code}`}
+                      value={identifierForm.gpnJohnCrane}
+                      onChange={(e) => setIdentifierForm((f) => ({ ...f, gpnJohnCrane: e.target.value }))}
+                    />
+                    <div style={{ display: "flex", gap: "var(--space-2)", marginTop: "var(--space-2)" }}>
+                      <button type="submit" className="btn-primary" disabled={savingIdentifiers}>
+                        {savingIdentifiers ? "Saving…" : "Save"}
+                      </button>
+                      <button type="button" className="btn-link" onClick={() => setEditingIdentifiers(false)}>
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="workspace-overview-card" style={{ gridColumn: "1 / -1" }}>
+            <div className="eyebrow">Stock Status</div>
+            {stock ? (
+              <>
+                <InfoRow label="Quantity On Hand" value={stock.quantityOnHand ?? "Unknown"} />
+                <InfoRow label="Reorder Point" value={stock.reorderPoint ?? "—"} />
+                <InfoRow label="Location" value={stock.location ?? "—"} />
+              </>
+            ) : (
+              <InfoRow label="Inventory Status" value="Unknown" valueClassName="ref-group-empty" />
+            )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === "compatible" && (
+        <div className="workspace-tab-body">
+          <Section id="compatibility-section" title="Compatibility">
+            <div style={{ marginTop: "var(--space-3)" }}>
+              {compatibilityGroups.map((g) => (
+                <RefGroup key={g.id} title={g.title} items={g.items} emptyReason={g.emptyReason} />
+              ))}
+            </div>
+          </Section>
+        </div>
+      )}
+
+      {activeTab === "documents" && (
+        <div className="workspace-tab-body">
+          {/* Documents deliberately keeps raw markup -- its eyebrow sits
+              inside .section-head alongside a button, deviating from the
+              generic Section shape (see the archaeology report). */}
+          <section className="assessment-section" data-od-id="documents-section">
+            <div className="section-head">
+              <span className="eyebrow">Documents</span>
+              <button
+                type="button"
+                className="btn-link"
+                onClick={() => { onOpenDrawing?.(); setDrawer("drawing"); }}
+                data-od-id="open-drawing-link"
+              >
+                Buka Drawing →
+              </button>
+            </div>
             <div style={{ marginTop: "var(--space-2)" }}>
-              <InfoRow label="Engineering Reference" value={seal.engineeringReference ?? "Unknown"} />
-              <InfoRow label="Equipment Type" value={seal.equipmentType ?? "Unknown"} />
-              <InfoRow label="LTSA Coverage" value={coverageMeta.label} />
+              <div className="eyebrow" style={{ marginBottom: "var(--space-2)" }}>Document Types</div>
+              <InfoRow label="Drawing" value="—" valueClassName="ref-group-empty" />
+              <InfoRow label="Datasheet" value="—" valueClassName="ref-group-empty" />
+              <InfoRow label="Installation Procedure" value="—" valueClassName="ref-group-empty" />
+              <InfoRow label="Certificates" value="—" valueClassName="ref-group-empty" />
+              <InfoRow label="Revision History" value="—" valueClassName="ref-group-empty" />
+            </div>
+          </section>
+        </div>
+      )}
+
+      {activeTab === "history" && (
+        <div className="workspace-tab-body">
+          <Section id="related-engineering-section" title="Related Engineering">
+            <div style={{ marginTop: "var(--space-3)" }}>
+              {relatedGroups.map((g) => (
+                <RefGroup key={g.id} title={g.title} items={g.items} emptyReason={g.emptyReason} />
+              ))}
             </div>
           </Section>
 
-          <Section id="stock-section" title="Stock Status">
-            <div style={{ marginTop: "var(--space-2)" }}>
-              {stock ? (
-                <>
-                  <InfoRow label="Quantity On Hand" value={stock.quantityOnHand ?? "Unknown"} />
-                  <InfoRow label="Reorder Point" value={stock.reorderPoint ?? "—"} />
-                  <InfoRow label="Location" value={stock.location ?? "—"} />
-                </>
-              ) : (
-                <>
-                  <InfoRow label="Inventory Status" value="Unknown" valueClassName="ref-group-empty" />
-                  <InfoRow label="Warehouse" value="Unknown" valueClassName="ref-group-empty" />
-                  <InfoRow label="ETA" value="Unknown" valueClassName="ref-group-empty" />
-                </>
-              )}
+          <Section id="lifecycle-section" title="Lifecycle">
+            <div className="stepper" data-od-id="lifecycle-stepper" style={{ marginTop: "var(--space-3)" }}>
+              {LIFECYCLE_STEPS.map((step, i) => {
+                const currentIndex = lifecycleCurrentIndex(seal.status);
+                const state = i < currentIndex ? "done" : i === currentIndex ? "current" : "upcoming";
+                return (
+                  <div className="step-item" key={step.id} data-state={state}>
+                    <span className="step-dot" />
+                    <div className="step-label">{step.label}</div>
+                  </div>
+                );
+              })}
             </div>
           </Section>
+        </div>
+      )}
 
+      {activeTab === "ai-insight" && (
+        <div className="workspace-tab-body">
           <Section id="recommended-replacement-section" title="Engineering Recommendation">
             {seal.recommendation ? (
               <>
@@ -437,98 +505,16 @@ export default function SealOpenDesignView({
           {aiReady && <EngineeringAIEvidence response={aiResponse} />}
           {aiReady && <EngineeringAIRecommendation response={aiResponse} />}
           {aiReady && <EngineeringAISourceReferences response={aiResponse} />}
+        </div>
+      )}
 
-          <Section id="compatibility-section" title="Compatibility">
-            <div style={{ marginTop: "var(--space-3)" }}>
-              {compatibilityGroups.map((g) => (
-                <RefGroup key={g.id} title={g.title} items={g.items} emptyReason={g.emptyReason} />
-              ))}
-            </div>
-          </Section>
-
-          <Section id="related-engineering-section" title="Related Engineering">
-            <div style={{ marginTop: "var(--space-3)" }}>
-              {relatedGroups.map((g) => (
-                <RefGroup key={g.id} title={g.title} items={g.items} emptyReason={g.emptyReason} />
-              ))}
-            </div>
-          </Section>
-
-          {/* Documents deliberately keeps raw markup -- its eyebrow sits
-              inside .section-head alongside a button, deviating from the
-              generic Section shape (see the archaeology report). */}
-          <section className="assessment-section" data-od-id="documents-section">
-            <div className="section-head">
-              <span className="eyebrow">Documents</span>
-              <button
-                type="button"
-                className="btn-link"
-                onClick={() => { onOpenDrawing?.(); setDrawer("drawing"); }}
-                data-od-id="open-drawing-link"
-              >
-                Buka Drawing →
-              </button>
-            </div>
-            <div style={{ marginTop: "var(--space-2)" }}>
-              <div className="eyebrow" style={{ marginBottom: "var(--space-2)" }}>Document Types</div>
-              <InfoRow label="Drawing" value="—" valueClassName="ref-group-empty" />
-              <InfoRow label="Datasheet" value="—" valueClassName="ref-group-empty" />
-              <InfoRow label="Installation Procedure" value="—" valueClassName="ref-group-empty" />
-              <InfoRow label="Certificates" value="—" valueClassName="ref-group-empty" />
-              <InfoRow label="Revision History" value="—" valueClassName="ref-group-empty" />
-            </div>
-          </section>
-        </main>
-
-        <aside className="inspector-rail" data-od-id="inspector-rail">
-          <RailSection id="seal-health-section" title="Seal Health">
-            <StatusSignal tier={meta.tier} label={meta.label} />
-          </RailSection>
-
-          <RailSection id="lifecycle-section" title="Lifecycle">
-            <div className="stepper" data-od-id="lifecycle-stepper">
-              {LIFECYCLE_STEPS.map((step, i) => {
-                const currentIndex = lifecycleCurrentIndex(seal.status);
-                const state = i < currentIndex ? "done" : i === currentIndex ? "current" : "upcoming";
-                return (
-                  <div className="step-item" key={step.id} data-state={state}>
-                    <span className="step-dot" />
-                    <div className="step-label">{step.label}</div>
-                  </div>
-                );
-              })}
-            </div>
-          </RailSection>
-
-          <RailSection id="criticality-section" title="Criticality">
-            <div className="confidence-label ref-group-empty">Belum ada data kritikalitas.</div>
-          </RailSection>
-
-          <RailSection id="recommendation-section" title="Recommendation">
-            <div className="confidence-label">{seal.recommendation || "Belum ada rekomendasi."}</div>
-          </RailSection>
-
-          <RailSection id="recent-activities-section" title="Recent Activities">
-            <div className="confidence-label ref-group-empty">Belum ada aktivitas terbaru.</div>
-          </RailSection>
-        </aside>
-      </div>
-
-      <ActionBar
-        label={`${seal.code} · ${meta.label}`}
-        metaPrimary={coverageMeta.label}
-        metaLabel="Stock"
-        metaValue={stock ? (stock.quantityOnHand ?? "Unknown") : "Unknown"}
-      >
-        {resolvedAssetCode && (
+      {resolvedAssetCode && (
+        <div className="workspace-tab-body" style={{ paddingTop: 0 }}>
           <button type="button" className="btn-link" onClick={() => onOpenPump?.(resolvedAssetCode)} data-od-id="action-bar-open-pump">
             Buka Pump →
           </button>
-        )}
-        <button type="button" className="btn-primary" onClick={() => setDrawer("recommendation")} data-od-id="action-bar-generate-recommendation">
-          Buat Rekomendasi
-        </button>
-      </ActionBar>
+        </div>
+      )}
 
       <PumpWorkspaceDrawer open={drawer === "drawing"} onClose={() => setDrawer(null)} title="Seal Drawing">
         <div className="drawing-thumb" />

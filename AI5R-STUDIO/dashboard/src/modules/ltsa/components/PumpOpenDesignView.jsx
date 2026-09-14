@@ -1,6 +1,9 @@
 import { useMemo, useState } from "react";
 import PumpWorkspaceDrawer from "./PumpWorkspaceDrawer";
-import { Section, InfoRow, StatusSignal, RailSection, ActionBar, RefGroup } from "./open-design";
+import AssetIdentityHeader, { HealthCard } from "./AssetIdentityHeader";
+import WorkspaceTabStrip from "./WorkspaceTabStrip";
+import { IconWrench } from "./PumpWorkspaceIcons";
+import { Section, InfoRow, StatusSignal, RefGroup } from "./open-design";
 import {
   EngineeringAIStatus,
   EngineeringAISummary,
@@ -246,6 +249,7 @@ export default function PumpOpenDesignView({
   onCreatePM,
   onCreateCM,
   onViewHistory,
+  onBack,
   aiResponse,
   aiReady,
   aiStatusText,
@@ -253,6 +257,20 @@ export default function PumpOpenDesignView({
   aiStatusLabel,
 }) {
   const [drawer, setDrawer] = useState(null); // null | "drawing"
+  // UI-D1.2 -- Overview/Performance/Asset360/Documents/History, matching
+  // Chief's reference tab list for the Pump Workspace. Purely a display
+  // grouping over sections that already existed (see each tab's own
+  // comment below for exactly which pre-existing section moved where) --
+  // no section's own data/handlers/markup changed, only which tab shows
+  // it.
+  const [activeTab, setActiveTab] = useState("overview");
+  const PUMP_TABS = [
+    { key: "overview", label: "Overview" },
+    { key: "performance", label: "Performance" },
+    { key: "asset360", label: "Asset360" },
+    { key: "documents", label: "Documents" },
+    { key: "history", label: "History" },
+  ];
 
   const meta = statusMeta(pump.status);
   const critMeta = criticalityMeta(pump.criticality);
@@ -432,70 +450,70 @@ export default function PumpOpenDesignView({
 
   return (
     <div className="ltsa-open-design" data-testid="pump-open-design">
-      <div className="chrome-bar" data-od-id="chrome-bar">
-        <div className="chrome-inner">
-          <div className="crumb">
-            <span>LTSA</span>
-            <span className="sep">›</span><span>Pump Registry</span>
-            <span className="sep">›</span>
-            {/* MWO-LTSA-070 -- PUMP/LIFECYCLE navigation target: this pump's
-                own tag, matching the exact crumb-link pattern every other
-                Open Design view already uses for its own pump reference
-                (e.g. DocumentOpenDesignView.jsx's crumb-pump-link). Both
-                PUMP and LIFECYCLE resolve to the same real Pump Workspace
-                selection -- no separate "Pump Lifecycle" page exists. */}
-            {onOpenEngineeringObject ? (
-              <button
-                type="button"
-                className="crumb-link"
-                onClick={() => onOpenEngineeringObject("PUMP", pump)}
-                data-od-id="crumb-pump-link"
-              >
-                <b>{pump.tag}</b>
-              </button>
-            ) : (
-              <b>{pump.tag}</b>
-            )}
+      <AssetIdentityHeader
+        icon={<IconWrench />}
+        tag={pump.tag}
+        name={pump.name}
+        subtitle={pump.area ? `Located in ${pump.area}` : "Location unknown"}
+        onBack={onBack}
+      >
+        <HealthCard label="Status" value={meta.label} tone={meta.tier} />
+        <HealthCard label="Criticality" value={critMeta.label} tone={critMeta.tier === "high" ? "high" : critMeta.tier} />
+      </AssetIdentityHeader>
+
+      <WorkspaceTabStrip items={PUMP_TABS} activeKey={activeTab} onChange={setActiveTab} />
+
+      {activeTab === "overview" && (
+        <div className="workspace-overview-grid">
+          <div className="workspace-overview-card" data-od-id="identity-section">
+            <div className="eyebrow">Asset Information</div>
+            <InfoRow label="Pump Tag" value={pump.tag} valueClassName="mono" />
+            <InfoRow label="Manufacturer" value={pump.manufacturer ?? "—"} />
+            <InfoRow label="Area" value={pump.area ?? "—"} />
+            <InfoRow label="Pump Type" value={pump.type ?? "—"} />
+            <InfoRow label="API Plan" value={pump.apiPlan ?? "—"} />
+            <InfoRow label="Seal" value={pump.seal ?? "—"} />
+            <InfoRow label="Location" value={pump.location ?? "—"} />
           </div>
-        </div>
-      </div>
 
-      <div className="workspace-grid">
-        <main className="object-column">
-          <section className="identity" data-od-id="identity-section">
-            <h1>{pump.name}</h1>
-            <div className="identity-status">
-              <StatusSignal tier={meta.tier} label={meta.label} />
-              <span className="running-line">
-                <span className="dot-sm" />
-                {pump.area ? `Located in ${pump.area}` : "Location unknown"}
-              </span>
-            </div>
-            <div style={{ marginTop: "var(--space-4)" }}>
-              <div className="eyebrow" style={{ marginBottom: "var(--space-2)" }}>Identity</div>
-              <InfoRow label="Tag" value={pump.tag} valueClassName="mono" />
-              <InfoRow label="Manufacturer" value={pump.manufacturer ?? "—"} />
-              <InfoRow label="Area" value={pump.area ?? "—"} />
-            </div>
-            <div style={{ marginTop: "var(--space-4)" }}>
-              <div className="eyebrow" style={{ marginBottom: "var(--space-2)" }}>Technical</div>
-              <InfoRow label="Pump Type" value={pump.type ?? "—"} />
-              <InfoRow label="API Plan" value={pump.apiPlan ?? "—"} />
-              <InfoRow label="Seal" value={pump.seal ?? "—"} />
-              <InfoRow label="Location" value={pump.location ?? "—"} />
-            </div>
-          </section>
+          {/* UI-D1.2 -- Chief's reference names Flow/Head/Suction Pressure/
+              Discharge Pressure/Temperature/Speed as example real fields
+              for this card. No process-telemetry data source exists
+              anywhere in this codebase for any pump (confirmed: not in
+              mapPumpRecord, not in the pump knowledge/lifecycle payload) --
+              every value below is an honest NOT_AVAILABLE, never a
+              fabricated number, per this MWO's own explicit rule. */}
+          <div className="workspace-overview-card">
+            <div className="eyebrow">Operating Conditions</div>
+            <InfoRow label="Flow" value={NOT_AVAILABLE} />
+            <InfoRow label="Head" value={NOT_AVAILABLE} />
+            <InfoRow label="Suction Pressure" value={NOT_AVAILABLE} />
+            <InfoRow label="Discharge Pressure" value={NOT_AVAILABLE} />
+            <InfoRow label="Temperature" value={NOT_AVAILABLE} />
+            <InfoRow label="Speed" value={NOT_AVAILABLE} />
+          </div>
 
-          {/* MWO-LTSA-UI-V2-001 -- the old "Pump Engineering Overview"
-              section is removed here: every field it showed (Pump Type,
-              API Plan, Seal Type, Location) was a byte-for-byte repeat of
-              Identity's own "Technical" block above -- a second section
-              for the same four already-visible facts, not new information.
-              Merged, not lost: nothing below reads pump.type/apiPlan/seal/
-              location a second time. */}
+          <div className="workspace-overview-card">
+            <div className="eyebrow">Quick Actions</div>
+            <div className="workspace-quick-actions">
+              <button type="button" className="workspace-quick-action-btn" onClick={onCreatePM} data-od-id="action-bar-create-pm">
+                Create PM
+              </button>
+              <button type="button" className="workspace-quick-action-btn" onClick={onCreateCM} data-od-id="action-bar-create-cm">
+                Create CM
+              </button>
+              <button type="button" className="workspace-quick-action-btn" onClick={() => setActiveTab("documents")}>
+                View Documents
+              </button>
+              <button type="button" className="workspace-quick-action-btn" onClick={() => setActiveTab("history")}>
+                View History
+              </button>
+            </div>
+          </div>
 
-          <Section id="seal-stock-available-section" title="Seal Stock Available">
-            <div style={{ marginTop: "var(--space-3)" }}>
+          <div className="workspace-overview-card" style={{ gridColumn: "1 / -1" }}>
+            <div className="eyebrow">Seal Stock Available</div>
+            <div style={{ marginTop: "var(--space-2)" }}>
               {sealInventoryGroups && sealInventoryGroups.length > 0 ? (
                 sealInventoryGroups.map((group) => (
                   <div className="part-item" key={group.stockPoolId ?? group.sealCode ?? group.sealName}>
@@ -525,100 +543,89 @@ export default function PumpOpenDesignView({
                   </div>
                 ))
               ) : (
-                // No repeated "Seal & Inventory" label here -- the
-                // enclosing <Section title="Seal & Inventory"> eyebrow
-                // above already provides it; RefGroup's own empty-row
-                // pattern only repeats its title when used standalone
-                // (not already inside a titled Section).
                 <div className="info-row">
                   <span className="v ref-group-empty">No verified stock pool linked</span>
                 </div>
               )}
             </div>
-          </Section>
+          </div>
 
-          {/* MWO-LTSA-065 -- Current Status now reads lifecycle.currentState
-              exclusively for Elapsed Service Days/Last PM/Next PM/Last CM/
-              Last Failure/Open Work Orders (previously pump.openWO/
-              pump.lastPM, each its own per-pump-resolved fetch). Pump
-              Health/Criticality/Coverage are unrelated to lifecycle --
-              they are the pump's own identity facts from GET
-              /api/ltsa/pumps, unchanged. */}
+          <div className="workspace-overview-card" style={{ gridColumn: "1 / -1" }}>
+            <div className="eyebrow">Current Seal &amp; Installation</div>
+            <div className="assessment-columns" style={{ marginTop: "var(--space-2)" }}>
+              <div>
+                <div className="eyebrow">Current Seal</div>
+                {currentSeal ? (
+                  <>
+                    <InfoRow label="Seal Code" value={fmtOrNotAvailable(currentSeal.sealCode)} />
+                    <InfoRow label="Manufacturer" value={fmtOrNotAvailable(currentSeal.manufacturer)} />
+                    <InfoRow label="Model" value={fmtOrNotAvailable(currentSeal.model)} />
+                    <InfoRow label="Status" value={fmtOrNotAvailable(currentSeal.status)} />
+                  </>
+                ) : (
+                  <InfoRow label="Current Seal" value={lifecycleLoading ? "Loading…" : NOT_AVAILABLE} />
+                )}
+              </div>
+              <div>
+                <div className="eyebrow">Current Installation</div>
+                {currentInstallation ? (
+                  <>
+                    <InfoRow label="Installation Code" value={currentInstallation.installationCode ?? NOT_AVAILABLE} />
+                    <InfoRow label="Report Date" value={fmtOrNotAvailable(currentInstallation.reportDate)} />
+                    <InfoRow label="Drawing No" value={fmtOrNotAvailable(currentInstallation.drawingNo)} />
+                  </>
+                ) : (
+                  <InfoRow label="Installation" value={lifecycleLoading ? "Loading…" : NOT_AVAILABLE} />
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="workspace-overview-card" style={{ gridColumn: "1 / -1" }}>
+            <div className="eyebrow">LTSA Coverage &amp; Recommendation</div>
+            <div className="identity-status" style={{ marginTop: "var(--space-2)" }}>
+              <StatusSignal tier={coverageMeta.tier} label={coverageMeta.label} />
+            </div>
+            <p className="confidence-label" style={{ marginTop: "var(--space-2)" }}>{coverageMeta.message}</p>
+            {pump.recommendation ? (
+              <h2 className="assessment-headline">{pump.recommendation}</h2>
+            ) : (
+              <p className="confidence-label" style={{ marginTop: "var(--space-2)" }}>No recommendation available.</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === "performance" && (
+        <div className="workspace-tab-body">
+          {/* MWO-LTSA-065 -- Analytics: lifecycle.analytics displayed as-is.
+              mtbf/mtbr/averageSealLife/healthIndex/availability/reliability
+              are real, currently-always-null placeholders (MWO-LTSA-064A
+              Section 5) -- "Not Available" is the honest rendering of
+              null, never a computed/fabricated number. */}
           <Section id="current-status-section" title="Current Status">
             <div className="info-panel" style={{ marginTop: "var(--space-3)" }}>
-              <InfoRow label="Pump Health" value={meta.label} />
-              <InfoRow label="Criticality" value={critMeta.label} />
-              <InfoRow label="Coverage" value={coverageMeta.label} />
-              <InfoRow label="Elapsed Service Days" value={fmtOrNotAvailable(currentState?.elapsedServiceDays)} />
               <InfoRow label="Last PM" value={fmtOrNotAvailable(describeRecord(currentState?.lastPm))} />
               <InfoRow label="Next PM" value={fmtOrNotAvailable(describeRecord(currentState?.nextPm))} />
               <InfoRow label="Last CM" value={fmtOrNotAvailable(describeRecord(currentState?.lastCm))} />
               <InfoRow label="Last Failure" value={fmtOrNotAvailable(describeRecord(currentState?.lastFailure))} />
+            </div>
+          </Section>
+
+          <Section id="analytics-section" title="Analytics">
+            <div className="info-panel" style={{ marginTop: "var(--space-3)" }}>
+              <InfoRow label="Elapsed Service Days" value={fmtOrNotAvailable(currentState?.elapsedServiceDays ?? analytics?.elapsedServiceDays)} />
+              <InfoRow label="PM Count" value={fmtOrNotAvailable(analytics?.pmCount)} />
+              <InfoRow label="CM Count" value={fmtOrNotAvailable(analytics?.cmCount)} />
+              <InfoRow label="Failure Count" value={fmtOrNotAvailable(analytics?.failureCount)} />
+              <InfoRow label="MTBF" value={fmtOrNotAvailable(analytics?.mtbf)} />
+              <InfoRow label="MTBR" value={fmtOrNotAvailable(analytics?.mtbr)} />
+              <InfoRow label="Average Seal Life" value={fmtOrNotAvailable(analytics?.averageSealLife)} />
+              <InfoRow label="Health Index" value={fmtOrNotAvailable(analytics?.healthIndex)} />
+              <InfoRow label="Availability" value={fmtOrNotAvailable(analytics?.availability)} />
+              <InfoRow label="Reliability" value={fmtOrNotAvailable(analytics?.reliability)} />
               <InfoRow label="Open Work Orders" value={currentState ? currentState.openWorkOrders.length : NOT_AVAILABLE} />
             </div>
-          </Section>
-
-          {/* MWO-LTSA-065 -- Current Installation/Current Seal: new
-              sections, lifecycle.currentState values displayed as-is, per
-              this MWO's "Display lifecycle values only. Do not resolve
-              again" rule -- Current Seal's own `source` field (seal_registry
-              vs installation_report, MWO-LTSA-064A Section 3) is shown
-              honestly rather than hidden. */}
-          <Section id="current-installation-section" title="Current Installation">
-            <div className="info-panel" style={{ marginTop: "var(--space-3)" }}>
-              {currentInstallation ? (
-                <>
-                  <InfoRow label="Installation Code" value={currentInstallation.installationCode ?? NOT_AVAILABLE} />
-                  <InfoRow label="Report No" value={fmtOrNotAvailable(currentInstallation.reportNo)} />
-                  <InfoRow label="Report Date" value={fmtOrNotAvailable(currentInstallation.reportDate)} />
-                  <InfoRow label="Drawing No" value={fmtOrNotAvailable(currentInstallation.drawingNo)} />
-                  <InfoRow label="Source Document" value={fmtOrNotAvailable(currentInstallation.sourceDocumentName)} />
-                </>
-              ) : (
-                <InfoRow label="Installation" value={lifecycleLoading ? "Loading…" : NOT_AVAILABLE} />
-              )}
-            </div>
-          </Section>
-
-          <Section id="current-seal-section" title="Current Seal">
-            <div className="info-panel" style={{ marginTop: "var(--space-3)" }}>
-              {currentSeal ? (
-                <>
-                  <InfoRow label="Seal Code" value={fmtOrNotAvailable(currentSeal.sealCode)} />
-                  <InfoRow label="Seal Name" value={fmtOrNotAvailable(currentSeal.sealName)} />
-                  <InfoRow label="Manufacturer" value={fmtOrNotAvailable(currentSeal.manufacturer)} />
-                  <InfoRow label="Model" value={fmtOrNotAvailable(currentSeal.model)} />
-                  <InfoRow label="Shaft Size" value={fmtOrNotAvailable(currentSeal.shaftSize)} />
-                  <InfoRow label="Material" value={fmtOrNotAvailable(currentSeal.material)} />
-                  <InfoRow label="Temperature Limit" value={fmtOrNotAvailable(currentSeal.temperatureLimit)} />
-                  <InfoRow label="Pressure Limit" value={fmtOrNotAvailable(currentSeal.pressureLimit)} />
-                  <InfoRow label="Status" value={fmtOrNotAvailable(currentSeal.status)} />
-                  <InfoRow label="Source" value={currentSeal.source === "seal_registry" ? "Seal Registry" : "Installation Report"} />
-                </>
-              ) : (
-                <InfoRow label="Current Seal" value={lifecycleLoading ? "Loading…" : NOT_AVAILABLE} />
-              )}
-            </div>
-          </Section>
-
-          <Section id="coverage-section" title="LTSA Coverage">
-            <div className="identity-status" style={{ marginTop: "var(--space-3)" }}>
-              <StatusSignal tier={coverageMeta.tier} label={coverageMeta.label} />
-            </div>
-            <p className="confidence-label" style={{ marginTop: "var(--space-2)" }}>{coverageMeta.message}</p>
-          </Section>
-
-          <Section id="recommended-replacement-section" title="Engineering Recommendation">
-            {pump.recommendation ? (
-              <>
-                <h2 className="assessment-headline">{pump.recommendation}</h2>
-                <div className="assessment-footer">
-                  <StatusSignal tier={meta.tier} label={meta.label} />
-                </div>
-              </>
-            ) : (
-              <p className="confidence-label" style={{ marginTop: "var(--space-2)" }}>No recommendation available.</p>
-            )}
           </Section>
 
           <Section id="engineering-ai-section" title="Engineering AI">
@@ -646,62 +653,28 @@ export default function PumpOpenDesignView({
           {aiReady && <EngineeringAIEvidence response={aiResponse} />}
           {aiReady && <EngineeringAIRecommendation response={aiResponse} />}
           {aiReady && <EngineeringAISourceReferences response={aiResponse} />}
+        </div>
+      )}
 
-          <Section id="related-engineering-section" title="Related Engineering">
-            <div style={{ marginTop: "var(--space-3)" }}>
-              {relatedGroups.map((g) => (
-                <RefGroup key={g.id} title={g.title} items={g.items} emptyReason={g.emptyReason} />
-              ))}
-            </div>
+      {activeTab === "asset360" && (
+        <div className="workspace-tab-body">
+          <Section id="asset360-section" title="Asset 360">
+            <p className="confidence-label" style={{ marginTop: "var(--space-2)" }}>
+              Full cross-domain equipment history (installation, PM/CM, seal lifecycle, drawings) for {pump.tag}.
+            </p>
+            <button type="button" className="workspace-quick-action-btn" style={{ marginTop: "var(--space-3)", maxWidth: 220 }} onClick={onViewHistory} data-od-id="action-bar-view-history">
+              Open Asset 360 →
+            </button>
           </Section>
+        </div>
+      )}
 
-          {/* MWO-LTSA-065 -- Timeline: lifecycle.timeline rendered
-              directly, no client-side re-sorting or re-filtering
-              (EquipmentTimelineService.build_lifecycle() already returns
-              it chronological, oldest first). Supported categories per
-              this MWO: INSTALLATION/PM/CM/FAILURE/WORK_ORDER/REPLACEMENT --
-              all 6 already flow through event.eventType unchanged, since
-              build_lifecycle() only ever populates those 6 (the other 5
-              canonical TimelineCategory values have no data source yet,
-              per equipment_timeline_service.py's own header comment, and
-              build_lifecycle() doesn't call those builders). */}
-          <Section id="timeline-section" title="Timeline">
-            <div style={{ marginTop: "var(--space-3)" }}>
-              <RefGroup title="Lifecycle Events" items={timelineItems} emptyReason={lifecycleEmptyReason} />
-            </div>
-          </Section>
-
-          {/* MWO-LTSA-065 -- Analytics: lifecycle.analytics displayed as-is.
-              mtbf/mtbr/averageSealLife/healthIndex/availability/reliability
-              are real, currently-always-null placeholders (MWO-LTSA-064A
-              Section 5) -- "Not Available" is the honest rendering of
-              null, never a computed/fabricated number. */}
-          <Section id="analytics-section" title="Analytics">
-            <div className="info-panel" style={{ marginTop: "var(--space-3)" }}>
-              <InfoRow label="Elapsed Service Days" value={fmtOrNotAvailable(analytics?.elapsedServiceDays)} />
-              <InfoRow label="PM Count" value={fmtOrNotAvailable(analytics?.pmCount)} />
-              <InfoRow label="CM Count" value={fmtOrNotAvailable(analytics?.cmCount)} />
-              <InfoRow label="Failure Count" value={fmtOrNotAvailable(analytics?.failureCount)} />
-              <InfoRow label="MTBF" value={fmtOrNotAvailable(analytics?.mtbf)} />
-              <InfoRow label="MTBR" value={fmtOrNotAvailable(analytics?.mtbr)} />
-              <InfoRow label="Average Seal Life" value={fmtOrNotAvailable(analytics?.averageSealLife)} />
-              <InfoRow label="Health Index" value={fmtOrNotAvailable(analytics?.healthIndex)} />
-              <InfoRow label="Availability" value={fmtOrNotAvailable(analytics?.availability)} />
-              <InfoRow label="Reliability" value={fmtOrNotAvailable(analytics?.reliability)} />
-            </div>
-          </Section>
-
+      {activeTab === "documents" && (
+        <div className="workspace-tab-body">
           {/* Documents deliberately keeps raw markup -- same reason as
               SealOpenDesignView.jsx's own Documents section: its eyebrow
               sits inside .section-head alongside a button, deviating from
               the generic Section shape. */}
-          {/* MWO-LTSA-UI-V2-001 -- the 5 static "—" Document Type rows are
-              removed: none is backed by any field anywhere (confirmed
-              during the Open Design audit), so they only ever showed
-              fabricated-looking placeholder content. The one real action
-              (Buka Drawing) stays; a single honest note replaces the dead
-              rows rather than fabricating document types that don't
-              exist. */}
           <section className="assessment-section" data-od-id="documents-section">
             <div className="section-head">
               <span className="eyebrow">Documents</span>
@@ -718,28 +691,34 @@ export default function PumpOpenDesignView({
               No document types available yet.
             </p>
           </section>
-        </main>
 
-        <aside className="inspector-rail" data-od-id="inspector-rail">
-          <RailSection id="pump-health-section" title="Pump Health">
-            <StatusSignal tier={meta.tier} label={meta.label} />
-          </RailSection>
+          <Section id="current-installation-section" title="Current Installation">
+            <div className="info-panel" style={{ marginTop: "var(--space-3)" }}>
+              {currentInstallation ? (
+                <>
+                  <InfoRow label="Installation Code" value={currentInstallation.installationCode ?? NOT_AVAILABLE} />
+                  <InfoRow label="Report No" value={fmtOrNotAvailable(currentInstallation.reportNo)} />
+                  <InfoRow label="Report Date" value={fmtOrNotAvailable(currentInstallation.reportDate)} />
+                  <InfoRow label="Drawing No" value={fmtOrNotAvailable(currentInstallation.drawingNo)} />
+                  <InfoRow label="Source Document" value={fmtOrNotAvailable(currentInstallation.sourceDocumentName)} />
+                </>
+              ) : (
+                <InfoRow label="Installation" value={lifecycleLoading ? "Loading…" : NOT_AVAILABLE} />
+              )}
+            </div>
+          </Section>
+        </div>
+      )}
 
-          <RailSection id="criticality-section" title="Criticality">
-            <StatusSignal tier={critMeta.tier} label={critMeta.label} />
-          </RailSection>
+      {activeTab === "history" && (
+        <div className="workspace-tab-body">
+          <Section id="timeline-section" title="Timeline">
+            <div style={{ marginTop: "var(--space-3)" }}>
+              <RefGroup title="Lifecycle Events" items={timelineItems} emptyReason={lifecycleEmptyReason} />
+            </div>
+          </Section>
 
-          <RailSection id="recommendation-section" title="Recommendation">
-            <div className="confidence-label">{pump.recommendation || "No recommendation available."}</div>
-          </RailSection>
-
-          {/* MWO-LTSA-UI-V2-001 -- Recent Activities reuses timelineItems
-              (already computed above from the real lifecycle.timeline, no
-              second transformation engine) instead of a permanently
-              hardcoded "no activity" string -- shows the 3 most recent
-              real events, most-recent-first. Falls back to an honest empty
-              state only when the timeline genuinely has none. */}
-          <RailSection id="recent-activities-section" title="Recent Activities">
+          <Section id="recent-activities-section" title="Recent Activities">
             {recentActivityItems.length === 0 ? (
               <div className="confidence-label ref-group-empty">
                 {lifecycleLoading ? "Loading…" : "No recent activity available."}
@@ -755,26 +734,17 @@ export default function PumpOpenDesignView({
                 </div>
               ))
             )}
-          </RailSection>
-        </aside>
-      </div>
+          </Section>
 
-      <ActionBar
-        label={`${pump.tag} · ${meta.label}`}
-        metaPrimary={coverageMeta.label}
-        metaLabel="Criticality"
-        metaValue={critMeta.label}
-      >
-        <button type="button" className="btn-link" onClick={onViewHistory} data-od-id="action-bar-view-history">
-          View History →
-        </button>
-        <button type="button" className="btn-link" onClick={onCreateCM} data-od-id="action-bar-create-cm">
-          Create CM
-        </button>
-        <button type="button" className="btn-primary" onClick={onCreatePM} data-od-id="action-bar-create-pm">
-          Create PM
-        </button>
-      </ActionBar>
+          <Section id="related-engineering-section" title="Related Engineering">
+            <div style={{ marginTop: "var(--space-3)" }}>
+              {relatedGroups.map((g) => (
+                <RefGroup key={g.id} title={g.title} items={g.items} emptyReason={g.emptyReason} />
+              ))}
+            </div>
+          </Section>
+        </div>
+      )}
 
       <PumpWorkspaceDrawer open={drawer === "drawing"} onClose={() => setDrawer(null)} title="Pump Drawing">
         <div className="drawing-thumb" />
