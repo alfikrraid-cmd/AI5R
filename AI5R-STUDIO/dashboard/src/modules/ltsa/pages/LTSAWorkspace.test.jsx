@@ -382,8 +382,10 @@ describe("LTSAWorkspace navigation shell", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: "Condition Monitoring" }));
 
-    expect(screen.getByRole("heading", { name: "Condition Monitoring" })).toBeTruthy();
-    await screen.findByText(/no condition monitoring schedules match/i);
+    // UI-D2C -- exact required page title (mission section 4), and
+    // Readings (not Schedules) is now the default, condition-centric view.
+    expect(screen.getByRole("heading", { name: "CONDITION MONITORING" })).toBeTruthy();
+    await screen.findByText(/no condition monitoring readings match/i);
   });
 
   it("switches to the Reports workspace when its tab is clicked", () => {

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import ConditionMonitoring from "./ConditionMonitoring";
 import {
@@ -33,6 +33,16 @@ function renderWithSession(permissions, role = "TAP_ENGINEER", props) {
 
 function renderWithWritePermission(props) {
   return renderWithSession(["maintenance.read", "condition.read", "maintenance.write"], "TAP_ENGINEER", props);
+}
+
+// UI-D2C -- the registry now renders two representations of the same
+// reading data simultaneously (desktop table + mobile card list, plus a
+// mobile collapsed-summary once a reading is selected -- CSS-gated in
+// ConditionMonitoring.css; jsdom applies no CSS, so all are always in the
+// DOM). Scope existence/click queries to the always-present table, same
+// `{page}Table()` async-helper pattern established for Work Order/PM.
+function cmonTable() {
+  return screen.findByRole("table");
 }
 
 // MWO-LTSA-PM-CM-REVIEW-UI-001 -- ConditionMonitoringReadingDetailPanel
@@ -110,14 +120,28 @@ describe("Condition Monitoring workspace page", () => {
     loadDefaults();
     render(<ConditionMonitoring />);
 
-    expect(screen.getByRole("heading", { name: "Condition Monitoring" })).toBeTruthy();
-    await screen.findByText("CMON-SCHED-001");
+    // UI-D2C -- exact required title (mission section 4), matching
+    // WorkOrder/PM's own uppercase convention ("PREVENTIVE MAINTENANCE").
+    expect(screen.getByRole("heading", { name: "CONDITION MONITORING" })).toBeTruthy();
+    // UI-D2C -- condition-centric: Readings is now the default view
+    // (previously Schedules).
+    await within(await cmonTable()).findByText("CMON-READ-101");
   });
 
-  it("renders a loading state before the schedules API resolves", () => {
+  it("renders a loading state before the readings API resolves (default view)", () => {
+    getConditionMonitoringReadings.mockReturnValue(new Promise(() => {}));
+    getConditionMonitoringSchedules.mockResolvedValue([]);
+    render(<ConditionMonitoring />);
+
+    expect(screen.getByText("Loading Condition Monitoring readings...")).toBeTruthy();
+  });
+
+  it("renders a loading state before the schedules API resolves (Schedules tab)", async () => {
     getConditionMonitoringSchedules.mockReturnValue(new Promise(() => {}));
     getConditionMonitoringReadings.mockResolvedValue([]);
     render(<ConditionMonitoring />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Schedules" }));
 
     expect(screen.getByText("Loading Condition Monitoring schedules...")).toBeTruthy();
   });
@@ -127,6 +151,8 @@ describe("Condition Monitoring workspace page", () => {
     getConditionMonitoringReadings.mockResolvedValue([]);
     render(<ConditionMonitoring />);
 
+    fireEvent.click(screen.getByRole("tab", { name: "Schedules" }));
+
     expect(await screen.findByText("Condition Monitoring schedules could not be loaded.")).toBeTruthy();
     expect(screen.queryByText("CMON-SCHED-001")).toBeNull();
   });
@@ -134,6 +160,8 @@ describe("Condition Monitoring workspace page", () => {
   it("renders every schedule from the canonical API in the list", async () => {
     loadDefaults();
     render(<ConditionMonitoring />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Schedules" }));
 
     for (const schedule of SCHEDULES) {
       expect(await screen.findByText(schedule.condition_monitoring_schedule_code)).toBeTruthy();
@@ -144,6 +172,7 @@ describe("Condition Monitoring workspace page", () => {
   it("shows an empty state in the schedule detail panel before any schedule is selected", async () => {
     loadDefaults();
     render(<ConditionMonitoring />);
+    fireEvent.click(screen.getByRole("tab", { name: "Schedules" }));
     await screen.findByText("CMON-SCHED-001");
 
     expect(screen.getByText(/no condition monitoring schedule selected/i)).toBeTruthy();
@@ -152,6 +181,7 @@ describe("Condition Monitoring workspace page", () => {
   it("shows the selected schedule's detail when a list row is clicked", async () => {
     loadDefaults();
     render(<ConditionMonitoring />);
+    fireEvent.click(screen.getByRole("tab", { name: "Schedules" }));
     await screen.findByText("CMON-SCHED-001");
 
     fireEvent.click(screen.getByText("CMON-SCHED-001"));
@@ -163,6 +193,7 @@ describe("Condition Monitoring workspace page", () => {
   it("filters the schedule list by search text", async () => {
     loadDefaults();
     render(<ConditionMonitoring />);
+    fireEvent.click(screen.getByRole("tab", { name: "Schedules" }));
     await screen.findByText("CMON-SCHED-001");
 
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "418-P-1" } });
@@ -171,40 +202,34 @@ describe("Condition Monitoring workspace page", () => {
     expect(screen.queryByText("CMON-SCHED-001")).toBeNull();
   });
 
-  it("switches to the Readings view and renders every reading", async () => {
+  it("renders every reading in the default Readings view", async () => {
     loadDefaults();
     render(<ConditionMonitoring />);
-    await screen.findByText("CMON-SCHED-001");
-
-    fireEvent.click(screen.getByRole("tab", { name: "Readings" }));
+    const table = await cmonTable();
 
     for (const reading of READINGS) {
-      expect(await screen.findByText(reading.condition_monitoring_reading_code)).toBeTruthy();
+      expect(await within(table).findByText(reading.condition_monitoring_reading_code)).toBeTruthy();
     }
   });
 
   it("filters readings by leak status", async () => {
     loadDefaults();
     render(<ConditionMonitoring />);
-    await screen.findByText("CMON-SCHED-001");
-
-    fireEvent.click(screen.getByRole("tab", { name: "Readings" }));
-    await screen.findByText("CMON-READ-101");
+    const table = await cmonTable();
+    await within(table).findByText("CMON-READ-101");
 
     fireEvent.change(screen.getByRole("combobox", { name: /leak status/i }), { target: { value: "LEAK" } });
 
-    expect(screen.getByText("CMON-READ-101")).toBeTruthy();
+    expect(within(table).getByText("CMON-READ-101")).toBeTruthy();
     expect(screen.queryByText("CMON-READ-102")).toBeNull();
   });
 
   it("shows reading detail when a reading row is clicked", async () => {
     loadDefaults();
     render(<ConditionMonitoring />);
-    await screen.findByText("CMON-SCHED-001");
-
-    fireEvent.click(screen.getByRole("tab", { name: "Readings" }));
-    await screen.findByText("CMON-READ-101");
-    fireEvent.click(screen.getByText("CMON-READ-101"));
+    const table = await cmonTable();
+    await within(table).findByText("CMON-READ-101");
+    fireEvent.click(within(table).getByText("CMON-READ-101"));
 
     expect(await screen.findByRole("heading", { name: "Reading Summary" })).toBeTruthy();
     expect(screen.getByText("Leak detected")).toBeTruthy();
@@ -213,7 +238,7 @@ describe("Condition Monitoring workspace page", () => {
   it("opens the Create Reading modal when the header action is clicked", async () => {
     loadDefaults();
     renderWithWritePermission();
-    await screen.findByText("CMON-SCHED-001");
+    await cmonTable();
 
     fireEvent.click(await screen.findByRole("button", { name: "+ Create Reading" }));
 
@@ -232,7 +257,7 @@ describe("Condition Monitoring workspace page", () => {
       },
     });
     renderWithWritePermission();
-    await screen.findByText("CMON-SCHED-001");
+    await cmonTable();
 
     fireEvent.click(await screen.findByRole("button", { name: "+ Create Reading" }));
     fireEvent.change(screen.getByLabelText("Schedule"), { target: { value: "CMON-SCHED-001" } });
@@ -241,9 +266,20 @@ describe("Condition Monitoring workspace page", () => {
     expect(createConditionMonitoringReading).toHaveBeenCalledWith(
       expect.objectContaining({ conditionMonitoringScheduleCode: "CMON-SCHED-001", assetCode: "641-P-5" })
     );
-    await screen.findByRole("heading", { name: "CMONR-NEW-1" });
+    // UI-D2C -- the new reading now renders as a heading in BOTH the new
+    // identity view (AssetIdentityHeader's <h1>, ConditionMonitoringOpenDesignView.jsx)
+    // and the still-untouched ConditionMonitoringReadingDetailPanel.jsx's
+    // own <h2> -- both are real, legitimate representations of the same
+    // reading's own canonical ID, so 2 is expected, not a duplication bug.
+    expect((await screen.findAllByRole("heading", { name: "CMONR-NEW-1" })).length).toBe(2);
     expect(screen.queryByRole("heading", { name: "Create Condition Monitoring Reading" })).toBeNull();
-    expect(screen.getAllByText("CMONR-NEW-1").length).toBe(2);
+    // Registry (desktop table + mobile card + mobile collapsed-summary,
+    // all always in the DOM in jsdom) plus both headings above -- more
+    // than one is expected by design, an exact count is no longer
+    // meaningful test design once multiple responsive representations
+    // coexist (same reasoning WorkOrder.test.jsx's own migration note
+    // already established).
+    expect(screen.getAllByText("CMONR-NEW-1").length).toBeGreaterThan(0);
     expect(screen.getByRole("status").textContent).toContain("CMONR-NEW-1 created (DRAFT).");
   });
 
@@ -251,7 +287,7 @@ describe("Condition Monitoring workspace page", () => {
     loadDefaults();
     createConditionMonitoringReading.mockRejectedValueOnce(new Error("maintenance.write required"));
     renderWithWritePermission();
-    await screen.findByText("CMON-SCHED-001");
+    await cmonTable();
 
     fireEvent.click(await screen.findByRole("button", { name: "+ Create Reading" }));
     fireEvent.change(screen.getByLabelText("Schedule"), { target: { value: "CMON-SCHED-001" } });
@@ -265,6 +301,7 @@ describe("Condition Monitoring workspace page", () => {
     loadDefaults();
     const onNavigate = vi.fn();
     render(<ConditionMonitoring onNavigate={onNavigate} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Schedules" }));
     await screen.findByText("CMON-SCHED-001");
 
     fireEvent.click(screen.getByText("CMON-SCHED-001"));
@@ -277,11 +314,15 @@ describe("Condition Monitoring workspace page", () => {
     loadDefaults();
     const onNavigate = vi.fn();
     render(<ConditionMonitoring onNavigate={onNavigate} />);
-    await screen.findByText("CMON-SCHED-001");
-
-    fireEvent.click(screen.getByRole("tab", { name: "Readings" }));
-    await screen.findByText("CMON-READ-101");
-    fireEvent.click(screen.getByText("CMON-READ-101"));
+    const table = await cmonTable();
+    await within(table).findByText("CMON-READ-101");
+    fireEvent.click(within(table).getByText("CMON-READ-101"));
+    // UI-D2C -- exact-match "View Asset 360" (no arrow) is the frozen
+    // ConditionMonitoringReadingDetailPanel.jsx's own Quick Actions
+    // button; the new identity view's own equivalent is labeled
+    // "View Asset 360 →" (ConditionMonitoringOpenDesignView.jsx) -- a
+    // different accessible name, so this exact-match query stays
+    // unambiguous.
     fireEvent.click(await screen.findByRole("button", { name: "View Asset 360" }));
 
     expect(onNavigate).toHaveBeenCalledWith("history", { assetTag: "641-P-5" });
@@ -290,11 +331,9 @@ describe("Condition Monitoring workspace page", () => {
   it("jumps from a reading's detail to its owning schedule within the same page", async () => {
     loadDefaults();
     render(<ConditionMonitoring />);
-    await screen.findByText("CMON-SCHED-001");
-
-    fireEvent.click(screen.getByRole("tab", { name: "Readings" }));
-    await screen.findByText("CMON-READ-101");
-    fireEvent.click(screen.getByText("CMON-READ-101"));
+    const table = await cmonTable();
+    await within(table).findByText("CMON-READ-101");
+    fireEvent.click(within(table).getByText("CMON-READ-101"));
     fireEvent.click(await screen.findByRole("button", { name: "CMON-SCHED-001" }));
 
     expect(await screen.findByText("mechseal_temp")).toBeTruthy();
@@ -330,8 +369,10 @@ describe("Condition Monitoring workspace page", () => {
 
     render(<ConditionMonitoring navContext={{ readingSelectId: "LTSA-CMONR-47FBA1F0416C8CB6" }} />);
 
-    expect(await screen.findByRole("heading", { name: "LTSA-CMONR-47FBA1F0416C8CB6" })).toBeTruthy();
-    expect(screen.getByText("Mechseal Bocor dari drain gland durasi 1/2 detik")).toBeTruthy();
+    // UI-D2C -- same "2 legitimate headings for one real reading" pattern
+    // as the create-reading test above.
+    expect((await screen.findAllByRole("heading", { name: "LTSA-CMONR-47FBA1F0416C8CB6" })).length).toBe(2);
+    expect(screen.getAllByText("Mechseal Bocor dari drain gland durasi 1/2 detik").length).toBeGreaterThan(0);
   });
 
   it("resolves area per schedule and reading by reusing the existing Pump API", async () => {
@@ -340,16 +381,19 @@ describe("Condition Monitoring workspace page", () => {
       Promise.resolve({ tag_number: tag, area: tag === "641-P-5" ? "SWS Unit" : null })
     );
     render(<ConditionMonitoring />);
-    await screen.findByText("CMON-SCHED-001");
+    const table = await cmonTable();
 
     expect(getPump).toHaveBeenCalledWith("641-P-5");
-    expect(screen.getByText("SWS Unit")).toBeTruthy();
+    // "SWS Unit" also legitimately appears as an Area filter <option>
+    // (ConditionMonitoringReadingFilterBar.jsx's own areaOptions), so this
+    // is scoped to the registry table specifically.
+    expect(within(table).getByText("SWS Unit")).toBeTruthy();
   });
 
   it("hides '+ Create Reading' for a Pertamina session (no maintenance.write) -- Phase 13", async () => {
     loadDefaults();
     renderWithSession(["maintenance.read", "condition.read"], "PERTAMINA_ENGINEER");
-    await screen.findByText("CMON-SCHED-001");
+    await cmonTable();
 
     await waitFor(() => expect(screen.queryByRole("button", { name: "+ Create Reading" })).toBeNull());
   });
@@ -379,7 +423,7 @@ describe("Condition Monitoring workspace page", () => {
     it("hides '+ Add Reading' for a Pertamina session (no maintenance.write)", async () => {
       loadDefaults();
       renderWithSession(["maintenance.read", "condition.read"], "PERTAMINA_ENGINEER");
-      await screen.findByText("CMON-SCHED-001");
+      await cmonTable();
 
       await waitFor(() => expect(screen.queryByRole("button", { name: "+ Add Reading" })).toBeNull());
     });
@@ -421,7 +465,7 @@ describe("Condition Monitoring workspace page", () => {
       );
       const [callArgs] = createAdHocConditionMonitoringReading.mock.calls[0];
       expect(callArgs).not.toHaveProperty("conditionMonitoringScheduleCode");
-      await screen.findByRole("heading", { name: "CMONR-ADHOC-1" });
+      expect((await screen.findAllByRole("heading", { name: "CMONR-ADHOC-1" })).length).toBe(2);
       expect(screen.queryByRole("heading", { name: "Add Condition Monitoring Reading" })).toBeNull();
       expect(screen.getByRole("status").textContent).toContain("CMONR-ADHOC-1 created (DRAFT).");
     });
@@ -517,13 +561,13 @@ describe("Condition Monitoring workspace page", () => {
       fireEvent.click(screen.getByRole("button", { name: "Bulk Reading" }));
 
       expect(screen.getByTestId("bulk-cmon-reading-editor")).toBeTruthy();
-      expect(screen.queryByRole("heading", { name: "Condition Monitoring" })).toBeNull(); // dedicated full-width view, not a modal over the page
+      expect(screen.queryByRole("heading", { name: "CONDITION MONITORING" })).toBeNull(); // dedicated full-width view, not a modal over the page
     });
 
     it("hides 'Bulk Reading' for a Pertamina session (no maintenance.write)", async () => {
       loadDefaults();
       renderWithSession(["maintenance.read", "condition.read"], "PERTAMINA_ENGINEER");
-      await screen.findByText("CMON-SCHED-001");
+      await cmonTable();
 
       await waitFor(() => expect(screen.queryByRole("button", { name: "Bulk Reading" })).toBeNull());
     });
@@ -537,7 +581,7 @@ describe("Condition Monitoring workspace page", () => {
 
       fireEvent.click(screen.getByRole("button", { name: "Back to Condition Monitoring" }));
 
-      expect(await screen.findByRole("heading", { name: "Condition Monitoring" })).toBeTruthy();
+      expect(await screen.findByRole("heading", { name: "CONDITION MONITORING" })).toBeTruthy();
     });
 
     it("after a successful bulk create, closes the editor, shows the count, switches to Readings, and reloads the list", async () => {
@@ -558,9 +602,9 @@ describe("Condition Monitoring workspace page", () => {
       await screen.findByTestId("bulk-cmon-validation-summary");
       fireEvent.click(screen.getByRole("button", { name: "Confirm Create" }));
 
-      expect(await screen.findByRole("heading", { name: "Condition Monitoring" })).toBeTruthy(); // editor closed, back on the page
+      expect(await screen.findByRole("heading", { name: "CONDITION MONITORING" })).toBeTruthy(); // editor closed, back on the page
       expect(screen.getByRole("status").textContent).toContain("1 Condition Monitoring reading created.");
-      await screen.findByText("CMON-READ-101"); // Readings view active and (re)loaded
+      await within(await cmonTable()).findByText("CMON-READ-101"); // Readings view active and (re)loaded
       expect(getConditionMonitoringReadings).toHaveBeenCalledTimes(2); // initial load + post-bulk-create reload
     });
   });
@@ -578,13 +622,13 @@ describe("Condition Monitoring workspace page", () => {
       fireEvent.click(screen.getByRole("button", { name: "Import Excel" }));
 
       expect(screen.getByTestId("cmon-excel-import-panel")).toBeTruthy();
-      expect(screen.queryByRole("heading", { name: "Condition Monitoring" })).toBeNull();
+      expect(screen.queryByRole("heading", { name: "CONDITION MONITORING" })).toBeNull();
     });
 
     it("hides 'Import Excel' for a Pertamina session (no maintenance.write)", async () => {
       loadDefaults();
       renderWithSession(["maintenance.read", "condition.read"], "PERTAMINA_ENGINEER");
-      await screen.findByText("CMON-SCHED-001");
+      await cmonTable();
 
       await waitFor(() => expect(screen.queryByRole("button", { name: "Import Excel" })).toBeNull());
     });

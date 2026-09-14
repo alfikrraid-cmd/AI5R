@@ -67,10 +67,19 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
+// UI-D2C -- Readings is now the default view (condition-centric); every
+// test in this file exercises the Schedules view, so each one switches
+// tabs first (same "+ Create Schedule" gating already required this in
+// ConditionMonitoring.scheduleLifecycle.test.jsx below).
+function switchToSchedules() {
+  fireEvent.click(screen.getByRole("tab", { name: "Schedules" }));
+}
+
 describe("Condition Monitoring Schedule Edit UI (MWO-014C Gap B)", () => {
   it("shows an Edit Schedule action for an authorized (maintenance.write) user", async () => {
     loadDefaults();
     renderWithWritePermission();
+    switchToSchedules();
 
     await screen.findByText("CMON-SCHED-001");
     fireEvent.click(screen.getByText("CMON-SCHED-001"));
@@ -81,6 +90,7 @@ describe("Condition Monitoring Schedule Edit UI (MWO-014C Gap B)", () => {
   it("hides the Edit Schedule action for a read-only session -- RBAC", async () => {
     loadDefaults();
     renderReadOnly();
+    switchToSchedules();
 
     await screen.findByText("CMON-SCHED-001");
     fireEvent.click(screen.getByText("CMON-SCHED-001"));
@@ -91,6 +101,7 @@ describe("Condition Monitoring Schedule Edit UI (MWO-014C Gap B)", () => {
   it("prefills the edit form with the current canonical schedule values, and shows immutable identity read-only", async () => {
     loadDefaults();
     renderWithWritePermission();
+    switchToSchedules();
 
     await screen.findByText("CMON-SCHED-001");
     fireEvent.click(screen.getByText("CMON-SCHED-001"));
@@ -109,6 +120,7 @@ describe("Condition Monitoring Schedule Edit UI (MWO-014C Gap B)", () => {
       data: { ...SCHEDULE, monitoring_type: "TEMPERATURE" },
     });
     renderWithWritePermission();
+    switchToSchedules();
 
     await screen.findByText("CMON-SCHED-001");
     fireEvent.click(screen.getByText("CMON-SCHED-001"));
@@ -141,6 +153,7 @@ describe("Condition Monitoring Schedule Edit UI (MWO-014C Gap B)", () => {
       data: { ...SCHEDULE, frequency: "DAILY" },
     });
     renderWithWritePermission();
+    switchToSchedules();
 
     await screen.findByText("CMON-SCHED-001");
     fireEvent.click(screen.getByText("CMON-SCHED-001"));
@@ -159,6 +172,7 @@ describe("Condition Monitoring Schedule Edit UI (MWO-014C Gap B)", () => {
     loadDefaults();
     updateConditionMonitoringSchedule.mockRejectedValueOnce(new Error("frequency is required"));
     renderWithWritePermission();
+    switchToSchedules();
 
     await screen.findByText("CMON-SCHED-001");
     fireEvent.click(screen.getByText("CMON-SCHED-001"));

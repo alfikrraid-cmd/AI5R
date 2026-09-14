@@ -1,23 +1,17 @@
 import { Badge, EmptyState } from "../../../design-system";
-import colors from "../../../design-system/theme/colors";
-import spacing from "../../../design-system/theme/spacing";
 import { cmonScheduleStatusBadgeVariant, cmonScheduleStatusLabel } from "../utils/cmonScheduleStatus";
 
 const HEADERS = ["Schedule ID", "Equipment", "Frequency", "Next Due", "Status", "Applicable Parameters"];
 
-const thStyle = {
-  textAlign: "left",
-  color: colors.textMuted,
-  borderBottom: `1px solid ${colors.border}`,
-  padding: spacing.xs,
-};
-
-const tdStyle = { padding: spacing.xs, color: colors.text };
-
-// MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016A -- migration 029 adds status/
-// next_due (ADR-CONDITION-MONITORING-001's own Open Question 1, resolved
-// by the owner-approved PLANNED/ACTIVE/OVERDUE/COMPLETED/CANCELLED
-// lifecycle, mirroring pm_schedule's identical shape).
+// UI-D2C -- restyled from the old dark inline-style table (colors.js/
+// spacing.js) to the light `.ltsa-open-design` token scope
+// (`.cmon-schedule-*` classes, ConditionMonitoring.css), mirroring the
+// same visual pass UI-D2A.1/UI-D2B already gave the Work Order/PM
+// registries. Columns, data, selection, and keyboard behavior are
+// unchanged -- Schedules is the supporting (not condition-centric
+// primary) view per this mission's own framing, so it gets a visual
+// parity pass only, not the full mobile card-list/collapsed-summary/
+// AssetIdentityHeader treatment the Readings view receives.
 export default function ConditionMonitoringScheduleTable({ schedules, selectedId, onSelect }) {
   if (schedules.length === 0) {
     return (
@@ -36,14 +30,12 @@ export default function ConditionMonitoringScheduleTable({ schedules, selectedId
   }
 
   return (
-    <div style={{ overflowX: "auto" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+    <div className="cmon-schedule-table-wrap">
+      <table className="cmon-schedule-table">
         <thead>
           <tr>
             {HEADERS.map((header) => (
-              <th key={header} style={thStyle}>
-                {header}
-              </th>
+              <th key={header}>{header}</th>
             ))}
           </tr>
         </thead>
@@ -59,26 +51,20 @@ export default function ConditionMonitoringScheduleTable({ schedules, selectedId
                 tabIndex={0}
                 onClick={() => onSelect(schedule.id)}
                 onKeyDown={(event) => handleKeyDown(event, schedule.id)}
-                style={{
-                  cursor: "pointer",
-                  background: isSelected ? colors.background : "transparent",
-                }}
               >
-                <td style={tdStyle}>
-                  <div style={{ fontWeight: "bold" }}>{schedule.id}</div>
+                <td>
+                  <div className="cmon-id">{schedule.id}</div>
                 </td>
-                <td style={tdStyle}>
+                <td>
                   <div>{schedule.equipmentTag}</div>
-                  {schedule.area ? (
-                    <div style={{ color: colors.textMuted, fontSize: 12 }}>{schedule.area}</div>
-                  ) : null}
+                  {schedule.area ? <div className="cmon-subtext">{schedule.area}</div> : null}
                 </td>
-                <td style={tdStyle}>{schedule.frequency ?? "—"}</td>
-                <td style={tdStyle}>{schedule.nextDue ?? "—"}</td>
-                <td style={tdStyle}>
+                <td>{schedule.frequency ?? "—"}</td>
+                <td>{schedule.nextDue ?? "—"}</td>
+                <td>
                   <Badge variant={cmonScheduleStatusBadgeVariant(schedule.status)}>{cmonScheduleStatusLabel(schedule.status)}</Badge>
                 </td>
-                <td style={tdStyle}>{schedule.applicableParameters.length}</td>
+                <td>{schedule.applicableParameters.length}</td>
               </tr>
             );
           })}

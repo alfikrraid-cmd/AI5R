@@ -70,10 +70,17 @@ function loadLifecycleSchedules() {
   getPMCMEvidence.mockResolvedValue([]);
 }
 
+// UI-D2C -- Readings is now the default view (condition-centric); every
+// test below exercises the Schedules view/actions.
+function switchToSchedules() {
+  fireEvent.click(screen.getByRole("tab", { name: "Schedules" }));
+}
+
 describe("Condition Monitoring schedule lifecycle -- active work queue", () => {
   it("excludes COMPLETED and CANCELLED schedules from the default view", async () => {
     loadLifecycleSchedules();
     render(<ConditionMonitoring />);
+    switchToSchedules();
     await screen.findByText("CMS-3001");
 
     expect(screen.queryByText("CMS-3002")).toBeNull();
@@ -83,6 +90,7 @@ describe("Condition Monitoring schedule lifecycle -- active work queue", () => {
   it("still shows a COMPLETED schedule when explicitly filtered for", async () => {
     loadLifecycleSchedules();
     render(<ConditionMonitoring />);
+    switchToSchedules();
     await screen.findByText("CMS-3001");
 
     fireEvent.change(screen.getByRole("combobox", { name: /filter by status/i }), { target: { value: "COMPLETED" } });
@@ -94,6 +102,7 @@ describe("Condition Monitoring schedule lifecycle -- active work queue", () => {
   it("still shows a CANCELLED schedule when explicitly filtered for", async () => {
     loadLifecycleSchedules();
     render(<ConditionMonitoring />);
+    switchToSchedules();
     await screen.findByText("CMS-3001");
 
     fireEvent.change(screen.getByRole("combobox", { name: /filter by status/i }), { target: { value: "CANCELLED" } });
@@ -113,6 +122,7 @@ describe("Condition Monitoring schedule lifecycle -- next-month creation default
       },
     });
     renderWithWritePermission();
+    switchToSchedules();
     await screen.findByText("CMS-3001");
 
     fireEvent.click(screen.getByRole("button", { name: "+ Create Schedule" }));
