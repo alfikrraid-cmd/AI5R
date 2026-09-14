@@ -33,6 +33,8 @@ from API.import_session_repository import ImportSessionRepository
 from API.installation_report_repository import InstallationReportRepository
 from API.mechanical_seal_stock_repository import MechanicalSealStockRepository
 from API.installation_gateway import InstallationGateway
+from API.ltsa_contract_repository import LtsaContractRepository
+from API.ltsa_contract_coverage_service import ContractCoverageService
 from API.ltsa_knowledge_service import LTSAKnowledgeService
 from API.recommendation_engine import RecommendationEngine
 from API.maintenance_history_gateway import MaintenanceHistoryGateway
@@ -195,6 +197,14 @@ _pm_schedule_repository = PMScheduleRepository(_import_database_runner)
 _cm_report_repository = CMReportRepository(_import_database_runner)
 _condition_monitoring_schedule_repository = ConditionMonitoringScheduleRepository(_import_database_runner)
 _pm_cm_evidence_repository = PMCMEvidenceRepository(_import_database_runner)
+
+# MWO-LTSA-CONTRACT-SCOPE-R3 -- same singleton again. Read-only this phase
+# (R3 Section A/H); ContractCoverageService is the one Aggregate both new
+# GET routes share (routers/ltsa_contract.py), same "One Aggregate, One
+# API, no frontend business logic" discipline FleetReliabilityService
+# already establishes.
+_ltsa_contract_repository = LtsaContractRepository(_import_database_runner)
+_ltsa_contract_coverage_service = ContractCoverageService(_ltsa_contract_repository)
 
 # MWO-LTSA-AUDIT-CHANGE-HISTORY-001 -- same singleton again; the one,
 # canonical, append-only ledger every domain's record_edit_service.py
@@ -486,6 +496,14 @@ def get_whatsapp_outbound_client() -> WhatsAppOutboundClient:
 
 def get_seal_master_data_repository() -> SealMasterDataRepository:
     return _seal_master_data_repository
+
+
+def get_ltsa_contract_repository() -> LtsaContractRepository:
+    return _ltsa_contract_repository
+
+
+def get_ltsa_contract_coverage_service() -> ContractCoverageService:
+    return _ltsa_contract_coverage_service
 
 
 def get_pm_occurrence_repository() -> PMOccurrenceRepository:

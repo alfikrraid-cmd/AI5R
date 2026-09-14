@@ -55,6 +55,7 @@ from routers import (
     historical_review,
     import_router,
     installation,
+    ltsa_contract,
     maintenance,
     mechanical_seal_stock,
     organization,
@@ -144,6 +145,7 @@ app.include_router(pm_schedule.router)
 app.include_router(pm_occurrence.router)
 app.include_router(cm_report.router)
 app.include_router(condition_monitoring.router)
+app.include_router(ltsa_contract.router)
 app.include_router(pm_cm_evidence.router)
 app.include_router(record_edit.router)
 app.include_router(historical_review.router)
