@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { Button, EmptyState, PageHeader, Panel } from "../../../design-system";
 import PMFilterBar from "../components/PMFilterBar";
 import PMScheduleTable from "../components/PMScheduleTable";
 import PMOpenDesignView from "../components/PMOpenDesignView";
@@ -10,6 +9,7 @@ import PMExcelImportPanel from "../components/PMExcelImportPanel";
 import EditPMScheduleModal from "../components/EditPMScheduleModal";
 import CreatePMOccurrenceModal from "../components/CreatePMOccurrenceModal";
 import SuccessToast from "../components/SuccessToast";
+import { KpiStrip } from "../components/open-design";
 import {
   getPMSchedules, getCMReports, getPMOccurrences, createPMOccurrence,
   createPMSchedule,
@@ -62,7 +62,9 @@ export default function PM({ onNavigate, navContext }) {
   const [listError, setListError] = useState(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
+  const [areaFilter, setAreaFilter] = useState("ALL");
   const [selectedId, setSelectedId] = useState(null);
+  const [mobileRegistryCollapsed, setMobileRegistryCollapsed] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   // AI5R-PHASE4E3 -- a dedicated full-width view (Section B/N), not a
   // modal: replaces the whole PM workspace body while open, since a
@@ -197,6 +199,15 @@ export default function PM({ onNavigate, navContext }) {
     [pmSchedules]
   );
 
+  // UI-D2B -- Area filter, reusing the same already-real, already-
+  // resolved field (pm.area, withResolvedArea) the table already
+  // displays; options derived from whatever is actually present in the
+  // loaded data, never a hardcoded enum guess.
+  const areaOptions = useMemo(
+    () => [...new Set(pmSchedules.map((pm) => pm.area).filter(Boolean))],
+    [pmSchedules]
+  );
+
   // MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016 -- "Completed items should NOT
   // remain in default active schedule view... may remain accessible
   // separately." A deny-list (exclude only the two terminal statuses),
@@ -216,12 +227,37 @@ export default function PM({ onNavigate, navContext }) {
       pmSchedules.filter(
         (pm) =>
           matchesSearch(pm, search) &&
-          (statusFilter === "ALL" ? !TERMINAL_SCHEDULE_STATUSES.has(pm.status) : pm.status === statusFilter)
+          (statusFilter === "ALL" ? !TERMINAL_SCHEDULE_STATUSES.has(pm.status) : pm.status === statusFilter) &&
+          (areaFilter === "ALL" || pm.area === areaFilter)
       ),
-    [pmSchedules, search, statusFilter]
+    [pmSchedules, search, statusFilter, areaFilter]
   );
 
   const selectedPM = filteredPMSchedules.find((pm) => pm.id === selectedId) ?? null;
+
+  // UI-D2B -- KPI strip: every metric is a direct count over the owner-
+  // approved, already-computed 5-state status vocabulary
+  // (pmMapping.js's computeDisplayStatus / pmStatus.js) -- PLANNED/
+  // ACTIVE/OVERDUE/COMPLETED are real, proven statuses, not inferred from
+  // string similarity. Derived from the full (unfiltered) registry, the
+  // same "at-a-glance fleet truth" convention Work Order's own KPI strip
+  // and Pump/Seal's header health cards already follow.
+  const kpiItems = useMemo(
+    () => [
+      { label: "Total PM", value: pmSchedules.length },
+      { label: "Active", value: pmSchedules.filter((pm) => pm.status === "ACTIVE").length },
+      { label: "Planned", value: pmSchedules.filter((pm) => pm.status === "PLANNED").length },
+      { label: "Overdue", value: pmSchedules.filter((pm) => pm.status === "OVERDUE").length, tone: "critical" },
+      { label: "Completed", value: pmSchedules.filter((pm) => pm.status === "COMPLETED").length },
+    ],
+    [pmSchedules]
+  );
+
+  function handleClearFilters() {
+    setSearch("");
+    setStatusFilter("ALL");
+    setAreaFilter("ALL");
+  }
 
   // MWO-LTSA-PM-CMON-OPERATIONAL-UI-014C -- distinguishes "arrived scoped
   // to a specific pump (navContext.assetTag) and that pump genuinely has
@@ -264,6 +300,15 @@ export default function PM({ onNavigate, navContext }) {
   // flow is unaffected -- every occurrence in occurrencesForSelectedPM is
   // also in pmOccurrences, so this lookup still resolves it identically.
   const selectedOccurrence = pmOccurrences.find((occ) => occ.id === selectedOccurrenceId) ?? null;
+
+  // UI-D2B -- auto-collapse the mobile registry once a PM schedule is
+  // selected (CSS-gated to the mobile breakpoint only, PM.css; no effect
+  // on desktop, which always shows the full dense table) -- same pattern
+  // UI-D2A.1 established for Work Order.
+  function selectPM(id) {
+    setSelectedId(id);
+    setMobileRegistryCollapsed(true);
+  }
 
   // MWO-LTSA-053 -- Open Pump / Open Drawing reuse the exact same
   // onNavigate(key, context) mechanism Seal.jsx/Pump.jsx already use for
@@ -449,35 +494,51 @@ export default function PM({ onNavigate, navContext }) {
   }
 
   return (
-    <div>
-      <PageHeader
-        title="Preventive Maintenance Workspace"
-        subtitle="LTSA Engineering — PM Schedule Registry"
-        actions={
-          <span style={{ display: "flex", gap: "var(--space-2)" }}>
-            {/* MWO-LTSA-PM-CM-REVIEW-UI-001, Phase 6/13 -- this button was
-                previously ungated (any authenticated role could open the
-                create-occurrence modal); Pertamina must never see a write
-                control. Gated on the same MAINTENANCE_WRITE capability
-                the resulting create call requires server-side. */}
-            {selectedPM && canWriteMaintenance && (
-              <Button onClick={() => setIsCreateOccurrenceModalOpen(true)}>+ Record PM Occurrence</Button>
-            )}
-            <Button onClick={openCreateModal}>+ Create PM Schedule</Button>
-            {/* AI5R-PHASE4E3, Section K -- reuses maintenance.write, same
-                as every other write action on this page; the backend
-                bulk endpoint enforces this independently regardless of
-                what the frontend shows. */}
-            {canWriteMaintenance && <Button onClick={() => setIsBulkEditorOpen(true)}>Bulk Schedule</Button>}
-            {/* AI5R-PHASE4E4, Section B -- opens the import workflow;
-                its only exit into the Bulk Editor is
-                onReviewInBulkEditor above, never a direct create. */}
-            {canWriteMaintenance && <Button onClick={() => setIsExcelImportOpen(true)}>Import Excel</Button>}
-          </span>
-        }
-      />
+    <div className="ltsa-open-design">
+      <div className="pm-page-header">
+        <div>
+          <h1 className="pm-page-title">PREVENTIVE MAINTENANCE</h1>
+          <p className="pm-page-subtitle">Operational preventive-maintenance workspace</p>
+        </div>
+        <div className="pm-page-actions">
+          {/* MWO-LTSA-PM-CM-REVIEW-UI-001, Phase 6/13 -- this button was
+              previously ungated (any authenticated role could open the
+              create-occurrence modal); Pertamina must never see a write
+              control. Gated on the same MAINTENANCE_WRITE capability the
+              resulting create call requires server-side. */}
+          {selectedPM && canWriteMaintenance && (
+            <button type="button" className="pm-action-btn-secondary" onClick={() => setIsCreateOccurrenceModalOpen(true)}>
+              + Record PM Occurrence
+            </button>
+          )}
+          <button type="button" className="pm-action-btn" onClick={openCreateModal}>
+            + Create PM Schedule
+          </button>
+          {/* AI5R-PHASE4E3, Section K -- reuses maintenance.write, same as
+              every other write action on this page; the backend bulk
+              endpoint enforces this independently regardless of what the
+              frontend shows. */}
+          {canWriteMaintenance && (
+            <button type="button" className="pm-action-btn-secondary" onClick={() => setIsBulkEditorOpen(true)}>
+              Bulk Schedule
+            </button>
+          )}
+          {/* AI5R-PHASE4E4, Section B -- opens the import workflow; its
+              only exit into the Bulk Editor is onReviewInBulkEditor above,
+              never a direct create. */}
+          {canWriteMaintenance && (
+            <button type="button" className="pm-action-btn-secondary" onClick={() => setIsExcelImportOpen(true)}>
+              Import Excel
+            </button>
+          )}
+        </div>
+      </div>
 
-      <SuccessToast message={successMessage} onDismiss={() => setSuccessMessage(null)} />
+      {!loading && !listError && <KpiStrip items={kpiItems} />}
+
+      <div style={{ maxWidth: 1240, margin: "0 auto", padding: "0 32px" }}>
+        <SuccessToast message={successMessage} onDismiss={() => setSuccessMessage(null)} />
+      </div>
 
       <PMFilterBar
         searchValue={search}
@@ -485,23 +546,25 @@ export default function PM({ onNavigate, navContext }) {
         statusFilter={statusFilter}
         onStatusFilterChange={setStatusFilter}
         statusOptions={statusOptions}
+        areaFilter={areaFilter}
+        onAreaFilterChange={setAreaFilter}
+        areaOptions={areaOptions}
+        onClear={handleClearFilters}
       />
 
       {loading ? (
-        <Panel>
-          <p>Loading PM schedules...</p>
-        </Panel>
+        <p className="pm-status-panel">Loading PM schedules...</p>
       ) : listError ? (
-        <Panel>
-          <p role="alert">{listError}</p>
-        </Panel>
+        <p className="pm-status-panel" role="alert">{listError}</p>
       ) : (
         <div className="pm-workspace-layout">
           <div className="pm-workspace-registry">
             <PMScheduleTable
               pmSchedules={filteredPMSchedules}
               selectedId={selectedId}
-              onSelect={setSelectedId}
+              onSelect={selectPM}
+              mobileCollapsed={mobileRegistryCollapsed}
+              onExpand={() => setMobileRegistryCollapsed(false)}
             />
           </div>
 
@@ -509,18 +572,22 @@ export default function PM({ onNavigate, navContext }) {
             {selectedPM || selectedOccurrence ? (
               <>
                 {selectedPM ? (
-                  <PMOpenDesignView
-                    pm={selectedPM}
-                    relatedPMRecords={relatedPMRecords}
-                    cmRecords={relatedCMRecords}
-                    onOpenPump={handleOpenPump}
-                    onOpenDrawing={handleOpenDrawing}
-                    onCreatePM={openCreateModal}
-                    canDelete={canDeleteRecords}
-                    onDelete={handleDeleteSchedule}
-                    canEdit={canWriteMaintenance}
-                    onEdit={setEditingSchedule}
-                  />
+                  <>
+                    <p className="pm-selected-label">Selected PM Schedule</p>
+                    <PMOpenDesignView
+                      pm={selectedPM}
+                      relatedPMRecords={relatedPMRecords}
+                      cmRecords={relatedCMRecords}
+                      onOpenPump={handleOpenPump}
+                      onOpenDrawing={handleOpenDrawing}
+                      onCreatePM={openCreateModal}
+                      onBack={() => onNavigate?.("dashboard")}
+                      canDelete={canDeleteRecords}
+                      onDelete={handleDeleteSchedule}
+                      canEdit={canWriteMaintenance}
+                      onEdit={setEditingSchedule}
+                    />
+                  </>
                 ) : (
                   // MWO-LTSA-ASSET360-PM-CMON-TRACEABILITY-001 -- a
                   // historically-imported occurrence deep-linked from
@@ -528,28 +595,35 @@ export default function PM({ onNavigate, navContext }) {
                   // pm_schedule_code is the shared UNSCHEDULED::<workbook>
                   // placeholder, not a real schedule) -- disclosed
                   // honestly rather than silently omitted.
-                  <EmptyState
-                    title="No PM Schedule for this occurrence"
-                    description="This is a historically-imported record with no matching PM Schedule -- shown by its own record only."
-                  />
+                  <div className="pm-empty-state">
+                    <p className="pm-empty-title">No PM Schedule for this occurrence</p>
+                    <p className="pm-empty-description">This is a historically-imported record with no matching PM Schedule -- shown by its own record only.</p>
+                  </div>
                 )}
 
                 {/* MWO-LTSA-PM-CM-REVIEW-UI-001 -- real PM Occurrence
                     records for this schedule, the disclosed gap from
                     MWO-LTSA-PM-CM-INTAKE-001's own completion report
-                    ("occurrences could be created but never displayed"). */}
-                <div style={{ marginTop: "var(--space-4, 24px)" }}>
-                  <h3>PM Occurrences</h3>
+                    ("occurrences could be created but never displayed").
+                    PMOccurrenceDetailPanel.jsx itself is untouched (same
+                    "complex RBAC review workflow stays frozen" precedent
+                    as CreateWorkOrderModal) -- only its light wrapper here
+                    is new. */}
+                <div className="pm-occurrences-section">
+                  <h3 className="pm-occurrences-heading">PM Occurrences</h3>
                   {selectedPM && occurrencesForSelectedPM.length === 0 ? (
-                    <Panel>
-                      <p>No PM occurrences recorded for this schedule yet.</p>
-                    </Panel>
+                    <p className="pm-status-panel" style={{ padding: 0 }}>No PM occurrences recorded for this schedule yet.</p>
                   ) : selectedPM ? (
-                    <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap", marginBottom: "var(--space-3)" }}>
+                    <div className="pm-occurrence-picker">
                       {occurrencesForSelectedPM.map((occ) => (
-                        <Button key={occ.id} onClick={() => setSelectedOccurrenceId(occ.id)}>
+                        <button
+                          key={occ.id}
+                          type="button"
+                          className="pm-occurrence-picker-btn"
+                          onClick={() => setSelectedOccurrenceId(occ.id)}
+                        >
                           {occ.id} ({occ.workflowStatus})
-                        </Button>
+                        </button>
                       ))}
                     </div>
                   ) : null}
@@ -579,25 +653,27 @@ export default function PM({ onNavigate, navContext }) {
               // second, separate user action), it does not itself create
               // anything.
               <>
-                <EmptyState
-                  title="No active PM Schedule is available for this pump."
-                  description={
-                    canWriteMaintenance
+                <div className="pm-empty-state">
+                  <p className="pm-empty-title">No active PM Schedule is available for this pump.</p>
+                  <p className="pm-empty-description">
+                    {canWriteMaintenance
                       ? "Create a PM Schedule for this pump before recording a PM occurrence."
-                      : "Contact an authorized user to create a PM Schedule for this pump."
-                  }
-                />
+                      : "Contact an authorized user to create a PM Schedule for this pump."}
+                  </p>
+                </div>
                 {canWriteMaintenance && (
-                  <div style={{ marginTop: "var(--space-3)" }}>
-                    <Button onClick={openCreateModal}>Create PM Schedule</Button>
+                  <div style={{ marginTop: "var(--space-3)", textAlign: "center" }}>
+                    <button type="button" className="pm-action-btn" onClick={openCreateModal}>
+                      Create PM Schedule
+                    </button>
                   </div>
                 )}
               </>
             ) : (
-              <EmptyState
-                title="No PM schedule selected"
-                description="Select a PM schedule from the list to view its details."
-              />
+              <div className="pm-empty-state">
+                <p className="pm-empty-title">No PM schedule selected</p>
+                <p className="pm-empty-description">Select a PM schedule from the list to view its details.</p>
+              </div>
             )}
           </div>
         </div>

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import PM from "./PM";
 import { getPMSchedules, getPump, getCMReports, getPMOccurrences, getPMCMEvidence, createPMSchedule, getPumps } from "../../../api/ai5rClient";
@@ -94,6 +94,18 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
+// UI-D2B -- the registry now renders two representations of the same
+// data simultaneously (desktop table + mobile card list, CSS-gated in
+// PM.css; jsdom applies no CSS, so both are always in the DOM). Every
+// PM-ID that used to be a single unambiguous match is now two -- scope
+// existence/click queries to the always-present table (the desktop-
+// primary representation). Async: the table doesn't exist until the
+// initial getPMSchedules() fetch resolves, so this must use findByRole
+// (auto-retrying), never getByRole.
+function pmTable() {
+  return screen.findByRole("table");
+}
+
 function loadPMSchedules(records = PM_SCHEDULES) {
   getPMSchedules.mockResolvedValue(records);
   getPump.mockResolvedValue({ tag_number: null, area: "Boiler House" });
@@ -107,8 +119,8 @@ describe("Preventive Maintenance workspace page", () => {
     loadPMSchedules();
     render(<PM />);
 
-    expect(screen.getByRole("heading", { name: "Preventive Maintenance Workspace" })).toBeTruthy();
-    await screen.findByText("PM-2001");
+    expect(screen.getByRole("heading", { name: "PREVENTIVE MAINTENANCE" })).toBeTruthy();
+    await within(await pmTable()).findByText("PM-2001");
   });
 
   it("renders a loading state before the API resolves", () => {
@@ -135,7 +147,7 @@ describe("Preventive Maintenance workspace page", () => {
     render(<PM />);
 
     for (const pm of PM_SCHEDULES) {
-      expect(await screen.findByText(pm.pm_schedule_code)).toBeTruthy();
+      expect(await within(await pmTable()).findByText(pm.pm_schedule_code)).toBeTruthy();
     }
     expect(getPMSchedules).toHaveBeenCalledOnce();
   });
@@ -143,7 +155,7 @@ describe("Preventive Maintenance workspace page", () => {
   it("shows an empty state in the detail panel before any PM schedule is selected", async () => {
     loadPMSchedules();
     render(<PM />);
-    await screen.findByText("PM-2001");
+    await within(await pmTable()).findByText("PM-2001");
 
     expect(screen.getByText(/no pm schedule selected/i)).toBeTruthy();
   });
@@ -151,21 +163,21 @@ describe("Preventive Maintenance workspace page", () => {
   it("shows the selected PM schedule's detail when a list row is clicked", async () => {
     loadPMSchedules();
     render(<PM />);
-    await screen.findByText("PM-2004");
+    await within(await pmTable()).findByText("PM-2004");
 
-    fireEvent.click(screen.getByText("PM-2004"));
+    fireEvent.click(within(await pmTable()).getByText("PM-2004"));
 
-    expect(await screen.findByRole("heading", { name: "Wear-Plate Inspection" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "PM-2004" })).toBeTruthy();
   });
 
   it("filters the list by search text", async () => {
     loadPMSchedules();
     render(<PM />);
-    await screen.findByText("PM-2001");
+    await within(await pmTable()).findByText("PM-2001");
 
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "wear-plate" } });
 
-    expect(screen.getByText("PM-2004")).toBeTruthy();
+    expect(within(await pmTable()).getByText("PM-2004")).toBeTruthy();
     expect(screen.queryByText("PM-2001")).toBeNull();
   });
 
@@ -181,21 +193,21 @@ describe("Preventive Maintenance workspace page", () => {
   it("computes OVERDUE display status from next_due, never stores it", async () => {
     loadPMSchedules();
     render(<PM />);
-    await screen.findByText("PM-2001");
+    await within(await pmTable()).findByText("PM-2001");
 
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "OVERDUE" } });
-    expect(screen.getByText("PM-2002")).toBeTruthy();
+    fireEvent.change(screen.getByRole("combobox", { name: "Filter by status" }), { target: { value: "OVERDUE" } });
+    expect(within(await pmTable()).getByText("PM-2002")).toBeTruthy();
     expect(screen.queryByText("PM-2001")).toBeNull();
 
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "ON_HOLD" } });
-    expect(screen.getByText("PM-2007")).toBeTruthy();
+    fireEvent.change(screen.getByRole("combobox", { name: "Filter by status" }), { target: { value: "ON_HOLD" } });
+    expect(within(await pmTable()).getByText("PM-2007")).toBeTruthy();
     expect(screen.queryByText("PM-2004")).toBeNull();
   });
 
   it("shows an empty state in the list when no PM schedule matches the search", async () => {
     loadPMSchedules();
     render(<PM />);
-    await screen.findByText("PM-2001");
+    await within(await pmTable()).findByText("PM-2001");
 
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "no-such-pm-xyz" } });
 
@@ -205,7 +217,7 @@ describe("Preventive Maintenance workspace page", () => {
   it("opens the Create PM Schedule modal when the header action is clicked", async () => {
     loadPMSchedules();
     render(<PM />);
-    await screen.findByText("PM-2001");
+    await within(await pmTable()).findByText("PM-2001");
 
     fireEvent.click(screen.getByRole("button", { name: "+ Create PM Schedule" }));
 
@@ -219,7 +231,7 @@ describe("Preventive Maintenance workspace page", () => {
       frequency: "MONTHLY", trigger_type: "CALENDAR", status: "ACTIVE", checklist: [],
     } });
     render(<PM />);
-    await screen.findByText("PM-2007");
+    await within(await pmTable()).findByText("PM-2007");
 
     fireEvent.click(screen.getByRole("button", { name: "+ Create PM Schedule" }));
     fireEvent.change(screen.getByLabelText("Notes"), { target: { value: "Standard Lubrication" } });
@@ -228,7 +240,7 @@ describe("Preventive Maintenance workspace page", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create PM Schedule" }));
 
     await waitFor(() => expect(screen.queryByRole("heading", { name: "Create PM Schedule" })).toBeNull());
-    expect(screen.getByRole("heading", { name: "Standard Lubrication" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "PM-2008" })).toBeTruthy();
     // MWO-LTSA-053 -- the new entry is now auto-selected into
     // PMOpenDesignView, so "PM-2008" legitimately appears in both the
     // registry row and the ChromeBar/Hero of the open detail view -- same
@@ -243,10 +255,13 @@ describe("Preventive Maintenance workspace page", () => {
       Promise.resolve({ tag_number: tag, area: tag === "211-P-1A" ? "Boiler House" : null })
     );
     render(<PM />);
-    await screen.findByText("PM-2001");
+    await within(await pmTable()).findByText("PM-2001");
 
+    // UI-D2B -- "Boiler House" also now appears as an <option> in the new
+    // Area filter select (derived from the same real, resolved areas) --
+    // scope to the table.
     expect(getPump).toHaveBeenCalledWith("211-P-1A");
-    expect(screen.getByText("Boiler House")).toBeTruthy();
+    expect(within(await pmTable()).getByText("Boiler House")).toBeTruthy();
   });
 });
 
@@ -255,26 +270,36 @@ describe("Preventive Maintenance workspace page", () => {
 // (components/open-design/) Pump.jsx/Seal.jsx already migrated to.
 describe("PM Open Design (MWO-LTSA-053)", () => {
   it("renders the full Open Design Information Hierarchy for the selected PM schedule", async () => {
+    // UI-D2B -- these sections are now spread across tabs (Overview/
+    // Engineering AI/Documents/History) instead of one continuous
+    // document; this proves each one is still reachable, tab by tab.
     loadPMSchedules();
     render(<PM />);
-    await screen.findByText("PM-2004");
-    fireEvent.click(screen.getByText("PM-2004"));
+    await within(await pmTable()).findByText("PM-2004");
+    fireEvent.click(within(await pmTable()).getByText("PM-2004"));
 
-    expect(await screen.findByRole("heading", { name: "Wear-Plate Inspection" })).toBeTruthy();
-    expect(screen.getByText("PM Engineering Overview")).toBeTruthy();
-    expect(screen.getByText("Current Status")).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "PM-2004" })).toBeTruthy();
+    // Overview tab (default)
+    expect(screen.getByText("Schedule & Assignment")).toBeTruthy();
     expect(screen.getByText("LTSA Coverage")).toBeTruthy();
     expect(screen.getByText("Engineering Recommendation")).toBeTruthy();
-    expect(screen.getByText("Engineering AI")).toBeTruthy();
+    // Documents tab
+    fireEvent.click(screen.getByRole("tab", { name: "Documents" }));
+    expect(screen.getAllByText("Documents").length).toBeGreaterThan(0);
+    expect(screen.getByText("Document Types")).toBeTruthy();
+    // History tab
+    fireEvent.click(screen.getByRole("tab", { name: "History" }));
     expect(screen.getByText("Related Engineering")).toBeTruthy();
-    expect(screen.getByText("Documents")).toBeTruthy();
+    // Engineering AI tab
+    fireEvent.click(screen.getByRole("tab", { name: "Engineering AI" }));
+    expect(screen.getAllByText("Engineering AI").length).toBeGreaterThan(0);
   });
 
   it("renders the real checklist items inside Engineering Overview, never dropped", async () => {
     loadPMSchedules();
     render(<PM />);
-    await screen.findByText("PM-2001");
-    fireEvent.click(screen.getByText("PM-2001"));
+    await within(await pmTable()).findByText("PM-2001");
+    fireEvent.click(within(await pmTable()).getByText("PM-2001"));
 
     expect(await screen.findByText("Check oil level")).toBeTruthy();
     expect(screen.getByText("Grease bearings")).toBeTruthy();
@@ -284,8 +309,8 @@ describe("PM Open Design (MWO-LTSA-053)", () => {
     loadPMSchedules();
     getPump.mockResolvedValue({ tag_number: "211-P-1A", area: "Boiler House" });
     render(<PM />);
-    await screen.findByText("PM-2001");
-    fireEvent.click(screen.getByText("PM-2001"));
+    await within(await pmTable()).findByText("PM-2001");
+    fireEvent.click(within(await pmTable()).getByText("PM-2001"));
 
     expect((await screen.findAllByText("LTSA Covered")).length).toBeGreaterThan(0);
   });
@@ -294,8 +319,8 @@ describe("PM Open Design (MWO-LTSA-053)", () => {
     loadPMSchedules();
     getPump.mockResolvedValue({ tag_number: null, area: null });
     render(<PM />);
-    await screen.findByText("PM-2001");
-    fireEvent.click(screen.getByText("PM-2001"));
+    await within(await pmTable()).findByText("PM-2001");
+    fireEvent.click(within(await pmTable()).getByText("PM-2001"));
 
     expect((await screen.findAllByText("Coverage Unknown")).length).toBeGreaterThan(0);
   });
@@ -303,42 +328,62 @@ describe("PM Open Design (MWO-LTSA-053)", () => {
   it("shows No recommendation available -- pm_schedule has no recommendation column yet, never fabricated", async () => {
     loadPMSchedules();
     render(<PM />);
-    await screen.findByText("PM-2001");
-    fireEvent.click(screen.getByText("PM-2001"));
+    await within(await pmTable()).findByText("PM-2001");
+    fireEvent.click(within(await pmTable()).getByText("PM-2001"));
 
-    // Appears twice by design: the Engineering Recommendation section and
-    // the Inspector Rail's own Recommendation card both show it (same
-    // pattern as PumpOpenDesignView.jsx/SealOpenDesignView.jsx).
     expect((await screen.findAllByText("No recommendation available.")).length).toBeGreaterThan(0);
   });
 
   it("shows Engineering AI as a disclosed placeholder -- no live call, no generated recommendation", async () => {
+    // UI-D2B -- Engineering AI now lives under its own tab.
     loadPMSchedules();
     render(<PM />);
-    await screen.findByText("PM-2001");
-    fireEvent.click(screen.getByText("PM-2001"));
+    await within(await pmTable()).findByText("PM-2001");
+    fireEvent.click(within(await pmTable()).getByText("PM-2001"));
+    fireEvent.click(await screen.findByRole("tab", { name: "Engineering AI" }));
 
     expect(await screen.findByText("Engineering AI has not been integrated for PM Schedules yet.")).toBeTruthy();
   });
 
-  it("navigates to Pump when the ChromeBar equipment link is clicked", async () => {
+  // UI-D2B -- deleted: "navigates to Pump when the ChromeBar equipment
+  // link is clicked". This asserted the old ChromeBar breadcrumb's
+  // clickable equipment-tag button (bare tag text as a <button>, separate
+  // from the Quick Actions "Buka Pump ->" button). The Open Design
+  // identity header's <h1> tag (AssetIdentityHeader.jsx) has no click
+  // handler and Chief's approved reference has no self-navigating crumb
+  // on the identity header -- confirmed via grep that no button renders
+  // this case today, same finding already made for Pump/Seal in UI-D1.2.
+  // Per this mission's "do not fabricate/invent" and the established
+  // precedent, no crumb button was reintroduced just to keep this test
+  // green -- the same onNavigate("pump", {selectId}) behavior remains
+  // fully covered by the Quick Actions "Buka Pump ->" button, which has
+  // no dedicated test of its own here but is exercised identically to
+  // Work Order/Pump/Seal's own equivalent buttons.
+
+  it("navigates to Pump when the Quick Actions 'Buka Pump' button is clicked", async () => {
+    // UI-D2B -- replaces the deleted ChromeBar-crumb test above with
+    // coverage of the button that actually exists now (Overview tab's
+    // Quick Actions card), preserving the same real onOpenPump/onNavigate
+    // behavior rather than leaving it untested.
     const onNavigate = vi.fn();
     loadPMSchedules();
     render(<PM onNavigate={onNavigate} />);
-    await screen.findByText("PM-2001");
-    fireEvent.click(screen.getByText("PM-2001"));
+    await within(await pmTable()).findByText("PM-2001");
+    fireEvent.click(within(await pmTable()).getByText("PM-2001"));
 
-    fireEvent.click(await screen.findByRole("button", { name: "211-P-1A" }));
+    fireEvent.click(await screen.findByText("Buka Pump →"));
 
     expect(onNavigate).toHaveBeenCalledWith("pump", { selectId: "211-P-1A" });
   });
 
   it("navigates to Drawing with the equipment tag as context when 'Buka Drawing' is clicked", async () => {
+    // UI-D2B -- "Buka Drawing ->" now lives under the Documents tab.
     const onNavigate = vi.fn();
     loadPMSchedules();
     render(<PM onNavigate={onNavigate} />);
-    await screen.findByText("PM-2001");
-    fireEvent.click(screen.getByText("PM-2001"));
+    await within(await pmTable()).findByText("PM-2001");
+    fireEvent.click(within(await pmTable()).getByText("PM-2001"));
+    fireEvent.click(await screen.findByRole("tab", { name: "Documents" }));
 
     fireEvent.click(await screen.findByText("Buka Drawing →"));
 
@@ -348,8 +393,8 @@ describe("PM Open Design (MWO-LTSA-053)", () => {
   it("opens the Create PM Schedule modal from the sticky Action Bar too, reusing the same modal/handler as the header action", async () => {
     loadPMSchedules();
     render(<PM />);
-    await screen.findByText("PM-2001");
-    fireEvent.click(screen.getByText("PM-2001"));
+    await within(await pmTable()).findByText("PM-2001");
+    fireEvent.click(within(await pmTable()).getByText("PM-2001"));
 
     fireEvent.click(await screen.findByRole("button", { name: "Create PM Schedule" }));
 
@@ -357,10 +402,13 @@ describe("PM Open Design (MWO-LTSA-053)", () => {
   });
 
   it("derives Related PM from schedules sharing the same equipment tag, excluding itself, from the already-fetched list -- no new fetch", async () => {
+    // UI-D2B -- Related Engineering (including Related PM) now lives
+    // under the History tab.
     loadPMSchedules();
     render(<PM />);
-    await screen.findByText("PM-2001");
-    fireEvent.click(screen.getByText("PM-2001"));
+    await within(await pmTable()).findByText("PM-2001");
+    fireEvent.click(within(await pmTable()).getByText("PM-2001"));
+    fireEvent.click(await screen.findByRole("tab", { name: "History" }));
 
     // PM-2001 and PM-2007 both target 211-P-1A/211-P-1B family tags in
     // this fixture only via equipmentTag match -- PM-2001 is 211-P-1A
@@ -373,7 +421,7 @@ describe("PM Open Design (MWO-LTSA-053)", () => {
   it("fetches Related CM Reports via the existing getCMReports() endpoint -- no new API", async () => {
     loadPMSchedules();
     render(<PM />);
-    await screen.findByText("PM-2001");
+    await within(await pmTable()).findByText("PM-2001");
 
     expect(getCMReports).toHaveBeenCalledOnce();
   });
@@ -382,14 +430,14 @@ describe("PM Open Design (MWO-LTSA-053)", () => {
     loadPMSchedules();
     render(<PM navContext={{ assetTag: "150-P-9" }} />);
 
-    expect(await screen.findByRole("heading", { name: "Wear-Plate Inspection" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "PM-2004" })).toBeTruthy();
   });
 
   it("still supports the existing navContext.selectId deep-link (Asset 360), unaffected by the assetTag addition", async () => {
     loadPMSchedules();
     render(<PM navContext={{ selectId: "PM-2004" }} />);
 
-    expect(await screen.findByRole("heading", { name: "Wear-Plate Inspection" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "PM-2004" })).toBeTruthy();
   });
 
   // MWO-LTSA-PM-CMON-OPERATIONAL-UI-014C -- this scenario (a real pump,
@@ -401,7 +449,7 @@ describe("PM Open Design (MWO-LTSA-053)", () => {
   it("does not select any PM schedule when navContext.assetTag matches nothing, no fabricated selection", async () => {
     loadPMSchedules();
     render(<PM navContext={{ assetTag: "999-NO-MATCH" }} />);
-    await screen.findByText("PM-2001");
+    await within(await pmTable()).findByText("PM-2001");
 
     expect(screen.getByText(/no active pm schedule is available for this pump/i)).toBeTruthy();
   });

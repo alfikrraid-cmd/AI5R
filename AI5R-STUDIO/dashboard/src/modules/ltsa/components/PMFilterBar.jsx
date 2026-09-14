@@ -1,17 +1,31 @@
 import { SearchBox } from "../../../design-system";
-import colors from "../../../design-system/theme/colors";
-import spacing from "../../../design-system/theme/spacing";
 import { statusLabel } from "../utils/pmStatus";
 
+/**
+ * UI-D2B -- Preventive Maintenance reference rebuild. Restyled light
+ * (`.ltsa-open-design` token scope, PM-specific `.pm-filter-*` classes in
+ * PM.css) and extended with an Area/Clear control, same pattern
+ * UI-D2A.1 established for Work Order. Area is already a real field on
+ * every mapped PM schedule (pmMapping.js's withResolvedArea), simply
+ * never exposed as a filter before. New props are optional with safe
+ * no-op defaults so every existing caller/test that doesn't pass them
+ * keeps working unchanged (search + status alone).
+ */
 export default function PMFilterBar({
   searchValue,
   onSearchChange,
   statusFilter,
   onStatusFilterChange,
   statusOptions,
+  areaFilter = "ALL",
+  onAreaFilterChange,
+  areaOptions = [],
+  onClear,
 }) {
+  const isFiltered = searchValue.trim() !== "" || statusFilter !== "ALL" || areaFilter !== "ALL";
+
   return (
-    <div style={{ display: "flex", gap: spacing.md, flexWrap: "wrap", marginBottom: spacing.md }}>
+    <div className="pm-filter-bar">
       <SearchBox
         value={searchValue}
         onChange={onSearchChange}
@@ -20,15 +34,9 @@ export default function PMFilterBar({
 
       <select
         aria-label="Filter by status"
+        className="pm-filter-select"
         value={statusFilter}
         onChange={(event) => onStatusFilterChange(event.target.value)}
-        style={{
-          background: colors.panel,
-          color: colors.text,
-          border: `1px solid ${colors.border}`,
-          borderRadius: spacing.xs,
-          padding: `${spacing.xs}px ${spacing.sm}px`,
-        }}
       >
         {/* MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016 -- "ALL" is the default
             active work queue (every status except Completed/Cancelled),
@@ -42,6 +50,28 @@ export default function PMFilterBar({
           </option>
         ))}
       </select>
+
+      {onAreaFilterChange && (
+        <select
+          aria-label="Filter by area"
+          className="pm-filter-select"
+          value={areaFilter}
+          onChange={(event) => onAreaFilterChange(event.target.value)}
+        >
+          <option value="ALL">All Areas</option>
+          {areaOptions.map((area) => (
+            <option key={area} value={area}>
+              {area}
+            </option>
+          ))}
+        </select>
+      )}
+
+      {onClear && (
+        <button type="button" className="pm-filter-clear" onClick={onClear} disabled={!isFiltered}>
+          Clear
+        </button>
+      )}
     </div>
   );
 }

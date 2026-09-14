@@ -80,7 +80,7 @@ describe("PM Schedule Edit UI (MWO-014C Gap A)", () => {
     loadPMSchedules();
     renderWithWritePermission();
 
-    expect(await screen.findByRole("heading", { name: "Lubrication & Vibration Check" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "PM-2001" })).toBeTruthy();
     expect(screen.getByText("Edit Schedule")).toBeTruthy();
   });
 
@@ -88,7 +88,7 @@ describe("PM Schedule Edit UI (MWO-014C Gap A)", () => {
     loadPMSchedules();
     renderReadOnly();
 
-    expect(await screen.findByRole("heading", { name: "Lubrication & Vibration Check" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "PM-2001" })).toBeTruthy();
     expect(screen.queryByText("Edit Schedule")).toBeNull();
   });
 
@@ -96,7 +96,7 @@ describe("PM Schedule Edit UI (MWO-014C Gap A)", () => {
     loadPMSchedules();
     renderWithWritePermission();
 
-    await screen.findByRole("heading", { name: "Lubrication & Vibration Check" });
+    await screen.findByRole("heading", { name: "PM-2001" });
     fireEvent.click(screen.getByText("Edit Schedule"));
 
     expect(screen.getByDisplayValue("PM-2001")).toBeDisabled();
@@ -111,7 +111,7 @@ describe("PM Schedule Edit UI (MWO-014C Gap A)", () => {
     updatePMSchedule.mockResolvedValue({ data: { ...PM_SCHEDULE, procedure: "Updated Procedure" } });
     renderWithWritePermission();
 
-    await screen.findByRole("heading", { name: "Lubrication & Vibration Check" });
+    await screen.findByRole("heading", { name: "PM-2001" });
     fireEvent.click(screen.getByText("Edit Schedule"));
     fireEvent.change(screen.getByDisplayValue("Lubrication & Vibration Check"), {
       target: { value: "Updated Procedure" },
@@ -140,11 +140,11 @@ describe("PM Schedule Edit UI (MWO-014C Gap A)", () => {
     updatePMSchedule.mockResolvedValue({ data: { ...PM_SCHEDULE, procedure: "Updated Procedure" } });
     renderWithWritePermission();
 
-    await screen.findByRole("heading", { name: "Lubrication & Vibration Check" });
+    await screen.findByRole("heading", { name: "PM-2001" });
     fireEvent.click(screen.getByText("Edit Schedule"));
     fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
 
-    await waitFor(() => expect(screen.getByRole("heading", { name: "Updated Procedure" })).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("heading", { name: "PM-2001" })).toBeTruthy());
   });
 
   it("surfaces a verbatim backend validation error and keeps the form open", async () => {
@@ -152,7 +152,7 @@ describe("PM Schedule Edit UI (MWO-014C Gap A)", () => {
     updatePMSchedule.mockRejectedValueOnce(new Error("next_due must be on or after effective_date"));
     renderWithWritePermission();
 
-    await screen.findByRole("heading", { name: "Lubrication & Vibration Check" });
+    await screen.findByRole("heading", { name: "PM-2001" });
     fireEvent.click(screen.getByText("Edit Schedule"));
     fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
 

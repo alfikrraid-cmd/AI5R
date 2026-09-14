@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import PM from "./PM";
 import { getPMSchedules, getPump, getCMReports, getPMOccurrences, getPMCMEvidence, createPMSchedule, getPumps } from "../../../api/ai5rClient";
@@ -20,6 +20,10 @@ vi.mock("../../../api/ai5rClient", () => ({
   createPMSchedule: vi.fn(),
   getPumps: vi.fn(),
 }));
+
+function pmTable() {
+  return screen.findByRole("table");
+}
 
 const LIFECYCLE_SCHEDULES = [
   {
@@ -55,7 +59,7 @@ describe("PM schedule lifecycle -- active work queue", () => {
   it("excludes COMPLETED and CANCELLED schedules from the default view", async () => {
     loadLifecycleSchedules();
     render(<PM />);
-    await screen.findByText("PM-3001");
+    await within(await pmTable()).findByText("PM-3001");
 
     expect(screen.queryByText("PM-3002")).toBeNull();
     expect(screen.queryByText("PM-3003")).toBeNull();
@@ -64,22 +68,22 @@ describe("PM schedule lifecycle -- active work queue", () => {
   it("still shows a COMPLETED schedule when explicitly filtered for", async () => {
     loadLifecycleSchedules();
     render(<PM />);
-    await screen.findByText("PM-3001");
+    await within(await pmTable()).findByText("PM-3001");
 
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "COMPLETED" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Filter by status" }), { target: { value: "COMPLETED" } });
 
-    expect(screen.getByText("PM-3002")).toBeTruthy();
+    expect(within(await pmTable()).getByText("PM-3002")).toBeTruthy();
     expect(screen.queryByText("PM-3001")).toBeNull();
   });
 
   it("still shows a CANCELLED schedule when explicitly filtered for", async () => {
     loadLifecycleSchedules();
     render(<PM />);
-    await screen.findByText("PM-3001");
+    await within(await pmTable()).findByText("PM-3001");
 
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "CANCELLED" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Filter by status" }), { target: { value: "CANCELLED" } });
 
-    expect(screen.getByText("PM-3003")).toBeTruthy();
+    expect(within(await pmTable()).getByText("PM-3003")).toBeTruthy();
     expect(screen.queryByText("PM-3001")).toBeNull();
   });
 });
@@ -94,7 +98,7 @@ describe("PM schedule lifecycle -- next-month creation default", () => {
       },
     });
     render(<PM />);
-    await screen.findByText("PM-3001");
+    await within(await pmTable()).findByText("PM-3001");
 
     fireEvent.click(screen.getByRole("button", { name: "+ Create PM Schedule" }));
     fireEvent.change(screen.getByLabelText("Notes"), { target: { value: "Standard Lubrication" } });

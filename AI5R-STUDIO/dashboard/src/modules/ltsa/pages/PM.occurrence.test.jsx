@@ -1,10 +1,18 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import PM from "./PM";
 import {
   getPMSchedules, getPump, getCMReports, getPMOccurrences, createPMOccurrence, getPMCMEvidence,
 } from "../../../api/ai5rClient";
 import { AuthProvider } from "../auth/AuthContext";
+
+// UI-D2B -- the registry now renders two representations of the same
+// data simultaneously (desktop table + mobile card list, CSS-gated in
+// PM.css; jsdom applies no CSS, so both are always in the DOM). Scope
+// existence/click queries to the always-present table.
+function pmTable() {
+  return screen.findByRole("table");
+}
 
 // MWO-LTSA-PM-CM-INTAKE-001 -- real PM Occurrence creation. A separate
 // file from PM.test.jsx (same convention as Seal.identifiers.test.jsx),
@@ -81,7 +89,7 @@ describe("PM workspace -- Record PM Occurrence (real persistence)", () => {
   it("shows no 'Record PM Occurrence' action until a schedule is selected", async () => {
     loadPMSchedules();
     render(<PM />);
-    await screen.findByText("PM-2001");
+    await within(await pmTable()).findByText("PM-2001");
 
     expect(screen.queryByText("+ Record PM Occurrence")).toBeNull();
   });
@@ -90,8 +98,8 @@ describe("PM workspace -- Record PM Occurrence (real persistence)", () => {
     loadPMSchedules();
     createPMOccurrence.mockResolvedValue({ data: { pm_occurrence_code: "PMOCC-NEW-1", workflow_status: "DRAFT" } });
     renderWithWritePermission();
-    await screen.findByText("PM-2001");
-    fireEvent.click(screen.getByText("PM-2001"));
+    await within(await pmTable()).findByText("PM-2001");
+    fireEvent.click(within(await pmTable()).getByText("PM-2001"));
 
     fireEvent.click(await screen.findByText("+ Record PM Occurrence"));
     // MWO-LTSA-PM-ACTIVITY-TAXONOMY-001 -- "Flushing Line" is now the
@@ -122,8 +130,8 @@ describe("PM workspace -- Record PM Occurrence (real persistence)", () => {
     loadPMSchedules();
     createPMOccurrence.mockRejectedValueOnce(new Error("maintenance.write required"));
     renderWithWritePermission();
-    await screen.findByText("PM-2001");
-    fireEvent.click(screen.getByText("PM-2001"));
+    await within(await pmTable()).findByText("PM-2001");
+    fireEvent.click(within(await pmTable()).getByText("PM-2001"));
 
     fireEvent.click(await screen.findByText("+ Record PM Occurrence"));
     fireEvent.click(screen.getByText("Save Draft"));
@@ -136,8 +144,8 @@ describe("PM workspace -- Record PM Occurrence (real persistence)", () => {
     loadPMSchedules();
     createPMOccurrence.mockResolvedValue({ data: { pm_occurrence_code: "PMOCC-NEW-2", workflow_status: "DRAFT" } });
     renderWithWritePermission();
-    await screen.findByText("PM-2001");
-    fireEvent.click(screen.getByText("PM-2001"));
+    await within(await pmTable()).findByText("PM-2001");
+    fireEvent.click(within(await pmTable()).getByText("PM-2001"));
 
     fireEvent.click(await screen.findByText("+ Record PM Occurrence"));
     fireEvent.click(screen.getByText("Save Draft"));
@@ -151,10 +159,10 @@ describe("PM workspace -- Record PM Occurrence (real persistence)", () => {
   it("hides '+ Record PM Occurrence' for a Pertamina session (no maintenance.write) -- Phase 13", async () => {
     loadPMSchedules();
     renderWithSession(["maintenance.read"], "PERTAMINA_ENGINEER");
-    await screen.findByText("PM-2001");
-    fireEvent.click(screen.getByText("PM-2001"));
+    await within(await pmTable()).findByText("PM-2001");
+    fireEvent.click(within(await pmTable()).getByText("PM-2001"));
 
-    await waitFor(() => expect(screen.getByRole("heading", { name: "Lubrication & Vibration Check" })).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("heading", { name: "PM-2001" })).toBeTruthy());
     expect(screen.queryByText("+ Record PM Occurrence")).toBeNull();
   });
 });

@@ -334,20 +334,24 @@ describe("LTSAWorkspace navigation shell", () => {
   });
 
   it("switches to the Work Order workspace when its tab is clicked", () => {
+    // UI-D2A -- page title text changed to "WORK ORDERS" per Chief's
+    // approved reference.
     render(<LTSAWorkspace />);
 
     fireEvent.click(screen.getByRole("tab", { name: "Work Order" }));
 
-    expect(screen.getByRole("heading", { name: "Work Order Workspace" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "WORK ORDERS" })).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Executive Dashboard" })).toBeNull();
   });
 
   it("switches to the Preventive Maintenance workspace when its tab is clicked", async () => {
+    // UI-D2B -- page title text changed to "PREVENTIVE MAINTENANCE" per
+    // Chief's approved reference.
     render(<LTSAWorkspace />);
 
     fireEvent.click(screen.getByRole("tab", { name: "Preventive Maintenance" }));
 
-    expect(screen.getByRole("heading", { name: "Preventive Maintenance Workspace" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "PREVENTIVE MAINTENANCE" })).toBeTruthy();
     await screen.findByText(/no pm schedules match/i);
   });
 

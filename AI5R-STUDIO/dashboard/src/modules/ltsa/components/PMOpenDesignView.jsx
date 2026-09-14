@@ -1,82 +1,37 @@
 import { useState } from "react";
 import PumpWorkspaceDrawer from "./PumpWorkspaceDrawer";
-import { Section, InfoRow, StatusSignal, RailSection, ActionBar, RefGroup } from "./open-design";
+import AssetIdentityHeader, { HealthCard } from "./AssetIdentityHeader";
+import WorkspaceTabStrip from "./WorkspaceTabStrip";
+import { IconCheck } from "./PumpWorkspaceIcons";
+import { Section, InfoRow, StatusSignal, RefGroup } from "./open-design";
 
 /**
- * MWO-LTSA-053 -- PM Workspace, migrated to the same LTSA Open Design
- * information hierarchy as Pump (PumpOpenDesignView.jsx) and Mechanical
- * Seal (SealOpenDesignView.jsx). Built entirely from the shared
- * components/open-design/ Kit (Section/InfoRow/StatusSignal/RailSection/
- * ActionBar/RefGroup, MWO-LTSA-050B) and PumpWorkspaceDrawer -- no new
- * design language, no new CSS (every class used here is one
- * LTSAOpenDesign.css already defines).
+ * UI-D2B -- Preventive Maintenance Workspace, migrated from the pre-
+ * UI-D1.2 Open Design hierarchy (ChromeBar/crumb + workspace-grid/
+ * object-column/inspector-rail + sticky Action Bar -- MWO-LTSA-053's
+ * original shape) to Chief's approved reference: AssetIdentityHeader +
+ * WorkspaceTabStrip + tabbed sections, the same shared components
+ * PumpOpenDesignView.jsx/SealOpenDesignView.jsx/WorkOrderOpenDesignView.jsx
+ * already use. This is a migration, not a redesign of the underlying
+ * domain data or behavior -- every field/section below is the same real,
+ * already-fetched value the old hierarchy rendered, just regrouped into
+ * tabs:
+ * - Overview: old Identity/Hero + "PM Engineering Overview" + "Current
+ *   Status" + "LTSA Coverage" sections, Checklist Items, and Schedule
+ *   Actions (Edit/Deactivate), plus a new Quick Actions card mirroring
+ *   Pump/Work Order's own Overview Quick Actions card.
+ * - Engineering AI: old "Engineering AI" section, unchanged -- still a
+ *   disclosed placeholder only (no postEngineeringAI call exists for PM,
+ *   per this domain's own explicit "AI: Placeholder only" rule; not
+ *   invented here).
+ * - Documents: old raw-markup Documents section, unchanged.
+ * - History: old "Recent Activities" (Inspector Rail) + "Related
+ *   Engineering" + "Engineering Recommendation", combined onto one tab.
  *
- * Domain adaptation from Pump/Seal's hierarchy (documented, not silent):
- * - Like Pump (and unlike Seal), pm.equipmentTag IS the real asset code
- *   directly (pmMapping.js: equipmentTag <- asset_code) -- no
- *   resolvedAssetCode indirection needed.
- * - LTSA Coverage is CONDITIONAL, like Seal's (not unconditional like
- *   Pump's): pm.area is only resolved (withResolvedArea, pmMapping.js)
- *   when the equipment_tag successfully looks up via the existing Pump
- *   API. `pm.area !== null` is therefore the same kind of real, already-
- *   computed "is this actually LTSA-covered" signal Seal's
- *   resolvedAssetCode is -- not a fabricated derivation.
- * - Engineering Recommendation reuses pm.recommendation, a real field
- *   (MWO-LTSA-053, pmMapping.js) that is currently always null -- pm_schedule
- *   has no recommendation column yet, same "Derived, not fabricated"
- *   discipline Pump/Seal's own recommendation field already documents.
- * - Engineering AI is a disclosed placeholder ONLY -- per this MWO's
- *   explicit "AI: Placeholder only. No generated recommendation" rule, no
- *   postEngineeringAI call is made for PM at all (unlike Pump/Seal, which
- *   actively call it). The section reuses the exact same aiReady-false
- *   branch markup/classes Pump/Seal's own "not ready" state already uses,
- *   just permanently in that state -- not a new visual pattern.
- * - Checklist Items is real, already-shown data (the old PMDetailPanel.jsx's
- *   own "Checklist" card, pm.checklist) with no dedicated slot in this
- *   MWO's Information Hierarchy -- placed as a third RefGroup inside
- *   Engineering Overview (reusing RefGroup's existing "list of named
- *   items" shape) rather than either inventing a new top-level section or
- *   silently dropping real, currently-visible data.
- * - Recent Activities (Inspector Rail) renders pm.timeline -- real,
- *   already-shown data (the old PMDetailPanel.jsx's own "PM Schedule
- *   Timeline"), currently always [] for the same "not yet derivable"
- *   reason pmMapping.js's own header comment documents. The rail section
- *   itself is Pump/Seal's own established pattern; wiring it to the real
- *   (if empty today) field is more honest than hardcoding an empty state
- *   that could never change.
- * - Related Work Orders (and Related PM/CM) intentionally render as
- *   inline reference rows only, no click-to-navigate badge -- the same
- *   trade-off Seal.jsx's own header comment already documents and
- *   approved when it migrated off per-record navigation badges in favor
- *   of the Open Design's RefGroup rows.
- * - Related Engineering mirrors Pump's exact five groups (Related PM /
- *   Related Condition Monitoring / Related Failure Analysis / Related CM
- *   Reports / Related Work Orders). Related PM is derived from the
- *   already-fetched PM schedule list (same equipmentTag, excluding this
- *   record) -- no new fetch. Related CM Reports reuses getCMReports()/
- *   mapCMReportRecord, the same already-wired call Pump.jsx/Seal.jsx use,
- *   filtered client-side by equipmentTag. Related Work Orders reuses
- *   pm.relatedWorkOrders (real field, currently always [] -- WO-PM-003's
- *   derivation was left for a future MWO per ADR-PM-001, pmMapping.js's
- *   own header comment). Related Condition Monitoring/Failure Analysis
- *   have no data source, same as Pump's identical empty groups.
- * - Action Bar exposes one real action, "Create PM Schedule" -- the exact
- *   same handleCreate/CreatePMScheduleModal mechanism PM.jsx's PageHeader
- *   button already uses, just also reachable from the sticky bar (like
- *   Pump's Action Bar re-exposing its own page-level create actions). No
- *   "View History"/"Create CM" equivalent was invented -- PM has no real,
- *   already-wired handler for either in this context.
- *
- * Data discipline (never fabricate): identical to PumpOpenDesignView.jsx/
- * SealOpenDesignView.jsx -- every field shows real, already-fetched data
- * or an honest empty state.
+ * Data discipline (unchanged): every field shows real, already-fetched
+ * data or an honest empty state -- never fabricated.
  */
 
-// MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016 -- owner-approved
-// PLANNED/ACTIVE/OVERDUE/COMPLETED/CANCELLED lifecycle (pmMapping.js's own
-// computeDisplayStatus). DUE_SOON is removed (superseded, not renamed --
-// never part of the owner's approved vocabulary). ON_HOLD remains
-// supported: a pre-existing stored value outside this MWO's own 5 states.
 const STATUS_META = {
   PLANNED: { tier: "neutral", label: "Planned" },
   ACTIVE: { tier: "normal", label: "Active" },
@@ -90,6 +45,13 @@ function statusMeta(status) {
   return STATUS_META[status] || { tier: "neutral", label: status || "Unknown" };
 }
 
+const PM_TABS = [
+  { key: "overview", label: "Overview" },
+  { key: "engineering-ai", label: "Engineering AI" },
+  { key: "documents", label: "Documents" },
+  { key: "history", label: "History" },
+];
+
 export default function PMOpenDesignView({
   pm,
   relatedPMRecords = [],
@@ -97,12 +59,14 @@ export default function PMOpenDesignView({
   onOpenPump,
   onOpenDrawing,
   onCreatePM,
+  onBack,
   canDelete = false,
   onDelete,
   canEdit = false,
   onEdit,
 }) {
   const [drawer, setDrawer] = useState(null); // null | "drawing"
+  const [activeTab, setActiveTab] = useState("overview");
 
   const meta = statusMeta(pm.status);
   const covered = pm.area !== null;
@@ -121,14 +85,12 @@ export default function PMOpenDesignView({
 
   const dataEmptyReason = "No engineering data";
 
-  const overviewGroups = [
-    {
-      id: "checklist",
-      title: "Checklist Items",
-      items: pm.checklist.map((item) => ({ key: item, name: item })),
-      emptyReason: dataEmptyReason,
-    },
-  ];
+  const checklistGroup = {
+    id: "checklist",
+    title: "Checklist Items",
+    items: pm.checklist.map((item) => ({ key: item, name: item })),
+    emptyReason: dataEmptyReason,
+  };
 
   const relatedGroups = [
     {
@@ -145,8 +107,15 @@ export default function PMOpenDesignView({
     { id: "cm", title: "Related Condition Monitoring", items: [], emptyReason: dataEmptyReason },
     { id: "fa", title: "Related Failure Analysis", items: [], emptyReason: dataEmptyReason },
     {
+      // UI-D2B -- canonical terminology rule (this mission, section 11):
+      // "CM" in new UI/code means Condition Monitoring, never Corrective
+      // Maintenance, going forward. This group's real data source
+      // (cmRecords/getCMReports/cm_report) is the legacy Corrective
+      // Maintenance domain (proven in UI-D2A.1's own terminology audit),
+      // so its title is spelled out in full here rather than abbreviated
+      // "CM Reports" -- the legacy data/route/table itself is untouched.
       id: "cm-reports",
-      title: "Related CM Reports",
+      title: "Related Corrective Maintenance Reports",
       items: cmRecords.map((cm) => ({ key: cm.id, name: cm.id, meta: cm.failureDescription, flagLabel: cm.status })),
       emptyReason: dataEmptyReason,
     },
@@ -160,134 +129,110 @@ export default function PMOpenDesignView({
 
   return (
     <div className="ltsa-open-design" data-testid="pm-open-design">
-      <div className="chrome-bar" data-od-id="chrome-bar">
-        <div className="chrome-inner">
-          <div className="crumb">
-            {pm.equipmentTag ? (
-              <button
-                type="button"
-                className="crumb-link"
-                onClick={() => onOpenPump?.(pm.equipmentTag)}
-                data-od-id="crumb-pump-link"
-              >
-                {pm.equipmentTag}
-              </button>
-            ) : (
-              <span>Unknown Asset</span>
-            )}
-            <span className="sep">›</span><span>Preventive Maintenance</span>
-            <span className="sep">›</span><b>{pm.id}</b>
+      <AssetIdentityHeader
+        icon={<IconCheck />}
+        tag={pm.id}
+        name={pm.procedure}
+        subtitle={pm.equipmentTag ? `Asset ${pm.equipmentTag}${pm.area ? ` · ${pm.area}` : ""}` : "Asset unknown"}
+        onBack={onBack}
+      >
+        <HealthCard label="Status" value={meta.label} tone={meta.tier} />
+        <HealthCard label="Frequency" value={pm.frequency ?? "N/A"} />
+      </AssetIdentityHeader>
+
+      <WorkspaceTabStrip items={PM_TABS} activeKey={activeTab} onChange={setActiveTab} />
+
+      {activeTab === "overview" && (
+        <div className="workspace-overview-grid">
+          <div className="workspace-overview-card" data-od-id="identity-section">
+            <div className="eyebrow">Asset Information</div>
+            <InfoRow label="PM Schedule" value={pm.id} valueClassName="mono" />
+            <InfoRow label="Equipment" value={pm.equipmentTag ?? "N/A"} />
+            <InfoRow label="Area" value={pm.area ?? "N/A"} />
+            <InfoRow label="Next Due" value={pm.nextDue ?? "N/A"} />
+            <InfoRow label="Last Performed" value={pm.lastPerformed ?? "Not yet performed"} />
           </div>
-        </div>
-      </div>
 
-      <div className="workspace-grid">
-        <main className="object-column">
-          <section className="identity" data-od-id="identity-section">
-            <h1>{pm.procedure}</h1>
-            <div className="identity-status">
-              <StatusSignal tier={meta.tier} label={meta.label} />
-              <span className="running-line">
-                <span className="dot-sm" />
-                {pm.equipmentTag ? `Asset ${pm.equipmentTag}${pm.area ? ` · ${pm.area}` : ""}` : "Asset unknown"}
-              </span>
-            </div>
-            <div style={{ marginTop: "var(--space-4)" }}>
-              <div className="eyebrow" style={{ marginBottom: "var(--space-2)" }}>Identity</div>
-              <InfoRow label="PM Schedule" value={pm.id} valueClassName="mono" />
-              <InfoRow label="Equipment" value={pm.equipmentTag ?? "—"} />
-              <InfoRow label="Area" value={pm.area ?? "—"} />
-            </div>
-            <div style={{ marginTop: "var(--space-4)" }}>
-              <div className="eyebrow" style={{ marginBottom: "var(--space-2)" }}>Technical</div>
-              <InfoRow label="Frequency" value={pm.frequency ?? "—"} />
-              <InfoRow label="Trigger Type" value={pm.triggerType ?? "—"} />
-              <InfoRow label="Assigned Technician" value={pm.assignedTechnician ?? "—"} />
-            </div>
-          </section>
+          <div className="workspace-overview-card">
+            <div className="eyebrow">Schedule &amp; Assignment</div>
+            <InfoRow label="Frequency" value={pm.frequency ?? "N/A"} />
+            <InfoRow label="Trigger Type" value={pm.triggerType ?? "N/A"} />
+            <InfoRow label="Assigned Technician" value={pm.assignedTechnician ?? "N/A"} />
+            <InfoRow
+              label="Estimated Duration"
+              value={pm.estimatedDurationHours != null ? `${pm.estimatedDurationHours} hrs` : "N/A"}
+            />
+            <InfoRow label="Status" value={meta.label} />
+          </div>
 
-          <Section id="engineering-overview-section" title="PM Engineering Overview">
-            <div className="assessment-columns" style={{ marginTop: "var(--space-3)" }}>
-              <div>
-                <div className="eyebrow">Schedule Classification</div>
-                <InfoRow label="Frequency" value={pm.frequency ?? "—"} />
-                <InfoRow label="Trigger Type" value={pm.triggerType ?? "—"} />
-              </div>
-              <div>
-                <div className="eyebrow">Assignment</div>
-                <InfoRow label="Assigned Technician" value={pm.assignedTechnician ?? "—"} />
-                <InfoRow
-                  label="Estimated Duration"
-                  value={pm.estimatedDurationHours != null ? `${pm.estimatedDurationHours} hrs` : "—"}
-                />
-              </div>
+          <div className="workspace-overview-card">
+            <div className="eyebrow">Quick Actions</div>
+            <div className="workspace-quick-actions">
+              {pm.equipmentTag && (
+                <button type="button" className="workspace-quick-action-btn" onClick={() => onOpenPump?.(pm.equipmentTag)} data-od-id="action-bar-open-pump">
+                  Buka Pump →
+                </button>
+              )}
+              {canEdit && (
+                <button type="button" className="workspace-quick-action-btn" onClick={() => onEdit?.(pm)} data-od-id="edit-schedule">
+                  Edit Schedule
+                </button>
+              )}
+              {canDelete && (
+                <button
+                  type="button"
+                  className="workspace-quick-action-btn"
+                  onClick={() => {
+                    const reason = window.prompt(`Deactivate ${pm.id}:`);
+                    if (reason?.trim() && window.confirm(`Deactivate ${pm.id}?`)) onDelete?.(pm.id, reason.trim());
+                  }}
+                >
+                  Deactivate Schedule
+                </button>
+              )}
+              <button type="button" className="workspace-quick-action-btn" onClick={onCreatePM} data-od-id="action-bar-create-pm">
+                Create PM Schedule
+              </button>
+              <button type="button" className="workspace-quick-action-btn" onClick={() => setActiveTab("documents")}>
+                View Documents
+              </button>
+              <button type="button" className="workspace-quick-action-btn" onClick={() => setActiveTab("history")}>
+                View History
+              </button>
             </div>
-            <div style={{ marginTop: "var(--space-3)" }}>
-              {overviewGroups.map((g) => (
-                <RefGroup key={g.id} title={g.title} items={g.items} emptyReason={g.emptyReason} />
-              ))}
-            </div>
-          </Section>
+          </div>
 
-          <Section id="current-status-section" title="Current Status">
-            <div className="info-panel" style={{ marginTop: "var(--space-3)" }}>
-              <InfoRow label="Status" value={meta.label} />
-              <InfoRow label="Next Due" value={pm.nextDue ?? "Unknown"} />
-              <InfoRow label="Last Performed" value={pm.lastPerformed ?? "Not yet performed"} />
-              <InfoRow label="Coverage" value={coverageMeta.label} />
-            </div>
-          </Section>
-          {/* MWO-LTSA-PM-CMON-OPERATIONAL-UI-014C -- Edit gated on the same
-              MAINTENANCE_WRITE capability the backend PATCH endpoint
-              itself requires (PM.jsx's canWriteMaintenance), independent
-              of canDelete (SUPERUSER-only). */}
-          {(canEdit || canDelete) && (
-            <Section id="schedule-actions" title="Schedule Actions">
-              <div style={{ display: "flex", gap: "var(--space-2)" }}>
-                {canEdit && (
-                  <button type="button" className="btn-link" onClick={() => onEdit?.(pm)} data-od-id="edit-schedule">
-                    Edit Schedule
-                  </button>
-                )}
-                {canDelete && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const reason = window.prompt(`Deactivate ${pm.id}:`);
-                      if (reason?.trim() && window.confirm(`Deactivate ${pm.id}?`)) onDelete?.(pm.id, reason.trim());
-                    }}
-                  >
-                    Deactivate Schedule
-                  </button>
-                )}
-              </div>
-            </Section>
-          )}
+          <div className="workspace-overview-card" style={{ gridColumn: "1 / -1" }}>
+            {/* RefGroup renders its own eyebrow-style title -- no second,
+                redundant "Checklist Items" label wrapping it. */}
+            <RefGroup title={checklistGroup.title} items={checklistGroup.items} emptyReason={checklistGroup.emptyReason} />
+          </div>
 
-          <Section id="coverage-section" title="LTSA Coverage">
-            <div className="identity-status" style={{ marginTop: "var(--space-3)" }}>
+          <div className="workspace-overview-card" style={{ gridColumn: "1 / -1" }}>
+            <div className="eyebrow">LTSA Coverage</div>
+            <div className="identity-status" style={{ marginTop: "var(--space-2)" }}>
               <StatusSignal tier={coverageMeta.tier} label={coverageMeta.label} />
             </div>
             <p className="confidence-label" style={{ marginTop: "var(--space-2)" }}>{coverageMeta.message}</p>
-          </Section>
+          </div>
 
-          <Section id="recommended-replacement-section" title="Engineering Recommendation">
+          <div className="workspace-overview-card" style={{ gridColumn: "1 / -1" }}>
+            <div className="eyebrow">Engineering Recommendation</div>
             {pm.recommendation ? (
-              <>
-                <h2 className="assessment-headline">{pm.recommendation}</h2>
-                <div className="assessment-footer">
-                  <StatusSignal tier={meta.tier} label={meta.label} />
-                </div>
-              </>
+              <h2 className="assessment-headline">{pm.recommendation}</h2>
             ) : (
               <p className="confidence-label" style={{ marginTop: "var(--space-2)" }}>No recommendation available.</p>
             )}
-          </Section>
+          </div>
+        </div>
+      )}
 
-          {/* Engineering AI: placeholder only, per this MWO's explicit
-              rule -- no postEngineeringAI call is made for PM, so this
-              section is permanently in the same "not ready" branch
-              Pump/Seal's own aiReady=false state already renders. */}
+      {activeTab === "engineering-ai" && (
+        <div className="workspace-tab-body">
+          {/* Placeholder only, per this domain's explicit rule -- no
+              postEngineeringAI call is made for PM Schedules (unlike
+              Pump/Seal/Work Order), so this is permanently the disclosed
+              "not integrated" state, not a fabricated ready state. */}
           <Section id="engineering-ai-section" title="Engineering AI">
             <div className="info-panel" style={{ marginTop: "var(--space-3)" }}>
               <StatusSignal tier="unavailable" label="Unavailable" dot={false} />
@@ -296,19 +241,13 @@ export default function PMOpenDesignView({
               </div>
             </div>
           </Section>
+        </div>
+      )}
 
-          <Section id="related-engineering-section" title="Related Engineering">
-            <div style={{ marginTop: "var(--space-3)" }}>
-              {relatedGroups.map((g) => (
-                <RefGroup key={g.id} title={g.title} items={g.items} emptyReason={g.emptyReason} />
-              ))}
-            </div>
-          </Section>
-
-          {/* Documents deliberately keeps raw markup, matching Pump/Seal's
-              own documented exception -- its eyebrow sits inside
-              .section-head alongside a button, deviating from Section's
-              generic shape. */}
+      {activeTab === "documents" && (
+        <div className="workspace-tab-body">
+          {/* Documents deliberately keeps raw markup -- same documented
+              exception as Pump/Seal/Work Order's own Documents section. */}
           <section className="assessment-section" data-od-id="documents-section">
             <div className="section-head">
               <span className="eyebrow">Documents</span>
@@ -330,44 +269,35 @@ export default function PMOpenDesignView({
               <InfoRow label="Revision History" value="—" valueClassName="ref-group-empty" />
             </div>
           </section>
-        </main>
+        </div>
+      )}
 
-        <aside className="inspector-rail" data-od-id="inspector-rail">
-          <RailSection id="pm-status-section" title="PM Status">
-            <StatusSignal tier={meta.tier} label={meta.label} />
-          </RailSection>
-
-          <RailSection id="recommendation-section" title="Recommendation">
-            <div className="confidence-label">{pm.recommendation || "No recommendation available."}</div>
-          </RailSection>
-
-          <RailSection id="recent-activities-section" title="Recent Activities">
+      {activeTab === "history" && (
+        <div className="workspace-tab-body">
+          <Section id="recent-activities-section" title="Recent Activities">
             {pm.timeline.length === 0 ? (
               <div className="confidence-label ref-group-empty">No recent activity available.</div>
             ) : (
               pm.timeline.map((entry, i) => (
-                <div className="confidence-label" key={`${entry.date}-${i}`}>{entry.date} — {entry.event}</div>
+                <div className="part-item" key={`${entry.date}-${i}`}>
+                  <div className="part-row">
+                    <span className="part-name">{entry.event}</span>
+                  </div>
+                  <div className="part-meta">{entry.date}</div>
+                </div>
               ))
             )}
-          </RailSection>
-        </aside>
-      </div>
+          </Section>
 
-      <ActionBar
-        label={`${pm.id} · ${meta.label}`}
-        metaPrimary={coverageMeta.label}
-        metaLabel="Next Due"
-        metaValue={pm.nextDue ?? "Unknown"}
-      >
-        {pm.equipmentTag && (
-          <button type="button" className="btn-link" onClick={() => onOpenPump?.(pm.equipmentTag)} data-od-id="action-bar-open-pump">
-            Buka Pump →
-          </button>
-        )}
-        <button type="button" className="btn-primary" onClick={onCreatePM} data-od-id="action-bar-create-pm">
-          Create PM Schedule
-        </button>
-      </ActionBar>
+          <Section id="related-engineering-section" title="Related Engineering">
+            <div style={{ marginTop: "var(--space-3)" }}>
+              {relatedGroups.map((g) => (
+                <RefGroup key={g.id} title={g.title} items={g.items} emptyReason={g.emptyReason} />
+              ))}
+            </div>
+          </Section>
+        </div>
+      )}
 
       <PumpWorkspaceDrawer open={drawer === "drawing"} onClose={() => setDrawer(null)} title="PM Drawing">
         <div className="drawing-thumb" />

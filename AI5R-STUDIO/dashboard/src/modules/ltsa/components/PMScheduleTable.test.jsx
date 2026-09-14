@@ -1,6 +1,15 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import PMScheduleTable from "./PMScheduleTable";
+
+// UI-D2B -- the component now also renders a mobile card list (CSS-
+// gated, jsdom applies no CSS so both are always in the DOM) alongside
+// the desktop table. Existence/click queries below are scoped to the
+// table -- the desktop-primary, always-present representation -- so
+// these tests keep asserting the same real behavior.
+function table() {
+  return screen.getByRole("table");
+}
 
 const PM_SCHEDULES = [
   {
@@ -47,23 +56,23 @@ describe("PMScheduleTable", () => {
   it("renders one row per PM schedule with id/procedure grouped under PM ID", () => {
     render(<PMScheduleTable pmSchedules={PM_SCHEDULES} selectedId={null} onSelect={() => {}} />);
 
-    expect(screen.getByText("PM-2001")).toBeTruthy();
-    expect(screen.getByText("Bearing Housing Inspection")).toBeTruthy();
-    expect(screen.getByText("112-P-3")).toBeTruthy();
+    expect(within(table()).getByText("PM-2001")).toBeTruthy();
+    expect(within(table()).getByText("Bearing Housing Inspection")).toBeTruthy();
+    expect(within(table()).getByText("112-P-3")).toBeTruthy();
   });
 
   it("renders a human-readable frequency badge", () => {
     render(<PMScheduleTable pmSchedules={PM_SCHEDULES} selectedId={null} onSelect={() => {}} />);
 
-    expect(screen.getByText("Monthly")).toBeTruthy();
-    expect(screen.getByText("Runtime-based")).toBeTruthy();
+    expect(within(table()).getByText("Monthly")).toBeTruthy();
+    expect(within(table()).getByText("Runtime-based")).toBeTruthy();
   });
 
   it("calls onSelect with the clicked PM schedule's id", () => {
     const onSelect = vi.fn();
     render(<PMScheduleTable pmSchedules={PM_SCHEDULES} selectedId={null} onSelect={onSelect} />);
 
-    fireEvent.click(screen.getByText("PM-2002"));
+    fireEvent.click(within(table()).getByText("PM-2002"));
 
     expect(onSelect).toHaveBeenCalledWith("PM-2002");
   });
@@ -78,8 +87,8 @@ describe("PMScheduleTable", () => {
   it("renders a status badge for each PM schedule", () => {
     render(<PMScheduleTable pmSchedules={PM_SCHEDULES} selectedId={null} onSelect={() => {}} />);
 
-    expect(screen.getByText("Planned")).toBeTruthy();
-    expect(screen.getByText("Overdue")).toBeTruthy();
+    expect(within(table()).getByText("Planned")).toBeTruthy();
+    expect(within(table()).getByText("Overdue")).toBeTruthy();
   });
 
   it("renders a fallback when a PM schedule has not yet been performed", () => {
