@@ -29,12 +29,24 @@ AREA_CODES: frozenset[str] = frozenset({"HOC", "HSC", "S_PAKNING", "HCC", "OM", 
 
 # MA -> areas canonical grouping.
 # MA1 = HOC
-# MA2 = HSC + S_PAKNING + HCC
+# MA2 = HSC + S_PAKNING + HCC + FRAKSINASI + REAKTOR + H2PLAN + AMINE
 # MA3 = UTL
 # MA4 = OM
+#
+# MWO-LTSA-CONTRACT-SCOPE-R4-6 -- FRAKSINASI/REAKTOR/H2PLAN/AMINE added,
+# Chief Architect approved (R4.4/R4.5), evidenced by the real Pertamina
+# KAK "TECHNICAL SERVICE AGREEMENT PEMELIHARAAN/PENGGANTIAN MECHANICAL
+# SEAL JOHN CRANE UNTUK POMPA AREA HCC RU II DUMAI PT. KILANG PERTAMINA
+# INTERNASIONAL" (REV.1, WO No.8202224810, PR No.500049116): these are
+# real HCC-internal process sections (Fractionation/Reactor/H2 Plant/
+# Amine treating), not a fourth physical complex -- deliberately NOT
+# added to AREA_CODES below, which names the six top-level plant
+# complexes an "AREA"-type RBAC identity can be scoped to (a narrower,
+# separate concept from MA grouping; test_pump_area_scope.py locks
+# AREA_CODES to its existing six-member set by design).
 MA_AREA_GROUPS: dict[str, frozenset[str]] = {
     "MA1": frozenset({"HOC"}),
-    "MA2": frozenset({"HSC", "S_PAKNING", "HCC"}),
+    "MA2": frozenset({"HSC", "S_PAKNING", "HCC", "FRAKSINASI", "REAKTOR", "H2PLAN", "AMINE"}),
     "MA3": frozenset({"UTL"}),
     "MA4": frozenset({"OM"}),
 }
@@ -54,6 +66,17 @@ _AREA_TOKEN_MAP: dict[str, str] = {
     "S PAKNING": "S_PAKNING",
     "SPAKNING": "S_PAKNING",
     "SPK": "S_PAKNING",
+    # MWO-LTSA-CONTRACT-SCOPE-R4-6 -- REAKTOR covers both "REAKTOR" and
+    # "Reaktor" via normalize_area_token()'s own upper() call (same
+    # single-entry pattern HOC/HSC/etc already rely on); H2PLAN needs two
+    # literal entries because "H2Plan" and "H2 PLAN" differ by an internal
+    # space that upper() alone does not remove (identical reasoning to why
+    # S_PAKNING already needs multiple literal spelling variants above).
+    "FRAKSINASI": "FRAKSINASI",
+    "REAKTOR": "REAKTOR",
+    "H2PLAN": "H2PLAN",
+    "H2 PLAN": "H2PLAN",
+    "AMINE": "AMINE",
 }
 
 

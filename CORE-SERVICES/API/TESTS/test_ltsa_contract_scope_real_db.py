@@ -64,7 +64,10 @@ _MIGRATIONS = [
 ]
 
 _HOC_ASSET = "211-P-13AR"       # area HOC -> MA1
-_UNMAPPED_ASSET = "701-MM-51"   # area FRAKSINASI-equivalent -> UNMAPPED
+# MWO-LTSA-CONTRACT-SCOPE-R4-6 -- was area FRAKSINASI; FRAKSINASI is now
+# Chief-approved MA2 (R4.4/R4.5), so this fixture's area was moved to DCU
+# to keep genuinely demonstrating an UNMAPPED area.
+_UNMAPPED_ASSET = "701-MM-51"   # area DCU -> UNMAPPED
 
 
 @pytest.fixture(scope="module")
@@ -123,7 +126,7 @@ def runner(pg_port):
     r.execute_script(
         f"INSERT INTO asset_registry (asset_code, asset_name, asset_type, area, status) VALUES "
         f"('{_HOC_ASSET}', '{_HOC_ASSET}', 'PUMP', 'HOC', 'Active'), "
-        f"('{_UNMAPPED_ASSET}', '{_UNMAPPED_ASSET}', NULL, 'FRAKSINASI', 'UNKNOWN');"
+        f"('{_UNMAPPED_ASSET}', '{_UNMAPPED_ASSET}', NULL, 'DCU', 'UNKNOWN');"
     )
     return r
 

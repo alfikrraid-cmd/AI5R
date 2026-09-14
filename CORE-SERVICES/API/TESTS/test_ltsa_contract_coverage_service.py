@@ -36,8 +36,17 @@ from API.ltsa_contract_coverage_service import (  # noqa: E402
         ("UTILITIES", "MA3"),
         ("OM", "MA4"),
         ("OIL MOVEMENT", "MA4"),
-        ("FRAKSINASI", "UNMAPPED"),
-        ("REAKTOR", "UNMAPPED"),
+        # MWO-LTSA-CONTRACT-SCOPE-R4-6 -- FRAKSINASI/REAKTOR/H2PLAN/AMINE
+        # are now MA2, Chief Architect approved (R4.4/R4.5); DCU/CDU
+        # remain genuinely unmapped, unchanged.
+        ("FRAKSINASI", "MA2"),
+        ("REAKTOR", "MA2"),
+        ("Reaktor", "MA2"),
+        ("H2Plan", "MA2"),
+        ("H2 PLAN", "MA2"),
+        ("AMINE", "MA2"),
+        ("DCU", "UNMAPPED"),
+        ("CDU", "UNMAPPED"),
         (None, "UNMAPPED"),
         ("", "UNMAPPED"),
     ],
