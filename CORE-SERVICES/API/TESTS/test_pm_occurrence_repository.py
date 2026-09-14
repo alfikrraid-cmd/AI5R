@@ -76,7 +76,7 @@ def test_create_draft_skips_schedule_exists_guard_for_unscheduled_historical_pla
     assert "EXISTS (SELECT 1 FROM pm_schedule" not in sql
     # The pump-existence guard must still be present -- only the
     # schedule guard is conditional.
-    assert "EXISTS (SELECT 1 FROM ltsa_pumps WHERE tag_number = '211-P-18A')" in sql
+    assert "EXISTS (SELECT 1 FROM asset_registry WHERE asset_code = '211-P-18A' AND asset_type = 'PUMP')" in sql
 
 
 def test_create_draft_sets_created_by_and_updated_by_to_the_same_actor():
@@ -509,7 +509,7 @@ class TestFindValidPumpTagsBatched:
         assert result == {"110-P-9A", "110-P-9B"}
         assert len(runner.scalar_calls) == 1
         sql = runner.scalar_calls[0]
-        assert "GROUP BY tag_number HAVING count(*) = 1" in sql
+        assert "GROUP BY asset_code HAVING count(*) = 1" in sql
         assert "'110-P-9A'" in sql and "'110-P-9B'" in sql
 
     def test_ambiguous_or_missing_tags_excluded(self):
@@ -542,7 +542,7 @@ class TestFinalizeHistoricalBatchAtomicShape:
         assert "SET workflow_status = 'FINALIZED'" in sql
         assert "WHERE pm_occurrence_code IN (" in sql
         assert "AND workflow_status = 'DRAFT'" in sql
-        assert "GROUP BY lp.tag_number" in sql
+        assert "GROUP BY lp.asset_code" in sql
         assert "HAVING count(*) = 1" in sql
         assert "'HISTORICAL_FINALIZE_BATCH'" in sql
         assert "source_reference)" in sql
@@ -562,3 +562,85 @@ class TestFinalizeHistoricalBatchAtomicShape:
         assert "technical_reviewed_by" not in update_clause
         assert "occurrence_date" not in update_clause
         assert "source_reference" not in update_clause
+
+
+class TestPMOccurrenceAssetAuthority:
+    """Proves the PM-R2 retarget of PMOccurrenceRepository asset authority
+    from legacy ltsa_pumps to canonical public.asset_registry (asset_type = 'PUMP')."""
+
+    def test_zero_references_to_ltsa_pumps_in_pm_occurrence_repository(self):
+        import inspect
+        source = inspect.getsource(PMOccurrenceRepository)
+        assert "ltsa_pumps" not in source
+
+    def test_create_draft_sql_enforces_asset_registry_and_pump_type(self):
+        runner = FakeRunner(scalar_response=json.dumps([{"pm_occurrence_code": "PMOCC-1"}]))
+        PMOccurrenceRepository(runner).create_draft(
+            pm_schedule_code="PMSCHED-1",
+            asset_code="211-P-25A",
+            asset_type="PUMP",
+            occurrence_date="2026-07-06",
+            activities=[],
+            remarks="test",
+            created_by="actor-1",
+        )
+        sql = runner.scalar_calls[0]
+        assert "FROM asset_registry WHERE asset_code = '211-P-25A' AND asset_type = 'PUMP'" in sql
+
+    def test_create_ad_hoc_draft_sql_enforces_asset_registry_and_pump_type(self):
+        runner = FakeRunner(scalar_response=json.dumps([{"pm_occurrence_code": "PMOCC-1"}]))
+        PMOccurrenceRepository(runner).create_ad_hoc_draft(
+            asset_code="211-P-25B",
+            asset_type="PUMP",
+            occurrence_date="2026-07-06",
+            activities=[],
+            remarks="test",
+            created_by="actor-1",
+            source_reference="mwo:adhoc-test",
+        )
+        sql = runner.scalar_calls[0]
+        assert "FROM asset_registry WHERE asset_code = '211-P-25B' AND asset_type = 'PUMP'" in sql
+
+    def test_promote_historical_pm_atomic_sql_enforces_asset_registry_and_pump_type(self):
+        runner = FakeRunner(scalar_response=json.dumps({"candidate_found": True, "eligible": True, "already_promoted": False, "conflicting_canonical": False, "inserted_occurrence_code": "PMOCC-1", "marked_saved": True}))
+        PMOccurrenceRepository(runner).promote_historical_pm_atomic(
+            "DFE-86BEED8FD71C43FB",
+            pm_schedule_code="UNSCHEDULED::HCC-JULY-2026",
+            promoted_by="actor-1",
+        )
+        sql = runner.scalar_calls[0]
+        assert "FROM asset_registry WHERE asset_code = e.pump_tag_number AND asset_type = 'PUMP'" in sql
+
+    def test_promote_historical_pm_batch_atomic_sql_enforces_asset_registry_and_pump_type(self):
+        runner = FakeRunner(scalar_response="[]")
+        PMOccurrenceRepository(runner).promote_historical_pm_batch_atomic(
+            ["DFE-86BEED8FD71C43FB", "DFE-AD2E8B14F6644632"],
+            pm_schedule_code="UNSCHEDULED::HCC-JULY-2026",
+            promoted_by="actor-1",
+        )
+        sql = runner.scalar_calls[0]
+        assert "FROM asset_registry WHERE asset_type = 'PUMP' GROUP BY asset_code" in sql
+
+    def test_find_valid_pump_tags_sql_enforces_asset_registry_and_pump_type(self):
+        runner = FakeRunner(scalar_response="[]")
+        PMOccurrenceRepository(runner).find_valid_pump_tags(["211-P-25A", "211-P-25B"])
+        sql = runner.scalar_calls[0]
+        assert "FROM asset_registry" in sql
+        assert "asset_type = 'PUMP'" in sql
+        assert "GROUP BY asset_code HAVING count(*) = 1" in sql
+
+    def test_finalize_historical_batch_atomic_sql_enforces_asset_registry_and_pump_type(self):
+        runner = FakeRunner(scalar_response="[]")
+        PMOccurrenceRepository(runner).finalize_historical_batch_atomic(["PMOCC-1"], finalized_by="actor-1")
+        sql = runner.scalar_calls[0]
+        assert "FROM asset_registry lp" in sql
+        assert "lp.asset_code = p.asset_code" in sql
+        assert "lp.asset_type = 'PUMP'" in sql
+
+    def test_list_all_sql_left_joins_asset_registry_preserving_area(self):
+        runner = FakeRunner(scalar_response="[]")
+        PMOccurrenceRepository(runner).list_all()
+        sql = runner.scalar_calls[0]
+        assert "LEFT JOIN asset_registry pump ON pump.asset_code = r.asset_code" in sql
+        assert "pump.area" in sql
+

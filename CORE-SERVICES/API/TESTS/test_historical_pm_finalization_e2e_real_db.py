@@ -62,6 +62,7 @@ _MIGRATIONS = [
         "023_create_pm_cmon_base_tables_for_legacy_upgrade.sql",
         "027_add_pm_cmon_soft_delete.sql",
         "028_add_schedule_attribution_soft_delete.sql",
+        "035_retarget_document_field_extraction_to_asset_registry.sql",
     )
 ]
 
@@ -122,8 +123,9 @@ def runner(pg_port):
     )
     r.execute_script(
         "TRUNCATE pm_occurrence, pm_schedule, document_field_extraction, record_change_history, "
-        "ltsa_pumps RESTART IDENTITY CASCADE;"
+        "asset_registry, ltsa_pumps RESTART IDENTITY CASCADE;"
     )
+    r.execute_script(f"INSERT INTO asset_registry (asset_code, asset_name, asset_type, area) VALUES ('{_ASSET_CODE}', '{_ASSET_CODE}', 'PUMP', 'HOC');")
     r.execute_script(f"INSERT INTO ltsa_pumps (tag_number, area) VALUES ('{_ASSET_CODE}', 'HOC');")
     return r
 

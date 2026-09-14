@@ -65,6 +65,7 @@ _MIGRATIONS = [
         "023_create_pm_cmon_base_tables_for_legacy_upgrade.sql",
         "027_add_pm_cmon_soft_delete.sql",
         "028_add_schedule_attribution_soft_delete.sql",
+        "035_retarget_document_field_extraction_to_asset_registry.sql",
     )
 ]
 
@@ -124,8 +125,9 @@ def runner(pg_port):
     )
     r.execute_script(
         "TRUNCATE pm_occurrence, pm_schedule, condition_monitoring_reading, condition_monitoring_schedule, "
-        "record_change_history, ltsa_pumps RESTART IDENTITY CASCADE;"
+        "record_change_history, asset_registry, ltsa_pumps RESTART IDENTITY CASCADE;"
     )
+    r.execute_script(f"INSERT INTO asset_registry (asset_code, asset_name, asset_type, area) VALUES ('{_ASSET_CODE}', '{_ASSET_CODE}', 'PUMP', 'HOC');")
     r.execute_script(f"INSERT INTO ltsa_pumps (tag_number, area) VALUES ('{_ASSET_CODE}', 'HOC');")
     r.execute_script(
         f"INSERT INTO pm_schedule (pm_schedule_code, asset_code, asset_type, procedure, frequency, trigger_type, status) "
@@ -543,3 +545,150 @@ def test_multiple_open_schedules_reported_for_future_resolver(pm_repo, runner):
     open_schedules = pm_repo.find_open_schedules_by_asset(_ASSET_CODE)
     assert {s["pm_schedule_code"] for s in open_schedules} == {"PMSCHED-A", "PMSCHED-B"}
     assert len(pm_repo.list_by_asset(_ASSET_CODE)) == 0  # nothing written -- ambiguity, no guess
+
+
+# --- PM-R2: Canonical asset_registry authority tests -----------------------
+
+def test_create_draft_registry_only_pump_accepted(pm_repo, runner):
+    # Proves asset living in asset_registry only (never in ltsa_pumps) is accepted
+    runner.execute_script(
+        "INSERT INTO asset_registry (asset_code, asset_name, asset_type, area) "
+        "VALUES ('211-P-25A', '211-P-25A', 'PUMP', 'HCC');"
+    )
+    assert runner.query_scalar("SELECT count(*) FROM ltsa_pumps WHERE tag_number = '211-P-25A'") == "0"
+    runner.execute_script(
+        "INSERT INTO pm_schedule (pm_schedule_code, asset_code, asset_type, procedure, frequency, trigger_type, status) "
+        "VALUES ('PMSCHED-25A', '211-P-25A', 'PUMP', 'Inspection', 'Monthly', 'TIME_BASED', 'ACTIVE');"
+    )
+    created = pm_repo.create_draft(
+        pm_schedule_code="PMSCHED-25A",
+        asset_code="211-P-25A",
+        asset_type="PUMP",
+        occurrence_date="2026-07-06",
+        activities=[{"description": "PM check", "done": True}],
+        remarks="July PM recovery",
+        created_by=_ACTOR,
+        provenance="MANUAL",
+        source_reference="document_field_extraction:DFE-86BEED8FD71C43FB",
+    )
+    assert created["asset_code"] == "211-P-25A"
+    all_rows = pm_repo.list_by_asset("211-P-25A")
+    assert len(all_rows) == 1
+    # Check that area is resolved correctly from asset_registry via list_all()
+    all_pm = pm_repo.list_all()
+    row_25a = next(r for r in all_pm if r["asset_code"] == "211-P-25A")
+    assert row_25a["area"] == "HCC"
+
+
+def test_create_draft_non_pump_in_asset_registry_rejected(pm_repo, runner):
+    # Proves non-pump asset in asset_registry (e.g. COMPRESSOR) is rejected
+    runner.execute_script(
+        "INSERT INTO asset_registry (asset_code, asset_name, asset_type, area) "
+        "VALUES ('101-LRC-102', '101-LRC-102', 'LIQUID RING COMPRESSOR', 'HCC');"
+    )
+    runner.execute_script(
+        "INSERT INTO pm_schedule (pm_schedule_code, asset_code, asset_type, procedure, frequency, trigger_type, status) "
+        "VALUES ('PMSCHED-COMP', '101-LRC-102', 'PUMP', 'Inspection', 'Monthly', 'TIME_BASED', 'ACTIVE');"
+    )
+    with pytest.raises(IndexError):
+        pm_repo.create_draft(
+            pm_schedule_code="PMSCHED-COMP",
+            asset_code="101-LRC-102",
+            asset_type="PUMP",
+            occurrence_date="2026-07-06",
+            activities=[],
+            remarks="test",
+            created_by=_ACTOR,
+        )
+
+
+def test_two_july_targets_promotion_simulation_and_atomicity(runner):
+    # Proves R2.6 and R2.7: Two July targets (211-P-25A and 211-P-25B)
+    # in asset_registry (not in ltsa_pumps) promote atomically, idempotently,
+    # and rollback safely upon failure.
+    from API.historical_pm_cmon_staging_repository import HistoricalPMCMONStagingRepository
+    from API.historical_pm_promotion_batch_service import promote_pm_batch
+    import json as _json
+
+    staging_repo = HistoricalPMCMONStagingRepository(runner)
+    pm_repo = PMOccurrenceRepository(runner)
+
+    runner.execute_script(
+        "INSERT INTO asset_registry (asset_code, asset_name, asset_type, area) "
+        "VALUES ('211-P-25A', '211-P-25A', 'PUMP', 'HCC'), "
+        "       ('211-P-25B', '211-P-25B', 'PUMP', 'HCC');"
+    )
+    assert runner.query_scalar("SELECT count(*) FROM ltsa_pumps WHERE tag_number IN ('211-P-25A', '211-P-25B')") == "0"
+
+    for dfe_id, asset in [("DFE-86BEED8FD71C43FB", "211-P-25A"), ("DFE-AD2E8B14F6644632", "211-P-25B")]:
+        fields = _json.dumps({"asset_type": "PUMP", "occurrence_date": "2026-07-06", "candidate_identity_v2": f"HASH-{dfe_id}"})
+        runner.execute_script(
+            "INSERT INTO document_field_extraction "
+            "(document_field_extraction_id, source_document_id, source_document_type, "
+            "detected_document_type, extraction_provider, extracted_fields, reviewed_fields, "
+            "status, pump_tag_number, reviewed_by, reviewed_at) VALUES ("
+            f"'{dfe_id}', 'DOC-{dfe_id}', 'PDF', 'HISTORICAL_PM_OCCURRENCE_CANDIDATE', "
+            f"'deterministic_table_parser', '{fields}'::jsonb, '{fields}'::jsonb, "
+            f"'REVIEWED', '{asset}', '{_ACTOR}', NOW());"
+        )
+
+    # 1. Batch promotion succeeds
+    target_ids = ["DFE-86BEED8FD71C43FB", "DFE-AD2E8B14F6644632"]
+    promote_result = promote_pm_batch(
+        staging_repo, pm_repo, target_ids,
+        pm_schedule_code="UNSCHEDULED::HCC-JULY-2026", promoted_by=_ACTOR,
+    )
+    assert promote_result["status"] == "PROMOTED"
+    assert len(promote_result["results"]) == 2
+
+    # 2. Both candidates marked SAVED
+    saved_count = runner.query_scalar(
+        "SELECT count(*) FROM document_field_extraction WHERE status = 'SAVED' "
+        "AND document_field_extraction_id IN ('DFE-86BEED8FD71C43FB', 'DFE-AD2E8B14F6644632')"
+    )
+    assert saved_count == "2"
+
+    # 3. Exactly 2 pm_occurrence rows written with correct area
+    occurrences = pm_repo.list_all()
+    july_pm = [o for o in occurrences if o["asset_code"] in ("211-P-25A", "211-P-25B")]
+    assert len(july_pm) == 2
+    for o in july_pm:
+        assert o["area"] == "HCC"
+        assert o["provenance"] == "HISTORICAL_IMPORT"
+        assert o["occurrence_date"].startswith("2026-07-06")
+
+    # 4. Idempotency / retry proof
+    retry_result = promote_pm_batch(
+        staging_repo, pm_repo, target_ids,
+        pm_schedule_code="UNSCHEDULED::HCC-JULY-2026", promoted_by=_ACTOR,
+    )
+    assert retry_result["status"] == "PROMOTED"
+    assert retry_result["precheck"]["counts"]["ALREADY_PROMOTED"] == 2
+    post_count = runner.query_scalar(
+        "SELECT count(*) FROM pm_occurrence WHERE asset_code IN ('211-P-25A', '211-P-25B')"
+    )
+    assert post_count == "2"  # ZERO duplicate writes
+
+    # 5. Atomic rollback on failure: inject an invalid candidate with non-pump asset from asset_registry
+    runner.execute_script(
+        "INSERT INTO asset_registry (asset_code, asset_name, asset_type, area) "
+        "VALUES ('101-LRC-102', '101-LRC-102', 'LIQUID RING COMPRESSOR', 'HCC') ON CONFLICT DO NOTHING;"
+    )
+    runner.execute_script(
+        "INSERT INTO document_field_extraction "
+        "(document_field_extraction_id, source_document_id, source_document_type, "
+        "detected_document_type, extraction_provider, extracted_fields, reviewed_fields, "
+        "status, pump_tag_number, reviewed_by, reviewed_at) VALUES ("
+        "'DFE-INVALID', 'DOC-INV', 'PDF', 'HISTORICAL_PM_OCCURRENCE_CANDIDATE', "
+        "'deterministic_table_parser', '{}'::jsonb, "
+        f"'{_json.dumps({'asset_type': 'PUMP', 'occurrence_date': '2026-07-06', 'candidate_identity_v2': 'HASH-INV'})}'::jsonb, "
+        f"'REVIEWED', '101-LRC-102', '{_ACTOR}', NOW());"
+    )
+    fail_result = promote_pm_batch(
+        staging_repo, pm_repo, ["DFE-INVALID"],
+        pm_schedule_code="UNSCHEDULED::HCC-JULY-2026", promoted_by=_ACTOR,
+    )
+    assert fail_result["status"] == "REJECTED_ATOMIC_TRANSACTION_FAILED"
+    # Candidate status unchanged
+    assert runner.query_scalar("SELECT status FROM document_field_extraction WHERE document_field_extraction_id = 'DFE-INVALID'") == "REVIEWED"
+

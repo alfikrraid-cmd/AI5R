@@ -76,7 +76,7 @@ class PMOccurrenceRepository:
     def list_all(self, *, scope: frozenset[str] | None = None, limit: int = 5000, offset: int = 0) -> list[dict]:
         # MWO-LTSA-FLEET-ANALYTICS-001 -- fleet-wide batch fetch, mirroring
         # condition_monitoring_reading_repository.list_all()'s own exact
-        # shape (LEFT JOIN ltsa_pumps for area, same scope-filter
+        # shape (LEFT JOIN asset_registry for area, same scope-filter
         # convention) so a fleet scan fetches every asset's PM occurrences
         # in ONE query instead of one list_by_asset() call per pump. limit
         # defaults generously (5000, matching this repository's own
@@ -95,7 +95,7 @@ class PMOccurrenceRepository:
         columns = ", ".join(f"r.{col}" for col in _SELECT_COLUMNS.split(", "))
         return _json_query(
             f"SELECT {columns}, pump.area "
-            "FROM pm_occurrence r LEFT JOIN ltsa_pumps pump ON pump.tag_number = r.asset_code "
+            "FROM pm_occurrence r LEFT JOIN asset_registry pump ON pump.asset_code = r.asset_code "
             f"WHERE r.deleted_at IS NULL {scope_clause} "
             "ORDER BY r.occurrence_date DESC NULLS LAST, r.created_at DESC "
             f"LIMIT {int(limit)} OFFSET {int(offset)}",
@@ -173,7 +173,7 @@ class PMOccurrenceRepository:
                 f"SELECT {_sql(code)}, {_sql(pm_schedule_code)}, {_sql(asset_code)}, {_sql(asset_type)}, "
                 f"{_sql(occurrence_date)}, {_sql(json.dumps(activities) if activities is not None else None)}::jsonb, "
                 f"{_sql(remarks)}, {_sql(DRAFT)}, {_sql(provenance)}, {_sql(created_by)}, {_sql(created_by)}, "
-                f"{_sql(source_reference)} WHERE EXISTS (SELECT 1 FROM ltsa_pumps WHERE tag_number = {_sql(asset_code)}) "
+                f"{_sql(source_reference)} WHERE EXISTS (SELECT 1 FROM asset_registry WHERE asset_code = {_sql(asset_code)} AND asset_type = 'PUMP') "
                 f"{_schedule_guard}"
                 f"RETURNING {_SELECT_COLUMNS}"
                 # MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016 -- "Actual PM
@@ -298,7 +298,7 @@ ins AS (
     FROM eligible e
     WHERE NOT EXISTS (SELECT 1 FROM already)
       AND NOT EXISTS (SELECT 1 FROM conflict)
-      AND EXISTS (SELECT 1 FROM ltsa_pumps WHERE tag_number = e.pump_tag_number)
+      AND EXISTS (SELECT 1 FROM asset_registry WHERE asset_code = e.pump_tag_number AND asset_type = 'PUMP')
       {_schedule_guard}
     RETURNING {_SELECT_COLUMNS}
 ),
@@ -390,7 +390,7 @@ BEGIN
   SELECT count(*) INTO v_bad_pump_count
   FROM (SELECT DISTINCT d.pump_tag_number AS tag FROM document_field_extraction d
         WHERE d.document_field_extraction_id IN ({ids_sql})) m
-  LEFT JOIN (SELECT tag_number, count(*) AS c FROM ltsa_pumps GROUP BY tag_number) p
+  LEFT JOIN (SELECT asset_code AS tag_number, count(*) AS c FROM asset_registry WHERE asset_type = 'PUMP' GROUP BY asset_code) p
     ON p.tag_number = m.tag
   WHERE p.tag_number IS NULL OR p.c <> 1;
   IF v_bad_pump_count > 0 THEN
@@ -557,8 +557,8 @@ SELECT COALESCE(json_agg(row_to_json(t))::text, '[]') FROM (
             return set()
         values = ", ".join(_sql(tag) for tag in tags)
         rows = _json_query(
-            f"SELECT tag_number FROM ltsa_pumps WHERE tag_number IN ({values}) "
-            "GROUP BY tag_number HAVING count(*) = 1",
+            f"SELECT asset_code AS tag_number FROM asset_registry WHERE asset_code IN ({values}) AND asset_type = 'PUMP' "
+            "GROUP BY asset_code HAVING count(*) = 1",
             self._runner,
         )
         return {r["tag_number"] for r in rows}
@@ -640,9 +640,10 @@ BEGIN
           AND d.reviewed_at IS NOT NULL
       )
       AND EXISTS (
-        SELECT 1 FROM ltsa_pumps lp
-        WHERE lp.tag_number = p.asset_code
-        GROUP BY lp.tag_number
+        SELECT 1 FROM asset_registry lp
+        WHERE lp.asset_code = p.asset_code
+          AND lp.asset_type = 'PUMP'
+        GROUP BY lp.asset_code
         HAVING count(*) = 1
       )
       AND NOT EXISTS (
@@ -766,7 +767,7 @@ SELECT COALESCE(json_agg(row_to_json(t))::text, '[]') FROM (
                 f"{_sql(occurrence_date)}, {_sql(json.dumps(activities) if activities is not None else None)}::jsonb, "
                 f"{_sql(remarks)}, {_sql(DRAFT)}, {_sql(provenance)}, {_sql(created_by)}, {_sql(created_by)}, "
                 f"{_sql(source_reference)} "
-                f"WHERE EXISTS (SELECT 1 FROM ltsa_pumps WHERE tag_number = {_sql(asset_code)}) "
+                f"WHERE EXISTS (SELECT 1 FROM asset_registry WHERE asset_code = {_sql(asset_code)} AND asset_type = 'PUMP') "
                 f"RETURNING {_SELECT_COLUMNS}"
                 "), audit AS (INSERT INTO record_change_history "
                 "(entity_type, entity_id, field_name, old_value, new_value, changed_by, reason) "
