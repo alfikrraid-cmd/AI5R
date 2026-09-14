@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import WorkOrder from "./WorkOrder";
 import {
@@ -95,13 +95,30 @@ function loadWorkOrders(records = WORK_ORDERS) {
   getCMReports.mockResolvedValue([]);
 }
 
+// UI-D2A.1 -- the registry now renders two representations of the same
+// data simultaneously (desktop table + mobile card list, CSS-gated in
+// WorkOrder.css; jsdom applies no CSS, so both are always in the DOM).
+// Every WO ID/title/badge that used to be a single unambiguous match is
+// now two -- scope existence/click queries to the always-present table
+// (the desktop-primary representation) so these tests keep asserting the
+// same real behavior without depending on which viewport-only element
+// happens to render.
+// Async: the table doesn't exist until the initial getWorkOrders() fetch
+// resolves (the component starts in a loading state), so this must use
+// findByRole (auto-retrying), never getByRole, or callers would race it.
+function registryTable() {
+  return screen.findByRole("table");
+}
+
 describe("Work Order workspace page", () => {
   it("renders the page header", async () => {
+    // UI-D2A -- page title text changed to "WORK ORDERS" per Chief's
+    // approved reference (WorkOrder.css/.jsx); same page, new copy.
     loadWorkOrders();
     render(<WorkOrder />);
 
-    expect(screen.getByRole("heading", { name: "Work Order Workspace" })).toBeTruthy();
-    await screen.findByText("WO-1001");
+    expect(screen.getByRole("heading", { name: "WORK ORDERS" })).toBeTruthy();
+    await within(await registryTable()).findByText("WO-1001");
   });
 
   it("renders a loading state before the API resolves", () => {
@@ -124,7 +141,7 @@ describe("Work Order workspace page", () => {
     render(<WorkOrder />);
 
     for (const workOrder of WORK_ORDERS) {
-      expect(await screen.findByText(workOrder.work_order_code)).toBeTruthy();
+      expect(await within(await registryTable()).findByText(workOrder.work_order_code)).toBeTruthy();
     }
     expect(getWorkOrders).toHaveBeenCalledOnce();
   });
@@ -132,50 +149,54 @@ describe("Work Order workspace page", () => {
   it("shows an empty state in the detail panel before any work order is selected", async () => {
     loadWorkOrders();
     render(<WorkOrder />);
-    await screen.findByText("WO-1001");
+    await within(await registryTable()).findByText("WO-1001");
 
     expect(screen.getByText(/no work order selected/i)).toBeTruthy();
   });
 
   it("shows the selected work order's detail when a registry row is clicked", async () => {
+    // UI-D2A -- identity header's <h1> is the work order's ID; title is
+    // adjacent subtitle text (AssetIdentityHeader.jsx), same convention
+    // as Pump's tag/Seal's code.
     loadWorkOrders();
     render(<WorkOrder />);
-    await screen.findByText("WO-1002");
+    await within(await registryTable()).findByText("WO-1002");
 
-    fireEvent.click(screen.getByText("WO-1002"));
+    fireEvent.click(within(await registryTable()).getByText("WO-1002"));
 
-    expect(
-      await screen.findByRole("heading", { name: "Quarterly vibration survey" })
-    ).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "WO-1002" })).toBeTruthy();
+    expect(screen.getAllByText("Quarterly vibration survey").length).toBeGreaterThan(0);
     expect(getWorkOrderTimeline).toHaveBeenCalledWith("WO-1002");
   });
 
   it("filters the registry table by search text", async () => {
     loadWorkOrders();
     render(<WorkOrder />);
-    await screen.findByText("WO-1001");
+    await within(await registryTable()).findByText("WO-1001");
 
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "vibration" } });
 
-    expect(screen.getByText("WO-1002")).toBeTruthy();
+    expect(within(await registryTable()).getByText("WO-1002")).toBeTruthy();
     expect(screen.queryByText("WO-1001")).toBeNull();
   });
 
   it("filters the registry table by status", async () => {
+    // UI-D2A -- Priority/Area filters added alongside Status, so the
+    // combobox query must be scoped by its accessible name.
     loadWorkOrders();
     render(<WorkOrder />);
-    await screen.findByText("WO-1001");
+    await within(await registryTable()).findByText("WO-1001");
 
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "COMPLETED" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Filter by status" }), { target: { value: "COMPLETED" } });
 
-    expect(screen.getByText("WO-1008")).toBeTruthy();
+    expect(within(await registryTable()).getByText("WO-1008")).toBeTruthy();
     expect(screen.queryByText("WO-1001")).toBeNull();
   });
 
   it("shows an empty state in the registry when no work order matches the search", async () => {
     loadWorkOrders();
     render(<WorkOrder />);
-    await screen.findByText("WO-1001");
+    await within(await registryTable()).findByText("WO-1001");
 
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "no-such-work-order-xyz" } });
 
@@ -185,7 +206,7 @@ describe("Work Order workspace page", () => {
   it("opens the Create Work Order modal when the header action is clicked", async () => {
     loadWorkOrders();
     render(<WorkOrder />);
-    await screen.findByText("WO-1001");
+    await within(await registryTable()).findByText("WO-1001");
 
     fireEvent.click(screen.getByRole("button", { name: "+ Create Work Order" }));
 
@@ -215,7 +236,7 @@ describe("Work Order workspace page", () => {
     createWorkOrder.mockResolvedValue({ work_order_code: "WO-1009" });
 
     render(<WorkOrder />);
-    await screen.findByText("WO-1008");
+    await within(await registryTable()).findByText("WO-1008");
 
     fireEvent.click(screen.getByRole("button", { name: "+ Create Work Order" }));
     fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Inspect coupling" } });
@@ -223,8 +244,14 @@ describe("Work Order workspace page", () => {
 
     expect(screen.queryByRole("heading", { name: "Create Work Order" })).toBeNull();
 
-    expect(await screen.findByRole("heading", { name: "Inspect coupling" })).toBeTruthy();
-    expect(screen.getAllByText("Inspect coupling")).toHaveLength(2);
+    // UI-D2A -- identity header's <h1> is the work order's ID; title
+    // (still the newly-created record's own real title) is subtitle text.
+    expect(await screen.findByRole("heading", { name: "WO-1009" })).toBeTruthy();
+    // UI-D2A.1 -- "Inspect coupling" now legitimately appears 3 times
+    // (identity subtitle, desktop table row, mobile card row) instead of
+    // 2 -- getAllByText().length, not toHaveLength, so this doesn't need
+    // updating again the next time a representation is added/removed.
+    expect(screen.getAllByText("Inspect coupling").length).toBeGreaterThan(0);
     expect((await screen.findByRole("status")).textContent).toContain("WO-1009 created.");
 
     expect(createWorkOrder).toHaveBeenCalledWith(
@@ -238,7 +265,7 @@ describe("Work Order workspace page", () => {
     createWorkOrder.mockRejectedValue(new Error("work_order_code already exists"));
 
     render(<WorkOrder />);
-    await screen.findByText("WO-1008");
+    await within(await registryTable()).findByText("WO-1008");
 
     fireEvent.click(screen.getByRole("button", { name: "+ Create Work Order" }));
     fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Inspect coupling" } });

@@ -18,3 +18,4 @@ export { default as StatusSignal } from "./StatusSignal";
 export { default as RailSection } from "./RailSection";
 export { default as ActionBar } from "./ActionBar";
 export { default as RefGroup } from "./RefGroup";
+export { default as KpiStrip } from "./KpiStrip";

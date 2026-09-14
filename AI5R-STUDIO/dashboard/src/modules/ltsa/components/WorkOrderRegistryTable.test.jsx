@@ -1,6 +1,15 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import WorkOrderRegistryTable from "./WorkOrderRegistryTable";
+
+// UI-D2A.1 -- the component now also renders a mobile card list (CSS-
+// gated, jsdom applies no CSS so both are always in the DOM) alongside
+// the desktop table. Existence/click queries below are scoped to the
+// table -- the desktop-primary, always-present representation -- so
+// these tests keep asserting the same real behavior.
+function table() {
+  return screen.getByRole("table");
+}
 
 const WORK_ORDERS = [
   {
@@ -37,16 +46,16 @@ describe("WorkOrderRegistryTable", () => {
   it("renders one row per work order with id/title grouped under Work Order", () => {
     render(<WorkOrderRegistryTable workOrders={WORK_ORDERS} selectedId={null} onSelect={() => {}} />);
 
-    expect(screen.getByText("WO-1001")).toBeTruthy();
-    expect(screen.getByText("Quarterly vibration survey")).toBeTruthy();
-    expect(screen.getByText("641-P-5")).toBeTruthy();
+    expect(within(table()).getByText("WO-1001")).toBeTruthy();
+    expect(within(table()).getByText("Quarterly vibration survey")).toBeTruthy();
+    expect(within(table()).getByText("641-P-5")).toBeTruthy();
   });
 
   it("calls onSelect with the clicked work order's id", () => {
     const onSelect = vi.fn();
     render(<WorkOrderRegistryTable workOrders={WORK_ORDERS} selectedId={null} onSelect={onSelect} />);
 
-    fireEvent.click(screen.getByText("WO-1002"));
+    fireEvent.click(within(table()).getByText("WO-1002"));
 
     expect(onSelect).toHaveBeenCalledWith("WO-1002");
   });
@@ -61,10 +70,10 @@ describe("WorkOrderRegistryTable", () => {
   it("renders a priority badge and a status badge for each work order", () => {
     render(<WorkOrderRegistryTable workOrders={WORK_ORDERS} selectedId={null} onSelect={() => {}} />);
 
-    expect(screen.getByText("CRITICAL")).toBeTruthy();
-    expect(screen.getByText("MEDIUM")).toBeTruthy();
-    expect(screen.getByText("Open")).toBeTruthy();
-    expect(screen.getByText("In Progress")).toBeTruthy();
+    expect(within(table()).getByText("CRITICAL")).toBeTruthy();
+    expect(within(table()).getByText("MEDIUM")).toBeTruthy();
+    expect(within(table()).getByText("Open")).toBeTruthy();
+    expect(within(table()).getByText("In Progress")).toBeTruthy();
   });
 
   it("renders an empty state instead of a bare table when no work orders match", () => {

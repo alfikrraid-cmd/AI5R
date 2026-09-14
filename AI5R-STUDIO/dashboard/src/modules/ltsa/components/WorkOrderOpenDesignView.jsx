@@ -1,6 +1,9 @@
 import { useState } from "react";
 import PumpWorkspaceDrawer from "./PumpWorkspaceDrawer";
-import { Section, InfoRow, StatusSignal, RailSection, ActionBar, RefGroup } from "./open-design";
+import AssetIdentityHeader, { HealthCard } from "./AssetIdentityHeader";
+import WorkspaceTabStrip from "./WorkspaceTabStrip";
+import { IconClipboard } from "./PumpWorkspaceIcons";
+import { Section, InfoRow, StatusSignal, RefGroup } from "./open-design";
 import { statusLabel } from "../utils/workOrderStatus";
 import {
   EngineeringAIStatus,
@@ -16,57 +19,34 @@ import {
 } from "./engineering-ai";
 
 /**
- * MWO-LTSA-055 -- Work Order Workspace, migrated to the same LTSA Open
- * Design information hierarchy as Pump/Seal/PM (PumpOpenDesignView.jsx,
- * SealOpenDesignView.jsx, PMOpenDesignView.jsx). Built entirely from the
- * shared components/open-design/ Kit (Section/InfoRow/StatusSignal/
- * RailSection/ActionBar/RefGroup, MWO-LTSA-050B) and PumpWorkspaceDrawer --
- * no new design language, no new CSS.
+ * UI-D2A -- Work Order Workspace, migrated from the pre-UI-D1.2 Open
+ * Design hierarchy (ChromeBar/crumb + workspace-grid/object-column/
+ * inspector-rail + sticky Action Bar -- MWO-LTSA-055's original shape,
+ * byte-identical in spirit to Pump/Seal before their own UI-D1.2 rebuild)
+ * to Chief's approved reference: AssetIdentityHeader + WorkspaceTabStrip +
+ * tabbed sections, exactly the same shared components PumpOpenDesignView.jsx/
+ * SealOpenDesignView.jsx already use. This is a migration, not a redesign
+ * of the underlying domain data or behavior -- every field/section below
+ * is the same real, already-fetched value the old hierarchy rendered,
+ * just regrouped into tabs:
+ * - Overview: old Identity/Hero + "Work Order Overview" + "Current
+ *   Status" + "LTSA Coverage" + "Description" sections, plus a new Quick
+ *   Actions card (Buka Pump / Open PM Workspace / View Documents / View
+ *   History) mirroring Pump's own Overview Quick Actions card -- "View
+ *   Documents"/"View History" are local tab switches (no new navigation),
+ *   "Buka Pump"/"Open PM Workspace" reuse the exact onOpenPump/
+ *   onOpenPMWorkspace handlers the old sticky Action Bar already wired.
+ * - AI Insight: old "Engineering AI" section, unchanged content/props.
+ * - Documents: old raw-markup Documents section, unchanged (same
+ *   Pump/Seal/PM "eyebrow + button deviates from Section's generic
+ *   shape" documented exception).
+ * - History: old "Recent Activities" (Inspector Rail) + "Related
+ *   Engineering" section, combined onto one tab (Work Order has no
+ *   Asset360-style numeric analytics to warrant a separate Performance
+ *   tab, unlike Pump).
  *
- * Domain adaptation from Pump/Seal/PM's hierarchy (documented, not silent):
- * - Like PM (and unlike Pump), workOrder.equipmentTag is the real asset
- *   code directly (workOrderMapping.js: equipmentTag <- asset_code), but
- *   LTSA Coverage is CONDITIONAL like PM's/Seal's: workOrder.area is only
- *   resolved (withResolvedArea, workOrderMapping.js) when the asset_code
- *   successfully looks up via the existing Asset API. `workOrder.area !==
- *   null` is the same kind of real, already-computed "is this actually
- *   LTSA-covered" signal PM's pm.area !== null is -- not a fabricated
- *   derivation.
- * - Engineering AI is REAL here, unlike PM's permanent placeholder --
- *   WorkOrder.jsx already calls postEngineeringAI for every selected work
- *   order (Golden Reference pattern, same as Pump/Seal). This section
- *   reuses the exact same aiReady-branch markup/component set Pump/Seal's
- *   Open Design views already use, verbatim.
- * - Description has no Pump/Seal/PM precedent (none of those objects carry
- *   free-text prose) -- rendered as its own Section with a single prose
- *   paragraph, the same "real field, honest empty state" discipline as
- *   every other field here.
- * - Related Engineering mirrors PM's five groups (Related PM / Related
- *   Condition Monitoring / Related Failure Analysis / Related CM Reports /
- *   Related Work Orders). Related PM/Related CM Reports reuse
- *   getPMSchedules()/getCMReports() + mapPMScheduleRecord/mapCMReportRecord,
- *   the same already-wired calls Seal.jsx/PM.jsx use, filtered client-side
- *   by equipmentTag. Related Work Orders is derived from the work order
- *   list WorkOrder.jsx already has loaded (same equipmentTag, excluding
- *   this record) -- no new fetch, more complete than PM's own always-[]
- *   pm.relatedWorkOrders field since WorkOrder.jsx uniquely already holds
- *   the full sibling list in state. Related Condition Monitoring/Failure
- *   Analysis have no data source, same as Pump/PM's identical empty groups.
- * - Action Bar's one real, already-wired action is "Open PM Workspace"
- *   (only when workType === "PM", the exact same onOpenPMWorkspace handler
- *   WorkOrderDetailPanel.jsx used) -- the same "re-expose an existing
- *   page-level action from the sticky bar" pattern PM's "Create PM
- *   Schedule" already establishes. No new handler invented.
- * - Documents section keeps PM/Pump/Seal's own raw-markup exception
- *   (eyebrow + button inside .section-head, deviating from Section's
- *   generic shape).
- *
- * Data discipline (never fabricate): identical to PumpOpenDesignView.jsx/
- * SealOpenDesignView.jsx/PMOpenDesignView.jsx -- every field shows real,
- * already-fetched data or an honest empty state. requestedBy is rendered
- * as "--" when absent (workOrderMapping.js: intentionally never set this
- * sprint, ADR-WO-003) -- an honestly disclosed unimplemented field, not a
- * fabrication.
+ * Data discipline (unchanged): every field shows real, already-fetched
+ * data or an honest empty state -- never fabricated.
  */
 
 const STATUS_TIER = {
@@ -81,6 +61,13 @@ function statusMeta(status) {
   return { tier: STATUS_TIER[status] ?? "neutral", label: statusLabel(status) ?? "Unknown" };
 }
 
+const WORK_ORDER_TABS = [
+  { key: "overview", label: "Overview" },
+  { key: "ai-insight", label: "AI Insight" },
+  { key: "documents", label: "Documents" },
+  { key: "history", label: "History" },
+];
+
 export default function WorkOrderOpenDesignView({
   workOrder,
   relatedPMRecords = [],
@@ -89,6 +76,7 @@ export default function WorkOrderOpenDesignView({
   onOpenPump,
   onOpenDrawing,
   onOpenPMWorkspace,
+  onBack,
   aiResponse,
   aiReady,
   aiStatusText,
@@ -96,11 +84,12 @@ export default function WorkOrderOpenDesignView({
   aiStatusLabel,
 }) {
   const [drawer, setDrawer] = useState(null); // null | "drawing"
+  const [activeTab, setActiveTab] = useState("overview");
 
   const meta = statusMeta(workOrder.status);
   const covered = workOrder.area !== null;
 
-  // LTSA Coverage: conditional, like PM's -- workOrder.area is only
+  // LTSA Coverage: conditional, like PM's/Seal's -- workOrder.area is only
   // non-null when withResolvedArea's getWorkOrderAsset() call actually
   // resolved a real asset (workOrderMapping.js), so this is a real,
   // already-computed fact, not a fabricated derivation.
@@ -144,89 +133,83 @@ export default function WorkOrderOpenDesignView({
 
   return (
     <div className="ltsa-open-design" data-testid="workorder-open-design">
-      <div className="chrome-bar" data-od-id="chrome-bar">
-        <div className="chrome-inner">
-          <div className="crumb">
-            {workOrder.equipmentTag ? (
-              <button
-                type="button"
-                className="crumb-link"
-                onClick={() => onOpenPump?.(workOrder.equipmentTag)}
-                data-od-id="crumb-pump-link"
-              >
-                {workOrder.equipmentTag}
-              </button>
-            ) : (
-              <span>Unknown Asset</span>
-            )}
-            <span className="sep">›</span><span>Work Order</span>
-            <span className="sep">›</span><b>{workOrder.id}</b>
+      <AssetIdentityHeader
+        icon={<IconClipboard />}
+        tag={workOrder.id}
+        name={workOrder.title}
+        subtitle={
+          workOrder.equipmentTag
+            ? `Asset ${workOrder.equipmentTag}${workOrder.area ? ` · ${workOrder.area}` : ""}`
+            : "Asset unknown"
+        }
+        onBack={onBack}
+      >
+        <HealthCard label="Status" value={meta.label} tone={meta.tier} />
+        <HealthCard label="Priority" value={workOrder.priority ?? "N/A"} />
+      </AssetIdentityHeader>
+
+      <WorkspaceTabStrip items={WORK_ORDER_TABS} activeKey={activeTab} onChange={setActiveTab} />
+
+      {activeTab === "overview" && (
+        <div className="workspace-overview-grid">
+          <div className="workspace-overview-card" data-od-id="identity-section">
+            <div className="eyebrow">Asset Information</div>
+            <InfoRow label="Work Order" value={workOrder.id} valueClassName="mono" />
+            <InfoRow label="Equipment" value={workOrder.equipmentTag ?? "N/A"} />
+            <InfoRow label="Work Type" value={workOrder.workType ?? "N/A"} />
+            <InfoRow label="Created Date" value={workOrder.createdDate ?? "N/A"} />
+            <InfoRow label="Due Date" value={workOrder.dueDate ?? "N/A"} />
           </div>
-        </div>
-      </div>
 
-      <div className="workspace-grid">
-        <main className="object-column">
-          <section className="identity" data-od-id="identity-section">
-            <h1>{workOrder.title}</h1>
-            <div className="identity-status">
-              <StatusSignal tier={meta.tier} label={meta.label} />
-              <span className="running-line">
-                <span className="dot-sm" />
-                {workOrder.equipmentTag ? `Asset ${workOrder.equipmentTag}${workOrder.area ? ` · ${workOrder.area}` : ""}` : "Asset unknown"}
-              </span>
-            </div>
-            <div style={{ marginTop: "var(--space-4)" }}>
-              <div className="eyebrow" style={{ marginBottom: "var(--space-2)" }}>Identity</div>
-              <InfoRow label="Work Order" value={workOrder.id} valueClassName="mono" />
-              <InfoRow label="Equipment" value={workOrder.equipmentTag ?? "—"} />
-              <InfoRow label="Work Type" value={workOrder.workType ?? "—"} />
-            </div>
-            <div style={{ marginTop: "var(--space-4)" }}>
-              <div className="eyebrow" style={{ marginBottom: "var(--space-2)" }}>Technical</div>
-              <InfoRow label="Priority" value={workOrder.priority ?? "—"} />
-              <InfoRow label="Assigned Technician" value={workOrder.assignedTechnician ?? "—"} />
-              <InfoRow label="Due Date" value={workOrder.dueDate ?? "—"} />
-            </div>
-          </section>
+          <div className="workspace-overview-card">
+            <div className="eyebrow">Classification &amp; Assignment</div>
+            <InfoRow label="Priority" value={workOrder.priority ?? "N/A"} />
+            <InfoRow label="Assigned Technician" value={workOrder.assignedTechnician ?? "N/A"} />
+            <InfoRow label="Requested By" value={workOrder.requestedBy ?? "N/A"} />
+            <InfoRow label="Status" value={meta.label} />
+          </div>
 
-          <Section id="work-order-overview-section" title="Work Order Overview">
-            <div className="assessment-columns" style={{ marginTop: "var(--space-3)" }}>
-              <div>
-                <div className="eyebrow">Classification</div>
-                <InfoRow label="Work Type" value={workOrder.workType ?? "—"} />
-                <InfoRow label="Priority" value={workOrder.priority ?? "—"} />
-              </div>
-              <div>
-                <div className="eyebrow">Assignment</div>
-                <InfoRow label="Assigned Technician" value={workOrder.assignedTechnician ?? "—"} />
-                <InfoRow label="Requested By" value={workOrder.requestedBy ?? "—"} />
-              </div>
+          <div className="workspace-overview-card">
+            <div className="eyebrow">Quick Actions</div>
+            <div className="workspace-quick-actions">
+              {workOrder.equipmentTag && (
+                <button type="button" className="workspace-quick-action-btn" onClick={() => onOpenPump?.(workOrder.equipmentTag)} data-od-id="action-bar-open-pump">
+                  Buka Pump →
+                </button>
+              )}
+              {workOrder.workType === "PM" && onOpenPMWorkspace && (
+                <button type="button" className="workspace-quick-action-btn" onClick={onOpenPMWorkspace} data-od-id="action-bar-open-pm-workspace">
+                  Open PM Workspace
+                </button>
+              )}
+              <button type="button" className="workspace-quick-action-btn" onClick={() => setActiveTab("documents")}>
+                View Documents
+              </button>
+              <button type="button" className="workspace-quick-action-btn" onClick={() => setActiveTab("history")}>
+                View History
+              </button>
             </div>
-          </Section>
+          </div>
 
-          <Section id="current-status-section" title="Current Status">
-            <div className="info-panel" style={{ marginTop: "var(--space-3)" }}>
-              <InfoRow label="Status" value={meta.label} />
-              <InfoRow label="Created Date" value={workOrder.createdDate ?? "Unknown"} />
-              <InfoRow label="Due Date" value={workOrder.dueDate ?? "Unknown"} />
-              <InfoRow label="Coverage" value={coverageMeta.label} />
-            </div>
-          </Section>
-
-          <Section id="coverage-section" title="LTSA Coverage">
-            <div className="identity-status" style={{ marginTop: "var(--space-3)" }}>
+          <div className="workspace-overview-card" style={{ gridColumn: "1 / -1" }}>
+            <div className="eyebrow">LTSA Coverage</div>
+            <div className="identity-status" style={{ marginTop: "var(--space-2)" }}>
               <StatusSignal tier={coverageMeta.tier} label={coverageMeta.label} />
             </div>
             <p className="confidence-label" style={{ marginTop: "var(--space-2)" }}>{coverageMeta.message}</p>
-          </Section>
+          </div>
 
-          <Section id="description-section" title="Description">
-            <p className="confidence-label" style={{ marginTop: "var(--space-3)" }}>
+          <div className="workspace-overview-card" style={{ gridColumn: "1 / -1" }}>
+            <div className="eyebrow">Description</div>
+            <p className="confidence-label" style={{ marginTop: "var(--space-2)" }}>
               {workOrder.description || "No description provided."}
             </p>
-          </Section>
+          </div>
+        </div>
+      )}
 
+      {activeTab === "ai-insight" && (
+        <div className="workspace-tab-body">
           <Section id="engineering-ai-section" title="Engineering AI">
             <div className="info-panel" style={{ marginTop: "var(--space-3)" }}>
               {aiReady ? (
@@ -252,19 +235,15 @@ export default function WorkOrderOpenDesignView({
           {aiReady && <EngineeringAIEvidence response={aiResponse} />}
           {aiReady && <EngineeringAIRecommendation response={aiResponse} />}
           {aiReady && <EngineeringAISourceReferences response={aiResponse} />}
+        </div>
+      )}
 
-          <Section id="related-engineering-section" title="Related Engineering">
-            <div style={{ marginTop: "var(--space-3)" }}>
-              {relatedGroups.map((g) => (
-                <RefGroup key={g.id} title={g.title} items={g.items} emptyReason={g.emptyReason} />
-              ))}
-            </div>
-          </Section>
-
-          {/* Documents deliberately keeps raw markup, matching Pump/Seal/PM's
-              own documented exception -- its eyebrow sits inside
-              .section-head alongside a button, deviating from Section's
-              generic shape. */}
+      {activeTab === "documents" && (
+        <div className="workspace-tab-body">
+          {/* Documents deliberately keeps raw markup -- same documented
+              exception as Pump/Seal/PM's own Documents section: its
+              eyebrow sits inside .section-head alongside a button,
+              deviating from the generic Section shape. */}
           <section className="assessment-section" data-od-id="documents-section">
             <div className="section-head">
               <span className="eyebrow">Documents</span>
@@ -286,46 +265,35 @@ export default function WorkOrderOpenDesignView({
               <InfoRow label="Revision History" value="—" valueClassName="ref-group-empty" />
             </div>
           </section>
-        </main>
+        </div>
+      )}
 
-        <aside className="inspector-rail" data-od-id="inspector-rail">
-          <RailSection id="work-order-status-section" title="Work Order Status">
-            <StatusSignal tier={meta.tier} label={meta.label} />
-          </RailSection>
-
-          <RailSection id="priority-section" title="Priority">
-            <div className="confidence-label">{workOrder.priority ?? "Unknown"}</div>
-          </RailSection>
-
-          <RailSection id="recent-activities-section" title="Recent Activities">
+      {activeTab === "history" && (
+        <div className="workspace-tab-body">
+          <Section id="recent-activities-section" title="Recent Activities">
             {workOrder.timeline.length === 0 ? (
               <div className="confidence-label ref-group-empty">No recent activity available.</div>
             ) : (
               workOrder.timeline.map((entry, i) => (
-                <div className="confidence-label" key={`${entry.date}-${i}`}>{entry.date} — {entry.event}</div>
+                <div className="part-item" key={`${entry.date}-${i}`}>
+                  <div className="part-row">
+                    <span className="part-name">{entry.event}</span>
+                  </div>
+                  <div className="part-meta">{entry.date}</div>
+                </div>
               ))
             )}
-          </RailSection>
-        </aside>
-      </div>
+          </Section>
 
-      <ActionBar
-        label={`${workOrder.id} · ${meta.label}`}
-        metaPrimary={coverageMeta.label}
-        metaLabel="Due Date"
-        metaValue={workOrder.dueDate ?? "Unknown"}
-      >
-        {workOrder.equipmentTag && (
-          <button type="button" className="btn-link" onClick={() => onOpenPump?.(workOrder.equipmentTag)} data-od-id="action-bar-open-pump">
-            Buka Pump →
-          </button>
-        )}
-        {workOrder.workType === "PM" && onOpenPMWorkspace && (
-          <button type="button" className="btn-primary" onClick={onOpenPMWorkspace} data-od-id="action-bar-open-pm-workspace">
-            Open PM Workspace
-          </button>
-        )}
-      </ActionBar>
+          <Section id="related-engineering-section" title="Related Engineering">
+            <div style={{ marginTop: "var(--space-3)" }}>
+              {relatedGroups.map((g) => (
+                <RefGroup key={g.id} title={g.title} items={g.items} emptyReason={g.emptyReason} />
+              ))}
+            </div>
+          </Section>
+        </div>
+      )}
 
       <PumpWorkspaceDrawer open={drawer === "drawing"} onClose={() => setDrawer(null)} title="Work Order Drawing">
         <div className="drawing-thumb" />

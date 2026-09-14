@@ -385,3 +385,35 @@ html[data-theme="dark"] .ltsa-open-design {
   .ltsa-open-design .crumb span:not(.sep):not(:last-child) { display: none; }
   .ltsa-open-design .action-bar-inner { padding: var(--space-3) var(--space-5); gap: var(--space-3); }
 }
+
+/* ---------- UI-D2A -- KPI Strip ----------
+   Bounded shared primitive (components/open-design/KpiStrip.jsx), first
+   consumer is the Work Order Workspace page header. Additive only --
+   nothing here touches or overrides any existing Pump/Seal rule above. */
+.ltsa-open-design .kpi-strip {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: var(--space-4) var(--space-6) 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--space-3);
+}
+.ltsa-open-design .kpi-strip-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ltsa-open-design .kpi-strip-label {
+  font-size: var(--text-xs);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.ltsa-open-design .kpi-strip-value { font-size: var(--text-xl); font-weight: 650; color: var(--fg); }
+.ltsa-open-design .kpi-strip-value.tone-normal { color: var(--status-normal); }
+.ltsa-open-design .kpi-strip-value.tone-attention { color: var(--status-attention); }
+.ltsa-open-design .kpi-strip-value.tone-critical { color: var(--status-critical); }

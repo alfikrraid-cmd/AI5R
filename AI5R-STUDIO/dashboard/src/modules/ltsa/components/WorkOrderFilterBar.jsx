@@ -1,17 +1,34 @@
 import { SearchBox } from "../../../design-system";
-import colors from "../../../design-system/theme/colors";
-import spacing from "../../../design-system/theme/spacing";
 import { statusLabel } from "../utils/workOrderStatus";
 
+/**
+ * UI-D2A -- Work Order Workspace reference rebuild. Restyled light
+ * (`.ltsa-open-design` token scope) and extended with Priority/Area/Clear
+ * controls per Chief's approved reference -- Priority and Area are both
+ * already-real fields on every mapped work order (workOrderMapping.js),
+ * simply never exposed as filters before. New props are optional with
+ * safe no-op defaults so every existing caller/test that doesn't pass
+ * them keeps working unchanged (search + status alone).
+ */
 export default function WorkOrderFilterBar({
   searchValue,
   onSearchChange,
   statusFilter,
   onStatusFilterChange,
   statusOptions,
+  priorityFilter = "ALL",
+  onPriorityFilterChange,
+  priorityOptions = [],
+  areaFilter = "ALL",
+  onAreaFilterChange,
+  areaOptions = [],
+  onClear,
 }) {
+  const isFiltered =
+    searchValue.trim() !== "" || statusFilter !== "ALL" || priorityFilter !== "ALL" || areaFilter !== "ALL";
+
   return (
-    <div style={{ display: "flex", gap: spacing.md, flexWrap: "wrap", marginBottom: spacing.md }}>
+    <div className="workorder-filter-bar">
       <SearchBox
         value={searchValue}
         onChange={onSearchChange}
@@ -20,24 +37,60 @@ export default function WorkOrderFilterBar({
 
       <select
         aria-label="Filter by status"
+        className="workorder-filter-select"
         value={statusFilter}
         onChange={(event) => onStatusFilterChange(event.target.value)}
-        style={{
-          background: colors.panel,
-          color: colors.text,
-          border: `1px solid ${colors.border}`,
-          borderRadius: spacing.xs,
-          padding: `${spacing.xs}px ${spacing.sm}px`,
-        }}
       >
         <option value="ALL">All Statuses</option>
-
         {statusOptions.map((status) => (
           <option key={status} value={status}>
             {statusLabel(status)}
           </option>
         ))}
       </select>
+
+      {onPriorityFilterChange && (
+        <select
+          aria-label="Filter by priority"
+          className="workorder-filter-select"
+          value={priorityFilter}
+          onChange={(event) => onPriorityFilterChange(event.target.value)}
+        >
+          <option value="ALL">All Priorities</option>
+          {priorityOptions.map((priority) => (
+            <option key={priority} value={priority}>
+              {priority}
+            </option>
+          ))}
+        </select>
+      )}
+
+      {onAreaFilterChange && (
+        <select
+          aria-label="Filter by area"
+          className="workorder-filter-select"
+          value={areaFilter}
+          onChange={(event) => onAreaFilterChange(event.target.value)}
+        >
+          <option value="ALL">All Areas</option>
+          {areaOptions.map((area) => (
+            <option key={area} value={area}>
+              {area}
+            </option>
+          ))}
+        </select>
+      )}
+
+      {onClear && (
+        <button
+          type="button"
+          className="workorder-filter-clear"
+          onClick={onClear}
+          disabled={!isFiltered}
+        >
+          Clear
+        </button>
+      )}
     </div>
   );
 }

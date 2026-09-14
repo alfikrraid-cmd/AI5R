@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { Button, EmptyState, PageHeader, Panel } from "../../../design-system";
 import WorkOrderFilterBar from "../components/WorkOrderFilterBar";
 import WorkOrderRegistryTable from "../components/WorkOrderRegistryTable";
 import WorkOrderOpenDesignView from "../components/WorkOrderOpenDesignView";
 import CreateWorkOrderModal from "../components/CreateWorkOrderModal";
 import SuccessToast from "../components/SuccessToast";
+import { KpiStrip } from "../components/open-design";
 import {
   createWorkOrder, getWorkOrders, getWorkOrderTimeline, postEngineeringAI,
   getPMSchedules, getCMReports,
@@ -22,6 +22,21 @@ import { WORKSPACE_KEYS } from "../workspace/WorkspaceRegistry";
 import "./WorkOrder.css";
 import "./MaintenanceHistory.css";
 import "./LTSAOpenDesign.css";
+
+// UI-D2A -- "Overdue" is a real, truthfully-derived fact (dueDate in the
+// past AND status not already COMPLETED/CANCELLED), not a fabricated
+// value -- every input (dueDate, status) is a real already-mapped field
+// (workOrderMapping.js). No new API call, no invented field.
+function isOverdue(workOrder) {
+  if (!workOrder.dueDate || workOrder.status === "COMPLETED" || workOrder.status === "CANCELLED") {
+    return false;
+  }
+  const due = new Date(workOrder.dueDate);
+  if (Number.isNaN(due.getTime())) {
+    return false;
+  }
+  return due.getTime() < new Date().setHours(0, 0, 0, 0);
+}
 
 // Engineering AI: Work Order Workspace is the sixth and final Phase 1
 // consumer of the canonical Engineering AI platform (Golden Reference:
@@ -66,7 +81,10 @@ export default function WorkOrder({ navContext, onNavigate }) {
   const [listError, setListError] = useState(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
+  const [priorityFilter, setPriorityFilter] = useState("ALL");
+  const [areaFilter, setAreaFilter] = useState("ALL");
   const [selectedId, setSelectedId] = useState(null);
+  const [mobileRegistryCollapsed, setMobileRegistryCollapsed] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [successMessage, setSuccessMessage] = useState(null);
   const [creating, setCreating] = useState(false);
@@ -119,15 +137,54 @@ export default function WorkOrder({ navContext, onNavigate }) {
     [workOrders]
   );
 
+  // UI-D2A -- Priority/Area filters, reusing the same already-real fields
+  // (workOrder.priority/area) the table already displays; options are
+  // derived from whatever is actually present in the loaded data, never a
+  // hardcoded enum guess.
+  const priorityOptions = useMemo(
+    () => [...new Set(workOrders.map((workOrder) => workOrder.priority).filter(Boolean))],
+    [workOrders]
+  );
+
+  const areaOptions = useMemo(
+    () => [...new Set(workOrders.map((workOrder) => workOrder.area).filter(Boolean))],
+    [workOrders]
+  );
+
   const filteredWorkOrders = useMemo(
     () =>
       workOrders.filter(
         (workOrder) =>
           matchesSearch(workOrder, search) &&
-          (statusFilter === "ALL" || workOrder.status === statusFilter)
+          (statusFilter === "ALL" || workOrder.status === statusFilter) &&
+          (priorityFilter === "ALL" || workOrder.priority === priorityFilter) &&
+          (areaFilter === "ALL" || workOrder.area === areaFilter)
       ),
-    [workOrders, search, statusFilter]
+    [workOrders, search, statusFilter, priorityFilter, areaFilter]
   );
+
+  // UI-D2A -- KPI strip: derived from the full (unfiltered) registry, the
+  // same "at-a-glance fleet truth, independent of the current search/
+  // filter view" convention Pump/Seal's own header health cards follow.
+  // Every count is a real reduction over already-fetched records -- no
+  // new fetch, no fabricated number.
+  const kpiItems = useMemo(
+    () => [
+      { label: "Total WO", value: workOrders.length },
+      { label: "Open", value: workOrders.filter((wo) => wo.status === "OPEN").length },
+      { label: "In Progress", value: workOrders.filter((wo) => wo.status === "IN_PROGRESS").length },
+      { label: "Completed", value: workOrders.filter((wo) => wo.status === "COMPLETED").length },
+      { label: "Overdue", value: workOrders.filter(isOverdue).length, tone: "critical" },
+    ],
+    [workOrders]
+  );
+
+  function handleClearFilters() {
+    setSearch("");
+    setStatusFilter("ALL");
+    setPriorityFilter("ALL");
+    setAreaFilter("ALL");
+  }
 
   const selectedWorkOrder =
     filteredWorkOrders.find((workOrder) => workOrder.id === selectedId) ?? null;
@@ -216,6 +273,10 @@ export default function WorkOrder({ navContext, onNavigate }) {
 
   function selectWorkOrder(id) {
     setSelectedId(id);
+    // UI-D2A.1 -- auto-collapse the mobile registry once a work order is
+    // selected (CSS-gated to the mobile breakpoint only, WorkOrder.css;
+    // no effect on desktop, which always shows the full dense table).
+    setMobileRegistryCollapsed(true);
 
     getWorkOrderTimeline(id)
       .then((records) => {
@@ -262,25 +323,27 @@ export default function WorkOrder({ navContext, onNavigate }) {
   }
 
   return (
-    <div>
-      <PageHeader
-        title="Work Order Workspace"
-        subtitle="LTSA Engineering — Work Order Registry"
-        actions={<Button onClick={() => setIsCreateModalOpen(true)}>+ Create Work Order</Button>}
-      />
+    <div className="ltsa-open-design">
+      <div className="workorder-page-header">
+        <div>
+          <h1 className="workorder-page-title">WORK ORDERS</h1>
+          <p className="workorder-page-subtitle">Operational maintenance work-order workspace</p>
+        </div>
+        <button type="button" className="workorder-create-btn" onClick={() => setIsCreateModalOpen(true)}>
+          + Create Work Order
+        </button>
+      </div>
 
-      <SuccessToast message={successMessage} onDismiss={() => setSuccessMessage(null)} />
+      {!loading && !listError && <KpiStrip items={kpiItems} />}
 
-      {creating ? (
-        <Panel>
-          <p>Creating work order...</p>
-        </Panel>
-      ) : null}
+      <div style={{ maxWidth: 1240, margin: "0 auto", padding: "0 32px" }}>
+        <SuccessToast message={successMessage} onDismiss={() => setSuccessMessage(null)} />
+      </div>
+
+      {creating ? <p className="workorder-status-panel">Creating work order...</p> : null}
 
       {createError ? (
-        <Panel>
-          <p role="alert">{createError}</p>
-        </Panel>
+        <p className="workorder-status-panel" role="alert">{createError}</p>
       ) : null}
 
       <WorkOrderFilterBar
@@ -289,16 +352,19 @@ export default function WorkOrder({ navContext, onNavigate }) {
         statusFilter={statusFilter}
         onStatusFilterChange={setStatusFilter}
         statusOptions={statusOptions}
+        priorityFilter={priorityFilter}
+        onPriorityFilterChange={setPriorityFilter}
+        priorityOptions={priorityOptions}
+        areaFilter={areaFilter}
+        onAreaFilterChange={setAreaFilter}
+        areaOptions={areaOptions}
+        onClear={handleClearFilters}
       />
 
       {loading ? (
-        <Panel>
-          <p>Loading work orders...</p>
-        </Panel>
+        <p className="workorder-status-panel">Loading work orders...</p>
       ) : listError ? (
-        <Panel>
-          <p role="alert">{listError}</p>
-        </Panel>
+        <p className="workorder-status-panel" role="alert">{listError}</p>
       ) : (
         <div className="workorder-workspace-layout">
           <div className="workorder-workspace-registry">
@@ -306,12 +372,16 @@ export default function WorkOrder({ navContext, onNavigate }) {
               workOrders={filteredWorkOrders}
               selectedId={selectedId}
               onSelect={selectWorkOrder}
+              mobileCollapsed={mobileRegistryCollapsed}
+              onExpand={() => setMobileRegistryCollapsed(false)}
             />
           </div>
 
           <div className="workorder-workspace-detail">
             {selectedWorkOrder ? (
-              <WorkOrderOpenDesignView
+              <>
+                <p className="workorder-selected-label">Selected Work Order</p>
+                <WorkOrderOpenDesignView
                 workOrder={selectedWorkOrder}
                 relatedPMRecords={relatedPM}
                 cmRecords={relatedCM}
@@ -319,17 +389,19 @@ export default function WorkOrder({ navContext, onNavigate }) {
                 onOpenPump={handleOpenPump}
                 onOpenDrawing={handleOpenDrawing}
                 onOpenPMWorkspace={() => onNavigate?.("pm-workspace", { workOrderId: selectedWorkOrder.id })}
+                onBack={() => onNavigate?.("dashboard")}
                 aiResponse={aiResponse}
                 aiReady={aiReady}
                 aiStatusText={aiStatusText}
-                aiStatusVariant={aiStatusVariant}
-                aiStatusLabel={aiStatusLabel}
-              />
+                  aiStatusVariant={aiStatusVariant}
+                  aiStatusLabel={aiStatusLabel}
+                />
+              </>
             ) : (
-              <EmptyState
-                title="No work order selected"
-                description="Select a work order from the registry table to view its details."
-              />
+              <div className="workorder-empty-state">
+                <p className="workorder-empty-title">No work order selected</p>
+                <p className="workorder-empty-description">Select a work order from the work order list to view its details.</p>
+              </div>
             )}
           </div>
         </div>

@@ -1,21 +1,325 @@
-.workorder-workspace-layout {
+/* UI-D2A -- Work Order Workspace reference rebuild. Page-level chrome
+   (title, KPI strip, filter bar, registry table, loading/error/empty
+   states) restyled from the old dark design-system tokens (colors.js,
+   illegible once the page background went light) to the same
+   `.ltsa-open-design` light token scope the detail view already uses --
+   the whole page is now wrapped in that class (WorkOrder.jsx), so one
+   consistent visual language runs top to bottom. KPI strip itself lives
+   in the shared LTSAOpenDesign.css (`.kpi-strip`), not here, since it is
+   a bounded primitive meant for later PM/CM/Failure/Inventory reuse. */
+
+.workorder-page-header {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-6) 0;
   display: flex;
-  gap: 24px;
   align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
 }
 
-.workorder-workspace-registry {
-  flex: 2;
+.workorder-page-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--fg);
+}
+
+.workorder-page-subtitle {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.workorder-create-btn {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.workorder-create-btn:hover {
+  opacity: 0.92;
+}
+
+.workorder-filter-bar {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  align-items: center;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: var(--space-4) var(--space-6) 0;
+}
+
+.workorder-filter-select {
+  background: var(--surface);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.workorder-filter-clear {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.workorder-filter-clear:hover:not(:disabled) {
+  color: var(--fg);
+  border-color: var(--accent);
+}
+
+.workorder-filter-clear:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.workorder-status-panel {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: var(--space-4) var(--space-6) 0;
+  color: var(--fg);
+}
+
+.workorder-status-panel[role="alert"] {
+  color: var(--status-critical);
+}
+
+.workorder-table-wrap {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: var(--space-4) var(--space-6) var(--space-6);
+  overflow-x: auto;
+}
+
+.workorder-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.workorder-table thead th {
+  text-align: left;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  background: var(--surface-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+}
+
+.workorder-table tbody tr {
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+}
+
+.workorder-table tbody tr:last-child {
+  border-bottom: none;
+}
+
+.workorder-table tbody tr:hover {
+  background: var(--surface-2);
+}
+
+.workorder-table tbody tr[aria-selected="true"] {
+  background: var(--surface-2);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.workorder-table td {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--fg);
+  vertical-align: top;
+}
+
+.workorder-table .wo-id {
+  font-weight: 650;
+  font-family: var(--font-mono);
+}
+
+.workorder-table .wo-title,
+.workorder-table .wo-area {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  margin-top: 2px;
+}
+
+.workorder-empty-state {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: var(--space-6);
+  text-align: center;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.workorder-empty-title {
+  font-weight: 650;
+  color: var(--fg);
+  margin: 0 0 var(--space-1);
+}
+
+.workorder-empty-description {
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+/* UI-D2A.1 -- mobile registry: compact cards instead of the squeezed
+   6-column table, plus a collapsed summary once a WO is selected so the
+   user reaches the detail view without scrolling the whole registry
+   first. Desktop (>768px) is unaffected: `.workorder-table-wrap` stays
+   the only visible representation, full-width dense table, regardless of
+   selection -- `.workorder-card-list`/`.workorder-collapsed-summary` are
+   unconditionally hidden above the breakpoint. Which of the two mobile
+   representations shows is driven by the `data-collapsed` attribute
+   WorkOrderRegistryTable.jsx sets on `.workorder-registry` (true only
+   once a work order is selected) -- "View All Work Orders" clears it. */
+.workorder-card-list,
+.workorder-collapsed-summary {
+  display: none;
+}
+
+.workorder-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.workorder-card[aria-selected="true"] {
+  border-color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.workorder-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.workorder-card-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+.workorder-collapsed-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
   min-width: 0;
+  flex-wrap: wrap;
 }
 
-.workorder-workspace-detail {
-  flex: 1;
-  min-width: 280px;
+.workorder-collapsed-expand {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--accent);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
 @media (max-width: 768px) {
-  .workorder-workspace-layout {
-    flex-direction: column;
+  .workorder-table-wrap {
+    display: none;
   }
+
+  .workorder-card-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: var(--space-4) var(--space-5) var(--space-6);
+  }
+
+  .workorder-registry[data-collapsed="true"] .workorder-card-list {
+    display: none;
+  }
+
+  .workorder-registry[data-collapsed="true"] .workorder-collapsed-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: var(--space-4) var(--space-5) var(--space-6);
+  }
+}
+
+/* MWO-LTSA-050 precedent (Pump.css/Seal.css) -- the Open Design detail
+   pane is a wide (max-width: 1240px) continuous-document layout, so a
+   side-by-side flex:2/flex:1 registry+detail split starves it of width
+   on every desktop viewport, not just narrow ones. Stacking
+   unconditionally fixes this and is a strict superset of "stacks on
+   narrow viewports". WorkOrder never received this fix when Pump/Seal
+   did (MWO-LTSA-050/MWO-LTSA-043-RC1); this is that same fix, applied
+   here for the first time. */
+.workorder-workspace-layout {
+  display: flex;
+  flex-direction: column;
+}
+
+.workorder-workspace-registry {
+  width: 100%;
+}
+
+/* UI-D2A.1 -- Chief's feedback: the 24px gap between the registry table
+   and the selected WO's detail read as two unrelated sections. Replaced
+   with a thin divider + tight spacing so registry -> detail reads as one
+   continuous operational workspace, while still keeping an unambiguous
+   section boundary (the rule + "Selected Work Order" label take over the
+   job the old 24px whitespace gap used to do). */
+.workorder-workspace-detail {
+  width: 100%;
+  margin-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.workorder-selected-label {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: var(--space-3) var(--space-6) 0;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
