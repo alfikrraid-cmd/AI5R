@@ -51,6 +51,18 @@ export default function TaskDetailModal({
 
   const isClaimed = currentTask.status === "CLAIMED";
 
+  const isCodingRole =
+    currentTask.assigned_position_id === "BACKEND_ENGINEER" ||
+    currentTask.assigned_position_id === "FRONTEND_ENGINEER";
+
+  const isPatch = Boolean(
+    artifact && (artifact.sandbox_id || artifact.git_diff !== undefined || artifact.changed_files !== undefined)
+  );
+
+  const isReview = Boolean(
+    artifact && (artifact.review_id || artifact.decision !== undefined)
+  );
+
   const handleRunAnalysis = async () => {
     if (isExecuting || !isClaimed) return;
     setIsExecuting(true);
@@ -150,7 +162,7 @@ export default function TaskDetailModal({
           </div>
         </div>
 
-        {/* Run Analysis Action Button for CLAIMED Tasks */}
+        {/* Execution Action Controls for CLAIMED Tasks */}
         {isClaimed ? (
           <div
             data-testid="task-execution-controls"
@@ -166,10 +178,12 @@ export default function TaskDetailModal({
           >
             <div>
               <div style={{ fontSize: typography.size.xs, fontWeight: typography.weight.bold, color: colors.text }}>
-                Phase 1F R1 Execution Seam
+                {isCodingRole ? "Controlled Coding Sandbox" : "Phase 1F Execution Seam"}
               </div>
               <div style={{ fontSize: typography.size.xs, color: colors.textMuted }}>
-                Invoke {currentTask.assigned_position_id} for read-only analysis & proposal generation.
+                {isCodingRole
+                  ? `Execute ${currentTask.assigned_position_id} in isolated worktree sandbox with real diff & tests.`
+                  : `Invoke ${currentTask.assigned_position_id} for engineering analysis & proposal generation.`}
               </div>
             </div>
             <button
@@ -178,7 +192,11 @@ export default function TaskDetailModal({
               onClick={handleRunAnalysis}
               disabled={isExecuting}
               style={{
-                background: isExecuting ? colors.textMuted : (colors.info || "#3b82f6"),
+                background: isExecuting
+                  ? colors.textMuted
+                  : isCodingRole
+                  ? (colors.success || "#10b981")
+                  : (colors.info || "#3b82f6"),
                 color: colors.text || "#ffffff",
                 border: "none",
                 borderRadius: spacing.xs,
@@ -188,7 +206,9 @@ export default function TaskDetailModal({
                 fontSize: typography.size.xs,
               }}
             >
-              {isExecuting ? "Running Analysis..." : "Run Analysis"}
+              {isExecuting
+                ? (isCodingRole ? "Running in Sandbox..." : "Running Analysis...")
+                : (isCodingRole ? "Run in Sandbox" : "Run Analysis")}
             </button>
           </div>
         ) : null}
@@ -210,8 +230,290 @@ export default function TaskDetailModal({
           </div>
         ) : null}
 
-        {/* Execution Artifact View */}
-        {artifact ? (
+        {/* Patch Artifact View (Sandbox Execution) */}
+        {artifact && isPatch ? (
+          <div
+            data-testid="patch-artifact-view"
+            style={{
+              background: colors.background,
+              border: `1px solid ${colors.border}`,
+              borderRadius: spacing.xs,
+              padding: spacing.md,
+              display: "flex",
+              flexDirection: "column",
+              gap: spacing.sm,
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <span style={{ fontSize: typography.size.xs, fontWeight: typography.weight.bold, color: colors.textMuted }}>
+                  SANDBOX PATCH ARTIFACT
+                </span>
+                <div style={{ fontSize: typography.size.xs, color: colors.textMuted }}>
+                  ID: <code>{artifact.artifact_id}</code> · Sandbox: <code>{artifact.sandbox_id || "Isolated"}</code>
+                  {artifact.base_commit ? ` · Base: ${artifact.base_commit.slice(0, 8)}` : ""}
+                </div>
+              </div>
+              <Badge variant={artifact.status === "SUCCESS" ? "success" : "danger"}>{artifact.status}</Badge>
+            </div>
+
+            {/* Patch Summary */}
+            <div style={{ background: colors.surface || colors.cardBackground, padding: spacing.sm, borderRadius: spacing.xs }}>
+              <div style={{ fontSize: typography.size.xs, fontWeight: typography.weight.bold, color: colors.textMuted, marginBottom: 4 }}>
+                PATCH SUMMARY
+              </div>
+              <div style={{ fontSize: typography.size.sm, color: colors.text }}>
+                {artifact.summary}
+              </div>
+            </div>
+
+            {/* Changed Files */}
+            <div
+              data-testid="patch-changed-files"
+              style={{ background: colors.surface || colors.cardBackground, padding: spacing.sm, borderRadius: spacing.xs }}
+            >
+              <div style={{ fontSize: typography.size.xs, fontWeight: typography.weight.bold, color: colors.textMuted, marginBottom: 4 }}>
+                MODIFIED SOURCE FILES ({artifact.changed_files?.length || 0})
+              </div>
+              <ul style={{ margin: 0, paddingLeft: 18, fontSize: typography.size.xs, color: colors.text }}>
+                {(artifact.changed_files || []).map((file, i) => (
+                  <li key={i}>
+                    <code>{file}</code>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Diff Stat */}
+            {artifact.diff_stat ? (
+              <div
+                data-testid="patch-diff-stat"
+                style={{ background: colors.surface || colors.cardBackground, padding: spacing.sm, borderRadius: spacing.xs }}
+              >
+                <div style={{ fontSize: typography.size.xs, fontWeight: typography.weight.bold, color: colors.textMuted, marginBottom: 4 }}>
+                  DIFF STAT
+                </div>
+                <pre style={{ margin: 0, fontSize: 11, color: colors.textMuted, whiteSpace: "pre-wrap" }}>
+                  {artifact.diff_stat}
+                </pre>
+              </div>
+            ) : null}
+
+            {/* Real Git Diff */}
+            <div
+              data-testid="patch-git-diff"
+              style={{ background: colors.surface || colors.cardBackground, padding: spacing.sm, borderRadius: spacing.xs }}
+            >
+              <div style={{ fontSize: typography.size.xs, fontWeight: typography.weight.bold, color: colors.textMuted, marginBottom: 4 }}>
+                GIT DIFF (SANDBOX WORKTREE)
+              </div>
+              <pre
+                style={{
+                  margin: 0,
+                  fontSize: 11,
+                  fontFamily: "monospace",
+                  background: "#0d1117",
+                  color: "#e6edf3",
+                  padding: spacing.sm,
+                  borderRadius: spacing.xs,
+                  overflowX: "auto",
+                  maxHeight: 250,
+                  whiteSpace: "pre-wrap",
+                }}
+              >
+                {artifact.git_diff || "(No diff generated)"}
+              </pre>
+            </div>
+
+            {/* Test Results */}
+            <div
+              data-testid="patch-test-results"
+              style={{ background: colors.surface || colors.cardBackground, padding: spacing.sm, borderRadius: spacing.xs }}
+            >
+              <div style={{ fontSize: typography.size.xs, fontWeight: typography.weight.bold, color: colors.textMuted, marginBottom: 4 }}>
+                TEST EXECUTION RESULTS ({artifact.test_results?.length || 0})
+              </div>
+              {artifact.test_results && artifact.test_results.length > 0 ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: spacing.xs }}>
+                  {artifact.test_results.map((t, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        padding: spacing.xs,
+                        background: colors.background,
+                        borderRadius: spacing.xs,
+                        fontSize: typography.size.xs,
+                      }}
+                    >
+                      <div>
+                        <strong>{t.command_id}</strong> on <code>{t.target}</code>
+                        <span style={{ color: colors.textMuted, marginLeft: 8 }}>({t.duration}s)</span>
+                      </div>
+                      <Badge variant={t.passed ? "success" : "danger"}>
+                        {t.passed ? "PASSED" : `FAILED (exit ${t.exit_code})`}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ fontSize: typography.size.xs, color: colors.textMuted }}>
+                  No automated tests requested or executed.
+                </div>
+              )}
+            </div>
+
+            {/* Metadata Footer */}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: 10,
+                color: colors.textMuted,
+                borderTop: `1px solid ${colors.border}`,
+                paddingTop: spacing.xs,
+              }}
+            >
+              <span>Started: {artifact.started_at ? new Date(artifact.started_at).toLocaleTimeString() : "N/A"} · Completed: {artifact.completed_at ? new Date(artifact.completed_at).toLocaleTimeString() : "N/A"}</span>
+              <span>Isolated Git Worktree Sandbox</span>
+            </div>
+          </div>
+        ) : null}
+
+        {/* Review Artifact View (SENTRY Technical Review) */}
+        {artifact && isReview ? (
+          <div
+            data-testid="review-artifact-view"
+            style={{
+              background: colors.background,
+              border: `1px solid ${colors.border}`,
+              borderRadius: spacing.xs,
+              padding: spacing.md,
+              display: "flex",
+              flexDirection: "column",
+              gap: spacing.sm,
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <span style={{ fontSize: typography.size.xs, fontWeight: typography.weight.bold, color: colors.textMuted }}>
+                  TECHNICAL REVIEW (SENTRY)
+                </span>
+                <div style={{ fontSize: typography.size.xs, color: colors.textMuted }}>
+                  ID: <code>{artifact.review_id || artifact.artifact_id}</code> · Role: <strong>{artifact.role || "QA_ENGINEER"}</strong>
+                </div>
+              </div>
+              <Badge variant={artifact.decision === "APPROVE_TECHNICAL" ? "success" : "warning"}>
+                {artifact.decision}
+              </Badge>
+            </div>
+
+            {/* Review Summary */}
+            <div style={{ background: colors.surface || colors.cardBackground, padding: spacing.sm, borderRadius: spacing.xs }}>
+              <div style={{ fontSize: typography.size.xs, fontWeight: typography.weight.bold, color: colors.textMuted, marginBottom: 4 }}>
+                REVIEW EVALUATION
+              </div>
+              <div style={{ fontSize: typography.size.sm, color: colors.text }}>
+                {artifact.summary}
+              </div>
+            </div>
+
+            {/* Findings */}
+            {artifact.findings && artifact.findings.length > 0 ? (
+              <div
+                data-testid="review-findings"
+                style={{ background: colors.surface || colors.cardBackground, padding: spacing.sm, borderRadius: spacing.xs }}
+              >
+                <div style={{ fontSize: typography.size.xs, fontWeight: typography.weight.bold, color: colors.textMuted, marginBottom: 4 }}>
+                  TECHNICAL FINDINGS ({artifact.findings.length})
+                </div>
+                <ul style={{ margin: 0, paddingLeft: 18, fontSize: typography.size.xs, color: colors.text }}>
+                  {artifact.findings.map((f, i) => (
+                    <li key={i} style={{ marginBottom: 2 }}>{f}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {/* Risks */}
+            {artifact.risks && artifact.risks.length > 0 ? (
+              <div
+                data-testid="review-risks"
+                style={{ background: colors.surface || colors.cardBackground, padding: spacing.sm, borderRadius: spacing.xs }}
+              >
+                <div style={{ fontSize: typography.size.xs, fontWeight: typography.weight.bold, color: colors.textMuted, marginBottom: 4 }}>
+                  IDENTIFIED RISKS ({artifact.risks.length})
+                </div>
+                <ul style={{ margin: 0, paddingLeft: 18, fontSize: typography.size.xs, color: colors.textMuted }}>
+                  {artifact.risks.map((r, i) => (
+                    <li key={i} style={{ marginBottom: 2 }}>{r}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {/* Test Evidence Reviewed */}
+            {artifact.test_evidence_reviewed ? (
+              <div
+                data-testid="review-test-evidence"
+                style={{ background: colors.surface || colors.cardBackground, padding: spacing.sm, borderRadius: spacing.xs }}
+              >
+                <div style={{ fontSize: typography.size.xs, fontWeight: typography.weight.bold, color: colors.textMuted, marginBottom: 4 }}>
+                  AUTOMATED TEST EVIDENCE REVIEWED
+                </div>
+                <div style={{ fontSize: typography.size.xs, color: colors.text }}>
+                  Total tests: <strong>{artifact.test_evidence_reviewed.total_tests || 0}</strong> · Passed: <strong style={{ color: "#10b981" }}>{artifact.test_evidence_reviewed.passed_tests || 0}</strong> · Failed: <strong style={{ color: "#ef4444" }}>{artifact.test_evidence_reviewed.failed_tests || 0}</strong>
+                </div>
+              </div>
+            ) : null}
+
+            {/* Recommended Action */}
+            {artifact.recommended_action ? (
+              <div style={{ background: colors.surface || colors.cardBackground, padding: spacing.sm, borderRadius: spacing.xs }}>
+                <div style={{ fontSize: typography.size.xs, fontWeight: typography.weight.bold, color: colors.textMuted, marginBottom: 4 }}>
+                  RECOMMENDED ACTION
+                </div>
+                <div style={{ fontSize: typography.size.xs, color: colors.text }}>
+                  {artifact.recommended_action}
+                </div>
+              </div>
+            ) : null}
+
+            {/* Human Gate Advisory */}
+            <div
+              style={{
+                background: "rgba(59, 130, 246, 0.1)",
+                border: "1px solid rgba(59, 130, 246, 0.3)",
+                padding: spacing.xs,
+                borderRadius: spacing.xs,
+                fontSize: 11,
+                color: colors.info || "#3b82f6",
+              }}
+            >
+              ℹ️ Technical evaluation only. Production release remains strictly guarded by the Human Chief Gate.
+            </div>
+
+            {/* Metadata Footer */}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: 10,
+                color: colors.textMuted,
+                borderTop: `1px solid ${colors.border}`,
+                paddingTop: spacing.xs,
+              }}
+            >
+              <span>Started: {artifact.started_at ? new Date(artifact.started_at).toLocaleTimeString() : "N/A"} · Completed: {artifact.completed_at ? new Date(artifact.completed_at).toLocaleTimeString() : "N/A"}</span>
+              <span>SENTRY Quality Gate</span>
+            </div>
+          </div>
+        ) : null}
+
+        {/* Standard Execution Artifact View (Analysis) */}
+        {artifact && !isPatch && !isReview ? (
           <div
             data-testid="execution-artifact-view"
             style={{

@@ -16,6 +16,7 @@ for _path in (API_DIR, CORE_SERVICES_DIR, AI5R_SDK_DIR):
         sys.path.insert(0, str(_path))
 
 from API.agent_execution_adapter import AgentExecutionAdapter, ExecutionArtifact
+from API.coding_sandbox import PatchArtifact, ReviewArtifact
 from API.STREAMING.live_stream_api import LiveStreamAPI
 from DIGITAL_EMPLOYEE.CONVERSATION.employee_conversation_store import EmployeeConversationStore
 from WORKFORCE.approval_chain_runtime import (
@@ -196,13 +197,13 @@ class WorkforceService:
             "is_production": is_production_work_item(item),
         }
 
-    def execute_task(self, work_item_id: str, ai_client: Any = None) -> ExecutionArtifact:
+    def execute_task(self, work_item_id: str, ai_client: Any = None) -> ExecutionArtifact | PatchArtifact | ReviewArtifact:
         return self.execution_adapter.execute_work_item(work_item_id, ai_client=ai_client)
 
-    def get_task_artifacts(self, work_item_id: str) -> list[ExecutionArtifact]:
+    def get_task_artifacts(self, work_item_id: str) -> list[ExecutionArtifact | PatchArtifact | ReviewArtifact]:
         return self.execution_adapter.get_task_artifacts(work_item_id)
 
-    def get_artifact(self, artifact_id: str) -> ExecutionArtifact | None:
+    def get_artifact(self, artifact_id: str) -> ExecutionArtifact | PatchArtifact | ReviewArtifact | None:
         return self.execution_adapter.get_artifact(artifact_id)
 
     def serialize_activity(self, activity: EmployeeActivity) -> dict[str, Any]:
