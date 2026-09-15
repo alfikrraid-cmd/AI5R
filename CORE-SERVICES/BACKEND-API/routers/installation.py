@@ -22,6 +22,7 @@ from dependencies import (
     get_import_database_runner,
     get_installation_gateway,
     get_installation_report_fitment_repository,
+    get_installation_report_repository,
     get_pump_gateway,
     require_permission,
 )
@@ -32,12 +33,26 @@ from models.responses import Payload
 router = APIRouter(dependencies=[Depends(require_permission("drawing.read"))])
 
 # Installation Report API (MWO-LTSA-060, production persistence path for
-# the Installation Workspace created by MWO-LTSA-056) -- reuses
-# InstallationGateway unmodified, exposed under the /api/ltsa prefix
-# already used by every other LTSA registry endpoint (mirrors
-# pm_schedule.py's list/detail pair exactly). List and detail only,
-# matching InstallationGateway's own real capability -- create/update/
-# delete are out of this MWO's scope.
+# the Installation Workspace created by MWO-LTSA-056), exposed under the
+# /api/ltsa prefix already used by every other LTSA registry endpoint
+# (mirrors pm_schedule.py's list/detail pair exactly). List and detail
+# only -- create/update/delete are out of this MWO's scope.
+#
+# MWO-INSTALLATION-DIRECT-DB-READ-PATH-R1 -- list_ltsa_installations()
+# below now reads via InstallationReportRepository (direct SQL against
+# installation_report), not InstallationGateway. Root cause (prior
+# read-only audit): InstallationGateway.list_installations() calls an
+# n8n webhook (GET ltsa/installation/list) that was never registered in
+# production, and no workflow JSON for it exists anywhere in this
+# repository either -- not a deactivated workflow, a never-built one.
+# InstallationReportRepository already exists, already reads the real
+# 42-row table, and is already production-proven (Copilot's fleet-
+# installation answer has used it since MWO-LTSA-AI-COPILOT-NATURAL-
+# LANGUAGE-ROUTING-017A) -- reused here as-is, same {"success","data"}
+# shape, no new query. get_ltsa_installation() (single-record detail,
+# below) is unchanged and still depends on InstallationGateway -- out of
+# this MWO's explicit scope ("Do not modify unrelated Installation
+# detail/link endpoints unless strictly necessary").
 #
 # MWO-LTSA-AUTH-DATA-SCOPE-ROUTE-CLOSURE-001 -- installation_report's
 # own pump-tag field is `plant_equip_no`, not `asset_code` (confirmed
@@ -47,11 +62,11 @@ router = APIRouter(dependencies=[Depends(require_permission("drawing.read"))])
 
 @router.get("/api/ltsa/installations")
 def list_ltsa_installations(
-    installation_gateway=Depends(get_installation_gateway),
+    installation_report_repository=Depends(get_installation_report_repository),
     pump_gateway=Depends(get_pump_gateway),
     current_user: AuthenticatedIdentity = Depends(get_current_user),
 ) -> Payload:
-    response = installation_gateway.list_installations()
+    response = installation_report_repository.list_installations()
     scope = resolve_area_scope(current_user)
     if scope is not None and isinstance(response, dict) and isinstance(response.get("data"), list):
         filtered = filter_records_by_asset_scope(response["data"], scope, pump_gateway, asset_field="plant_equip_no")

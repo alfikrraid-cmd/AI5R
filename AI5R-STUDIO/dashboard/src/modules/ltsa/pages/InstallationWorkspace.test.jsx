@@ -460,16 +460,55 @@ describe("Real-data wiring (MWO-LTSA-060)", () => {
     expect((await screen.findAllByText("PT Fetched Customer")).length).toBeGreaterThan(0);
   });
 
-  it("falls back to the genuine empty state, not a fabricated one, when getInstallations rejects", async () => {
-    getInstallations.mockRejectedValue(new Error("network error"));
-    render(<InstallationWorkspace onNavigate={() => {}} />);
-    expect(await screen.findByText(/no installation report selected/i)).toBeTruthy();
-  });
-
   it("falls back to the genuine empty state when the API returns no installations", async () => {
     getInstallations.mockResolvedValue([]);
     render(<InstallationWorkspace onNavigate={() => {}} />);
     expect(await screen.findByText(/no installation report selected/i)).toBeTruthy();
+  });
+});
+
+// MWO-INSTALLATION-DIRECT-DB-READ-PATH-R1 -- the previous
+// Promise.all(...).catch(() => setFetchedInstallations([])) made an API
+// failure indistinguishable from a genuine empty result, and let a
+// getPumps() failure erase valid installation records. These four cases
+// are this MWO's own required acceptance matrix.
+describe("Independent failure handling (MWO-INSTALLATION-DIRECT-DB-READ-PATH-R1)", () => {
+  beforeEach(() => {
+    getInstallations.mockReset();
+    getPumps.mockReset();
+  });
+
+  it("1. Installation success + Pump success -> records render with Area resolved", async () => {
+    getInstallations.mockResolvedValue([{ installation_code: "INSTL-A", plant_equip_no: "999-P-9", pump_tag_number: "999-P-9" }]);
+    getPumps.mockResolvedValue([{ tag_number: "999-P-9", area: "HOC" }]);
+    render(<InstallationWorkspace onNavigate={() => {}} />);
+    expect((await screen.findAllByText("HOC")).length).toBeGreaterThan(0);
+  });
+
+  it("2. Installation success + Pump failure -> records still render, Area=N/A, no false empty state", async () => {
+    getInstallations.mockResolvedValue([{ installation_code: "INSTL-B", plant_equip_no: "888-P-8", pump_tag_number: "888-P-8" }]);
+    getPumps.mockRejectedValue(new Error("pumps unavailable"));
+    render(<InstallationWorkspace onNavigate={() => {}} />);
+    expect((await screen.findAllByText("888-P-8")).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/no installation reports match/i)).toBeNull();
+    expect(screen.getAllByText("N/A").length).toBeGreaterThan(0);
+  });
+
+  it("3. Installation failure -> explicit error state, never represented as zero records", async () => {
+    getInstallations.mockRejectedValue(new Error("database unavailable"));
+    getPumps.mockResolvedValue([]);
+    render(<InstallationWorkspace onNavigate={() => {}} />);
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(screen.queryByText(/no installation reports match/i)).toBeNull();
+    expect(screen.queryByText(/no installation report selected/i)).toBeNull();
+  });
+
+  it("4. Installation successful empty list -> genuine empty state, not the error state", async () => {
+    getInstallations.mockResolvedValue([]);
+    getPumps.mockResolvedValue([]);
+    render(<InstallationWorkspace onNavigate={() => {}} />);
+    expect(await screen.findByText(/no installation report selected/i)).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });
 

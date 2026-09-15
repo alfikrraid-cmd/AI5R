@@ -15,6 +15,7 @@ from dependencies import (
     get_import_database_runner,
     get_installation_gateway,
     get_installation_report_fitment_repository,
+    get_installation_report_repository,
     get_pump_gateway,
 )
 from API.auth_service import ROLE_PERMISSIONS, AuthenticatedIdentity
@@ -43,8 +44,14 @@ def _identity(
 
 # MWO-LTSA-060 -- Installation Report production persistence path. Router
 # only: no filtering, no derivation, no business logic here -- each
-# InstallationGateway result is returned unchanged, mirroring
+# gateway/repository result is returned unchanged, mirroring
 # pm_schedule.py's list/detail pass-through exactly.
+#
+# MWO-INSTALLATION-DIRECT-DB-READ-PATH-R1 -- list_ltsa_installations() now
+# reads via InstallationReportRepository (FakeInstallationReportRepository
+# below), not InstallationGateway. FakeInstallationGateway stays exactly
+# as it was for get_ltsa_installation() (detail), which this MWO does not
+# touch.
 
 
 class FakeInstallationGateway:
@@ -61,6 +68,16 @@ class FakeInstallationGateway:
     def get_installation(self, installation_code):
         self.detail_calls.append(installation_code)
         return self.detail_response
+
+
+class FakeInstallationReportRepository:
+    def __init__(self, list_response=None):
+        self.list_response = list_response
+        self.list_calls = 0
+
+    def list_installations(self):
+        self.list_calls += 1
+        return self.list_response
 
 
 def _response(data):
@@ -92,17 +109,34 @@ def test_both_routes_allow_only_get():
     assert set(openapi["/api/ltsa/installations/{installation_code}"]) == {"get"}
 
 
-def test_list_installations_returns_the_gateways_response_unchanged():
-    fake = FakeInstallationGateway(
+def test_list_installations_returns_the_repositorys_response_unchanged():
+    fake = FakeInstallationReportRepository(
         list_response=_response([{"installation_code": "INSTL-001-2026", "report_no": "001/INSTL /TAP/01-2026"}])
     )
-    app.dependency_overrides[get_installation_gateway] = lambda: fake
+    app.dependency_overrides[get_installation_report_repository] = lambda: fake
 
     response = client.get("/api/ltsa/installations")
 
     assert response.status_code == 200
     assert response.json() == fake.list_response
     assert fake.list_calls == 1
+
+
+def test_list_installations_never_calls_the_n8n_gateway():
+    # MWO-INSTALLATION-DIRECT-DB-READ-PATH-R1's whole point: LIST no longer
+    # depends on InstallationGateway at all. Overriding only the gateway
+    # (never the repository) and asserting list_calls stays 0 proves the
+    # route doesn't fall back to it.
+    gateway_fake = FakeInstallationGateway(list_response=_response([]))
+    app.dependency_overrides[get_installation_gateway] = lambda: gateway_fake
+    app.dependency_overrides[get_installation_report_repository] = lambda: FakeInstallationReportRepository(
+        list_response=_response([])
+    )
+
+    response = client.get("/api/ltsa/installations")
+
+    assert response.status_code == 200
+    assert gateway_fake.list_calls == 0
 
 
 def test_get_installation_returns_the_gateways_response_unchanged():
@@ -117,13 +151,25 @@ def test_get_installation_returns_the_gateways_response_unchanged():
 
 
 def test_list_installations_propagates_a_failure_response_unchanged():
-    fake = FakeInstallationGateway(list_response={"success": False, "message": "n8n unreachable"})
-    app.dependency_overrides[get_installation_gateway] = lambda: fake
+    fake = FakeInstallationReportRepository(list_response={"success": False, "message": "database unavailable"})
+    app.dependency_overrides[get_installation_report_repository] = lambda: fake
 
     response = client.get("/api/ltsa/installations")
 
     assert response.status_code == 200
     assert response.json()["success"] is False
+
+
+def test_list_installations_returns_the_expected_production_row_count():
+    # Production-compatible contract: 42 real installation_report rows.
+    rows = [{"installation_code": f"INSTL-{i:03d}-2026"} for i in range(42)]
+    fake = FakeInstallationReportRepository(list_response=_response(rows))
+    app.dependency_overrides[get_installation_report_repository] = lambda: fake
+
+    response = client.get("/api/ltsa/installations")
+
+    assert response.status_code == 200
+    assert len(response.json()["data"]) == 42
 
 
 # --- MWO-LTSA-SEAL-INSTALLATION-FITMENT-001 -- structured linkage routes ---

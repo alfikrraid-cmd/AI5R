@@ -61,12 +61,20 @@ from ltsa_pump_inventory_db_upsert import _json_query, _sql  # noqa: E402
 if TYPE_CHECKING:
     from ltsa_pump_inventory_db_upsert import DatabaseRunner
 
-# Real installation_report columns (CANONICAL_SCHEMA.sql) -- only the ones
-# Copilot's fleet-installation answer actually needs (pump identity, real
-# recorded date, seal identity for "useful seal information if recorded").
-# No SELECT *: a fixed, disclosed column list, matching this file's own
-# read-only, narrow-purpose scope.
-_SELECT_COLUMNS = "installation_code, report_no, report_date, plant_equip_no, seal_code, seal_type"
+# Real installation_report columns (CANONICAL_SCHEMA.sql). Originally just
+# what Copilot's fleet-installation answer needed (pump identity, real
+# recorded date, seal identity); MWO-INSTALLATION-DIRECT-DB-READ-PATH-R1
+# extends the SAME list (not a second query) with pump_tag_number (the
+# real FK column installationMapping.js's mapInstallationRecord() reads
+# for search/area-lookup, migration 018 -- distinct from plant_equip_no's
+# free-text transcription), drawing_no, and source_document_name, since
+# list_installations() is now also the Installation Workspace REST
+# endpoint's own read path, not just Copilot's narrower one. No SELECT *:
+# still a fixed, disclosed column list.
+_SELECT_COLUMNS = (
+    "installation_code, report_no, report_date, plant_equip_no, seal_code, seal_type, "
+    "pump_tag_number, drawing_no, source_document_name"
+)
 
 
 class InstallationReportRepository:

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { PageHeader, EmptyState } from "../../../design-system";
+import { PageHeader, EmptyState, Panel } from "../../../design-system";
 import InstallationOpenDesignView from "../components/InstallationOpenDesignView";
 import InstallationRegistryPanel from "../components/InstallationRegistryPanel";
 import { getInstallations, getPumps } from "../../../api/ai5rClient";
@@ -58,10 +58,27 @@ import "./LTSAOpenDesign.css";
  * EquipmentTimelineService -- "Open Lifecycle" only navigates to their
  * existing, already-wired frontend consumer (KnowledgeWorkspace/Asset
  * 360, the "history" route).
+ *
+ * MWO-INSTALLATION-DIRECT-DB-READ-PATH-R1 -- the previous
+ * Promise.all([getInstallations(), getPumps()]).catch(() => setFetchedInstallations([]))
+ * had a real defect: EITHER call rejecting (not just getInstallations())
+ * silently zeroed out real installation data with no error shown --
+ * indistinguishable from a genuine empty result. Promise.allSettled()
+ * replaces it so the two calls fail independently: a getPumps() failure
+ * degrades gracefully (pumpAreaByTag stays an empty Map, so every row's
+ * area resolves to its own already-existing `?? null` fallback -- N/A,
+ * never fabricated), while installations render regardless. Only a
+ * genuine getInstallations() failure sets installationsError and skips
+ * rendering the registry/detail layout entirely (mirroring Pump.jsx's own
+ * loading/listError pattern) -- so "0 rows" on screen only ever means a
+ * real, successful, empty API response, never a swallowed failure.
  */
 export default function InstallationWorkspace({ onNavigate, navContext, installations: installationsProp }) {
   const [fetchedInstallations, setFetchedInstallations] = useState([]);
   const installations = installationsProp ?? fetchedInstallations;
+
+  const [installationsLoading, setInstallationsLoading] = useState(!installationsProp);
+  const [installationsError, setInstallationsError] = useState(null);
 
   const [selectedInstallationId, setSelectedInstallationId] = useState(null);
 
@@ -72,24 +89,24 @@ export default function InstallationWorkspace({ onNavigate, navContext, installa
 
     let active = true;
 
-    // MWO-LTSA-INSTALLATION-UI-PHASE-1 -- getPumps() fetched alongside
-    // getInstallations() (same Promise.all shape DocumentWorkspace.jsx
-    // already uses for getDocuments()+getSealCompatibility()) purely to
-    // build a pumpTagNumber -> area lookup from the existing canonical
-    // pump area field -- no second area source, one extra already-proven
-    // API call.
-    Promise.all([getInstallations(), getPumps()])
-      .then(([installationRecords, pumpRecords]) => {
-        if (active) {
-          const pumpAreaByTag = new Map(pumpRecords.map((pump) => [pump.tag_number, pump.area]));
-          setFetchedInstallations(installationRecords.map((record) => mapInstallationRecord(record, pumpAreaByTag)));
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setFetchedInstallations([]);
-        }
-      });
+    // MWO-INSTALLATION-DIRECT-DB-READ-PATH-R1 -- allSettled, not all(): a
+    // failed getPumps() must never erase successfully-fetched installation
+    // records (see this file's own header comment).
+    Promise.allSettled([getInstallations(), getPumps()]).then(([installationsResult, pumpsResult]) => {
+      if (!active) return;
+
+      if (installationsResult.status === "rejected") {
+        setInstallationsError("Installations could not be loaded.");
+        setInstallationsLoading(false);
+        return;
+      }
+
+      const pumpRecords = pumpsResult.status === "fulfilled" ? pumpsResult.value : [];
+      const pumpAreaByTag = new Map(pumpRecords.map((pump) => [pump.tag_number, pump.area]));
+      setFetchedInstallations(installationsResult.value.map((record) => mapInstallationRecord(record, pumpAreaByTag)));
+      setInstallationsError(null);
+      setInstallationsLoading(false);
+    });
 
     return () => {
       active = false;
@@ -138,31 +155,41 @@ export default function InstallationWorkspace({ onNavigate, navContext, installa
     <div>
       <PageHeader title="Installation Workspace" subtitle="LTSA Engineering — Mechanical Seal Installation Report" />
 
-      <div className="installation-workspace-layout">
-        <div className="installation-workspace-registry">
-          <InstallationRegistryPanel
-            installations={installations}
-            selectedInstallationId={selectedInstallationId}
-            onSelectInstallation={setSelectedInstallationId}
-          />
-        </div>
+      {installationsLoading ? (
+        <Panel>
+          <p>Loading installation reports...</p>
+        </Panel>
+      ) : installationsError ? (
+        <Panel>
+          <p role="alert">{installationsError}</p>
+        </Panel>
+      ) : (
+        <div className="installation-workspace-layout">
+          <div className="installation-workspace-registry">
+            <InstallationRegistryPanel
+              installations={installations}
+              selectedInstallationId={selectedInstallationId}
+              onSelectInstallation={setSelectedInstallationId}
+            />
+          </div>
 
-        <div className="installation-workspace-detail">
-          {selectedInstallation ? (
-            <InstallationOpenDesignView
-              installation={selectedInstallation}
-              onOpenPump={handleOpenPump}
-              onOpenDrawing={handleOpenDrawing}
-              onOpenLifecycle={handleOpenLifecycle}
-            />
-          ) : (
-            <EmptyState
-              title="No installation report selected"
-              description="Select an installation report to view its details."
-            />
-          )}
+          <div className="installation-workspace-detail">
+            {selectedInstallation ? (
+              <InstallationOpenDesignView
+                installation={selectedInstallation}
+                onOpenPump={handleOpenPump}
+                onOpenDrawing={handleOpenDrawing}
+                onOpenLifecycle={handleOpenLifecycle}
+              />
+            ) : (
+              <EmptyState
+                title="No installation report selected"
+                description="Select an installation report to view its details."
+              />
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
