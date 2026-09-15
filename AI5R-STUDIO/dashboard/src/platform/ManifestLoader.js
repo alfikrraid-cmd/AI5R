@@ -39,6 +39,17 @@ const APPLICATION_MANIFEST = [
     defaultPath: "/od",
     slug: "od",
   },
+  {
+    applicationId: "workforce",
+    displayName: "AI Employees",
+    basePath: "/workforce",
+    status: "active",
+    organizationAware: false,
+    entry: "workforce",
+    reservedRouteSegments: ["employees", "tasks", "board", "activities"],
+    defaultPath: "/workforce",
+    slug: "workforce",
+  },
 ];
 
 export function loadApplicationDescriptors(manifest = APPLICATION_MANIFEST) {

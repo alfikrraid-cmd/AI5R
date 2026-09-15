@@ -1,6 +1,7 @@
 import { Tabs } from "../design-system";
 import LTSAAuthGate from "../modules/ltsa/pages/LTSAAuthGate";
 import ODWorkspace from "../modules/od/pages/ODWorkspace";
+import WorkforceWorkspace from "../modules/workforce/pages/WorkforceWorkspace";
 import Landing from "./Landing";
 
 export const PUMP_WORKSPACE_ROUTE = "/ltsa/pump-workspace";
@@ -49,6 +50,14 @@ export default function ApplicationAdapter({
     return (
       <ProductChrome activeKey="od" applications={applications} onNavigateApplication={onNavigateApplication}>
         <ODWorkspace organizationContext={organizationContext} platformContext={platformContext} />
+      </ProductChrome>
+    );
+  }
+
+  if (application?.applicationId === "workforce") {
+    return (
+      <ProductChrome activeKey="workforce" applications={applications} onNavigateApplication={onNavigateApplication}>
+        <WorkforceWorkspace platformContext={platformContext} />
       </ProductChrome>
     );
   }

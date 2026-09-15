@@ -80,10 +80,12 @@ describe("ManifestLoader", () => {
     expect(registry.exists("platform-home")).toBe(true);
     expect(registry.exists("ltsa")).toBe(true);
     expect(registry.exists("od")).toBe(true);
+    expect(registry.exists("workforce")).toBe(true);
     expect(registry.list().map((application) => application.applicationId)).toEqual([
       "platform-home",
       "ltsa",
       "od",
+      "workforce",
     ]);
   });
 });
