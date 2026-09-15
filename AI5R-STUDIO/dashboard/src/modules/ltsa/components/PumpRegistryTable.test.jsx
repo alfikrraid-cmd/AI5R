@@ -84,6 +84,30 @@ describe("PumpRegistryTable", () => {
     expect(screen.getByText("—")).toBeTruthy();
   });
 
+  it("shows N/A, never a fabricated 0, when openWO is unresolved (MWO-PUMP-REGISTRY-N1-REMOVAL-R1)", () => {
+    render(
+      <PumpRegistryTable
+        pumps={[{ ...PUMPS[0], openWO: null }]}
+        selectedCode={null}
+        onSelect={() => {}}
+      />
+    );
+
+    expect(screen.getByText("N/A")).toBeTruthy();
+  });
+
+  it("still renders a real openWO count when one is actually known", () => {
+    render(
+      <PumpRegistryTable
+        pumps={[{ ...PUMPS[0], openWO: 3 }]}
+        selectedCode={null}
+        onSelect={() => {}}
+      />
+    );
+
+    expect(screen.getByText("3")).toBeTruthy();
+  });
+
   it("renders an empty state instead of a bare table when no pumps match", () => {
     render(<PumpRegistryTable pumps={[]} selectedCode={null} onSelect={() => {}} />);
 

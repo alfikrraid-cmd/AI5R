@@ -6,7 +6,7 @@ import PumpOpenDesignView from "../components/PumpOpenDesignView";
 import CreatePMScheduleModal from "../components/CreatePMScheduleModal";
 import CreateCMReportModal from "../components/CreateCMReportModal";
 import { getPumps, getPump, getPumpLifecycle, getSeals, getSealCompatibility, postEngineeringAI } from "../../../api/ai5rClient";
-import { mapPumpRecord, withResolvedOpenWO } from "../utils/pumpMapping";
+import { mapPumpRecord } from "../utils/pumpMapping";
 import { mapPumpLifecycleRecord } from "../utils/pumpLifecycleMapping";
 import { buildSealInventoryGroups } from "../utils/sealMapping";
 import generateTraceId from "../utils/generateTraceId";
@@ -53,11 +53,24 @@ export default function Pump({ onNavigate, navContext }) {
   const [isCreateCMOpen, setIsCreateCMOpen] = useState(false);
   const [aiResponse, setAiResponse] = useState(null), [aiLoading, setAiLoading] = useState(false), [aiError, setAiError] = useState(null);
 
+  // MWO-PUMP-REGISTRY-N1-REMOVAL-R1 -- this used to chain
+  // Promise.all(records.map(mapPumpRecord).map(withResolvedOpenWO)),
+  // firing one GET /api/ltsa/pumps/{tag}/workorders PER pump (252 in
+  // production) on every single page load, unconditionally, before the
+  // registry could render at all. That fan-out collided with nginx's own
+  // rate limiter (confirmed 503 bursts in production) and, since the
+  // Work Order n8n LIST workflow is not deployed and work_order has 0
+  // production rows regardless, could never have returned real data
+  // anyway -- withResolvedOpenWO()/getPumpOpenWorkOrders() are left
+  // intact in pumpMapping.js/ai5rClient.js, unused by this initial load,
+  // for a future Work Order MWO to re-wire (bulk or lazy) once real data
+  // exists. mapPumpRecord() alone is now this effect's only per-record
+  // step -- O(1) requests (just getPumps()) regardless of pump count.
   useEffect(() => {
     let active = true;
 
     getPumps()
-      .then((records) => Promise.all(records.map(mapPumpRecord).map(withResolvedOpenWO)))
+      .then((records) => records.map(mapPumpRecord))
       .then((resolved) => {
         if (active) {
           setPumps((current) => {

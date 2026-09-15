@@ -14,9 +14,16 @@ import {
 // getCMReports/getWorkOrders are gone: Pump.jsx now fetches ONE endpoint,
 // getPumpLifecycle(tag), for everything Related Engineering/Current
 // State/Compatibility used to resolve from five separate calls.
-// getPumpOpenWorkOrders stays -- it is a registry-list-level fetch
-// (PumpRegistryTable's own openWO column, resolved for every row), not a
-// lifecycle-detail concern, so it is unaffected by this MWO.
+//
+// MWO-PUMP-REGISTRY-N1-REMOVAL-R1 -- getPumpOpenWorkOrders is mocked here
+// only so withResolvedOpenWO()/getPumpOpenWorkOrders() staying importable
+// elsewhere doesn't break this file's module mock shape. The Pump
+// registry's initial load no longer calls it at all (it used to fire one
+// call per pump -- 252 in production -- via Promise.all, colliding with
+// nginx's own rate limiter for no real data, since the Work Order n8n
+// LIST workflow isn't deployed and work_order has 0 production rows
+// regardless). See the "N+1 removed" describe block below for the actual
+// proof.
 // MWO-LTSA-UI-V2-001 -- Seal & Inventory: getSeals()/getSealCompatibility()
 // are the two already-existing endpoints Seal.jsx already fetches, now
 // also fetched once (not per-pump) by Pump.jsx to enrich lifecycle's
@@ -123,6 +130,9 @@ const EMPTY_LIFECYCLE_DATA = {
 
 function loadPumps(records = PUMPS) {
   getPumps.mockResolvedValue(records);
+  // Not called by the initial registry load any more (see the "N+1
+  // removed" describe block below) -- mocked only so an unexpected call
+  // from unrelated code would fail loudly instead of hanging.
   getPumpOpenWorkOrders.mockResolvedValue({ success: true, openWO: 0, data: [] });
   getPumpLifecycle.mockResolvedValue({ success: true, tag_number: null, data: EMPTY_LIFECYCLE_DATA });
   getSeals.mockResolvedValue([]);
@@ -292,16 +302,63 @@ describe("Pump workspace page", () => {
     expect(onNavigate).toHaveBeenCalledWith("history", { assetTag: "305-P-2" });
   });
 
-  it("resolves openWO per pump via the canonical API", async () => {
-    loadPumps();
-    getPumpOpenWorkOrders.mockImplementation((tag) =>
-      Promise.resolve({ success: true, tag_number: tag, openWO: tag === "641-P-5" ? 2 : 0, data: [] })
-    );
-    render(<Pump />);
-    await screen.findByText("641-P-5");
+  // MWO-PUMP-REGISTRY-N1-REMOVAL-R1 -- replaces the old "resolves openWO
+  // per pump via the canonical API" test, which asserted exactly the N+1
+  // fan-out this MWO removes (one getPumpOpenWorkOrders call per pump,
+  // fired unconditionally on every registry load).
+  describe("Pump registry N+1 removed (MWO-PUMP-REGISTRY-N1-REMOVAL-R1)", () => {
+    it("calls getPumps exactly once on initial load", async () => {
+      loadPumps();
+      render(<Pump />);
+      await screen.findByText("211-P-1A");
 
-    expect(getPumpOpenWorkOrders).toHaveBeenCalledWith("641-P-5");
-    expect(screen.getByText("2")).toBeTruthy();
+      expect(getPumps).toHaveBeenCalledOnce();
+    });
+
+    it("makes ZERO getPumpOpenWorkOrders calls on initial load", async () => {
+      loadPumps();
+      render(<Pump />);
+      await screen.findByText("211-P-1A");
+
+      expect(getPumpOpenWorkOrders).not.toHaveBeenCalled();
+    });
+
+    it("still makes ZERO per-pump Work Order calls with 252 pumps (production-scale)", async () => {
+      const manyPumps = Array.from({ length: 252 }, (_, i) => ({
+        tag_number: `TAG-${i}`,
+        name: `Pump ${i}`,
+        area: "Area",
+        manufacturer: "Mfr",
+        pump_type: "Centrifugal",
+        seal_type: "Type",
+        location: "Loc",
+        status: "RUNNING",
+        criticality: "MEDIUM",
+      }));
+      loadPumps(manyPumps);
+      render(<Pump />);
+      await screen.findByText("TAG-0");
+
+      expect(getPumps).toHaveBeenCalledOnce();
+      expect(getPumpOpenWorkOrders).not.toHaveBeenCalled();
+    });
+
+    it("renders the registry once the pump list resolves, with no Work Order dependency", async () => {
+      loadPumps();
+      render(<Pump />);
+
+      for (const pump of PUMPS) {
+        expect(await screen.findByText(pump.tag_number)).toBeTruthy();
+      }
+    });
+
+    it("shows N/A, never a fabricated 0, for openWO since it is never resolved during initial load", async () => {
+      loadPumps();
+      render(<Pump />);
+      await screen.findByText("211-P-1A");
+
+      expect(screen.getAllByText("N/A").length).toBeGreaterThan(0);
+    });
   });
 
   it("resolves lifecycle lazily for the selected pump only, via the canonical API", async () => {
