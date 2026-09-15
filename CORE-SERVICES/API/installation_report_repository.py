@@ -91,9 +91,17 @@ class InstallationReportRepository:
         }
 
     def find_by_installation_code(self, installation_code: str) -> dict[str, Any] | None:
+        # MWO-INSTALLATION-DETAIL-DIRECT-DB-R1 -- widened from its original
+        # 3-column selection (installation_code, pump_tag_number,
+        # source_document_name -- installation_report_attribution_
+        # service.py's own guard logic only ever reads those two) to the
+        # SAME _SELECT_COLUMNS list_installations() already uses, since
+        # this method is now also the /api/ltsa/installations/{code}
+        # detail endpoint's own read path. Still one column-list constant,
+        # still no second query shape -- attribution's caller is
+        # unaffected by the extra keys it never reads.
         rows = _json_query(
-            f"SELECT installation_code, pump_tag_number, source_document_name "
-            f"FROM installation_report WHERE installation_code = {_sql(installation_code)}",
+            f"SELECT {_SELECT_COLUMNS} FROM installation_report WHERE installation_code = {_sql(installation_code)}",
             self._runner,
         )
         return rows[0] if rows else None

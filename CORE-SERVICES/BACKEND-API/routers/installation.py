@@ -20,7 +20,6 @@ from API.installation_fitment_service import (
 from dependencies import (
     get_current_user,
     get_import_database_runner,
-    get_installation_gateway,
     get_installation_report_fitment_repository,
     get_installation_report_repository,
     get_pump_gateway,
@@ -39,7 +38,7 @@ router = APIRouter(dependencies=[Depends(require_permission("drawing.read"))])
 # only -- create/update/delete are out of this MWO's scope.
 #
 # MWO-INSTALLATION-DIRECT-DB-READ-PATH-R1 -- list_ltsa_installations()
-# below now reads via InstallationReportRepository (direct SQL against
+# below reads via InstallationReportRepository (direct SQL against
 # installation_report), not InstallationGateway. Root cause (prior
 # read-only audit): InstallationGateway.list_installations() calls an
 # n8n webhook (GET ltsa/installation/list) that was never registered in
@@ -49,10 +48,22 @@ router = APIRouter(dependencies=[Depends(require_permission("drawing.read"))])
 # 42-row table, and is already production-proven (Copilot's fleet-
 # installation answer has used it since MWO-LTSA-AI-COPILOT-NATURAL-
 # LANGUAGE-ROUTING-017A) -- reused here as-is, same {"success","data"}
-# shape, no new query. get_ltsa_installation() (single-record detail,
-# below) is unchanged and still depends on InstallationGateway -- out of
-# this MWO's explicit scope ("Do not modify unrelated Installation
-# detail/link endpoints unless strictly necessary").
+# shape, no new query.
+#
+# MWO-INSTALLATION-DETAIL-DIRECT-DB-R1 -- get_ltsa_installation() (single-
+# record detail, below) now reads the same way, via
+# InstallationReportRepository.find_by_installation_code() (widened to
+# the same _SELECT_COLUMNS list_installations() uses -- see that
+# method's own comment). Same root cause as LIST: GET ltsa/installation/
+# detail is also a never-registered n8n webhook, not a deactivated one.
+# InstallationGateway is no longer imported/used anywhere in this file --
+# LIST and DETAIL together now have zero dependency on the Installation
+# n8n read webhooks. NOT_FOUND (unknown code, or out-of-scope for a
+# restricted identity) raises a real 404, never a fake/empty record; an
+# unexpected repository error propagates as an unhandled exception (a
+# real 500), never silently reshaped into N/A/empty -- the same
+# "disclosed failure, never fabricated success" discipline list's own
+# read path already established.
 #
 # MWO-LTSA-AUTH-DATA-SCOPE-ROUTE-CLOSURE-001 -- installation_report's
 # own pump-tag field is `plant_equip_no`, not `asset_code` (confirmed
@@ -77,16 +88,17 @@ def list_ltsa_installations(
 @router.get("/api/ltsa/installations/{installation_code}")
 def get_ltsa_installation(
     installation_code: str,
-    installation_gateway=Depends(get_installation_gateway),
+    installation_report_repository=Depends(get_installation_report_repository),
     pump_gateway=Depends(get_pump_gateway),
     current_user: AuthenticatedIdentity = Depends(get_current_user),
 ) -> Payload:
-    response = installation_gateway.get_installation(installation_code)
-    scope = resolve_area_scope(current_user)
-    data = response.get("data") if isinstance(response, dict) else None
-    if scope is not None and isinstance(data, dict) and not is_asset_in_scope(data.get("plant_equip_no"), scope, pump_gateway):
+    record = installation_report_repository.find_by_installation_code(installation_code)
+    if record is None:
         raise HTTPException(status_code=404, detail="Installation report not found")
-    return response
+    scope = resolve_area_scope(current_user)
+    if scope is not None and not is_asset_in_scope(record.get("plant_equip_no"), scope, pump_gateway):
+        raise HTTPException(status_code=404, detail="Installation report not found")
+    return {"success": True, "message": "Installation report found", "data": record}
 
 
 # --- MWO-LTSA-SEAL-INSTALLATION-FITMENT-001 -- structured seal/pump/INSTALL-event linkage ---

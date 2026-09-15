@@ -47,11 +47,15 @@ def _identity(
 # gateway/repository result is returned unchanged, mirroring
 # pm_schedule.py's list/detail pass-through exactly.
 #
-# MWO-INSTALLATION-DIRECT-DB-READ-PATH-R1 -- list_ltsa_installations() now
+# MWO-INSTALLATION-DIRECT-DB-READ-PATH-R1 -- list_ltsa_installations()
 # reads via InstallationReportRepository (FakeInstallationReportRepository
-# below), not InstallationGateway. FakeInstallationGateway stays exactly
-# as it was for get_ltsa_installation() (detail), which this MWO does not
-# touch.
+# below), not InstallationGateway.
+#
+# MWO-INSTALLATION-DETAIL-DIRECT-DB-R1 -- get_ltsa_installation() (detail)
+# now reads the same way, via find_by_installation_code(). FakeInstallation
+# Gateway stays only to prove it is NEVER called any more (both routes'
+# "gateway not called" tests below) -- installation.py no longer imports
+# get_installation_gateway at all.
 
 
 class FakeInstallationGateway:
@@ -71,13 +75,22 @@ class FakeInstallationGateway:
 
 
 class FakeInstallationReportRepository:
-    def __init__(self, list_response=None):
+    def __init__(self, list_response=None, detail_response=None, detail_raises=None):
         self.list_response = list_response
+        self.detail_response = detail_response
+        self.detail_raises = detail_raises
         self.list_calls = 0
+        self.detail_calls = []
 
     def list_installations(self):
         self.list_calls += 1
         return self.list_response
+
+    def find_by_installation_code(self, installation_code):
+        self.detail_calls.append(installation_code)
+        if self.detail_raises is not None:
+            raise self.detail_raises
+        return self.detail_response
 
 
 def _response(data):
@@ -139,15 +152,62 @@ def test_list_installations_never_calls_the_n8n_gateway():
     assert gateway_fake.list_calls == 0
 
 
-def test_get_installation_returns_the_gateways_response_unchanged():
-    fake = FakeInstallationGateway(detail_response=_response({"installation_code": "INSTL-001-2026"}))
-    app.dependency_overrides[get_installation_gateway] = lambda: fake
+def test_get_installation_known_record_found():
+    record = {
+        "installation_code": "INSTL-042-2026", "report_no": "042/INSTL/TAP/06-2026",
+        "report_date": "2026-06-08", "plant_equip_no": "211-P-8A", "pump_tag_number": "211-P-8A",
+        "seal_code": None, "seal_type": "T48MP", "drawing_no": "E12894",
+        "source_document_name": "SCAN 042 INSTALLATION REPORT 211-P-8A.pdf",
+    }
+    fake = FakeInstallationReportRepository(detail_response=record)
+    app.dependency_overrides[get_installation_report_repository] = lambda: fake
 
-    response = client.get("/api/ltsa/installations/INSTL-001-2026")
+    response = client.get("/api/ltsa/installations/INSTL-042-2026")
 
     assert response.status_code == 200
-    assert response.json() == fake.detail_response
-    assert fake.detail_calls == ["INSTL-001-2026"]
+    body = response.json()
+    assert body["success"] is True
+    assert body["data"] == record
+    assert fake.detail_calls == ["INSTL-042-2026"]
+
+
+def test_get_installation_unknown_code_is_a_real_404_not_a_fake_record():
+    fake = FakeInstallationReportRepository(detail_response=None)
+    app.dependency_overrides[get_installation_report_repository] = lambda: fake
+
+    response = client.get("/api/ltsa/installations/NO-SUCH-CODE")
+
+    assert response.status_code == 404
+    # A real HTTPException body ({"detail": ...}), never a fabricated
+    # {"data": ...} envelope pretending the record exists.
+    assert "data" not in response.json()
+    assert fake.detail_calls == ["NO-SUCH-CODE"]
+
+
+def test_get_installation_repository_error_is_a_real_server_error_never_swallowed():
+    fake = FakeInstallationReportRepository(detail_raises=RuntimeError("database unavailable"))
+    app.dependency_overrides[get_installation_report_repository] = lambda: fake
+
+    # MWO-INSTALLATION-DETAIL-DIRECT-DB-R1's explicit rule: a repository
+    # error must surface as a real error, never be silently reshaped into
+    # an N/A/empty 200. TestClient's default raise_server_exceptions=True
+    # re-raises it here rather than returning 500, which is itself proof
+    # the router does not catch-and-hide it.
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        client.get("/api/ltsa/installations/INSTL-042-2026")
+
+
+def test_get_installation_never_calls_the_n8n_gateway():
+    gateway_fake = FakeInstallationGateway(detail_response=_response({"installation_code": "X"}))
+    app.dependency_overrides[get_installation_gateway] = lambda: gateway_fake
+    app.dependency_overrides[get_installation_report_repository] = lambda: FakeInstallationReportRepository(
+        detail_response={"installation_code": "INSTL-042-2026", "plant_equip_no": "211-P-8A"}
+    )
+
+    response = client.get("/api/ltsa/installations/INSTL-042-2026")
+
+    assert response.status_code == 200
+    assert gateway_fake.detail_calls == []
 
 
 def test_list_installations_propagates_a_failure_response_unchanged():
