@@ -4,7 +4,7 @@ import colors from "../../../design-system/theme/colors";
 import spacing from "../../../design-system/theme/spacing";
 import typography from "../../../design-system/theme/typography";
 
-export default function WorkforceBoardView({ board = {} }) {
+export default function WorkforceBoardView({ board = {}, onSelectTask, onRequestApproval }) {
   const columns = [
     {
       id: "published",
@@ -103,6 +103,7 @@ export default function WorkforceBoardView({ board = {} }) {
                     <article
                       key={item.work_item_id}
                       data-testid={`work-item-${item.work_item_id}`}
+                      onClick={() => onSelectTask?.(item)}
                       style={{
                         background: colors.panel,
                         padding: spacing.sm,
@@ -111,6 +112,7 @@ export default function WorkforceBoardView({ board = {} }) {
                         display: "flex",
                         flexDirection: "column",
                         gap: spacing.xs,
+                        cursor: "pointer",
                       }}
                     >
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -147,7 +149,7 @@ export default function WorkforceBoardView({ board = {} }) {
                         </div>
                       ) : null}
 
-                      {/* Chief Gate Indicator */}
+                      {/* Chief Gate Indicator & Action */}
                       {isAwaitingChief ? (
                         <div
                           data-testid="chief-approval-gate-indicator"
@@ -160,11 +162,34 @@ export default function WorkforceBoardView({ board = {} }) {
                             color: colors.warning,
                             fontWeight: typography.weight.bold,
                             display: "flex",
-                            alignItems: "center",
+                            flexDirection: "column",
                             gap: spacing.xs,
                           }}
                         >
-                          ⚠️ CHIEF APPROVAL REQUIRED BEFORE RELEASE
+                          <div style={{ display: "flex", alignItems: "center", gap: spacing.xs }}>
+                            ⚠️ CHIEF APPROVAL REQUIRED BEFORE RELEASE
+                          </div>
+                          <button
+                            type="button"
+                            data-testid="authorize-release-button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onRequestApproval?.(item);
+                            }}
+                            style={{
+                              background: colors.warning,
+                              color: "#000",
+                              border: "none",
+                              borderRadius: spacing.xs,
+                              padding: "4px 8px",
+                              fontSize: typography.size.xs,
+                              fontWeight: typography.weight.bold,
+                              cursor: "pointer",
+                              alignSelf: "flex-start",
+                            }}
+                          >
+                            Authorize Release
+                          </button>
                         </div>
                       ) : null}
 
@@ -184,4 +209,3 @@ export default function WorkforceBoardView({ board = {} }) {
     </div>
   );
 }
-

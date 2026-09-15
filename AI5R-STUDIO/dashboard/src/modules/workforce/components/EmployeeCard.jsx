@@ -1,5 +1,4 @@
 import Badge from "../../../design-system/components/Badge";
-import Button from "../../../design-system/components/Button";
 import ProgressBar from "../../../design-system/components/ProgressBar";
 import colors from "../../../design-system/theme/colors";
 import spacing from "../../../design-system/theme/spacing";
@@ -19,9 +18,18 @@ const STATUS_BADGE_VARIANT = {
   OFFLINE: "info",
 };
 
-export default function EmployeeCard({ employee, onInspect }) {
+export default function EmployeeCard({
+  employee,
+  onInspect,
+  onChat,
+  onAssign,
+  onDelegateProject,
+}) {
   if (!employee) return null;
 
+  const isProjectManager =
+    employee.position_id === "PROJECT_MANAGER" ||
+    employee.employee_name?.toUpperCase() === "NEXA";
   const status = employee.status || "AVAILABLE";
   const statusColor = STATUS_COLOR_MAP[status] || colors.textMuted;
   const badgeVariant = STATUS_BADGE_VARIANT[status] || "info";
@@ -186,13 +194,83 @@ export default function EmployeeCard({ employee, onInspect }) {
       </div>
 
       {/* Action Footer */}
-      <div style={{ marginTop: "auto", paddingTop: spacing.xs }}>
-        <Button
+      <div style={{ marginTop: "auto", paddingTop: spacing.xs, display: "flex", gap: spacing.xs, flexWrap: "wrap" }}>
+        <button
+          type="button"
+          data-testid="employee-inspect-button"
           onClick={() => onInspect?.(employee)}
-          style={{ width: "100%", justifyContent: "center" }}
+          style={{
+            flex: "1 1 auto",
+            background: "transparent",
+            color: colors.text,
+            border: `1px solid ${colors.border}`,
+            borderRadius: spacing.xs,
+            padding: `${spacing.xs}px ${spacing.sm}px`,
+            fontSize: typography.size.xs,
+            cursor: "pointer",
+          }}
         >
           Inspect Profile
-        </Button>
+        </button>
+        <button
+          type="button"
+          data-testid="employee-chat-button"
+          onClick={() => onChat?.(employee)}
+          style={{
+            flex: "1 1 auto",
+            background: "transparent",
+            color: colors.info,
+            border: `1px solid ${colors.info}`,
+            borderRadius: spacing.xs,
+            padding: `${spacing.xs}px ${spacing.sm}px`,
+            fontSize: typography.size.xs,
+            cursor: "pointer",
+          }}
+        >
+          Chat
+        </button>
+        <button
+          type="button"
+          data-testid="employee-assign-button"
+          onClick={() => onAssign?.(employee)}
+          style={{
+            flex: "1 1 auto",
+            background: colors.info,
+            color: colors.text,
+            border: "none",
+            borderRadius: spacing.xs,
+            padding: `${spacing.xs}px ${spacing.sm}px`,
+            fontSize: typography.size.xs,
+            fontWeight: typography.weight.bold,
+            cursor: "pointer",
+          }}
+        >
+          Assign Task
+        </button>
+        {isProjectManager ? (
+          <button
+            type="button"
+            data-testid="nexa-delegate-project-button"
+            onClick={() => onDelegateProject?.(employee)}
+            style={{
+              flex: "1 1 100%",
+              background: "#4f46e5",
+              color: "#ffffff",
+              border: "none",
+              borderRadius: spacing.xs,
+              padding: `${spacing.xs}px ${spacing.sm}px`,
+              fontSize: typography.size.xs,
+              fontWeight: typography.weight.bold,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: spacing.xs,
+            }}
+          >
+            ⚡ Delegate Project
+          </button>
+        ) : null}
       </div>
     </article>
   );

@@ -4,6 +4,7 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 API_DIR = Path(__file__).resolve().parent
 CORE_SERVICES_DIR = API_DIR.parent
@@ -14,6 +15,7 @@ for _path in (API_DIR, CORE_SERVICES_DIR, AI5R_SDK_DIR):
     if str(_path) not in sys.path:
         sys.path.insert(0, str(_path))
 
+from API.agent_execution_adapter import AgentExecutionAdapter, ExecutionArtifact
 from API.STREAMING.live_stream_api import LiveStreamAPI
 from DIGITAL_EMPLOYEE.CONVERSATION.employee_conversation_store import EmployeeConversationStore
 from WORKFORCE.approval_chain_runtime import (
@@ -24,15 +26,19 @@ from WORKFORCE.approval_chain_runtime import (
     validate_chief_approval,
 )
 from WORKFORCE.digital_employee import DigitalEmployee
+from WORKFORCE.digital_workforce_scheduler import DigitalWorkforceScheduler
 from WORKFORCE.employee_activity import EmployeeActivity
 from WORKFORCE.employee_activity_registry import EmployeeActivityRegistry
 from WORKFORCE.employee_runtime import EmployeeRuntime
 from WORKFORCE.it_department_operating_model import ITDepartmentOperatingModel
 from WORKFORCE.it_department_pack import ITDepartmentPack
 from WORKFORCE.organization import Organization
+from WORKFORCE.project_manager_capability import ProjectManagerCapability
+from WORKFORCE.sprint import Sprint
 from WORKFORCE.work_board import WorkBoard
 from WORKFORCE.work_item import WorkItem
 from WORKFORCE.workforce_event_bus import WorkforceEvent, WorkforceEventBus
+from WORKFORCE.workforce_execution_plan import WorkforceExecutionPlan
 
 POSITION_TITLES: dict[str, str] = {
     "CTO": "AI Chief Technology Officer",
@@ -78,6 +84,10 @@ class WorkforceService:
         )
         self.conversation_store = EmployeeConversationStore()
         self.live_stream_api = live_stream_api or LiveStreamAPI()
+        self._missions: dict[str, dict[str, Any]] = {}
+        self._plans: dict[str, WorkforceExecutionPlan] = {}
+        self._sprints: dict[str, Sprint] = {}
+        self.execution_adapter = AgentExecutionAdapter(workforce_service=self)
 
     def find_employee(self, employee_id_or_pos: str) -> DigitalEmployee | None:
         if employee_id_or_pos in self._employee_by_id:
@@ -95,6 +105,14 @@ class WorkforceService:
 
     def find_employee_by_position(self, position_id: str) -> DigitalEmployee | None:
         return self._employee_by_pos.get(position_id) or self._employee_by_pos.get(position_id.upper())
+
+    def find_work_item(self, work_item_id: str) -> WorkItem | None:
+        return (
+            self.work_board._published.get(work_item_id)
+            or self.work_board._claimed.get(work_item_id)
+            or self.work_board._completed.get(work_item_id)
+            or self.work_board._released.get(work_item_id)
+        )
 
     def _compute_employee_status(
         self, employee: DigitalEmployee
@@ -162,6 +180,7 @@ class WorkforceService:
         }
 
     def serialize_work_item(self, item: WorkItem) -> dict[str, Any]:
+        artifact = self.get_artifact(item.artifact_id) if item.artifact_id else None
         return {
             "work_item_id": item.work_item_id,
             "task_id": item.work_item_id,
@@ -172,9 +191,19 @@ class WorkforceService:
             "status": item.status,
             "manufacturing_order_id": item.manufacturing_order_id,
             "artifact_id": item.artifact_id,
+            "artifact": artifact.to_dict() if artifact else None,
             "metadata": dict(item.metadata),
             "is_production": is_production_work_item(item),
         }
+
+    def execute_task(self, work_item_id: str, ai_client: Any = None) -> ExecutionArtifact:
+        return self.execution_adapter.execute_work_item(work_item_id, ai_client=ai_client)
+
+    def get_task_artifacts(self, work_item_id: str) -> list[ExecutionArtifact]:
+        return self.execution_adapter.get_task_artifacts(work_item_id)
+
+    def get_artifact(self, artifact_id: str) -> ExecutionArtifact | None:
+        return self.execution_adapter.get_artifact(artifact_id)
 
     def serialize_activity(self, activity: EmployeeActivity) -> dict[str, Any]:
         return {
@@ -402,3 +431,191 @@ class WorkforceService:
         """Release a completed work item, requiring Chief approval if production-impacting."""
         return self.operating_model.release(work_item_id, approval=approval)
 
+    def create_mission(
+        self,
+        title: str,
+        description: str = "",
+        is_production: bool = False,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        pm = self.find_employee_by_position("PROJECT_MANAGER")
+        if pm is None:
+            raise KeyError("PROJECT_MANAGER employee not found")
+
+        meta = dict(metadata or {})
+        mission_id = f"MISSION-{uuid4().hex[:12].upper()}"
+
+        sprint = Sprint(
+            objective=title,
+            organization_id=self.organization.organization_id,
+            department_id=self.department.department_id,
+            metadata={"mission_id": mission_id, "is_production": is_production, **meta},
+        )
+
+        pm_cap = ProjectManagerCapability()
+        breakdown_result = pm_cap.breakdown_sprint(pm, sprint)
+        tasks: list[WorkItem] = breakdown_result["tasks"]
+
+        # Tag tasks with mission info and guard production deployment
+        for task in tasks:
+            task.metadata["mission_id"] = mission_id
+            task.metadata["sprint_id"] = sprint.sprint_id
+            if description:
+                task.description = f"{task.description}\n\nMission: {description}".strip() if task.description else f"Mission: {description}"
+            if is_production and task.assigned_position_id == "DEVOPS_ENGINEER":
+                task.metadata["is_production"] = True
+                task.metadata["requires_chief_approval"] = True
+            elif is_production:
+                task.metadata["mission_is_production"] = True
+
+        pm_cap.assign_tasks(pm, tasks, self.employees)
+
+        # Build canonical dependency graph
+        tasks_by_pos = {t.assigned_position_id: t for t in tasks}
+        arch_task = tasks_by_pos.get("SOLUTION_ARCHITECT")
+        backend_task = tasks_by_pos.get("BACKEND_ENGINEER")
+        frontend_task = tasks_by_pos.get("FRONTEND_ENGINEER")
+        qa_task = tasks_by_pos.get("QA_ENGINEER")
+        devops_task = tasks_by_pos.get("DEVOPS_ENGINEER")
+        doc_task = tasks_by_pos.get("DOCUMENTATION_ENGINEER")
+
+        deps_map: dict[str, list[str]] = {}
+        if arch_task:
+            deps_map[arch_task.work_item_id] = []
+        if backend_task and arch_task:
+            deps_map[backend_task.work_item_id] = [arch_task.work_item_id]
+        if frontend_task and arch_task:
+            deps_map[frontend_task.work_item_id] = [arch_task.work_item_id]
+        if qa_task:
+            qa_deps = []
+            if backend_task:
+                qa_deps.append(backend_task.work_item_id)
+            if frontend_task:
+                qa_deps.append(frontend_task.work_item_id)
+            deps_map[qa_task.work_item_id] = qa_deps
+        if devops_task and qa_task:
+            deps_map[devops_task.work_item_id] = [qa_task.work_item_id]
+        if doc_task and qa_task:
+            deps_map[doc_task.work_item_id] = [qa_task.work_item_id]
+
+        plan = WorkforceExecutionPlan(mission_id=mission_id)
+        for task in tasks:
+            plan.add_work_item(task.work_item_id, dependencies=deps_map.get(task.work_item_id, []))
+
+        scheduler = DigitalWorkforceScheduler()
+        decision = scheduler.next_work_item(plan)
+
+        # Publish all tasks to the shared work board and claim the initial ready task
+        for task in tasks:
+            self.work_board.publish(task)
+            if decision.work_item_id and task.work_item_id == decision.work_item_id:
+                assigned_emp = self.find_employee(task.assigned_employee_id)
+                if assigned_emp:
+                    self.work_board.claim(assigned_emp, task.work_item_id)
+                    self.employee_runtime.receive_work(assigned_emp, task)
+
+        self.activity_registry.record(
+            EmployeeActivity(
+                employee_id=pm.employee_id,
+                activity_type="MISSION_DELEGATED",
+                status="ACTIVE",
+                message=f"Decomposed mission '{title}' into {len(tasks)} specialist work items",
+                progress=10,
+                work_item_id=decision.work_item_id or "",
+                sprint_id=sprint.sprint_id,
+                mission_id=mission_id,
+            )
+        )
+
+        mission_data = {
+            "mission_id": mission_id,
+            "title": title,
+            "description": description,
+            "is_production": is_production,
+            "status": "IN_PROGRESS",
+            "sprint_id": sprint.sprint_id,
+            "plan_id": plan.plan_id,
+            "project_manager_id": pm.employee_id,
+            "created_at": datetime.now(UTC).isoformat(),
+            "updated_at": datetime.now(UTC).isoformat(),
+            "task_ids": [t.work_item_id for t in tasks],
+            "metadata": meta,
+        }
+
+        self._missions[mission_id] = mission_data
+        self._plans[mission_id] = plan
+        self._sprints[mission_id] = sprint
+
+        self.live_stream_api.publish(
+            event_type="WORKFORCE_MISSION_CREATED",
+            payload={
+                "mission_id": mission_id,
+                "title": title,
+                "tasks_count": len(tasks),
+                "plan_id": plan.plan_id,
+                "is_production": is_production,
+            },
+        )
+
+        return self.get_mission(mission_id)
+
+    def get_mission(self, mission_id: str) -> dict[str, Any] | None:
+        mission = self._missions.get(mission_id)
+        if not mission:
+            return None
+
+        plan = self._plans.get(mission_id)
+        task_ids = mission.get("task_ids", [])
+        tasks = []
+        completed_count = 0
+
+        for tid in task_ids:
+            item = self.find_work_item(tid)
+            if item:
+                serialized = self.serialize_work_item(item)
+                emp = self.find_employee(item.assigned_employee_id) if item.assigned_employee_id else None
+                serialized["assigned_employee_name"] = emp.employee_name if emp else None
+                serialized["dependencies"] = plan.dependency_graph.get(tid, []) if plan else []
+                tasks.append(serialized)
+                if item.status in ("COMPLETED", "RELEASED"):
+                    completed_count += 1
+                    if plan and tid not in plan.completed:
+                        plan.mark_completed(tid)
+                elif item.status == "CLAIMED":
+                    if plan and tid not in plan.running:
+                        plan.mark_running(tid)
+
+        total_tasks = len(tasks)
+        progress = int((completed_count / total_tasks) * 100) if total_tasks > 0 else 0
+        status = "COMPLETED" if (total_tasks > 0 and completed_count == total_tasks) else "IN_PROGRESS"
+
+        assignments = []
+        for t in tasks:
+            assignments.append({
+                "task_id": t["work_item_id"],
+                "employee_id": t.get("assigned_employee_id"),
+                "employee_name": t.get("assigned_employee_name"),
+                "position_id": t.get("assigned_position_id"),
+                "status": t.get("status"),
+            })
+
+        return {
+            "mission_id": mission["mission_id"],
+            "title": mission["title"],
+            "description": mission.get("description", ""),
+            "is_production": mission.get("is_production", False),
+            "status": status,
+            "progress": progress,
+            "sprint_id": mission.get("sprint_id"),
+            "plan_id": mission.get("plan_id"),
+            "project_manager_id": mission.get("project_manager_id"),
+            "created_at": mission.get("created_at"),
+            "updated_at": mission.get("updated_at"),
+            "tasks": tasks,
+            "assignments": assignments,
+            "execution_plan": plan.snapshot() if plan else {},
+            "metadata": dict(mission.get("metadata", {})),
+        }
+
+    def list_missions(self) -> list[dict[str, Any]]:
+        return [self.get_mission(mid) for mid in self._missions if self.get_mission(mid) is not None]

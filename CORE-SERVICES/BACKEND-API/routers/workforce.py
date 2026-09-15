@@ -45,6 +45,13 @@ class TaskReleaseRequest(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class MissionCreateRequest(BaseModel):
+    title: str = Field(..., description="Mission or project title to delegate to NEXA")
+    description: str = Field(default="", description="Detailed project / engineering mission description")
+    is_production: bool = Field(default=False, description="Whether this mission includes production-impacting release steps")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="Additional mission metadata")
+
+
 @router.get("/api/workforce/employees")
 def list_employees(
     workforce_service: WorkforceService = Depends(get_workforce_service),
@@ -118,6 +125,52 @@ def assign_task(
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
+@router.post("/api/workforce/missions")
+def create_mission(
+    payload: MissionCreateRequest,
+    workforce_service: WorkforceService = Depends(get_workforce_service),
+) -> dict[str, Any]:
+    """Delegate an engineering mission to NEXA (PROJECT_MANAGER) for multi-agent decomposition and scheduling."""
+    if not payload.title.strip():
+        raise HTTPException(status_code=400, detail="Mission title is required")
+
+    try:
+        mission = workforce_service.create_mission(
+            title=payload.title,
+            description=payload.description,
+            is_production=payload.is_production,
+            metadata=payload.metadata,
+        )
+        return {
+            "status": "MISSION_CREATED",
+            "mission": mission,
+        }
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@router.get("/api/workforce/missions")
+def list_missions(
+    workforce_service: WorkforceService = Depends(get_workforce_service),
+) -> list[dict[str, Any]]:
+    """List all workforce missions delegated to NEXA."""
+    return workforce_service.list_missions()
+
+
+@router.get("/api/workforce/missions/{mission_id}")
+def get_mission(
+    mission_id: str,
+    workforce_service: WorkforceService = Depends(get_workforce_service),
+) -> dict[str, Any]:
+    """Get single mission detail including decomposed tasks, specialist assignments, and execution plan."""
+    mission = workforce_service.get_mission(mission_id)
+    if mission is None:
+        raise HTTPException(status_code=404, detail=f"Mission not found: {mission_id}")
+    return mission
+
+
 @router.post("/api/workforce/tasks/{work_item_id}/release")
 def release_task(
     work_item_id: str,
@@ -148,6 +201,54 @@ def release_task(
         raise HTTPException(status_code=403, detail=str(error)) from error
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@router.post("/api/workforce/tasks/{work_item_id}/execute")
+def execute_task(
+    work_item_id: str,
+    workforce_service: WorkforceService = Depends(get_workforce_service),
+    ai_client=Depends(get_copilot_ai_client),
+) -> dict[str, Any]:
+    """Execute a claimed task through the Agent Execution Adapter in read-only analysis mode."""
+    try:
+        artifact = workforce_service.execute_task(work_item_id=work_item_id, ai_client=ai_client)
+        work_item = workforce_service.find_work_item(work_item_id)
+        return {
+            "status": "COMPLETED",
+            "work_item": workforce_service.serialize_work_item(work_item) if work_item else None,
+            "artifact": artifact.to_dict(),
+        }
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except RuntimeError as error:
+        raise HTTPException(status_code=502, detail=str(error)) from error
+
+
+@router.get("/api/workforce/tasks/{work_item_id}/artifacts")
+def get_task_artifacts(
+    work_item_id: str,
+    workforce_service: WorkforceService = Depends(get_workforce_service),
+) -> list[dict[str, Any]]:
+    """Get all execution artifacts created for a work item."""
+    work_item = workforce_service.find_work_item(work_item_id)
+    if work_item is None:
+        raise HTTPException(status_code=404, detail=f"Work item not found: {work_item_id}")
+    artifacts = workforce_service.get_task_artifacts(work_item_id)
+    return [a.to_dict() for a in artifacts]
+
+
+@router.get("/api/workforce/artifacts/{artifact_id}")
+def get_artifact(
+    artifact_id: str,
+    workforce_service: WorkforceService = Depends(get_workforce_service),
+) -> dict[str, Any]:
+    """Get single execution artifact by ID."""
+    artifact = workforce_service.get_artifact(artifact_id)
+    if artifact is None:
+        raise HTTPException(status_code=404, detail=f"Artifact not found: {artifact_id}")
+    return artifact.to_dict()
 
 
 @router.post("/api/workforce/chat")

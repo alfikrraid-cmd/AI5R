@@ -106,3 +106,208 @@ export async function fetchWorkforceMetrics({ signal } = {}) {
   return handleResponse(response, "Failed to fetch workforce metrics");
 }
 
+/**
+ * Assign a new task or work item to a digital employee or position.
+ */
+export async function assignWorkforceTask({
+  title,
+  description = "",
+  positionId,
+  employeeId,
+  isProduction = false,
+  metadata = {},
+  signal,
+} = {}) {
+  if (!title || !title.trim()) {
+    throw new Error("Task title is required");
+  }
+  const payload = {
+    title: title.trim(),
+    description,
+    position_id: positionId || undefined,
+    employee_id: employeeId || undefined,
+    is_production: Boolean(isProduction),
+    metadata,
+  };
+  const response = await fetch(`${API_URL}/api/workforce/tasks/assign`, {
+    method: "POST",
+    headers: getHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(payload),
+    signal,
+  });
+  return handleResponse(response, "Failed to assign workforce task");
+}
+
+/**
+ * Send an instruction/message to chat with a digital employee.
+ */
+export async function sendWorkforceChat({
+  employeeId,
+  message,
+  conversationId,
+  metadata = {},
+  signal,
+} = {}) {
+  if (!employeeId) {
+    throw new Error("employeeId is required");
+  }
+  if (!message || !message.trim()) {
+    throw new Error("Message is required");
+  }
+  const payload = {
+    employee_id: employeeId,
+    message: message.trim(),
+    conversation_id: conversationId || undefined,
+    metadata,
+  };
+  const response = await fetch(`${API_URL}/api/workforce/chat`, {
+    method: "POST",
+    headers: getHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(payload),
+    signal,
+  });
+  return handleResponse(response, "Failed to send workforce chat");
+}
+
+/**
+ * Release a completed task, enforcing the Human Chief Approval Gate for production tasks.
+ */
+export async function releaseWorkforceTask(
+  workItemId,
+  {
+    approverId = "CHIEF-USER-01",
+    approverRole = "CHIEF",
+    isHuman = true,
+    metadata = {},
+    signal,
+  } = {}
+) {
+  if (!workItemId) {
+    throw new Error("workItemId is required");
+  }
+  const payload = {
+    approver_id: approverId,
+    approver_role: approverRole,
+    is_human: isHuman,
+    metadata,
+  };
+  const response = await fetch(
+    `${API_URL}/api/workforce/tasks/${encodeURIComponent(workItemId)}/release`,
+    {
+      method: "POST",
+      headers: getHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(payload),
+      signal,
+    }
+  );
+  return handleResponse(response, `Failed to release task ${workItemId}`);
+}
+
+/**
+ * Create/delegate a multi-agent engineering mission to NEXA (PROJECT_MANAGER).
+ */
+export async function createWorkforceMission({
+  title,
+  description = "",
+  isProduction = false,
+  metadata = {},
+  signal,
+} = {}) {
+  if (!title || !title.trim()) {
+    throw new Error("Mission title is required");
+  }
+  const payload = {
+    title: title.trim(),
+    description,
+    is_production: Boolean(isProduction),
+    metadata,
+  };
+  const response = await fetch(`${API_URL}/api/workforce/missions`, {
+    method: "POST",
+    headers: getHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(payload),
+    signal,
+  });
+  return handleResponse(response, "Failed to create workforce mission");
+}
+
+/**
+ * Fetch all workforce missions.
+ */
+export async function fetchWorkforceMissions({ signal } = {}) {
+  const response = await fetch(`${API_URL}/api/workforce/missions`, {
+    headers: getHeaders(),
+    signal,
+  });
+  return handleResponse(response, "Failed to fetch workforce missions");
+}
+
+/**
+ * Fetch a single workforce mission by ID.
+ */
+export async function fetchWorkforceMission(missionId, { signal } = {}) {
+  if (!missionId) {
+    throw new Error("missionId is required");
+  }
+  const response = await fetch(
+    `${API_URL}/api/workforce/missions/${encodeURIComponent(missionId)}`,
+    {
+      headers: getHeaders(),
+      signal,
+    }
+  );
+  return handleResponse(response, `Failed to fetch mission ${missionId}`);
+}
+
+/**
+ * Execute a claimed task through the Agent Execution Adapter (read-only analysis).
+ */
+export async function executeWorkforceTask(workItemId, { signal } = {}) {
+  if (!workItemId) {
+    throw new Error("workItemId is required");
+  }
+  const response = await fetch(
+    `${API_URL}/api/workforce/tasks/${encodeURIComponent(workItemId)}/execute`,
+    {
+      method: "POST",
+      headers: getHeaders({ "Content-Type": "application/json" }),
+      signal,
+    }
+  );
+  return handleResponse(response, `Failed to execute task ${workItemId}`);
+}
+
+/**
+ * Fetch all execution artifacts created for a work item.
+ */
+export async function fetchTaskArtifacts(workItemId, { signal } = {}) {
+  if (!workItemId) {
+    throw new Error("workItemId is required");
+  }
+  const response = await fetch(
+    `${API_URL}/api/workforce/tasks/${encodeURIComponent(workItemId)}/artifacts`,
+    {
+      headers: getHeaders(),
+      signal,
+    }
+  );
+  return handleResponse(response, `Failed to fetch artifacts for task ${workItemId}`);
+}
+
+/**
+ * Fetch a single execution artifact by ID.
+ */
+export async function fetchWorkforceArtifact(artifactId, { signal } = {}) {
+  if (!artifactId) {
+    throw new Error("artifactId is required");
+  }
+  const response = await fetch(
+    `${API_URL}/api/workforce/artifacts/${encodeURIComponent(artifactId)}`,
+    {
+      headers: getHeaders(),
+      signal,
+    }
+  );
+  return handleResponse(response, `Failed to fetch artifact ${artifactId}`);
+}
+

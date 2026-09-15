@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  createWorkforceMission,
   fetchWorkforceActivities,
   fetchWorkforceBoard,
   fetchWorkforceEmployee,
@@ -16,8 +17,14 @@ import colors from "../../../design-system/theme/colors";
 import spacing from "../../../design-system/theme/spacing";
 import typography from "../../../design-system/theme/typography";
 import ActivityFeedView from "../components/ActivityFeedView";
+import AssignTaskModal from "../components/AssignTaskModal";
+import ChiefApprovalModal from "../components/ChiefApprovalModal";
+import DelegateProjectModal from "../components/DelegateProjectModal";
 import EmployeeCard from "../components/EmployeeCard";
+import EmployeeChatModal from "../components/EmployeeChatModal";
 import EmployeeDetailModal from "../components/EmployeeDetailModal";
+import MissionDetailModal from "../components/MissionDetailModal";
+import TaskDetailModal from "../components/TaskDetailModal";
 import WorkforceBoardView from "../components/WorkforceBoardView";
 import WorkforceMetricsHeader from "../components/WorkforceMetricsHeader";
 
@@ -41,8 +48,33 @@ export default function WorkforceWorkspace() {
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [searchQuery, setSearchQuery] = useState("");
 
+  // Inspect Profile Modal state
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Assign Task Modal state
+  const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
+  const [assignPreselectedEmployee, setAssignPreselectedEmployee] = useState(null);
+
+  // Employee Chat Modal state & isolated conversations
+  const [isChatModalOpen, setIsChatModalOpen] = useState(false);
+  const [chatEmployee, setChatEmployee] = useState(null);
+  const [conversations, setConversations] = useState({});
+
+  // Task Detail Modal state
+  const [isTaskDetailModalOpen, setIsTaskDetailModalOpen] = useState(false);
+  const [selectedTask, setSelectedTask] = useState(null);
+
+  // Chief Approval Modal state
+  const [isApprovalModalOpen, setIsApprovalModalOpen] = useState(false);
+  const [approvingTask, setApprovingTask] = useState(null);
+
+  // Delegate Project Modal & Mission Detail Modal state
+  const [isDelegateModalOpen, setIsDelegateModalOpen] = useState(false);
+  const [isMissionDetailModalOpen, setIsMissionDetailModalOpen] = useState(false);
+  const [activeMission, setActiveMission] = useState(null);
+  const [isSubmittingMission, setIsSubmittingMission] = useState(false);
+
   const [liveStreamConnected, setLiveStreamConnected] = useState(false);
 
   async function loadData() {
@@ -113,6 +145,56 @@ export default function WorkforceWorkspace() {
     }
   }
 
+  function handleOpenAssignTask(emp = null) {
+    setAssignPreselectedEmployee(emp);
+    setIsAssignModalOpen(true);
+  }
+
+  function handleOpenChat(emp) {
+    setChatEmployee(emp);
+    setIsChatModalOpen(true);
+  }
+
+  function handleSelectTask(task) {
+    setSelectedTask(task);
+    setIsTaskDetailModalOpen(true);
+  }
+
+  function handleRequestApproval(task) {
+    setApprovingTask(task);
+    setIsApprovalModalOpen(true);
+  }
+
+  function handleUpdateConversation(empId, conversationData) {
+    setConversations((prev) => ({
+      ...prev,
+      [empId]: conversationData,
+    }));
+  }
+
+  function handleOpenDelegateProject(_emp = null) {
+    setIsDelegateModalOpen(true);
+  }
+
+  async function handleDelegateMission({ title, description, isProduction }) {
+    setIsSubmittingMission(true);
+    try {
+      const res = await createWorkforceMission({
+        title,
+        description,
+        isProduction,
+      });
+      setIsDelegateModalOpen(false);
+      if (res?.mission) {
+        setActiveMission(res.mission);
+        setIsMissionDetailModalOpen(true);
+      }
+      await loadData();
+    } finally {
+      setIsSubmittingMission(false);
+    }
+  }
+
   const filteredEmployees = useMemo(() => {
     return employees.filter((emp) => {
       if (statusFilter !== "ALL" && emp.status !== statusFilter) {
@@ -166,7 +248,38 @@ export default function WorkforceWorkspace() {
           </div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: spacing.sm }}>
+        <div style={{ display: "flex", alignItems: "center", gap: spacing.sm, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            data-testid="open-delegate-mission-button"
+            onClick={() => handleOpenDelegateProject()}
+            style={{
+              background: "#4f46e5",
+              color: "#ffffff",
+              border: "none",
+              borderRadius: spacing.xs,
+              padding: `${spacing.xs}px ${spacing.md}px`,
+              fontWeight: typography.weight.bold,
+              cursor: "pointer",
+            }}
+          >
+            ⚡ Delegate Mission (NEXA)
+          </button>
+          <button
+            type="button"
+            data-testid="open-assign-task-modal-button"
+            onClick={() => handleOpenAssignTask()}
+            style={{
+              background: colors.info,
+              color: colors.text,
+              border: "none",
+              borderRadius: spacing.xs,
+              padding: `${spacing.xs}px ${spacing.md}px`,
+              cursor: "pointer",
+            }}
+          >
+            + Assign Task
+          </button>
           <Badge variant={liveStreamConnected ? "success" : "info"}>
             {liveStreamConnected ? "● LIVE STREAM ACTIVE" : "○ STREAM READY"}
           </Badge>
@@ -249,13 +362,22 @@ export default function WorkforceWorkspace() {
                 key={emp.employee_id}
                 employee={emp}
                 onInspect={handleInspectEmployee}
+                onChat={handleOpenChat}
+                onAssign={handleOpenAssignTask}
+                onDelegateProject={handleOpenDelegateProject}
               />
             ))}
           </div>
         )
       ) : null}
 
-      {activeTab === "board" ? <WorkforceBoardView board={board} /> : null}
+      {activeTab === "board" ? (
+        <WorkforceBoardView
+          board={board}
+          onSelectTask={handleSelectTask}
+          onRequestApproval={handleRequestApproval}
+        />
+      ) : null}
 
       {activeTab === "activities" ? <ActivityFeedView activities={activities} /> : null}
 
@@ -264,6 +386,56 @@ export default function WorkforceWorkspace() {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         employee={selectedEmployee}
+      />
+
+      {/* Assign Task Modal */}
+      <AssignTaskModal
+        isOpen={isAssignModalOpen}
+        onClose={() => setIsAssignModalOpen(false)}
+        employees={employees}
+        preselectedEmployee={assignPreselectedEmployee}
+        onTaskAssigned={() => loadData()}
+      />
+
+      {/* Delegate Project / Mission Modal */}
+      <DelegateProjectModal
+        isOpen={isDelegateModalOpen}
+        onClose={() => setIsDelegateModalOpen(false)}
+        onDelegate={handleDelegateMission}
+        isSubmitting={isSubmittingMission}
+      />
+
+      {/* Mission Detail Modal */}
+      <MissionDetailModal
+        isOpen={isMissionDetailModalOpen}
+        onClose={() => setIsMissionDetailModalOpen(false)}
+        mission={activeMission}
+      />
+
+      {/* Employee Chat Modal */}
+      <EmployeeChatModal
+        isOpen={isChatModalOpen}
+        onClose={() => setIsChatModalOpen(false)}
+        employee={chatEmployee}
+        conversations={conversations}
+        onUpdateConversation={handleUpdateConversation}
+      />
+
+      {/* Task Detail Modal */}
+      <TaskDetailModal
+        isOpen={isTaskDetailModalOpen}
+        onClose={() => setIsTaskDetailModalOpen(false)}
+        task={selectedTask}
+        onRequestApproval={handleRequestApproval}
+        onTaskExecuted={() => loadData()}
+      />
+
+      {/* Chief Approval & Release Modal */}
+      <ChiefApprovalModal
+        isOpen={isApprovalModalOpen}
+        onClose={() => setIsApprovalModalOpen(false)}
+        workItem={approvingTask}
+        onReleased={() => loadData()}
       />
     </div>
   );
