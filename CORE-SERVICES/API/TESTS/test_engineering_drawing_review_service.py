@@ -384,3 +384,48 @@ def test_no_canonical_drawing_writes(service, runner):
     assert _count(runner, "SELECT COUNT(*) FROM engineering_drawing_link") == 0
     assert _count(runner, "SELECT COUNT(*) FROM engineering_drawing_bom_line") == 0
     assert _count(runner, "SELECT COUNT(*) FROM engineering_drawing_attribute") == 0
+
+
+# ---- R5D.0A: review_schema_version persistence through the service ----
+
+def test_new_reviewed_fields_persisted_contain_schema_version(service):
+    updated = service.review_identity_field("DFE-1", field_name="manufacturer", action="ACCEPT", reviewed_by=_ACTOR)
+    assert updated["reviewed_fields"]["review_schema_version"] == "drawing-review-v1"
+
+
+def test_raw_extraction_unchanged_by_version_stamping(service, runner):
+    before = runner.query_scalar("SELECT extracted_fields::text FROM document_field_extraction WHERE document_field_extraction_id = 'DFE-1'")
+    service.review_identity_field("DFE-1", field_name="manufacturer", action="ACCEPT", reviewed_by=_ACTOR)
+    after = runner.query_scalar("SELECT extracted_fields::text FROM document_field_extraction WHERE document_field_extraction_id = 'DFE-1'")
+    assert before == after
+
+
+def test_partial_review_retains_schema_version_via_service(service):
+    service.review_identity_field("DFE-1", field_name="manufacturer", action="ACCEPT", reviewed_by=_ACTOR)
+    updated = service.review_identity_field("DFE-1", field_name="title", action="ACCEPT", reviewed_by=_ACTOR)
+    assert updated["reviewed_fields"]["review_schema_version"] == "drawing-review-v1"
+
+
+def test_resubmission_retains_schema_version_via_service(service):
+    service.review_identity_field("DFE-1", field_name="title", action="ACCEPT", reviewed_by=_ACTOR)
+    updated = service.review_identity_field("DFE-1", field_name="title", action="CORRECT", corrected_raw_value="Revised", reviewed_by=_ACTOR)
+    assert updated["reviewed_fields"]["review_schema_version"] == "drawing-review-v1"
+    assert updated["reviewed_fields"]["drawing_identity"]["title"] == {"review_status": "CORRECTED", "value": "Revised"}
+
+
+def test_candidate_rejection_behavior_unchanged_by_version_stamping(service):
+    service.review_identity_field("DFE-1", field_name="manufacturer", action="ACCEPT", reviewed_by=_ACTOR)
+    rejected = service.reject_candidate("DFE-1", reviewed_by=_ACTOR)
+    assert rejected["status"] == "REJECTED"
+    with pytest.raises(InvalidReviewTransition):
+        service.finalize_review("DFE-1", reviewed_by=_ACTOR)
+
+
+def test_stale_write_protection_unchanged_by_version_stamping(service):
+    stale_candidate = service.get_candidate("DFE-1")
+    service.review_identity_field("DFE-1", field_name="manufacturer", action="ACCEPT", reviewed_by=_ACTOR_B)
+    with pytest.raises(StaleReviewWrite):
+        service._persist_reviewed_fields(
+            "DFE-1", {"review_schema_version": "drawing-review-v1"},
+            reviewed_by=_ACTOR, expected_updated_at=stale_candidate["updated_at"],
+        )

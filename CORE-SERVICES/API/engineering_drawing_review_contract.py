@@ -72,6 +72,19 @@ def _validate_action(action: str) -> None:
         raise InvalidReviewAction(f"invalid review action {action!r}; expected one of {sorted(_VALID_ACTIONS)}")
 
 
+def _stamp_schema_version(result: dict[str, Any]) -> dict[str, Any]:
+    """R5D.0A Section 2/15 -- every reviewed_fields payload a non-DEFER
+    review action actually creates/updates must carry
+    review_schema_version so a later reader (Drawing-R5D's own promotion
+    entry gate) never has to trust an unversioned payload as compatible.
+    Never called on a DEFER no-op (which may return reviewed_fields
+    completely untouched, including a dict that was never reviewed at
+    all -- stamping an otherwise-empty dict would fabricate a review event
+    that never happened)."""
+    result["review_schema_version"] = REVIEW_SCHEMA_VERSION
+    return result
+
+
 def apply_identity_field_review(
     reviewed_fields: dict[str, Any],
     *,
@@ -97,7 +110,7 @@ def apply_identity_field_review(
         result["drawing_identity"][field_name] = {"review_status": "REJECTED"}
     else:  # CORRECT
         result["drawing_identity"][field_name] = {"review_status": "CORRECTED", "value": corrected_raw_value}
-    return result
+    return _stamp_schema_version(result)
 
 
 def apply_revision_review(
@@ -122,7 +135,7 @@ def apply_revision_review(
             "revision": corrected_revision,
             "revision_date": corrected_revision_date,
         }
-    return result
+    return _stamp_schema_version(result)
 
 
 def _apply_indexed_review(
@@ -147,7 +160,7 @@ def _apply_indexed_review(
         result[collection_key][key] = {"review_status": "REJECTED"}
     else:  # CORRECT
         result[collection_key][key] = {"review_status": "CORRECTED", "value": corrected_value or {}}
-    return result
+    return _stamp_schema_version(result)
 
 
 def _validate_artifact_class(class_value: str | None, *, param_name: str) -> None:
@@ -209,7 +222,7 @@ def apply_artifact_review(
         result["artifact"] = {
             "review_status": "CORRECTED", "value": corrected_class, "knowledge_source_id": knowledge_source_id,
         }
-    return result
+    return _stamp_schema_version(result)
 
 
 def is_artifact_review_complete(reviewed_fields: dict[str, Any]) -> bool:

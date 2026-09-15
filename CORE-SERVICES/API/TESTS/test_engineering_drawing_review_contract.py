@@ -18,6 +18,7 @@ if str(_CORE_SERVICES_DIR) not in sys.path:
 
 from API.engineering_drawing_review_contract import (  # noqa: E402
     ARTIFACT_CLASSES,
+    REVIEW_SCHEMA_VERSION,
     STATUS_PENDING_REVIEW,
     STATUS_REJECTED,
     STATUS_REVIEWED,
@@ -346,3 +347,61 @@ def test_cannot_finalize_from_terminal_status_even_when_eligible():
     reviewed = _eligible_reviewed_fields()
     assert can_finalize_review(STATUS_SAVED, reviewed) is False
     assert can_finalize_review(STATUS_REJECTED, reviewed) is False
+
+
+# ---- R5D.0A: review_schema_version persistence ----
+
+def test_new_identity_review_contains_schema_version():
+    result = apply_identity_field_review({}, field_name="manufacturer", action="ACCEPT")
+    assert result["review_schema_version"] == REVIEW_SCHEMA_VERSION == "drawing-review-v1"
+
+
+def test_new_revision_review_contains_schema_version():
+    result = apply_revision_review({}, action="ACCEPT")
+    assert result["review_schema_version"] == REVIEW_SCHEMA_VERSION
+
+
+def test_new_reference_review_contains_schema_version():
+    result = apply_reference_review({}, index=0, action="ACCEPT")
+    assert result["review_schema_version"] == REVIEW_SCHEMA_VERSION
+
+
+def test_new_attribute_review_contains_schema_version():
+    result = apply_attribute_review({}, index=0, action="ACCEPT")
+    assert result["review_schema_version"] == REVIEW_SCHEMA_VERSION
+
+
+def test_new_bom_review_contains_schema_version():
+    result = apply_bom_review({}, index=0, action="ACCEPT")
+    assert result["review_schema_version"] == REVIEW_SCHEMA_VERSION
+
+
+def test_new_artifact_review_contains_schema_version():
+    result = apply_artifact_review({}, action="CORRECT", corrected_class="SOURCE_DOCUMENT")
+    assert result["review_schema_version"] == REVIEW_SCHEMA_VERSION
+
+
+def test_defer_does_not_fabricate_schema_version_on_empty_payload():
+    result = apply_identity_field_review({}, field_name="manufacturer", action="DEFER")
+    assert result == {}
+    assert "review_schema_version" not in result
+
+
+def test_partial_review_retains_schema_version_across_calls():
+    result = apply_identity_field_review({}, field_name="manufacturer", action="ACCEPT")
+    result = apply_identity_field_review(result, field_name="title", action="ACCEPT")
+    result = apply_artifact_review(result, action="CORRECT", corrected_class="SOURCE_DOCUMENT")
+    assert result["review_schema_version"] == REVIEW_SCHEMA_VERSION
+
+
+def test_resubmission_retains_schema_version():
+    result = apply_identity_field_review({}, field_name="title", action="ACCEPT")
+    result = apply_identity_field_review(result, field_name="title", action="CORRECT", corrected_raw_value="Revised")
+    assert result["review_schema_version"] == REVIEW_SCHEMA_VERSION
+    assert result["drawing_identity"]["title"] == {"review_status": "CORRECTED", "value": "Revised"}
+
+
+def test_schema_version_does_not_interfere_with_eligibility():
+    reviewed = {**_eligible_reviewed_fields(), "review_schema_version": REVIEW_SCHEMA_VERSION}
+    assert is_promotion_eligible(reviewed) is True
+    assert can_finalize_review(STATUS_PENDING_REVIEW, reviewed) is True
