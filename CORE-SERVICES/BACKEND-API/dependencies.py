@@ -37,6 +37,7 @@ from API.ltsa_contract_repository import LtsaContractRepository
 from API.ltsa_contract_coverage_service import ContractCoverageService
 from API.ltsa_finding_repository import LtsaFindingRepository
 from API.condition_monitoring_measurement_repository import ConditionMonitoringMeasurementRepository
+from API.engineering_drawing_repository import EngineeringDrawingRepository
 from API.ltsa_knowledge_service import LTSAKnowledgeService
 from API.recommendation_engine import RecommendationEngine
 from API.maintenance_history_gateway import MaintenanceHistoryGateway
@@ -215,6 +216,9 @@ _ltsa_contract_coverage_service = ContractCoverageService(_ltsa_contract_reposit
 # DI surface now that this file is no longer concurrently dirty.
 _ltsa_finding_repository = LtsaFindingRepository(_import_database_runner)
 _condition_monitoring_measurement_repository = ConditionMonitoringMeasurementRepository(_import_database_runner)
+
+# MWO-LTSA-DRAWING-INPUT-R4 -- same singleton-DatabaseRunner pattern.
+_engineering_drawing_repository = EngineeringDrawingRepository(_import_database_runner)
 
 # MWO-LTSA-AUDIT-CHANGE-HISTORY-001 -- same singleton again; the one,
 # canonical, append-only ledger every domain's record_edit_service.py
@@ -522,6 +526,10 @@ def get_ltsa_finding_repository() -> LtsaFindingRepository:
 
 def get_condition_monitoring_measurement_repository() -> ConditionMonitoringMeasurementRepository:
     return _condition_monitoring_measurement_repository
+
+
+def get_engineering_drawing_repository() -> EngineeringDrawingRepository:
+    return _engineering_drawing_repository
 
 
 def get_pm_occurrence_repository() -> PMOccurrenceRepository:

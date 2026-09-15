@@ -51,6 +51,7 @@ from routers import (
     dashboard,
     document,
     engineering_ai,
+    engineering_drawing,
     fleet,
     health,
     historical_review,
@@ -149,6 +150,7 @@ app.include_router(pm_occurrence.router)
 app.include_router(cm_report.router)
 app.include_router(condition_monitoring.router)
 app.include_router(condition_monitoring_measurement.router)
+app.include_router(engineering_drawing.router)
 app.include_router(ltsa_contract.router)
 app.include_router(ltsa_finding.router)
 app.include_router(pm_cm_evidence.router)
