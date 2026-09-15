@@ -717,3 +717,20 @@ def get_group_message_rate_limiter() -> InMemoryRateLimiter:
 def get_group_media_store() -> WhatsAppGroupMediaStore:
     return _group_media_store
 
+
+from API.workforce_service import WorkforceService
+
+_workforce_service = WorkforceService()
+
+
+def get_workforce_service() -> WorkforceService:
+    return _workforce_service
+
+
+def get_live_stream_api(
+    workforce_service: WorkforceService = Depends(get_workforce_service),
+) -> LiveStreamAPI:
+    return workforce_service.live_stream_api
+
+
+
