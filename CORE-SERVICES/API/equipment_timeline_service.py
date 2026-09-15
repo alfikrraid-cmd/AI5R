@@ -91,6 +91,7 @@ class EquipmentTimelineService:
         seal_warranty_assessment_repository: Any | None = None,
         installation_report_fitment_repository: Any | None = None,
         mechanical_seal_stock_repository: Any | None = None,
+        installation_report_repository: Any | None = None,
     ) -> None:
         self._knowledge_service = knowledge_service or LTSAKnowledgeService()
         self._installation_gateway = installation_gateway or InstallationGateway()
@@ -104,6 +105,19 @@ class EquipmentTimelineService:
         self._seal_warranty_assessment_repository = seal_warranty_assessment_repository
         self._installation_report_fitment_repository = installation_report_fitment_repository
         self._mechanical_seal_stock_repository = mechanical_seal_stock_repository
+        # MWO-ASSET360-INSTALLATION-DIRECT-DB-WIRE-IN-R1 -- optional, same
+        # None-default discipline every other repository param on this
+        # constructor already uses (seal_lifecycle_event_repository etc.):
+        # every existing caller/test that never passes this keeps
+        # _list_installations() going through self._installation_gateway
+        # exactly as before (legacy/backward-compatible path unchanged).
+        # Not defaulted to a fresh InstallationReportRepository() the way
+        # self._installation_gateway is defaulted to a fresh
+        # InstallationGateway() above -- an InstallationReportRepository
+        # needs a live DatabaseRunner it cannot construct for itself, the
+        # same reason every seal_*_repository param above is left as a
+        # bare None default too.
+        self._installation_report_repository = installation_report_repository
 
     @property
     def _seal_repos_available(self) -> bool:
@@ -495,7 +509,37 @@ class EquipmentTimelineService:
         return ()
 
     def _list_installations(self, tag_number: str) -> list[dict[str, Any]]:
-        response = self._installation_gateway.list_installations()
+        # MWO-ASSET360-INSTALLATION-DIRECT-DB-WIRE-IN-R1 -- root cause
+        # (prior read-only audit): self._installation_gateway calls an n8n
+        # webhook (GET ltsa/installation/list) that was never registered
+        # in production, silently degrading to [] -- exactly the same
+        # root cause the REST endpoint (installation.py) already fixed by
+        # preferring InstallationReportRepository. Mirrored here.
+        #
+        # Isolation, by design, matches this file's own established
+        # contract for every OTHER optional lifecycle sub-source (Work
+        # Order, Drawings, etc. all degrade a single section to [] rather
+        # than failing build_lifecycle() as a whole -- see this module's
+        # header comment and the prior audit's own "supports partial
+        # data" finding): a real repository-layer error (e.g. the
+        # database itself being unreachable) is caught HERE and this one
+        # section degrades to [], exactly like a real gateway failure
+        # already would -- it is deliberately NOT allowed to crash PM/
+        # CM/Work Order/etc for the same pump. It is also deliberately
+        # NOT allowed to fall through to self._installation_gateway on
+        # that error -- that gateway is a known-broken n8n 404 today, so
+        # "falling back" to it would only mask a real repository defect
+        # behind a second, unrelated failure. When no repository is
+        # injected at all (legacy construction path, tests that predate
+        # this MWO), the gateway is used exactly as before -- unchanged.
+        if self._installation_report_repository is not None:
+            try:
+                response = self._installation_report_repository.list_installations()
+            except Exception:
+                return []
+        else:
+            response = self._installation_gateway.list_installations()
+
         filtered = [
             record for record in (response.get("data") or []) if record.get("plant_equip_no") == tag_number
         ]

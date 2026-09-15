@@ -69,11 +69,24 @@ if TYPE_CHECKING:
 # for search/area-lookup, migration 018 -- distinct from plant_equip_no's
 # free-text transcription), drawing_no, and source_document_name, since
 # list_installations() is now also the Installation Workspace REST
-# endpoint's own read path, not just Copilot's narrower one. No SELECT *:
-# still a fixed, disclosed column list.
+# endpoint's own read path, not just Copilot's narrower one.
+#
+# MWO-ASSET360-INSTALLATION-DIRECT-DB-WIRE-IN-R1 -- extends the SAME list
+# again with seal_manufacture, seal_size, material_code, and signatures:
+# list_installations() is now ALSO EquipmentTimelineService's own read
+# path (_list_installations()), whose _build_current_seal()/
+# _derive_engineer() read these four fields as the installation-report
+# fallback for Current Seal's manufacturer/shaft_size/material and for
+# deriving Engineer from the report's own signatures. Without them,
+# Current Seal/Engineer would silently degrade to null for every pump
+# whenever seal_registry itself has no matching row -- a real
+# completeness loss versus the (broken) gateway's own full-row shape,
+# not a business-logic change. No SELECT *: still a fixed, disclosed
+# column list.
 _SELECT_COLUMNS = (
     "installation_code, report_no, report_date, plant_equip_no, seal_code, seal_type, "
-    "pump_tag_number, drawing_no, source_document_name"
+    "pump_tag_number, drawing_no, source_document_name, "
+    "seal_manufacture, seal_size, material_code, signatures"
 )
 
 

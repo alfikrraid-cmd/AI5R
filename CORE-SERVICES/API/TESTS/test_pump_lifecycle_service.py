@@ -991,3 +991,198 @@ def test_build_lifecycle_merges_seal_install_event_and_dedups_linked_report():
     # INSTALLATION event -- only the unlinked legacy one does.
     legacy_installations = [e for e in lifecycle.timeline if e.event_type == TimelineCategory.INSTALLATION]
     assert [e.payload.get("installation_code") for e in legacy_installations] == ["INSTL-LEGACY"]
+
+
+# --- MWO-ASSET360-INSTALLATION-DIRECT-DB-WIRE-IN-R1 ------------------------
+#
+# _list_installations() root cause (prior read-only audit): self.
+# _installation_gateway calls an n8n webhook (GET ltsa/installation/list)
+# that was never registered in production -- the exact same root cause
+# the /api/ltsa/installations REST route already fixed by preferring
+# InstallationReportRepository. This section proves the identical fix
+# applied here: repository preferred when injected, gateway untouched
+# when it is, real 211-P-8A-shaped data flows through to Current
+# Seal/Replacement, an empty repository result is still a legitimate
+# [], a repository-layer exception degrades this ONE section only
+# (isolated, never masked by a fallback to the broken gateway), and
+# every pre-existing test above (none of which pass
+# installation_report_repository) proves the legacy/no-repository path
+# is byte-for-byte unchanged.
+
+PUMP_211 = "211-P-8A"
+
+
+class FakeInstallationReportRepository:
+    def __init__(self, records=None, raises: Exception | None = None):
+        self._records = records or []
+        self._raises = raises
+        self.list_calls = 0
+
+    def list_installations(self):
+        self.list_calls += 1
+        if self._raises is not None:
+            raise self._raises
+        return {"success": True, "message": "ok", "count": len(self._records), "data": self._records}
+
+
+def _installation_211_record(**overrides):
+    # Field shape mirrors the real production row (verified via the prior
+    # read-only Asset360 audit): installation_code=INSTL-042-2026,
+    # report_no=042/INSTL/TAP/06-2026, pump=211-P-8A, date=2026-06-08,
+    # seal_type=T48MP, drawing_no=E12894 -- plus the four columns this
+    # MWO's own repository SELECT extension added (seal_manufacture,
+    # seal_size, material_code, signatures), needed by Current Seal/
+    # Engineer.
+    record = {
+        "installation_code": "INSTL-042-2026",
+        "report_no": "042/INSTL/TAP/06-2026",
+        "report_date": "2026-06-08",
+        "plant_equip_no": PUMP_211,
+        "seal_code": None,
+        "seal_type": "T48MP",
+        "pump_tag_number": PUMP_211,
+        "drawing_no": "E12894",
+        "source_document_name": "SCAN 042 INSTALLATION REPORT 211-P-8A.pdf",
+        "seal_manufacture": "John Crane",
+        "seal_size": "3.25",
+        "material_code": "1K1K",
+        "signatures": [{"name": "Budi", "title": "Service Engineer", "date": "2026-06-08"}],
+    }
+    record.update(overrides)
+    return record
+
+
+def _service_with_installation_repository(installation_report_repository, **kwargs):
+    knowledge = kwargs.pop("knowledge", None) or _knowledge(tag_number=PUMP_211)
+    return EquipmentTimelineService(
+        knowledge_service=FakeKnowledgeService(knowledge),
+        installation_gateway=kwargs.pop(
+            "installation_gateway", FakeGateway("list_installations", [])
+        ),
+        work_order_gateway=FakeGateway("list_work_orders", []),
+        maintenance_history_gateway=FakeGateway("list_maintenance_history", []),
+        pm_occurrence_gateway=FakeGateway("list_pm_occurrences", []),
+        seal_gateway=FakeGateway("list_seals", []),
+        installation_report_repository=installation_report_repository,
+        **kwargs,
+    )
+
+
+# A. repository preferred when injected
+def test_installations_use_the_repository_when_one_is_injected():
+    repo = FakeInstallationReportRepository([_installation_211_record()])
+    service = _service_with_installation_repository(repo)
+
+    lifecycle = service.build_lifecycle(PUMP_211)
+
+    assert lifecycle.current_state.current_installation.installation_code == "INSTL-042-2026"
+    assert repo.list_calls == 1
+
+
+# B. InstallationGateway NOT called when repository available
+def test_gateway_is_never_called_when_a_repository_is_injected():
+    repo = FakeInstallationReportRepository([_installation_211_record()])
+    gateway = FakeGateway("list_installations", [_installation_211_record()])
+    gateway_calls = {"n": 0}
+    original = gateway.list_installations
+    gateway.list_installations = lambda: (gateway_calls.__setitem__("n", gateway_calls["n"] + 1), original())[1]
+    service = _service_with_installation_repository(repo, installation_gateway=gateway)
+
+    service.build_lifecycle(PUMP_211)
+
+    assert gateway_calls["n"] == 0
+
+
+# C. repository returns installation for 211-P-8A-compatible fixture
+def test_repository_211_p_8a_fixture_flows_into_the_lifecycle():
+    repo = FakeInstallationReportRepository([_installation_211_record()])
+    service = _service_with_installation_repository(repo)
+
+    lifecycle = service.build_lifecycle(PUMP_211)
+
+    installation = lifecycle.current_state.current_installation
+    assert installation.report_no == "042/INSTL/TAP/06-2026"
+    assert installation.plant_equip_no == PUMP_211
+    assert installation.seal_type == "T48MP"
+    assert installation.drawing_no == "E12894"
+
+
+# D. empty repository result remains legitimate []
+def test_empty_repository_result_is_a_genuine_empty_not_an_error():
+    repo = FakeInstallationReportRepository([])
+    service = _service_with_installation_repository(repo)
+
+    lifecycle = service.build_lifecycle(PUMP_211)
+
+    assert lifecycle.current_state.current_installation is None
+    assert lifecycle.current_state.current_seal is None
+    assert repo.list_calls == 1
+
+
+# E. repository exception is isolated to this one section, never masked
+#    by a silent fallback to the (broken) gateway -- documented behavior
+#    per this MWO's own explicit instruction.
+def test_repository_exception_isolates_to_an_empty_installation_list_never_falls_back_to_the_gateway():
+    repo = FakeInstallationReportRepository(raises=RuntimeError("database unavailable"))
+    gateway = FakeGateway("list_installations", [_installation_211_record()])
+    gateway_calls = {"n": 0}
+    original = gateway.list_installations
+    gateway.list_installations = lambda: (gateway_calls.__setitem__("n", gateway_calls["n"] + 1), original())[1]
+    service = _service_with_installation_repository(repo, installation_gateway=gateway)
+
+    # The rest of the lifecycle (PM/CM/etc, all real, unrelated to
+    # Installation) must still build successfully -- one broken optional
+    # source never fails the whole lifecycle, matching every other
+    # sub-source's own established isolation contract in this file.
+    lifecycle = service.build_lifecycle(PUMP_211)
+
+    assert lifecycle.current_state.current_installation is None
+    assert lifecycle.current_state.current_seal is None
+    assert gateway_calls["n"] == 0, "a repository error must never be masked by falling back to the broken gateway"
+
+
+# F. legacy constructor without repository preserves existing behavior
+def test_legacy_construction_without_a_repository_still_uses_the_gateway():
+    gateway = FakeGateway("list_installations", [_installation_211_record()])
+    service = EquipmentTimelineService(
+        knowledge_service=FakeKnowledgeService(_knowledge(tag_number=PUMP_211)),
+        installation_gateway=gateway,
+        work_order_gateway=FakeGateway("list_work_orders", []),
+        maintenance_history_gateway=FakeGateway("list_maintenance_history", []),
+        pm_occurrence_gateway=FakeGateway("list_pm_occurrences", []),
+        seal_gateway=FakeGateway("list_seals", []),
+        # installation_report_repository intentionally omitted.
+    )
+
+    lifecycle = service.build_lifecycle(PUMP_211)
+
+    assert lifecycle.current_state.current_installation.installation_code == "INSTL-042-2026"
+
+
+# G. lifecycle receives installation record
+# H. current-seal builder receives current installation
+# I. replacement builder receives installation list
+def test_current_seal_and_replacement_both_receive_the_real_repository_backed_installation_list():
+    older = _installation_211_record(installation_code="INSTL-001-2026", report_date="2026-01-06")
+    newer = _installation_211_record(installation_code="INSTL-042-2026", report_date="2026-06-08")
+    repo = FakeInstallationReportRepository([older, newer])
+    service = _service_with_installation_repository(repo)
+
+    lifecycle = service.build_lifecycle(PUMP_211)
+
+    # G/H: current_state resolves to the most recent installation, and
+    # Current Seal is built from that same record (manufacturer/shaft_
+    # size/material fall back to the installation's own seal_manufacture/
+    # seal_size/material_code columns since seal_code is None here).
+    assert lifecycle.current_state.current_installation.installation_code == "INSTL-042-2026"
+    assert lifecycle.current_state.current_seal.manufacturer == "John Crane"
+    assert lifecycle.current_state.current_seal.shaft_size == "3.25"
+    assert lifecycle.current_state.current_seal.material == "1K1K"
+    assert lifecycle.current_state.current_seal.installed_at == "2026-06-08"
+
+    # I: two installations for the same pump produce exactly one
+    # REPLACEMENT timeline event between them.
+    replacements = [e for e in lifecycle.timeline if e.event_type == TimelineCategory.REPLACEMENT]
+    assert len(replacements) == 1
+    assert replacements[0].payload["replaced_installation_code"] == "INSTL-001-2026"
+    assert replacements[0].payload["replacement_installation_code"] == "INSTL-042-2026"
