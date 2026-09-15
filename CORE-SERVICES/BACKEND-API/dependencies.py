@@ -753,4 +753,80 @@ def get_live_stream_api(
     return workforce_service.live_stream_api
 
 
+# ==============================================================================
+# CM R5D — FIELD FORM PREVIEW IN-MEMORY STORE
+# ==============================================================================
 
+import threading
+import time
+
+
+class FieldFormPreviewStore:
+    """Thread-safe, ephemeral in-memory store for field form preview sessions.
+
+    INVARIANTS:
+    - Zero database writes (ephemeral by design; survives within process lifetime only).
+    - Thread-safe via threading.Lock().
+    - Bounded maximum capacity (default 100 entries).
+    - TTL eviction policy (default 3600 seconds / 1 hour).
+    - Lazy pruning on put() and get().
+    """
+
+    def __init__(self, max_entries: int = 100, ttl_seconds: float = 3600.0) -> None:
+        self._store: dict[str, tuple[float, dict[str, Any]]] = {}
+        self._max_entries = max_entries
+        self._ttl_seconds = ttl_seconds
+        self._lock = threading.Lock()
+
+    def _prune_expired_locked(self, now: float) -> None:
+        expired_keys = [
+            k for k, (ts, _) in self._store.items()
+            if now - ts > self._ttl_seconds
+        ]
+        for k in expired_keys:
+            del self._store[k]
+
+    def put(self, preview_id: str, data: dict[str, Any]) -> None:
+        now = time.monotonic()
+        with self._lock:
+            self._prune_expired_locked(now)
+            if len(self._store) >= self._max_entries and preview_id not in self._store:
+                # FIFO eviction of oldest entry
+                oldest_key = next(iter(self._store))
+                del self._store[oldest_key]
+            self._store[preview_id] = (now, data)
+
+    def get(self, preview_id: str) -> dict[str, Any] | None:
+        now = time.monotonic()
+        with self._lock:
+            entry = self._store.get(preview_id)
+            if entry is None:
+                return None
+            ts, data = entry
+            if now - ts > self._ttl_seconds:
+                del self._store[preview_id]
+                return None
+            return data
+
+    def clear(self) -> None:
+        with self._lock:
+            self._store.clear()
+
+    @property
+    def max_entries(self) -> int:
+        return self._max_entries
+
+    @property
+    def ttl_seconds(self) -> float:
+        return self._ttl_seconds
+
+    def __len__(self) -> int:
+        with self._lock:
+            return len(self._store)
+
+
+_field_form_preview_store = FieldFormPreviewStore()
+
+
+def get_field_form_preview_store() -> FieldFormPreviewStore:
+    return _field_form_preview_store

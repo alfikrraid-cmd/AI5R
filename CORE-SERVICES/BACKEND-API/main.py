@@ -46,6 +46,7 @@ from routers import (
     auth,
     cm_report,
     condition_monitoring,
+    condition_monitoring_field_form,
     condition_monitoring_measurement,
     copilot,
     dashboard,
@@ -149,6 +150,7 @@ app.include_router(pm_schedule.router)
 app.include_router(pm_occurrence.router)
 app.include_router(cm_report.router)
 app.include_router(condition_monitoring.router)
+app.include_router(condition_monitoring_field_form.router)
 app.include_router(condition_monitoring_measurement.router)
 app.include_router(engineering_drawing.router)
 app.include_router(ltsa_contract.router)
