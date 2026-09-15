@@ -5,7 +5,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import InstallationWorkspace from "./InstallationWorkspace";
 import sampleInstallations from "../data/sampleInstallations";
-import { getInstallations } from "../../../api/ai5rClient";
+import { getInstallations, getPumps } from "../../../api/ai5rClient";
 
 // MWO-LTSA-060 -- getInstallations is the one reused, already-real backend
 // call InstallationWorkspace.jsx now makes when no `installations` prop is
@@ -14,8 +14,15 @@ import { getInstallations } from "../../../api/ai5rClient";
 // above still passes installations={sampleInstallations} explicitly, so
 // this mock is never exercised by them -- only the dedicated "Real-data
 // wiring" describe block below calls it.
+//
+// MWO-LTSA-INSTALLATION-UI-PHASE-1 -- getPumps added alongside
+// getInstallations (Promise.all in InstallationWorkspace.jsx, purely for
+// the pumpTagNumber -> area lookup); defaulted to an empty list in
+// beforeEach below so every existing "Real-data wiring" test that doesn't
+// care about area keeps working unchanged.
 vi.mock("../../../api/ai5rClient", () => ({
   getInstallations: vi.fn(),
+  getPumps: vi.fn(),
 }));
 
 const __filename = fileURLToPath(import.meta.url);
@@ -344,7 +351,10 @@ describe("Attachments section (MWO-LTSA-068 -- reuses the one real source_docume
   it("renders the source document name as the one real attachment", () => {
     render(<InstallationWorkspace onNavigate={() => {}} installations={sampleInstallations} />);
     expect(screen.getByText("Attachments")).toBeTruthy();
-    expect(screen.getByText(installation.sourceDocumentName)).toBeTruthy();
+    // MWO-LTSA-INSTALLATION-UI-PHASE-1 -- getAllByText, not getByText: the
+    // source document name now also appears in InstallationRegistryPanel's
+    // own "Source Document" column, a second, legitimate occurrence.
+    expect(screen.getAllByText(installation.sourceDocumentName).length).toBeGreaterThan(0);
   });
 
   it("shows an honest empty state, never a fabricated file, when no source document name is recorded", () => {
@@ -428,6 +438,8 @@ describe("Real-data wiring (MWO-LTSA-060)", () => {
 
   beforeEach(() => {
     getInstallations.mockReset();
+    getPumps.mockReset();
+    getPumps.mockResolvedValue([]);
   });
 
   it("does not call getInstallations when an installations prop is explicitly passed", () => {
@@ -440,7 +452,12 @@ describe("Real-data wiring (MWO-LTSA-060)", () => {
     render(<InstallationWorkspace onNavigate={() => {}} />);
     expect(getInstallations).toHaveBeenCalledOnce();
     expect((await screen.findAllByText("999-P-9")).length).toBeGreaterThan(0);
-    expect(screen.getAllByText("PT Fetched Customer").length).toBeGreaterThan(0);
+    // MWO-LTSA-INSTALLATION-UI-PHASE-1 -- findAllByText (async), not
+    // getAllByText: selection is now real state synced by its own effect
+    // (matching DocumentWorkspace.jsx's own fetch+select-effect shape) one
+    // render cycle after the registry itself re-renders with fetched data,
+    // so the detail view's content needs its own await.
+    expect((await screen.findAllByText("PT Fetched Customer")).length).toBeGreaterThan(0);
   });
 
   it("falls back to the genuine empty state, not a fabricated one, when getInstallations rejects", async () => {

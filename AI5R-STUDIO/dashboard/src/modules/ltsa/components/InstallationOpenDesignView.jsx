@@ -262,9 +262,18 @@ export default function InstallationOpenDesignView({ installation, onOpenPump, o
             </div>
             <div style={{ marginTop: "var(--space-4)" }}>
               <div className="eyebrow" style={{ marginBottom: "var(--space-2)" }}>Technical</div>
-              <InfoRow label="Plant Equip. No." value={installation.plantEquipNo ?? "—"} />
-              <InfoRow label="Seal Type" value={installation.sealType ?? "—"} />
-              <InfoRow label="Drawing No." value={installation.drawingNo ?? "—"} />
+              {/* MWO-LTSA-INSTALLATION-UI-PHASE-1 -- "Pump Tag" is the
+                  canonical pump_tag_number FK, deliberately its own row,
+                  never a rename of "Plant Equip. No." below (the report's
+                  own free-text transcription of plant_equip_no -- a
+                  different, non-canonical field this file's header
+                  discipline says is never silently renamed/merged). */}
+              <InfoRow label="Pump Tag" value={installation.pumpTagNumber ?? "N/A"} />
+              <InfoRow label="Area" value={installation.area ?? "N/A"} />
+              <InfoRow label="Installation Date" value={installation.date ?? "N/A"} />
+              <InfoRow label="Plant Equip. No." value={installation.plantEquipNo ?? "N/A"} />
+              <InfoRow label="Seal Type" value={installation.sealType ?? "N/A"} />
+              <InfoRow label="Drawing No." value={installation.drawingNo ?? "N/A"} />
             </div>
           </section>
 
@@ -275,7 +284,9 @@ export default function InstallationOpenDesignView({ installation, onOpenPump, o
               triggers). */}
           <Section id="installation-pump-section" title="Pump">
             <div style={{ marginTop: "var(--space-3)" }}>
-              <InfoRow label="Plant Equip. No." value={installation.plantEquipNo ?? "—"} />
+              <InfoRow label="Pump Tag" value={installation.pumpTagNumber ?? "N/A"} />
+              <InfoRow label="Area" value={installation.area ?? "N/A"} />
+              <InfoRow label="Plant Equip. No." value={installation.plantEquipNo ?? "N/A"} />
               <InfoRow label="Pump Type" value={installation.pumpType ?? "—"} />
               <InfoRow label="Model/Type" value={installation.modelType ?? "—"} />
               <InfoRow label="Rotation" value={installation.rotation ?? "—"} />
@@ -285,17 +296,25 @@ export default function InstallationOpenDesignView({ installation, onOpenPump, o
 
           <Section id="installation-drawing-section" title="Drawing">
             <div style={{ marginTop: "var(--space-3)" }}>
-              <InfoRow label="Drawing No." value={installation.drawingNo ?? "—"} />
+              <InfoRow label="Drawing No." value={installation.drawingNo ?? "N/A"} />
             </div>
           </Section>
 
           <Section id="installation-seal-section" title="Seal">
             <div style={{ marginTop: "var(--space-3)" }}>
               <InfoRow label="Seal Manufacture" value={installation.sealManufacture ?? "—"} />
-              <InfoRow label="Seal Type" value={installation.sealType ?? "—"} />
+              <InfoRow label="Seal Type" value={installation.sealType ?? "N/A"} />
               <InfoRow label="Seal Arrangement" value={installation.sealArrangement ?? "—"} />
               <InfoRow label="Seal Size" value={installation.sealSize ?? "—"} />
               <InfoRow label="Seal Code" value={installation.sealCode ?? "—"} />
+              {/* MWO-LTSA-INSTALLATION-UI-PHASE-1 -- Assembly GPN has no
+                  wired source today (see installationMapping.js's own
+                  comment on the field: no equipment-tag-keyed GPN data
+                  exists to join, and joining by Seal Type would be
+                  inferring GPN from Seal Type, explicitly disallowed).
+                  Always "N/A" until a real source exists -- never derived
+                  from Seal Type/Seal Code above. */}
+              <InfoRow label="Assembly GPN" value={installation.assemblyGpn ?? "N/A"} />
             </div>
           </Section>
 

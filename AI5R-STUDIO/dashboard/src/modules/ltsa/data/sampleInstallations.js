@@ -44,6 +44,20 @@ const sampleInstallations = [
   {
     id: "INSTL-001-2026",
 
+    // MWO-LTSA-INSTALLATION-UI-PHASE-1 -- pumpTagNumber is the real
+    // pump_tag_number FK column (same value as plantEquipNo below for
+    // this real report, but a distinct field -- see
+    // installationMapping.js's own comment). area is null here
+    // deliberately: it is resolved from a separately-fetched pump list
+    // (mapInstallationRecord()'s second argument), which this static
+    // fixture correctly has none of -- not a fabricated "HCC" copied from
+    // the `plant` field below, which is the report's own printed
+    // customer-plant name, a different fact. assemblyGpn has no wired
+    // source at all yet (see the same comment).
+    pumpTagNumber: "211-P-14B",
+    area: null,
+    assemblyGpn: null,
+
     // REPORT INFORMATION (page 1)
     reportNo: "001/INSTL /TAP/01-2026",
     tsoNo: null,
