@@ -70,6 +70,7 @@ from routers import (
     whatsapp_group_agent_admin,
     whatsapp_intake,
     whatsapp_webhook,
+    workforce,
 )
 
 app = FastAPI(
@@ -149,3 +150,5 @@ app.include_router(ltsa_contract.router)
 app.include_router(pm_cm_evidence.router)
 app.include_router(record_edit.router)
 app.include_router(historical_review.router)
+app.include_router(workforce.router)
+
