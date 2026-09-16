@@ -37,6 +37,13 @@ from API.condition_monitoring_field_form_adapter import (
     ConditionMonitoringFieldFormAdapter,
     RealWorkbookDryRunResult,
 )
+from API.condition_monitoring_field_form_apply_engine import (
+    ApplyOutcome,
+    QUARANTINED_ASSET_CODES,
+    build_content_payload,
+    compute_batch_content_hash,
+    compute_content_hash,
+)
 from dependencies import (
     get_current_user,
     get_field_form_preview_store,
@@ -64,6 +71,8 @@ class AssetPreviewSummary(BaseModel):
     persistence_eligible: bool
     notes: str
     idempotency_key: str
+    content_hash: str | None = None
+    eligibility: str | None = None
 
 
 class QuarantinedAssetSummary(BaseModel):
@@ -113,6 +122,9 @@ class FieldFormPreviewResponseData(BaseModel):
     asset_previews: list[AssetPreviewSummary]
     zero_write_audit: ZeroWriteAudit
     idempotency_hash: str
+    batch_content_hash: str | None = None
+    per_asset_content_hashes: dict[str, str] | None = None
+    canonical_snapshot: dict[str, Any] | None = None
 
 
 class FieldFormReviewDecisionRequest(BaseModel):
@@ -199,9 +211,11 @@ async def preview_field_form(
         preview_id = f"PREV-{uuid.uuid4()}"
         now_iso = datetime.now(timezone.utc).isoformat()
 
-        # Build asset previews list
+        # Build asset previews list and immutable canonical content snapshot
         asset_summaries: list[dict[str, Any]] = []
         quarantined_summaries: list[dict[str, Any]] = []
+        canonical_assets_snapshot: list[dict[str, Any]] = []
+        per_asset_content_hashes: dict[str, str] = {}
 
         for b in dry_run.batch_previews:
             for ap in b.asset_previews:
@@ -209,9 +223,54 @@ async def preview_field_form(
                     (c for c in dry_run.asset_columns if c.sheet_name == b.source_sheet and (c.constructed_candidate == ap.source_asset or c.source_tag_literal == ap.source_asset)),
                     None
                 )
+                source_tag_lit = matching_col.source_tag_literal if matching_col else ap.source_asset
+
+                # Extract 42 typed parameter items from ap.items
+                param_values: dict[str, Any] = {}
+                units_map: dict[str, str | None] = {}
+                cond_map: dict[str, str] = {}
+                has_meaningful_value = False
+                has_any_data = False
+
+                for item in ap.items:
+                    param_values[item.canonical_code] = item.normalized_value
+                    units_map[item.canonical_code] = item.unit
+                    cond_map[item.canonical_code] = item.condition
+                    if item.raw_value is not None and str(item.raw_value).strip() != "":
+                        has_any_data = True
+                    if item.value_state == "VALUE_PRESENT":
+                        has_meaningful_value = True
+
+                # Determine eligibility
+                clean_asset = (ap.canonical_asset or "").strip().upper()
+                is_quarantined = clean_asset in QUARANTINED_ASSET_CODES or not ap.persistence_eligible
+                if is_quarantined:
+                    eligibility = ApplyOutcome.REJECTED_QUARANTINE.value
+                elif not has_any_data:
+                    eligibility = ApplyOutcome.SKIPPED_BLANK.value
+                elif not has_meaningful_value:
+                    eligibility = ApplyOutcome.SKIPPED_NOT_INSPECTED.value
+                else:
+                    eligibility = "ELIGIBLE"
+
+                # Authoritative deterministic content payload & hash (identical to R5E4)
+                content_payload = build_content_payload(
+                    canonical_asset=clean_asset or source_tag_lit,
+                    inspection_date=parsed_date,
+                    workbook_sha256=dry_run.workbook_hash,
+                    source_sheet=b.source_sheet,
+                    source_asset_literal=source_tag_lit,
+                    parameter_values=param_values,
+                    units=units_map,
+                    condition_states=cond_map,
+                )
+                content_hash = compute_content_hash(content_payload)
+                if clean_asset:
+                    per_asset_content_hashes[clean_asset] = content_hash
+
                 asset_item = {
                     "source_sheet": b.source_sheet,
-                    "source_asset_literal": matching_col.source_tag_literal if matching_col else ap.source_asset,
+                    "source_asset_literal": source_tag_lit,
                     "canonical_asset": ap.canonical_asset,
                     "cell_position": matching_col.cell_position if matching_col else "",
                     "effective_unit": matching_col.effective_unit if matching_col else "",
@@ -220,20 +279,46 @@ async def preview_field_form(
                     "persistence_eligible": ap.persistence_eligible,
                     "notes": ap.warnings[0] if ap.warnings else ("Exact match" if ap.asset_resolution == "EXACT_MATCH" else "Approved alias"),
                     "idempotency_key": ap.idempotency_key,
+                    "content_hash": content_hash,
+                    "eligibility": eligibility,
                 }
                 asset_summaries.append(asset_item)
+
+                canonical_assets_snapshot.append({
+                    "canonical_asset": ap.canonical_asset,
+                    "source_asset_literal": source_tag_lit,
+                    "source_sheet": b.source_sheet,
+                    "cell_position": matching_col.cell_position if matching_col else "",
+                    "effective_unit": matching_col.effective_unit if matching_col else "",
+                    "resolution_method": ap.asset_resolution,
+                    "persistence_eligible": ap.persistence_eligible,
+                    "is_quarantined": is_quarantined,
+                    "eligibility": eligibility,
+                    "content_payload": content_payload,
+                    "content_hash": content_hash,
+                    "parameter_values": param_values,
+                    "units": units_map,
+                    "condition_states": cond_map,
+                })
 
                 if not ap.persistence_eligible:
                     quarantined_summaries.append({
                         "source_sheet": b.source_sheet,
                         "cell_position": matching_col.cell_position if matching_col else "",
                         "effective_unit": matching_col.effective_unit if matching_col else "",
-                        "source_tag_literal": matching_col.source_tag_literal if matching_col else ap.source_asset,
+                        "source_tag_literal": source_tag_lit,
                         "constructed_candidate": matching_col.constructed_candidate if matching_col else ap.source_asset,
                         "resolution_status": ap.resolution_status,
                         "persistence_eligible": False,
                         "reason": "Quarantined Unit 946 asset (NOT_IN_REGISTRY; requires Chief provisioning)",
                     })
+
+        all_snapshot_hashes = [a["content_hash"] for a in canonical_assets_snapshot]
+        batch_content_hash = compute_batch_content_hash(
+            workbook_sha256=dry_run.workbook_hash,
+            inspection_date=parsed_date,
+            asset_content_hashes=all_snapshot_hashes,
+        )
 
         preview_payload = {
             "preview_id": preview_id,
@@ -273,6 +358,13 @@ async def preview_field_form(
                 "asset_registry_writes": 0,
             },
             "idempotency_hash": dry_run.run_hash,
+            "canonical_snapshot": {
+                "workbook_sha256": dry_run.workbook_hash,
+                "inspection_date": parsed_date,
+                "assets": canonical_assets_snapshot,
+            },
+            "per_asset_content_hashes": per_asset_content_hashes,
+            "batch_content_hash": batch_content_hash,
         }
 
         # 7. Store in ephemeral session cache
@@ -416,14 +508,62 @@ def review_field_form_preview(
             detail=f"INVALID_REVIEW_TRANSITION: Invalid transition from '{current_status}' to '{payload.decision}'.",
         )
 
-    # 4. Update in-memory state with strict zero writes
-    data["summary"]["review_status"] = payload.decision
-    data["review_decision"] = {
-        "decision": payload.decision,
-        "reviewed_by": current_user.user_id,
-        "reviewed_at": datetime.now(timezone.utc).isoformat(),
-        "notes": payload.notes,
-    }
+    # 4. Filter approved apply set (strictly excluding quarantined, blank, and NI-only assets)
+    if payload.decision == "ACCEPTED_FOR_FUTURE_APPLY":
+        snapshot_assets = data.get("canonical_snapshot", {}).get("assets", [])
+        approved_apply_assets: list[dict[str, Any]] = []
+        for a in snapshot_assets:
+            # 1. Strict quarantine exclusion (QUARANTINED_IN_APPROVED_APPLY_SET = 0)
+            if a.get("is_quarantined") or not a.get("persistence_eligible"):
+                continue
+            # 2. Meaningful data eligibility exclusion (BLANK / NI-ONLY = NO)
+            if a.get("eligibility") != "ELIGIBLE":
+                continue
+            # 3. Area scope filtering if user is scoped
+            if scope is not None and not _asset_matches_scope(a, scope):
+                continue
+            approved_apply_assets.append(a)
+
+        approved_content_hashes = [a["content_hash"] for a in approved_apply_assets]
+        approved_assets = [a["canonical_asset"] for a in approved_apply_assets if a.get("canonical_asset")]
+
+        approved_batch_content_hash = compute_batch_content_hash(
+            workbook_sha256=data.get("workbook_sha256", ""),
+            inspection_date=data.get("inspection_date", ""),
+            asset_content_hashes=approved_content_hashes,
+        )
+
+        approval_binding = {
+            "decision": payload.decision,
+            "reviewed_by": current_user.user_id,
+            "reviewed_at": datetime.now(timezone.utc).isoformat(),
+            "reviewer_org_id": current_user.organization_id,
+            "reviewer_role": current_user.role,
+            "authorized_area_scope": sorted(list(scope)) if scope is not None else None,
+            "notes": payload.notes,
+            "approved_asset_count": len(approved_apply_assets),
+            "approved_assets": approved_assets,
+            "approved_content_hashes": approved_content_hashes,
+            "approved_batch_content_hash": approved_batch_content_hash,
+        }
+
+        data["summary"]["review_status"] = payload.decision
+        data["review_decision"] = approval_binding
+        data["approval_binding"] = approval_binding
+        data["approved_content_hashes"] = approved_content_hashes
+        data["approved_batch_content_hash"] = approved_batch_content_hash
+        data["approved_assets"] = approved_assets
+        data["content_hash"] = approved_batch_content_hash
+    else:
+        data["summary"]["review_status"] = payload.decision
+        data["review_decision"] = {
+            "decision": payload.decision,
+            "reviewed_by": current_user.user_id,
+            "reviewed_at": datetime.now(timezone.utc).isoformat(),
+            "notes": payload.notes,
+        }
+
+    # Zero-write audit guarantee
     data["zero_write_audit"] = {
         "cm_reading_writes": 0,
         "measurement_writes": 0,

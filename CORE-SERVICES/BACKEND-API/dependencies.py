@@ -790,6 +790,14 @@ class FieldFormPreviewStore:
         now = time.monotonic()
         with self._lock:
             self._prune_expired_locked(now)
+            existing = self._store.get(preview_id)
+            if existing is not None:
+                _, existing_data = existing
+                # Immutability enforcement: once approved, canonical snapshot and batch content hash cannot be mutated
+                if existing_data.get("summary", {}).get("review_status") == "ACCEPTED_FOR_FUTURE_APPLY":
+                    if data.get("canonical_snapshot") != existing_data.get("canonical_snapshot") or \
+                       data.get("batch_content_hash") != existing_data.get("batch_content_hash"):
+                        raise ValueError("IMMUTABLE_APPROVED_PREVIEW: Cannot mutate canonical snapshot of an approved preview.")
             if len(self._store) >= self._max_entries and preview_id not in self._store:
                 # FIFO eviction of oldest entry
                 oldest_key = next(iter(self._store))

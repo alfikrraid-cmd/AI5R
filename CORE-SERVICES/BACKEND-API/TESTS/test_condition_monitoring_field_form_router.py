@@ -472,3 +472,274 @@ def test_20_in_process_concurrency_safe():
             f.result()
 
     assert len(store) <= 50
+
+
+# ==============================================================================
+# 5. R5D.2 APPROVAL INTEGRITY BRIDGE TESTS
+# ==============================================================================
+
+def test_21_preview_stores_canonical_typed_content_and_per_asset_hashes(real_workbook_bytes):
+    """Verifies preview stores full canonical snapshot and deterministic content hashes."""
+    app.dependency_overrides[get_current_user] = lambda: _identity("TAP_ENGINEER")
+
+    resp = client.post(
+        "/api/ltsa/condition-monitoring/field-form/preview",
+        files={"file": ("workbook.xlsx", real_workbook_bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        params={"inspection_date": "2026-09-15"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+
+    # Canonical snapshot presence and structure
+    snapshot = data["canonical_snapshot"]
+    assert snapshot is not None
+    assert snapshot["workbook_sha256"] == data["workbook_sha256"]
+    assert snapshot["inspection_date"] == "2026-09-15"
+    assert len(snapshot["assets"]) == 153
+
+    # Per-asset content hashes presence
+    per_asset_hashes = data["per_asset_content_hashes"]
+    assert len(per_asset_hashes) >= 133
+    for h in per_asset_hashes.values():
+        assert len(h) == 64
+
+    # Batch content hash presence
+    assert len(data["batch_content_hash"]) == 64
+
+    # Each asset preview carries content_hash and eligibility
+    first_asset = data["asset_previews"][0]
+    assert "content_hash" in first_asset
+    assert len(first_asset["content_hash"]) == 64
+    assert "eligibility" in first_asset
+
+
+def test_22_preview_and_apply_hash_algorithm_identical(real_workbook_bytes):
+    """Proves PREVIEW_HASH_ALGORITHM_EQUALS_APPLY_HASH_ALGORITHM=YES."""
+    from API.condition_monitoring_field_form_apply_engine import build_content_payload, compute_content_hash
+
+    app.dependency_overrides[get_current_user] = lambda: _identity("TAP_ENGINEER")
+
+    resp = client.post(
+        "/api/ltsa/condition-monitoring/field-form/preview",
+        files={"file": ("workbook.xlsx", real_workbook_bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        params={"inspection_date": "2026-09-15"},
+    )
+    data = resp.json()["data"]
+    asset_snap = data["canonical_snapshot"]["assets"][0]
+
+    # Hash stored in preview
+    preview_hash = asset_snap["content_hash"]
+
+    # Recomputed using R5E4 apply engine algorithm
+    recomputed_payload = build_content_payload(
+        canonical_asset=asset_snap["canonical_asset"],
+        inspection_date=data["inspection_date"],
+        workbook_sha256=data["workbook_sha256"],
+        source_sheet=asset_snap["source_sheet"],
+        source_asset_literal=asset_snap["source_asset_literal"],
+        parameter_values=asset_snap["parameter_values"],
+        units=asset_snap["units"],
+        condition_states=asset_snap["condition_states"],
+    )
+    apply_hash = compute_content_hash(recomputed_payload)
+
+    assert preview_hash == apply_hash
+
+
+def test_23_review_acceptance_binds_exact_content_snapshot(real_workbook_bytes):
+    """Verifies review acceptance binds the exact approved content snapshot."""
+    app.dependency_overrides[get_current_user] = lambda: _identity("TAP_ADMIN", user_id="reviewer-admin-01")
+
+    create_resp = client.post(
+        "/api/ltsa/condition-monitoring/field-form/preview",
+        files={"file": ("workbook.xlsx", real_workbook_bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+    )
+    preview_id = create_resp.json()["data"]["preview_id"]
+
+    review_resp = client.post(
+        f"/api/ltsa/condition-monitoring/field-form/preview/{preview_id}/review",
+        json={"decision": "ACCEPTED_FOR_FUTURE_APPLY", "notes": "Approved for future application"},
+    )
+    assert review_resp.status_code == 200
+    rev_data = review_resp.json()["data"]
+
+    # Approval binding integrity
+    binding = rev_data["approval_binding"]
+    assert binding["decision"] == "ACCEPTED_FOR_FUTURE_APPLY"
+    assert binding["reviewed_by"] == "reviewer-admin-01"
+    assert binding["reviewer_org_id"] == "org-tap"
+    assert "approved_content_hashes" in binding
+    assert "approved_batch_content_hash" in binding
+
+    # Top-level content_hash is set for apply validation
+    assert rev_data["content_hash"] == binding["approved_batch_content_hash"]
+
+
+def test_24_quarantined_and_blank_assets_excluded_from_approved_apply_set(real_workbook_bytes):
+    """Proves blank template assets and quarantined assets never enter approved apply set."""
+    app.dependency_overrides[get_current_user] = lambda: _identity("TAP_ADMIN")
+
+    create_resp = client.post(
+        "/api/ltsa/condition-monitoring/field-form/preview",
+        files={"file": ("workbook.xlsx", real_workbook_bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+    )
+    preview_id = create_resp.json()["data"]["preview_id"]
+
+    review_resp = client.post(
+        f"/api/ltsa/condition-monitoring/field-form/preview/{preview_id}/review",
+        json={"decision": "ACCEPTED_FOR_FUTURE_APPLY"},
+    )
+    rev_data = review_resp.json()["data"]
+    binding = rev_data["approval_binding"]
+
+    # Since the real workbook template is blank, 0 assets meet meaningful inspection eligibility
+    assert binding["approved_asset_count"] == 0
+    assert len(binding["approved_assets"]) == 0
+    assert len(binding["approved_content_hashes"]) == 0
+
+
+def test_25_synthetic_eligible_asset_included_in_approved_apply_set():
+    """Proves eligible assets are included while quarantine, blank, and NI assets are excluded."""
+    from API.condition_monitoring_field_form_apply_engine import (
+        build_content_payload,
+        compute_content_hash,
+        compute_batch_content_hash,
+    )
+    from dependencies import get_field_form_preview_store
+
+    store = get_field_form_preview_store()
+    preview_id = "PREV-TEST-SYNTHETIC-01"
+
+    # Synthetic assets: 1 eligible, 1 blank, 1 NI, 1 quarantined
+    assets = [
+        {
+            "canonical_asset": "211-P-13AR",
+            "source_asset_literal": "211-P-13A",
+            "source_sheet": "RX 211",
+            "persistence_eligible": True,
+            "is_quarantined": False,
+            "eligibility": "ELIGIBLE",
+            "content_hash": "hash_eligible_01",
+        },
+        {
+            "canonical_asset": "211-P-13BR",
+            "source_asset_literal": "211-P-13B",
+            "source_sheet": "RX 211",
+            "persistence_eligible": True,
+            "is_quarantined": False,
+            "eligibility": "SKIPPED_BLANK",
+            "content_hash": "hash_blank_02",
+        },
+        {
+            "canonical_asset": "211-P-14A",
+            "source_asset_literal": "211-P-14A",
+            "source_sheet": "RX 211",
+            "persistence_eligible": True,
+            "is_quarantined": False,
+            "eligibility": "SKIPPED_NOT_INSPECTED",
+            "content_hash": "hash_ni_03",
+        },
+        {
+            "canonical_asset": "946-P-2D",
+            "source_asset_literal": "946-P-2D",
+            "source_sheet": "SPK om",
+            "persistence_eligible": False,
+            "is_quarantined": True,
+            "eligibility": "REJECTED_QUARANTINE",
+            "content_hash": "hash_quarantine_04",
+        },
+    ]
+
+    session_payload = {
+        "preview_id": preview_id,
+        "created_at": "2026-09-15T10:00:00Z",
+        "owner_user_id": "test-actor",
+        "owner_org_id": "org-tap",
+        "owner_role": "TAP_ENGINEER",
+        "inspection_date": "2026-09-15",
+        "workbook_filename": "test.xlsx",
+        "workbook_sha256": "wb_test_hash_01",
+        "sheet_count": 1,
+        "sheets": ["RX 211"],
+        "summary": {"review_status": "PENDING"},
+        "asset_previews": [
+            {"source_sheet": a["source_sheet"], "source_asset_literal": a["source_asset_literal"], "canonical_asset": a["canonical_asset"]}
+            for a in assets
+        ],
+        "canonical_snapshot": {
+            "workbook_sha256": "wb_test_hash_01",
+            "inspection_date": "2026-09-15",
+            "assets": assets,
+        },
+        "batch_content_hash": "batch_initial_hash",
+    }
+    store.put(preview_id, session_payload)
+
+    app.dependency_overrides[get_current_user] = lambda: _identity("TAP_ADMIN", user_id="reviewer-admin-02")
+    review_resp = client.post(
+        f"/api/ltsa/condition-monitoring/field-form/preview/{preview_id}/review",
+        json={"decision": "ACCEPTED_FOR_FUTURE_APPLY"},
+    )
+    assert review_resp.status_code == 200
+    binding = review_resp.json()["data"]["approval_binding"]
+
+    # Only 211-P-13AR is approved!
+    assert binding["approved_asset_count"] == 1
+    assert binding["approved_assets"] == ["211-P-13AR"]
+    assert binding["approved_content_hashes"] == ["hash_eligible_01"]
+
+    # Quarantined asset (946-P-2D), blank, and NI assets are strictly excluded
+    assert "946-P-2D" not in binding["approved_assets"]
+    assert "211-P-13BR" not in binding["approved_assets"]
+    assert "211-P-14A" not in binding["approved_assets"]
+
+
+def test_26_post_approval_content_immutable():
+    """Proves canonical reviewed payload cannot be mutated after approval."""
+    from dependencies import get_field_form_preview_store
+
+    store = get_field_form_preview_store()
+    preview_id = "PREV-IMMUTABLE-01"
+
+    data = {
+        "summary": {"review_status": "ACCEPTED_FOR_FUTURE_APPLY"},
+        "canonical_snapshot": {"assets": [{"code": "A"}]},
+        "batch_content_hash": "batch_hash_initial",
+    }
+    store.put(preview_id, data)
+
+    # Attempt to tamper with canonical snapshot
+    tampered_data = {
+        "summary": {"review_status": "ACCEPTED_FOR_FUTURE_APPLY"},
+        "canonical_snapshot": {"assets": [{"code": "TAMPERED"}]},
+        "batch_content_hash": "batch_hash_initial",
+    }
+    with pytest.raises(ValueError, match="IMMUTABLE_APPROVED_PREVIEW"):
+        store.put(preview_id, tampered_data)
+
+
+def test_27_r5e4_validate_approval_succeeds_with_r5d2_preview():
+    """Proves R5E4 blocker is resolved: validate_approval passes with R5D.2 preview session."""
+    from API.condition_monitoring_field_form_apply_engine import validate_approval
+
+    preview_session = {
+        "preview_id": "PREV-R5D2-SUCCESS",
+        "expired": False,
+        "review_decision": "ACCEPTED_FOR_FUTURE_APPLY",
+        "workbook_sha256": "wb_test_hash_01",
+        "content_hash": "batch_approved_hash",
+        "approved_content_hashes": ["asset_content_hash_13ar", "asset_content_hash_13br"],
+    }
+
+    ok, err = validate_approval(
+        preview_session=preview_session,
+        asset_content_hash="asset_content_hash_13ar",
+        expected_workbook_sha256="wb_test_hash_01",
+        actor_id="actor-01",
+        actor_permissions={"maintenance.write"},
+        actor_area_scope={"HOC"},
+        asset_area="HOC",
+    )
+    assert ok is True
+    assert err is None
+
