@@ -4,6 +4,7 @@ import SealFilterBar from "../components/SealFilterBar";
 import SealRegistryTable from "../components/SealRegistryTable";
 import SealOpenDesignView from "../components/SealOpenDesignView";
 import PhysicalSealWorkspace from "../components/PhysicalSealWorkspace";
+import MechanicalSealStock from "./MechanicalSealStock";
 import {
   getSeals, getSealCompatibility, getSealStock, postEngineeringAI,
   getPMSchedules, getCMReports, getWorkOrders, updateSealIdentifiers,
@@ -47,6 +48,14 @@ function resolveAssetCode(seal) {
 // kimapPertamina/gpnJohnCrane are nullable (Hard Rule 6: missing
 // identifiers must not block operations) -- `?? ""` before lowercasing
 // avoids crashing search on every not-yet-completed seal.
+// MECHANICAL-SEAL-DOMAIN-CONSOLIDATION-R1 Part B -- extended to Seal ID
+// (seal.sealId, the new MS-JC-NNNN identifier). type/manufacturer are
+// now defensively `?? ""` before lowercasing: seal.type used to be
+// hard-coded null for every real seal (so this line was unreachable in
+// practice, only ever exercised by fixtures that supplied a string) --
+// now that mapSealRecord surfaces the real seal_type column, a seal this
+// migration could not safely backfill legitimately still has type=null,
+// and a non-empty search term must not crash on it.
 function matchesSearch(seal, search) {
   const term = search.trim().toLowerCase();
 
@@ -56,8 +65,9 @@ function matchesSearch(seal, search) {
 
   return (
     seal.name.toLowerCase().includes(term) ||
-    seal.type.toLowerCase().includes(term) ||
-    seal.manufacturer.toLowerCase().includes(term) ||
+    (seal.sealId ?? "").toLowerCase().includes(term) ||
+    (seal.type ?? "").toLowerCase().includes(term) ||
+    (seal.manufacturer ?? "").toLowerCase().includes(term) ||
     (seal.kimapPertamina ?? "").toLowerCase().includes(term) ||
     (seal.gpnJohnCrane ?? "").toLowerCase().includes(term) ||
     seal.compatiblePumps.some((tag) => tag.toLowerCase().includes(term))
@@ -184,6 +194,18 @@ export default function Seal({ seals: sealsProp, onNavigate }) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [selectedCode, setSelectedCode] = useState(null);
+  // MECHANICAL-SEAL-DOMAIN-CONSOLIDATION-R1 Part B -- Registry/Stock
+  // sub-tabs inside the Mechanical Seal workspace, the same "Tabs strip"
+  // pattern PhysicalSealWorkspace.jsx already uses one level down (not a
+  // new UI pattern). Additive: LTSAWorkspace.jsx's own top-level
+  // "inventory" tab/MechanicalSealStock.jsx/its tests are all untouched
+  // and still work standalone -- this only gives Stock a second,
+  // in-context entry point, per Part C's "accessible inside Mechanical
+  // Seal UX" requirement. Full removal of the separate top-level nav
+  // item is a larger, harder-to-reverse IA change (deep links, capability
+  // allowedKeys, QuickNavigationPanel destinations) left for a follow-up
+  // Chief Architect decision, not decided unilaterally here.
+  const [subView, setSubView] = useState("registry");
 
   const statusOptions = useMemo(
     () => [...new Set(seals.map((seal) => seal.status))],
@@ -322,69 +344,92 @@ export default function Seal({ seals: sealsProp, onNavigate }) {
     <div>
       <PageHeader title="Seal Workspace" subtitle="LTSA Engineering — Mechanical Seal Registry" />
 
-      <SealFilterBar
-        searchValue={search}
-        onSearchChange={setSearch}
-        statusFilter={statusFilter}
-        onStatusFilterChange={setStatusFilter}
-        statusOptions={statusOptions}
-      />
-
-      <div className="seal-workspace-layout">
-        <div className="seal-workspace-registry">
-          {listLoading ? (
-            <Panel>
-              <p>Loading seals...</p>
-            </Panel>
-          ) : listError ? (
-            <Panel>
-              <p role="alert">{listError}</p>
-            </Panel>
-          ) : seals.length === 0 ? (
-            <EmptyState
-              title="No seals available"
-              description="The Seal Registry has no backend data source yet."
-            />
-          ) : (
-            <SealRegistryTable
-              seals={filteredSeals}
-              selectedCode={selectedCode}
-              onSelect={setSelectedCode}
-            />
-          )}
-        </div>
-
-        <div className="seal-workspace-detail">
-          {selectedSeal ? (
-            <SealOpenDesignView
-              seal={selectedSeal}
-              stock={selectedStock}
-              resolvedAssetCode={resolvedAssetCode}
-              installedSince={installedSince}
-              pmRecords={relatedPM}
-              cmRecords={relatedCM}
-              workOrderRecords={relatedWorkOrders}
-              canEditIdentifiers={canEditIdentifiers}
-              onUpdateIdentifiers={handleUpdateIdentifiers}
-              onOpenPump={handleOpenPump}
-              onOpenDrawing={handleOpenDrawing}
-              onBack={() => onNavigate?.("dashboard")}
-              aiResponse={aiResponse}
-              aiReady={aiReady}
-              aiStatusText={aiStatusText}
-              aiStatusVariant={aiStatusVariant}
-              aiStatusLabel={aiStatusLabel}
-            />
-          ) : (
-            <EmptyState
-              title="No seal selected"
-              description="Select a seal from the registry table to view its details."
-            />
-          )}
-        </div>
+      <div className="seal-workspace-subtabs" style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        <button
+          type="button"
+          aria-pressed={subView === "registry"}
+          onClick={() => setSubView("registry")}
+        >
+          Registry
+        </button>
+        <button
+          type="button"
+          aria-pressed={subView === "stock"}
+          onClick={() => setSubView("stock")}
+        >
+          Stock / Inventory
+        </button>
       </div>
 
-      <PhysicalSealWorkspace sealTypes={seals} />
+      {subView === "stock" ? (
+        <MechanicalSealStock />
+      ) : (
+        <>
+          <SealFilterBar
+            searchValue={search}
+            onSearchChange={setSearch}
+            statusFilter={statusFilter}
+            onStatusFilterChange={setStatusFilter}
+            statusOptions={statusOptions}
+          />
+
+          <div className="seal-workspace-layout">
+            <div className="seal-workspace-registry">
+              {listLoading ? (
+                <Panel>
+                  <p>Loading seals...</p>
+                </Panel>
+              ) : listError ? (
+                <Panel>
+                  <p role="alert">{listError}</p>
+                </Panel>
+              ) : seals.length === 0 ? (
+                <EmptyState
+                  title="No seals available"
+                  description="The Seal Registry has no backend data source yet."
+                />
+              ) : (
+                <SealRegistryTable
+                  seals={filteredSeals}
+                  selectedCode={selectedCode}
+                  onSelect={setSelectedCode}
+                />
+              )}
+            </div>
+
+            <div className="seal-workspace-detail">
+              {selectedSeal ? (
+                <SealOpenDesignView
+                  seal={selectedSeal}
+                  stock={selectedStock}
+                  resolvedAssetCode={resolvedAssetCode}
+                  installedSince={installedSince}
+                  pmRecords={relatedPM}
+                  cmRecords={relatedCM}
+                  workOrderRecords={relatedWorkOrders}
+                  canEditIdentifiers={canEditIdentifiers}
+                  onUpdateIdentifiers={handleUpdateIdentifiers}
+                  onOpenPump={handleOpenPump}
+                  onOpenDrawing={handleOpenDrawing}
+                  onBack={() => onNavigate?.("dashboard")}
+                  aiResponse={aiResponse}
+                  aiReady={aiReady}
+                  aiStatusText={aiStatusText}
+                  aiStatusVariant={aiStatusVariant}
+                  aiStatusLabel={aiStatusLabel}
+                />
+              ) : (
+                <EmptyState
+                  title="No seal selected"
+                  description="Select a seal from the registry table to view its details."
+                />
+              )}
+            </div>
+          </div>
+
+          <PhysicalSealWorkspace sealTypes={seals} />
+        </>
+      )}
     </div>
   );
 }

@@ -19,6 +19,7 @@ vi.mock("../../../api/ai5rClient", () => ({
   getSealUnitRepairs: vi.fn(),
   getSealUnits: vi.fn(),
   getSealUnitWarranty: vi.fn(),
+  getSealUnitWarrantyOverview: vi.fn(),
   linkInstallationReportToInstallEvent: vi.fn(),
 }));
 
@@ -36,6 +37,18 @@ const inspections = [{ inspection_id: "insp-1", inspection_date: "2026-03-02T00:
 const repairs = [{ repair_id: "rep-1", repair_date: "2026-03-03T00:00:00Z", repair_type: "SHOP", repair_result: "SCRAPPED", inspection_id: "insp-1" }];
 const reports = [{ installation_code: "IR-1", report_date: "2026-01-20T00:00:00Z", installation_event_id: null }];
 const warranty = [{ assessment_id: "wa-1", installation_date: "2026-01-10T00:00:00Z", warranty_end: "2027-07-10T00:00:00Z", window_status: "WITHIN_WARRANTY_WINDOW", claim_decision: "PENDING_EXAMINATION" }];
+const warrantyOverview = {
+  seal_unit_id: UNIT_ID,
+  seal_code: "TYPE-A",
+  current_pump_tag_number: "110-P-9A",
+  installation_date: "2026-01-10T00:00:00Z",
+  warranty_end: "2027-07-10T00:00:00Z",
+  warranty_period_months: 18,
+  expiring_soon_days: 90,
+  days_remaining: 500,
+  time_status: "WITHIN_WARRANTY_PERIOD",
+  eligibility_note: "Warranty eligibility is subject to applicable terms and conditions.",
+};
 const history = [
   { history_id: "h1", record_type: "INSTALL", occurred_at: "2026-01-10T00:00:00Z", pump_tag_number: "110-P-9A" },
   { history_id: "h2", record_type: "INSPECTION", occurred_at: "2026-03-02T00:00:00Z", pump_tag_number: null },
@@ -47,6 +60,7 @@ function mockDetail() {
   api.getSealUnitInspections.mockResolvedValue(inspections);
   api.getSealUnitRepairs.mockResolvedValue(repairs);
   api.getSealUnitWarranty.mockResolvedValue(warranty);
+  api.getSealUnitWarrantyOverview.mockResolvedValue(warrantyOverview);
   api.getSealUnitInstallationReports.mockResolvedValue(reports);
   api.getSealUnitHistory.mockResolvedValue(history);
 }
@@ -134,9 +148,14 @@ describe("PhysicalSealWorkspace", () => {
     expect(screen.getByText(/Report Date 2026-01-20 - Install Event N\/A/)).toBeTruthy();
     expect(screen.getByText(/Install event date is the authoritative fitment date/)).toBeTruthy();
     fireEvent.click(screen.getByRole("tab", { name: "Warranty" }));
-    expect(screen.getByText(/18 calendar months/)).toBeTruthy();
+    // MECHANICAL-SEAL-DOMAIN-CONSOLIDATION-R1 -- "18 calendar months" now
+    // legitimately appears twice: the new proactive overview panel's own
+    // "Warranty Basis" line, plus the existing per-assessment KAK rule
+    // text below it -- both true, never a duplicate-rendering bug.
+    expect(screen.getAllByText(/18 calendar months/).length).toBeGreaterThan(0);
     expect(screen.getByText("WITHIN_WARRANTY_WINDOW")).toBeTruthy();
     expect(screen.getByText("PENDING_EXAMINATION")).toBeTruthy();
+    expect(screen.getByText("WITHIN_WARRANTY_PERIOD")).toBeTruthy();
     fireEvent.click(screen.getByRole("tab", { name: "History" }));
     expect(screen.getByText(/2026-04-01 - INSTALL - Pump 211-P-1A/)).toBeTruthy();
     expect(screen.getByText(/2026-03-02 - INSPECTION - Pump N\/A/)).toBeTruthy();

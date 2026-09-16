@@ -61,6 +61,7 @@ from API.seal_warranty_service import (
     NotAnInstallEventError,
     SealUnitNotFoundError as WarrantySealUnitNotFoundError,
     SealWarrantyError,
+    build_seal_unit_warranty_overview,
     create_warranty_assessment,
     decide_assessment,
 )
@@ -501,6 +502,25 @@ def list_seal_unit_warranty_assessments(
     scope = resolve_area_scope(current_user)
     assessments = _visible_by_installation_pump(assessments, scope, pump_gateway)
     return {"data": assessments, "count": len(assessments)}
+
+
+@router.get("/api/ltsa/seal-units/{seal_unit_id}/warranty-overview")
+def get_seal_unit_warranty_overview(
+    seal_unit_id: str,
+    seal_unit_repository=Depends(get_seal_unit_repository),
+    runner=Depends(get_import_database_runner),
+) -> Payload:
+    # MECHANICAL-SEAL-DOMAIN-CONSOLIDATION-R1 -- Part E's proactive
+    # "Warranty" tab. Deliberately separate from the warranty-assessment
+    # CRUD above: this never creates a seal_warranty_assessment row, it
+    # only projects the always-available current-installation facts
+    # (never a claim/decision). Unscoped like every other seal_unit read
+    # in this router (list_ltsa_seal_units/get_ltsa_seal_unit above) --
+    # seal_unit identity itself is catalog-shaped, not pump-area-owned.
+    if seal_unit_repository.find_by_id(seal_unit_id) is None:
+        raise HTTPException(status_code=404, detail="No such seal unit")
+    overview = build_seal_unit_warranty_overview(runner, seal_unit_id)
+    return {"data": overview}
 
 
 @router.get("/api/ltsa/seal-warranty-assessments/{assessment_id}")

@@ -3,13 +3,20 @@
  * mapPumpRecord convention exactly: seal_code -> code, seal_name -> name,
  * manufacturer/status map directly (real seal_registry columns).
  *
- * type is left null -- seal_registry (CANONICAL_SCHEMA.sql) has no direct
- * "type" column; model/material exist but mapping either into "type"
- * would be a semantic guess presented as fact, not a real one, so it is
- * left null per this codebase's "never fabricate" discipline
- * (pumpMapping.js's own precedent for healthScore/availability/
- * recommendation) rather than silently repurposing a different real
- * column under a mismatched label.
+ * MECHANICAL-SEAL-DOMAIN-CONSOLIDATION-R1 -- type now reads the real
+ * seal_type column added by migration 043 (backfilled additively by 044
+ * only where an unambiguous source existed). Until this migration runs
+ * against a given environment, or for a seal whose seal_type could not
+ * be safely backfilled, the API's own SELECT * simply omits/nulls the
+ * column, so `?? null` still resolves to the same honest "not yet known"
+ * state as before -- this is a widened mapping, not a behavior change
+ * for any seal that still has no real value.
+ *
+ * sealId is the new human-readable identifier (MS-JC-NNNN, migrations
+ * 043/044) -- additive alongside `code` (seal_code, still the real
+ * business key/PK), never a replacement for it. Also defaults to null:
+ * an OEM this migration's mapping does not yet cover (only 'John Crane'
+ * is mapped today) is left unassigned rather than guessed.
  *
  * MWO-LTSA-042 -- model, shaftSize, material, temperatureLimit,
  * pressureLimit, createdAt, updatedAt added: all real seal_registry
@@ -42,8 +49,9 @@
 export function mapSealRecord(record) {
   return {
     code: record.seal_code,
+    sealId: record.seal_id ?? null,
     name: record.seal_name,
-    type: null,
+    type: record.seal_type ?? null,
     manufacturer: record.manufacturer,
     model: record.model ?? null,
     shaftSize: record.shaft_size ?? null,

@@ -1008,6 +1008,17 @@ export async function getSealUnitWarranty(sealUnitId) {
     return unwrapLtsaList(payload, "Seal Unit Warranty");
 }
 
+// MECHANICAL-SEAL-DOMAIN-CONSOLIDATION-R1 -- proactive, always-available
+// "Warranty" tab view for a seal unit (today-relative time_status),
+// distinct from getSealUnitWarranty above (a list of claim/investigation
+// assessments, only present once one has actually been created).
+export async function getSealUnitWarrantyOverview(sealUnitId) {
+    const payload = await _ltsaJsonRequest(
+        `/api/ltsa/seal-units/${encodeURIComponent(sealUnitId)}/warranty-overview`
+    );
+    return unwrapLtsaDetail(payload, "Seal Unit Warranty Overview");
+}
+
 export async function createSealUnitWarrantyAssessment(sealUnitId, assessment) {
     return _ltsaJsonRequest(
         `/api/ltsa/seal-units/${encodeURIComponent(sealUnitId)}/warranty`,
