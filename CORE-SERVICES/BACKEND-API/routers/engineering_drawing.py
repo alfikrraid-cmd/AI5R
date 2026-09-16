@@ -4,6 +4,20 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from API.auth_service import AuthenticatedIdentity, resolve_area_scope
+from API.engineering_drawing_promotion_service import (
+    AlreadyPromoted,
+    CandidateNotEligible,
+    CandidateNotFound,
+    CandidateRejected,
+    CanonicalConflict,
+    DrawingMatchRequiresReview,
+    EngineeringDrawingPromotionService,
+    InvalidReviewPayload,
+    PromotionConcurrencyConflict,
+    ReferenceNotFound as PromotionReferenceNotFound,
+    RevisionMatchRequiresReview,
+    ScopeDenied,
+)
 from API.engineering_drawing_repository import (
     ArtifactNotFound,
     ComponentNotFound,
@@ -16,7 +30,12 @@ from API.engineering_drawing_repository import (
     KnowledgeSourceNotFound,
     RevisionNotFound,
 )
-from dependencies import get_current_user, get_engineering_drawing_repository, require_permission
+from dependencies import (
+    get_current_user,
+    get_engineering_drawing_promotion_service,
+    get_engineering_drawing_repository,
+    require_permission,
+)
 from models.responses import Payload
 
 # MWO-LTSA-DRAWING-INPUT-R4 -- router-level "drawing.read" (the exact,
@@ -473,3 +492,71 @@ def update_engineering_drawing_bom_line(
     if updated is None:
         raise HTTPException(status_code=404, detail="BOM line not found")
     return {"success": True, "data": updated}
+
+
+# ---- promotion (MWO-LTSA-DRAWING-INPUT-R5D.2) ----
+#
+# API ADAPTER ONLY -- engineering_drawing_promotion_service.py (the frozen
+# R5D.1/R5D.1A/R5D.1C atomic promotion core) is imported and called exactly
+# once per request, unmodified. This router never opens a second
+# transaction, never commits, never writes a canonical table itself --
+# every canonical write and the candidate's own REVIEWED -> SAVED
+# transition happen entirely inside the service's own single connection.
+# Write permission is "maintenance.admin_review" (NOT this router's own
+# "maintenance.write", used by every other write route above) -- Section 4's
+# own explicit requirement, and the SAME permission condition_monitoring.py/
+# pm_occurrence.py already gate their own review-to-promotion-adjacent
+# endpoints behind (confirmed by reading both before choosing this).
+# Actor identity (_actor_id) and Area/MA scope (resolve_area_scope) come
+# ONLY from the authenticated current_user dependency -- there is no
+# request body at all, so neither can ever be client-forged; the service
+# itself remains the sole, final authority on whether that scope actually
+# covers the resolved drawing (Section 5/14 of R5D.1's own design).
+
+
+def _promotion_error_to_http(exc: Exception) -> HTTPException:
+    if isinstance(exc, CandidateNotFound):
+        return HTTPException(status_code=404, detail=str(exc))
+    if isinstance(exc, (CandidateNotEligible, CandidateRejected)):
+        return HTTPException(status_code=409, detail=str(exc))
+    if isinstance(exc, InvalidReviewPayload):
+        return HTTPException(status_code=422, detail=str(exc))
+    if isinstance(exc, (DrawingMatchRequiresReview, RevisionMatchRequiresReview, CanonicalConflict)):
+        return HTTPException(status_code=409, detail=str(exc))
+    if isinstance(exc, PromotionReferenceNotFound):
+        # Unlike DrawingNotFound/ArtifactNotFound/etc. above (a URL path
+        # segment naming a resource that doesn't exist -> 404), this is an
+        # explicitly reviewed reference INSIDE the candidate's own stored
+        # payload pointing at something that no longer resolves -- a
+        # content/payload-validity problem, not a resource lookup, so it
+        # is grouped with InvalidReviewPayload's own 422 rather than the
+        # repository's 404 family.
+        return HTTPException(status_code=422, detail=str(exc))
+    if isinstance(exc, ScopeDenied):
+        return HTTPException(status_code=403, detail=str(exc))
+    if isinstance(exc, PromotionConcurrencyConflict):
+        return HTTPException(status_code=409, detail=str(exc))
+    raise exc
+
+
+@router.post(
+    "/api/ltsa/engineering-drawings/promotions/{candidate_id}",
+    dependencies=[Depends(require_permission("maintenance.admin_review"))],
+)
+def promote_engineering_drawing_candidate(
+    candidate_id: str,
+    current_user=Depends(require_permission("maintenance.admin_review")),
+    service: EngineeringDrawingPromotionService = Depends(get_engineering_drawing_promotion_service),
+) -> Payload:
+    try:
+        result = service.promote_candidate(
+            candidate_id, promoted_by=_actor_id(current_user), actor_scope=resolve_area_scope(current_user),
+        )
+    except AlreadyPromoted as exc:
+        # Preferred semantics (R5D.2 Section 8): the exception already
+        # carries a fully reconstructable bounded result (idempotent_replay
+        # is present and True) -- returned as a normal 200, not an error.
+        return {"success": True, "data": exc.result}
+    except Exception as exc:  # noqa: BLE001 -- narrowed to the bounded set below; anything else re-raises for the app's own existing 500 handling
+        raise _promotion_error_to_http(exc)
+    return {"success": True, "data": result}

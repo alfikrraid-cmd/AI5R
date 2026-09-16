@@ -37,6 +37,7 @@ from API.ltsa_contract_repository import LtsaContractRepository
 from API.ltsa_contract_coverage_service import ContractCoverageService
 from API.ltsa_finding_repository import LtsaFindingRepository
 from API.condition_monitoring_measurement_repository import ConditionMonitoringMeasurementRepository
+from API.engineering_drawing_promotion_service import EngineeringDrawingPromotionService
 from API.engineering_drawing_repository import EngineeringDrawingRepository
 from API.ltsa_knowledge_service import LTSAKnowledgeService
 from API.recommendation_engine import RecommendationEngine
@@ -219,6 +220,16 @@ _condition_monitoring_measurement_repository = ConditionMonitoringMeasurementRep
 
 # MWO-LTSA-DRAWING-INPUT-R4 -- same singleton-DatabaseRunner pattern.
 _engineering_drawing_repository = EngineeringDrawingRepository(_import_database_runner)
+
+# MWO-LTSA-DRAWING-INPUT-R5D.2 -- EngineeringDrawingPromotionService
+# manages its OWN real psycopg2 connection per call (frozen R5D.1 core
+# design -- it needs true multi-statement transaction control
+# DatabaseRunner's own query_scalar()/execute_script() cannot provide, see
+# that module's own docstring), so it is constructed from the SAME
+# DatabaseConfig _import_database_runner already holds
+# (_import_database_runner.config) -- not a second connection
+# configuration, just the one already-established source of truth reused.
+_engineering_drawing_promotion_service = EngineeringDrawingPromotionService(_import_database_runner.config)
 
 # MWO-LTSA-AUDIT-CHANGE-HISTORY-001 -- same singleton again; the one,
 # canonical, append-only ledger every domain's record_edit_service.py
@@ -530,6 +541,10 @@ def get_condition_monitoring_measurement_repository() -> ConditionMonitoringMeas
 
 def get_engineering_drawing_repository() -> EngineeringDrawingRepository:
     return _engineering_drawing_repository
+
+
+def get_engineering_drawing_promotion_service() -> EngineeringDrawingPromotionService:
+    return _engineering_drawing_promotion_service
 
 
 def get_pm_occurrence_repository() -> PMOccurrenceRepository:
