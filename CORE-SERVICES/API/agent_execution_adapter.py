@@ -135,10 +135,12 @@ class AgentExecutionAdapter:
         workforce_service: Any,
         ai_client: Any = None,
         sandbox_manager: SandboxManager | None = None,
+        ledger: Any = None,
     ) -> None:
         self.workforce_service = workforce_service
         self.ai_client = ai_client
         self.sandbox_manager = sandbox_manager or SandboxManager(repo_dir=REPO_ROOT)
+        self.ledger = ledger
         self._executing_tasks: set[str] = set()
         self._artifacts: dict[str, ExecutionArtifact | PatchArtifact | ReviewArtifact] = {}
         self._artifacts_by_task: dict[str, list[ExecutionArtifact | PatchArtifact | ReviewArtifact]] = {}
@@ -233,6 +235,26 @@ class AgentExecutionAdapter:
         # Mark in-flight execution state
         self._executing_tasks.add(work_item_id)
         started_at = _now()
+        execution_id = f"EXEC-{uuid4().hex[:12].upper()}"
+
+        if employee.position_id in ("BACKEND_ENGINEER", "FRONTEND_ENGINEER"):
+            execution_mode = "CONTROLLED_CODING_SANDBOX"
+        elif employee.position_id == "QA_ENGINEER" and upstream_patch is not None:
+            execution_mode = "ARTIFACT_REVIEW"
+        else:
+            execution_mode = "READ_ONLY_ANALYSIS"
+
+        effective_ledger = self.ledger or getattr(self.workforce_service, "ledger", None)
+        if effective_ledger is not None:
+            effective_ledger.record_execution_started(
+                execution_id=execution_id,
+                work_item_id=work_item.work_item_id,
+                employee_id=employee.employee_id,
+                role=employee.position_id,
+                execution_mode=execution_mode,
+                started_at=started_at,
+                provider_metadata={"provider": getattr(client, "_default_provider", "router") or "router"},
+            )
 
         # Record start activity & emit SSE event
         self.workforce_service.activity_registry.record(
@@ -528,6 +550,29 @@ class AgentExecutionAdapter:
             self._artifacts[failed_art.artifact_id] = failed_art
             self._artifacts_by_task.setdefault(work_item_id, []).append(failed_art)
 
+            if effective_ledger is not None:
+                try:
+                    effective_ledger.record_execution_completed(
+                        execution_id=execution_id,
+                        status="FAILED",
+                        completed_at=_now(),
+                        error=str(exc),
+                    )
+                    effective_ledger.record_artifact(
+                        artifact_id=failed_art.artifact_id,
+                        work_item_id=work_item.work_item_id,
+                        employee_id=employee.employee_id,
+                        role=employee.position_id,
+                        artifact_type="EXECUTION",
+                        status="FAILED",
+                        summary=failed_art.summary,
+                        payload={"error": str(exc)},
+                        execution_id=execution_id,
+                        created_at=failed_art.completed_at,
+                    )
+                except Exception:
+                    pass
+
             # Record failure activity (progress 0)
             self.workforce_service.activity_registry.record(
                 EmployeeActivity(
@@ -560,9 +605,52 @@ class AgentExecutionAdapter:
         # Mark task completed on WorkBoard
         self.workforce_service.work_board.complete(employee, work_item.work_item_id)
 
+        if effective_ledger is not None:
+            effective_ledger.record_execution_completed(
+                execution_id=execution_id,
+                status="SUCCESS",
+                completed_at=completed_at,
+            )
+
+            if isinstance(artifact, PatchArtifact):
+                art_type = "PATCH"
+                parent_art_ids = [a.artifact_id for a in upstream_artifacts]
+                test_results_dict = [t.to_dict() for t in artifact.test_results]
+            elif isinstance(artifact, ReviewArtifact):
+                art_type = "REVIEW"
+                parent_art_ids = list(artifact.reviewed_artifact_ids)
+                test_results_dict = None
+            else:
+                art_type = "EXECUTION"
+                parent_art_ids = [a.artifact_id for a in upstream_artifacts]
+                test_results_dict = None
+
+            effective_ledger.record_artifact(
+                artifact_id=artifact.artifact_id,
+                work_item_id=work_item.work_item_id,
+                employee_id=employee.employee_id,
+                role=employee.position_id,
+                artifact_type=art_type,
+                status=artifact.status,
+                summary=artifact.summary,
+                payload=artifact.to_dict(),
+                parent_artifact_ids=parent_art_ids,
+                execution_id=execution_id,
+                created_at=completed_at,
+                test_results=test_results_dict,
+            )
+            effective_ledger.update_work_item_status(
+                work_item_id=work_item.work_item_id,
+                status="COMPLETED",
+                artifact_id=artifact.artifact_id,
+            )
+
         # Update WorkforceExecutionPlan if part of a mission
         if plan:
             plan.mark_completed(work_item.work_item_id)
+            if effective_ledger is not None:
+                effective_ledger.update_plan_state(plan.snapshot())
+
             ready_items = plan.ready_items()
             for r_id in ready_items:
                 r_item = self.workforce_service.find_work_item(r_id)
@@ -572,6 +660,13 @@ class AgentExecutionAdapter:
                         self.workforce_service.work_board.claim(next_emp, r_item.work_item_id)
                         self.workforce_service.employee_runtime.receive_work(next_emp, r_item)
                         plan.mark_running(r_item.work_item_id)
+                        if effective_ledger is not None:
+                            effective_ledger.update_work_item_status(
+                                work_item_id=r_item.work_item_id,
+                                status="CLAIMED",
+                                assigned_employee_id=next_emp.employee_id,
+                            )
+                            effective_ledger.update_plan_state(plan.snapshot())
 
         # Record activity & emit events depending on artifact type
         if isinstance(artifact, PatchArtifact):

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -16,7 +17,8 @@ for _path in (API_DIR, CORE_SERVICES_DIR, AI5R_SDK_DIR):
         sys.path.insert(0, str(_path))
 
 from API.agent_execution_adapter import AgentExecutionAdapter, ExecutionArtifact
-from API.coding_sandbox import PatchArtifact, ReviewArtifact
+from API.coding_sandbox import PatchArtifact, ReviewArtifact, TestResult
+from API.execution_ledger import ExecutionLedger, LedgerPersistenceError
 from API.STREAMING.live_stream_api import LiveStreamAPI
 from DIGITAL_EMPLOYEE.CONVERSATION.employee_conversation_store import EmployeeConversationStore
 from WORKFORCE.approval_chain_runtime import (
@@ -61,6 +63,8 @@ class WorkforceService:
         self,
         organization_name: str = "AI5R Enterprise",
         live_stream_api: LiveStreamAPI | None = None,
+        ledger: ExecutionLedger | None = None,
+        auto_recover: bool = True,
     ) -> None:
         self.organization = Organization(organization_name=organization_name)
         manufactured = ITDepartmentPack().manufacture(self.organization)
@@ -88,7 +92,21 @@ class WorkforceService:
         self._missions: dict[str, dict[str, Any]] = {}
         self._plans: dict[str, WorkforceExecutionPlan] = {}
         self._sprints: dict[str, Sprint] = {}
-        self.execution_adapter = AgentExecutionAdapter(workforce_service=self)
+
+        if ledger is not None:
+            self.ledger = ledger
+        elif "AI5R_EXECUTION_LEDGER_PATH" in os.environ:
+            self.ledger = ExecutionLedger(os.environ["AI5R_EXECUTION_LEDGER_PATH"])
+        else:
+            self.ledger = None
+
+        self.execution_adapter = AgentExecutionAdapter(
+            workforce_service=self,
+            ledger=self.ledger,
+        )
+
+        if self.ledger is not None and auto_recover:
+            self.recover_from_ledger()
 
     def find_employee(self, employee_id_or_pos: str) -> DigitalEmployee | None:
         if employee_id_or_pos in self._employee_by_id:
@@ -340,6 +358,23 @@ class WorkforceService:
             self.work_board.claim(target_employee, work_item.work_item_id)
             self.employee_runtime.receive_work(target_employee, work_item)
 
+        if self.ledger is not None:
+            self.ledger.record_work_item({
+                "work_item_id": work_item.work_item_id,
+                "mission_id": meta.get("mission_id"),
+                "title": work_item.title,
+                "description": work_item.description,
+                "assigned_position_id": work_item.assigned_position_id,
+                "assigned_employee_id": work_item.assigned_employee_id,
+                "status": work_item.status,
+                "is_production": is_production_work_item(work_item),
+                "manufacturing_order_id": work_item.manufacturing_order_id,
+                "artifact_id": work_item.artifact_id,
+                "dependencies": [],
+                "recovery_status": None,
+                "metadata": work_item.metadata,
+            })
+
         self.live_stream_api.publish(
             event_type="WORKFORCE_TASK_ASSIGNED",
             payload={
@@ -430,7 +465,43 @@ class WorkforceService:
 
     def release_task(self, work_item_id: str, approval: Any = None) -> WorkItem:
         """Release a completed work item, requiring Chief approval if production-impacting."""
-        return self.operating_model.release(work_item_id, approval=approval)
+        item = self.find_work_item(work_item_id)
+        if item and is_production_work_item(item):
+            resolved_approval = approval or self.approval_chain_runtime.get_chief_approval(work_item_id)
+            if resolved_approval and self.ledger is not None:
+                self.ledger.record_chief_approval(
+                    approval_id=getattr(resolved_approval, "approval_id", f"CHIEF-APPR-{uuid4().hex[:8].upper()}"),
+                    work_item_id=work_item_id,
+                    approver_id=getattr(resolved_approval, "approver_id", "raid"),
+                    approver_role=getattr(resolved_approval, "approver_role", "CHIEF_ARCHITECT"),
+                    is_human=getattr(resolved_approval, "is_human", True),
+                    status=getattr(resolved_approval, "status", "APPROVED"),
+                    scope=getattr(resolved_approval, "scope", "PRODUCTION_DEPLOYMENT"),
+                    approved_at=getattr(resolved_approval, "approved_at", datetime.now(UTC).isoformat()),
+                    metadata=getattr(resolved_approval, "metadata", {}),
+                )
+
+        prev_status = item.status if item else "COMPLETED"
+        prev_metadata = dict(item.metadata) if item else {}
+
+        released = self.operating_model.release(work_item_id, approval=approval)
+        if self.ledger is not None:
+            try:
+                self.ledger.update_work_item_status(
+                    work_item_id=work_item_id,
+                    status="RELEASED",
+                    metadata_update={"chief_approval": released.metadata.get("chief_approval")},
+                )
+            except Exception as exc:
+                if work_item_id in self.work_board._released:
+                    rel_item = self.work_board._released.pop(work_item_id)
+                    rel_item.status = prev_status
+                    rel_item.metadata = prev_metadata
+                    self.work_board._completed[work_item_id] = rel_item
+                raise LedgerPersistenceError(
+                    f"Production release persistence failed for work item '{work_item_id}'. In-memory release rolled back to COMPLETED."
+                ) from exc
+        return released
 
     def create_mission(
         self,
@@ -547,6 +618,45 @@ class WorkforceService:
         self._plans[mission_id] = plan
         self._sprints[mission_id] = sprint
 
+        if self.ledger is not None:
+            serialized_tasks = []
+            for t in tasks:
+                serialized_tasks.append({
+                    "work_item_id": t.work_item_id,
+                    "mission_id": mission_id,
+                    "title": t.title,
+                    "description": t.description,
+                    "assigned_position_id": t.assigned_position_id,
+                    "assigned_employee_id": t.assigned_employee_id,
+                    "status": t.status,
+                    "is_production": is_production_work_item(t),
+                    "manufacturing_order_id": t.manufacturing_order_id,
+                    "artifact_id": t.artifact_id,
+                    "dependencies": deps_map.get(t.work_item_id, []),
+                    "recovery_status": None,
+                    "metadata": t.metadata,
+                })
+
+            sprint_dict = {
+                "sprint_id": sprint.sprint_id,
+                "mission_id": mission_id,
+                "objective": sprint.objective,
+                "organization_id": sprint.organization_id,
+                "department_id": sprint.department_id,
+                "status": sprint.status,
+                "assigned_employee_ids": sprint.assigned_employee_ids,
+                "task_ids": sprint.task_ids,
+                "metadata": sprint.metadata,
+                "created_at": mission_data["created_at"],
+            }
+
+            self.ledger.record_mission_bundle(
+                mission_dict=mission_data,
+                sprint_dict=sprint_dict,
+                plan_dict=plan.snapshot(),
+                work_items=serialized_tasks,
+            )
+
         self.live_stream_api.publish(
             event_type="WORKFORCE_MISSION_CREATED",
             payload={
@@ -620,3 +730,236 @@ class WorkforceService:
 
     def list_missions(self) -> list[dict[str, Any]]:
         return [self.get_mission(mid) for mid in self._missions if self.get_mission(mid) is not None]
+
+    def grant_chief_approval(
+        self,
+        work_item_id: str,
+        approver_id: str = "raid",
+        approver_role: str = "CHIEF_ARCHITECT",
+        is_human: bool = True,
+        metadata: dict[str, Any] | None = None,
+    ) -> ChiefApprovalRecord:
+        """Grant human Chief approval for a work item, recording to runtime and ledger."""
+        record = self.approval_chain_runtime.grant_chief_approval(
+            work_item_id=work_item_id,
+            approver_id=approver_id,
+            approver_role=approver_role,
+            is_human=is_human,
+            metadata=metadata,
+        )
+        if self.ledger is not None:
+            try:
+                self.ledger.record_chief_approval(
+                    approval_id=record.approval_id,
+                    work_item_id=record.work_item_id,
+                    approver_id=record.approver_id,
+                    approver_role=record.approver_role,
+                    is_human=record.is_human,
+                    status=record.status,
+                    scope=record.scope,
+                    approved_at=record.approved_at,
+                    metadata=record.metadata,
+                )
+            except Exception as exc:
+                self.approval_chain_runtime._chief_approvals.pop(work_item_id, None)
+                raise LedgerPersistenceError(
+                    f"Chief approval persistence failed for work item '{work_item_id}'. In-memory approval rolled back."
+                ) from exc
+        return record
+
+    def recover_from_ledger(self) -> None:
+        """Rehydrate state from persistent ExecutionLedger without replaying side effects."""
+        if self.ledger is None:
+            return
+
+        # 1. Sprints
+        for s in self.ledger.load_sprints():
+            sprint = Sprint(
+                objective=s["objective"],
+                organization_id=s["organization_id"],
+                department_id=s["department_id"],
+                status=s["status"],
+                assigned_employee_ids=s["assigned_employee_ids"],
+                task_ids=s["task_ids"],
+                metadata=s["metadata"],
+                sprint_id=s["sprint_id"],
+            )
+            self._sprints[s["mission_id"]] = sprint
+
+        # 2. Plans
+        for p in self.ledger.load_plans():
+            plan = WorkforceExecutionPlan(
+                mission_id=p["mission_id"],
+                work_queue=p["work_queue"],
+                dependency_graph=p["dependency_graph"],
+                running=p["running"],
+                waiting=p["waiting"],
+                blocked=p["blocked"],
+                completed=p["completed"],
+                metadata=p["metadata"],
+                plan_id=p["plan_id"],
+                created_at=p["created_at"],
+                updated_at=p["updated_at"],
+            )
+            self._plans[p["mission_id"]] = plan
+
+        # 3. Missions
+        for m in self.ledger.load_missions():
+            self._missions[m["mission_id"]] = m
+
+        # 4. Work Items & WorkBoard (idempotent reset)
+        self.work_board._published.clear()
+        self.work_board._claimed.clear()
+        self.work_board._completed.clear()
+        self.work_board._released.clear()
+
+        for wi in self.ledger.load_work_items():
+            item = WorkItem(
+                title=wi["title"],
+                assigned_position_id=wi["assigned_position_id"],
+                description=wi["description"],
+                status=wi["status"],
+                assigned_employee_id=wi["assigned_employee_id"],
+                manufacturing_order_id=wi["manufacturing_order_id"],
+                artifact_id=wi["artifact_id"],
+                metadata=wi["metadata"],
+                work_item_id=wi["work_item_id"],
+            )
+            if wi.get("recovery_status"):
+                item.metadata["recovery_status"] = wi["recovery_status"]
+
+            st = item.status
+            if st == "CLAIMED":
+                self.work_board._claimed[item.work_item_id] = item
+            elif st == "COMPLETED":
+                self.work_board._completed[item.work_item_id] = item
+            elif st == "RELEASED":
+                self.work_board._released[item.work_item_id] = item
+            else:
+                self.work_board._published[item.work_item_id] = item
+
+            mid = wi.get("mission_id")
+            if mid and mid in self._sprints:
+                self._sprints[mid].add_work_item(item)
+
+        # 5. Chief Approvals
+        self.approval_chain_runtime._chief_approvals.clear()
+        for ca in self.ledger.load_chief_approvals():
+            record = ChiefApprovalRecord(
+                work_item_id=ca["work_item_id"],
+                approver_id=ca["approver_id"],
+                approver_role=ca["approver_role"],
+                is_human=ca["is_human"],
+                status=ca["status"],
+                approval_id=ca["approval_id"],
+                approved_at=ca["approved_at"],
+                scope=ca["scope"],
+                metadata=ca["metadata"],
+            )
+            self.approval_chain_runtime._chief_approvals[ca["work_item_id"]] = record
+
+        # 6. Artifacts
+        self.execution_adapter._artifacts.clear()
+        self.execution_adapter._artifacts_by_task.clear()
+        for art in self.ledger.load_artifacts():
+            payload = art["payload"]
+            art_type = art["artifact_type"]
+            if art_type == "PATCH":
+                test_results = [
+                    TestResult(
+                        test_result_id=tr["test_result_id"],
+                        command_id=tr["command_id"],
+                        target=tr["target"],
+                        exit_code=tr["exit_code"],
+                        passed=tr["passed"],
+                        duration=tr["duration"],
+                        stdout_summary=tr["stdout_summary"],
+                        stderr_summary=tr["stderr_summary"],
+                        timed_out=tr["timed_out"],
+                    )
+                    for tr in art.get("test_results", [])
+                ]
+                obj = PatchArtifact(
+                    artifact_id=art["artifact_id"],
+                    work_item_id=art["work_item_id"],
+                    employee_id=art["employee_id"],
+                    role=art["role"],
+                    sandbox_id=payload.get("sandbox_id", ""),
+                    base_commit=payload.get("base_commit", ""),
+                    summary=art["summary"],
+                    changed_files=payload.get("changed_files", []),
+                    diff_stat=payload.get("diff_stat", ""),
+                    git_diff=payload.get("git_diff", ""),
+                    tests_requested=payload.get("tests_requested", []),
+                    tests_executed=payload.get("tests_executed", []),
+                    test_results=test_results,
+                    started_at=payload.get("started_at", art["created_at"]),
+                    completed_at=payload.get("completed_at", art["created_at"]),
+                    status=art["status"],
+                    provider_metadata=payload.get("provider_metadata", {}),
+                    error=payload.get("error"),
+                    metadata=payload.get("metadata", {}),
+                )
+            elif art_type == "REVIEW":
+                obj = ReviewArtifact(
+                    review_id=art["artifact_id"],
+                    work_item_id=art["work_item_id"],
+                    employee_id=art["employee_id"],
+                    role=art["role"],
+                    reviewed_artifact_ids=art["parent_artifact_ids"],
+                    decision=payload.get("decision", "APPROVE_TECHNICAL"),
+                    findings=payload.get("findings", []),
+                    risks=payload.get("risks", []),
+                    test_evidence_reviewed=payload.get("test_evidence_reviewed", {}),
+                    recommended_action=payload.get("recommended_action", ""),
+                    started_at=payload.get("started_at", art["created_at"]),
+                    completed_at=payload.get("completed_at", art["created_at"]),
+                    status=art["status"],
+                    provider_metadata=payload.get("provider_metadata", {}),
+                    metadata=payload.get("metadata", {}),
+                )
+            else:
+                obj = ExecutionArtifact(
+                    artifact_id=art["artifact_id"],
+                    work_item_id=art["work_item_id"],
+                    employee_id=art["employee_id"],
+                    role=art["role"],
+                    status=art["status"],
+                    summary=art["summary"],
+                    output=payload.get("output", {}),
+                    started_at=payload.get("started_at", art["created_at"]),
+                    completed_at=payload.get("completed_at", art["created_at"]),
+                    provider_metadata=payload.get("provider_metadata", {}),
+                    error=payload.get("error"),
+                    metadata=payload.get("metadata", {}),
+                )
+            self.execution_adapter._artifacts[obj.artifact_id] = obj
+            self.execution_adapter._artifacts_by_task.setdefault(obj.work_item_id, []).append(obj)
+
+        # 7. In-flight recovery (Crashed process recovery without side effect replay)
+        in_flight = self.ledger.get_in_flight_executions()
+        for inf in in_flight:
+            w_id = inf["work_item_id"]
+            item = self.find_work_item(w_id)
+            if item:
+                item.metadata["recovery_status"] = "RECOVERY_REQUIRED"
+                if item.work_item_id not in self.work_board._claimed:
+                    self.work_board._claimed[item.work_item_id] = item
+                    self.work_board._published.pop(item.work_item_id, None)
+                self.ledger.update_work_item_status(
+                    work_item_id=w_id,
+                    status="CLAIMED",
+                    recovery_status="RECOVERY_REQUIRED",
+                    metadata_update={"recovery_status": "RECOVERY_REQUIRED"},
+                )
+                self.activity_registry.record(
+                    EmployeeActivity(
+                        employee_id=inf["employee_id"],
+                        activity_type="EXECUTION_RECOVERED",
+                        status="CLAIMED",
+                        message=f"Recovered in-flight execution for '{item.title}' after restart. Status set to RECOVERY_REQUIRED. Side effects were not replayed.",
+                        progress=0,
+                        work_item_id=w_id,
+                        metadata={"execution_id": inf["execution_id"], "recovery_status": "RECOVERY_REQUIRED"},
+                    )
+                )
