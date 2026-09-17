@@ -319,6 +319,164 @@ def test_build_current_seal_leaves_unauthoritative_fields_none():
     assert current_seal.status is None
 
 
+# MWO-ASSET360-CURRENT-INSTALLATION-SEMANTIC-FIX-R1 -- installation
+# existence (installation_status) and seal identity completeness (every
+# other field above) are proven independently. Root cause this MWO fixes:
+# an installation_report row with no seal_code previously left `status`
+# None (no Seal Registry match to read it from), and the frontend rendered
+# that as "Unknown" -- indistinguishable from "no installation at all".
+
+
+def test_installation_status_is_installed_even_when_seal_code_is_missing():
+    # Same fixture shape as test_build_current_seal_leaves_unauthoritative_
+    # fields_none above (seal_code None) -- this MWO adds exactly one new
+    # assertion to that same scenario: installation existence must not
+    # depend on seal identity resolving.
+    service = _service(
+        installations=[
+            {
+                "installation_code": "INSTL-002-2026",
+                "report_no": "002/INSTL/2026",
+                "report_date": "2026-02-01",
+                "plant_equip_no": TAG,
+                "seal_code": None,
+                "seal_manufacture": "Flowserve",
+            }
+        ]
+    )
+
+    current_seal = service.build_current_seal(TAG)
+
+    assert current_seal.installation_status == "Installed"
+    # Identity fields remain exactly as unresolved as before this MWO --
+    # installation_status is additive, never a substitute for identity.
+    assert current_seal.seal_code is None
+    assert current_seal.seal_name is None
+    assert current_seal.model is None
+    assert current_seal.status is None
+
+
+def test_installation_status_is_installed_when_seal_code_also_resolves():
+    # With a valid seal_code (test_build_current_seal_matches_build_
+    # lifecycle_current_state_current_seal's own fixture), identity fields
+    # resolve normally from Seal Registry AND installation_status is still
+    # "Installed" -- the two facts are independent, not mutually exclusive.
+    service = _service(
+        installations=[
+            {
+                "installation_code": "INSTL-001-2026",
+                "report_no": "001/INSTL/2026",
+                "report_date": "2026-01-06",
+                "plant_equip_no": TAG,
+                "seal_code": "SEAL-1",
+                "seal_type": "T48MP",
+                "seal_manufacture": "John Crane",
+                "drawing_no": "GA-230279",
+                "source_document_name": "report.pdf",
+            }
+        ],
+        seals=[
+            {
+                "seal_code": "SEAL-1",
+                "seal_name": "Type 48MP",
+                "manufacturer": "John Crane",
+                "model": "48MP",
+                "shaft_size": "3.25",
+                "material": "1K1K",
+                "temperature_limit": "200C",
+                "pressure_limit": "20 bar",
+                "status": "ACTIVE",
+            }
+        ],
+    )
+
+    current_seal = service.build_current_seal(TAG)
+
+    assert current_seal.installation_status == "Installed"
+    assert current_seal.seal_code == "SEAL-1"
+    assert current_seal.seal_name == "Type 48MP"
+    assert current_seal.status == "ACTIVE"
+
+
+def test_installation_status_is_none_when_pump_has_no_installation_at_all():
+    # Extends test_build_current_seal_returns_none_when_pump_has_no_
+    # installation above: build_current_seal() itself already returns None
+    # (no synthesized object at all) -- this asserts the same, naming the
+    # exact field this MWO introduces, so "no installation" is never
+    # confusable with "Installed".
+    service = _service(installations=[])
+
+    current_seal = service.build_current_seal(TAG)
+
+    assert current_seal is None
+
+
+def test_configured_seal_type_never_populates_current_seal_identity():
+    # T48MP/48LP present on the installation's own seal_type column (the
+    # same field Configured Seal Type is fed from at the router level,
+    # ltsa_pumps.seal_type -- a different, broader source entirely) must
+    # never be used to infer seal_code/seal_name/model -- those stay None
+    # exactly as when seal_type is absent. installation_status, in
+    # contrast, is genuinely "Installed" -- proven by installation
+    # existence alone, never by seal_type.
+    service = _service(
+        installations=[
+            {
+                "installation_code": "INSTL-920P2C",
+                "report_no": None,
+                "report_date": "2026-02-21",
+                "plant_equip_no": TAG,
+                "seal_code": None,
+                "seal_type": "T48MP/48LP",
+                "seal_manufacture": "John Crane",
+                "source_document_name": "SCAN 010 INSTALLATION REPORT 920-P-2C.pdf",
+            }
+        ]
+    )
+
+    current_seal = service.build_current_seal(TAG)
+
+    assert current_seal.installation_status == "Installed"
+    assert current_seal.seal_code is None
+    assert current_seal.seal_name is None
+    assert current_seal.model is None
+
+
+def test_920_p_2c_semantic_fixture_installed_with_identity_still_not_recorded():
+    # The exact reported case (ASSET360_MECHANICAL_SEAL_CURRENT_
+    # INSTALLATION_FORENSIC): a real installation_report row (report_date
+    # + source_document_name present) with no seal_code. Before this MWO,
+    # Current Installation rendered "Unknown"; installation_status now
+    # truthfully answers "Installed" while every identity field -- and the
+    # date/source document themselves -- are provably unchanged.
+    service = _service(
+        installations=[
+            {
+                "installation_code": "INSTL-920P2C-001",
+                "report_no": "010/INSTL/2026",
+                "report_date": "2026-02-21",
+                "plant_equip_no": TAG,
+                "seal_code": None,
+                "seal_type": "T48MP/48LP",
+                "seal_manufacture": "John Crane",
+                "material_code": None,
+                "source_document_name": "SCAN 010 INSTALLATION REPORT 920-P-2C.pdf",
+            }
+        ]
+    )
+
+    current_seal = service.build_current_seal(TAG)
+
+    assert current_seal.installation_status == "Installed"
+    assert current_seal.installed_at == "2026-02-21"
+    assert current_seal.source_document_name == "SCAN 010 INSTALLATION REPORT 920-P-2C.pdf"
+    assert current_seal.manufacturer == "John Crane"
+    assert current_seal.seal_code is None
+    assert current_seal.seal_name is None
+    assert current_seal.model is None
+    assert current_seal.material is None
+
+
 def test_current_seal_never_overwrites_a_present_but_falsy_seal_registry_value():
     # MWO-LTSA-064A Section 3 -- a Seal Registry value that is present but
     # falsy (empty string) must NOT be replaced by Installation's fallback

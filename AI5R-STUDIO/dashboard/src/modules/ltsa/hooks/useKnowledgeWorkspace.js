@@ -153,6 +153,14 @@ function mapMechanicalSeal(currentSeal) {
     model: currentSeal.model ?? undefined,
     material: currentSeal.material ?? undefined,
     status: currentSeal.status ?? undefined,
+    // MWO-ASSET360-CURRENT-INSTALLATION-SEMANTIC-FIX-R1 -- separate from
+    // `status` above (unchanged, still seal_registry.status verbatim).
+    // installation_status answers "does a current_installation record
+    // exist" (equipment_timeline_service.py's own PumpLifecycleCurrentSeal
+    // field of the same name) -- KnowledgeSeal.jsx's Current Installation
+    // badge now reads this, not `status`, so identity-incomplete
+    // installations no longer render as "Unknown".
+    installationStatus: currentSeal.installation_status ?? undefined,
     installedDate: currentSeal.installed_at ?? undefined,
     // MWO-LTSA-ASSET360-COMPLETENESS-FIX-021B (item G) -- same field
     // PumpLifecycleCurrentInstallation.source_document_name already

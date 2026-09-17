@@ -553,6 +553,16 @@ class EquipmentTimelineService:
             temperature_limit=seal_record.get("temperature_limit"),
             pressure_limit=seal_record.get("pressure_limit"),
             status=seal_record.get("status"),
+            # MWO-ASSET360-CURRENT-INSTALLATION-SEMANTIC-FIX-R1 -- an
+            # installation_report row for this pump is what this whole
+            # method already requires to reach this line (the early `if
+            # current_installation is None: return None` above), so
+            # "Installed" is always true here regardless of whether
+            # seal_code resolved a Seal Registry match. Answers "was
+            # something installed" independently of "which exact seal" --
+            # never coupled to seal_code/seal_registry the way `status`
+            # above still is.
+            installation_status="Installed",
             installation_code=current_installation.get("installation_code"),
             installed_at=self._normalize_date_string(current_installation.get("report_date")),
             source="seal_registry" if seal_record else "installation_report",

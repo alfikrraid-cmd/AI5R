@@ -36,9 +36,20 @@ export default function KnowledgeSeal({ configuredSeal, currentSeal }) {
 
       <div className="knowledge-seal-group" data-testid="knowledge-seal-current">
         <h4 className="knowledge-seal-subhead">Current Installation</h4>
-        <span className={`status-signal ${currentSeal?.status ?? ""}`}>
+        {/* MWO-ASSET360-CURRENT-INSTALLATION-SEMANTIC-FIX-R1 -- reads
+            installationStatus (answers "does a current_installation
+            record exist"), never `status` (seal_registry.status,
+            unchanged below -- unrelated to installation existence and
+            never populated when seal_code doesn't resolve). An
+            installation with no resolvable seal identity now truthfully
+            renders "Installed" here instead of "Unknown", while every
+            identity row below (Current Installed Seal/Name/Model/
+            Material) is untouched and still falls back to "Not recorded"
+            exactly as before -- installation existence and seal identity
+            completeness are proven independently, never conflated. */}
+        <span className={`status-signal ${currentSeal?.installationStatus ?? ""}`}>
           <span className="dot-lg" />
-          {currentSeal?.status ?? "Unknown"}
+          {currentSeal?.installationStatus ?? "Unknown"}
         </span>
         <Row label="Current Installed Seal" value={currentSeal?.code} fallback="Not recorded" />
         <Row label="Name" value={currentSeal?.name} fallback="Not recorded" />
