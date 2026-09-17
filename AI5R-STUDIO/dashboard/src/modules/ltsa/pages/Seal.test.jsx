@@ -16,6 +16,7 @@ import {
   getSealUnitWarranty,
   getSealUnitInstallationReports,
   getSealUnitHistory,
+  getDocuments,
 } from "../../../api/ai5rClient";
 import sampleSeals from "../data/sampleSeals";
 
@@ -55,6 +56,7 @@ vi.mock("../../../api/ai5rClient", () => ({
   getSealUnitWarranty: vi.fn(),
   getSealUnitInstallationReports: vi.fn(),
   getSealUnitHistory: vi.fn(),
+  getDocuments: vi.fn(),
 }));
 
 beforeEach(() => {
@@ -81,6 +83,11 @@ beforeEach(() => {
   getSealUnitWarranty.mockResolvedValue([]);
   getSealUnitInstallationReports.mockResolvedValue([]);
   getSealUnitHistory.mockResolvedValue([]);
+  // R2A -- getDocuments() added, same reason as getSealCompatibility/
+  // getSealStock above: Seal.jsx now fetches it (Documents tab real read
+  // path, SealOpenDesignView.jsx), so any real-fetch-path test triggers
+  // this call. Additive only, keeps the mock in sync.
+  getDocuments.mockResolvedValue([]);
 });
 
 afterEach(() => {

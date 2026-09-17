@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import PumpWorkspaceDrawer from "./PumpWorkspaceDrawer";
 import AssetIdentityHeader, { HealthCard } from "./AssetIdentityHeader";
 import WorkspaceTabStrip from "./WorkspaceTabStrip";
@@ -90,6 +90,8 @@ export default function SealOpenDesignView({
   pmRecords = [],
   cmRecords = [],
   workOrderRecords = [],
+  documents = [],
+  documentsLoading = false,
   canEditIdentifiers = false,
   onUpdateIdentifiers,
   onOpenPump,
@@ -159,6 +161,31 @@ export default function SealOpenDesignView({
     setToast(message);
     setTimeout(() => setToast(null), 2600);
   }
+
+  // R2A -- real seal_engineering_document rows (documents prop, mapped by
+  // Seal.jsx via documentMapping.js's mapDocumentRecord, exact-match on
+  // seal_code). Grouped by the raw document_type enum verbatim (DRAWING/
+  // DATASHEET/INSTALLATION_GUIDE/INSPECTION_SHEET/MAINTENANCE_MANUAL/
+  // SERVICE_BULLETIN/ENGINEERING_SPECIFICATION) -- never translated into
+  // the old placeholder's Drawing/Datasheet/Installation Procedure/
+  // Certificates/Revision History labels, since no real, evidenced
+  // mapping between the two vocabularies exists (documentMapping.js's own
+  // disclosed-gap discipline; inventing one here would be fabricated
+  // metadata). Only groups with at least one real document are rendered.
+  const documentGroups = useMemo(() => {
+    const byType = new Map();
+    for (const doc of documents) {
+      const type = doc.documentType ?? "UNSPECIFIED";
+      if (!byType.has(type)) byType.set(type, []);
+      byType.get(type).push({
+        key: doc.id,
+        name: doc.title || doc.documentNumber || doc.id,
+        meta: doc.documentNumber ? `No. ${doc.documentNumber}` : undefined,
+        flagLabel: doc.currentRevision ? `Rev ${doc.currentRevision}` : undefined,
+      });
+    }
+    return [...byType.entries()].map(([type, items]) => ({ type, items }));
+  }, [documents]);
 
   const meta = statusMeta(seal.status);
 
@@ -419,13 +446,20 @@ export default function SealOpenDesignView({
                 Buka Drawing →
               </button>
             </div>
-            <div style={{ marginTop: "var(--space-2)" }}>
-              <div className="eyebrow" style={{ marginBottom: "var(--space-2)" }}>Document Types</div>
-              <InfoRow label="Drawing" value="—" valueClassName="ref-group-empty" />
-              <InfoRow label="Datasheet" value="—" valueClassName="ref-group-empty" />
-              <InfoRow label="Installation Procedure" value="—" valueClassName="ref-group-empty" />
-              <InfoRow label="Certificates" value="—" valueClassName="ref-group-empty" />
-              <InfoRow label="Revision History" value="—" valueClassName="ref-group-empty" />
+            <div style={{ marginTop: "var(--space-2)" }} data-od-id="documents-list">
+              {documentsLoading ? (
+                <p className="confidence-label" data-testid="seal-documents-loading">
+                  Loading documents…
+                </p>
+              ) : documentGroups.length === 0 ? (
+                <p className="confidence-label ref-group-empty" data-testid="seal-documents-empty">
+                  No linked engineering documents for this seal.
+                </p>
+              ) : (
+                documentGroups.map((group) => (
+                  <RefGroup key={group.type} title={group.type} items={group.items} />
+                ))
+              )}
             </div>
           </section>
         </div>

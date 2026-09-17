@@ -8,6 +8,7 @@ import MechanicalSealStock from "./MechanicalSealStock";
 import {
   getSeals, getSealCompatibility, getSealStock, postEngineeringAI,
   getPMSchedules, getCMReports, getWorkOrders, updateSealIdentifiers,
+  getDocuments,
 } from "../../../api/ai5rClient";
 import { mapSealRecord, resolveCompatiblePumps, resolveStock } from "../utils/sealMapping";
 import { useOptionalAuth } from "../auth/AuthContext";
@@ -15,6 +16,7 @@ import { can, PERMISSIONS } from "../auth/permissions";
 import { mapPMScheduleRecord } from "../utils/pmMapping";
 import { mapCMReportRecord } from "../utils/cmMapping";
 import { mapWorkOrderRecord } from "../utils/workOrderMapping";
+import { mapDocumentRecord } from "../utils/documentMapping";
 import generateTraceId from "../utils/generateTraceId";
 import "./Seal.css";
 import "./MaintenanceHistory.css";
@@ -280,6 +282,59 @@ export default function Seal({ seals: sealsProp, onNavigate }) {
     return () => { active = false; };
   }, [resolvedAssetCode]);
 
+  // R2A (Mechanical Seal Documents/Drawings/BOM Real Read Path) -- the
+  // Documents tab previously rendered five hardcoded "—" rows with no
+  // backend call at all. seal_engineering_document.seal_code is a real,
+  // NOT NULL foreign key to seal_registry.seal_code (BP-SEAL-ENGINEERING-
+  // DOCUMENT/004_alter_add_acquisition_fields.sql) -- a deterministic,
+  // exact-match master linkage, never a fuzzy/substring guess. GET
+  // /api/ltsa/documents (routers/document.py, MWO-LTSA-062) already
+  // exposes every seal_engineering_document row (all seven document_type
+  // values, including DRAWING) scoped by the same area-scope rule
+  // Document Workspace already uses; getDocuments()/mapDocumentRecord()
+  // are the same, already-tested client/mapping functions Document
+  // Workspace calls (DocumentWorkspace.jsx) -- reused verbatim, nothing
+  // new added to either. Independent fetch (not the top getSeals()
+  // Promise.all): a documents-fetch failure must not affect the seal
+  // list itself, and mirrors the exact same
+  // Promise.all([getDocuments(), getSealCompatibility()]).catch(() => [])
+  // "degrade, never fabricate" discipline DocumentWorkspace.jsx already
+  // established for this identical fetch.
+  const [documentRecords, setDocumentRecords] = useState([]);
+  const [documentsLoading, setDocumentsLoading] = useState(sealsProp === undefined);
+
+  useEffect(() => {
+    if (sealsProp !== undefined) {
+      setDocumentsLoading(false);
+      return undefined;
+    }
+    let active = true;
+    setDocumentsLoading(true);
+    Promise.all([getDocuments(), getSealCompatibility()])
+      .then(([documents, compatibility]) => {
+        if (!active) return;
+        setDocumentRecords(
+          documents.map((record) => mapDocumentRecord(record, compatibility, documents))
+        );
+      })
+      .catch(() => {
+        if (active) setDocumentRecords([]);
+      })
+      .finally(() => {
+        if (active) setDocumentsLoading(false);
+      });
+    return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sealsProp]);
+
+  // Exact-match on seal_registry.seal_code only -- the same identity the
+  // classifier's own CANONICAL RULE requires elsewhere (never substring/
+  // contains/fuzzy). No seal selected -> no documents, not "all documents".
+  const selectedSealDocuments = useMemo(
+    () => (selectedSeal ? documentRecords.filter((doc) => doc.sealCode === selectedSeal.code) : []),
+    [documentRecords, selectedSeal]
+  );
+
   // MWO-LTSA-042/042A -- Open Pump / Open Drawing reuse the exact same
   // onNavigate(key, context) mechanism every other cross-workspace link
   // in this codebase already uses (CMDetailPanel's "Related Pump":
@@ -407,6 +462,8 @@ export default function Seal({ seals: sealsProp, onNavigate }) {
                   pmRecords={relatedPM}
                   cmRecords={relatedCM}
                   workOrderRecords={relatedWorkOrders}
+                  documents={selectedSealDocuments}
+                  documentsLoading={documentsLoading}
                   canEditIdentifiers={canEditIdentifiers}
                   onUpdateIdentifiers={handleUpdateIdentifiers}
                   onOpenPump={handleOpenPump}
