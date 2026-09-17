@@ -1725,3 +1725,61 @@ export async function askCopilot(question, assetContext) {
 
     return payload;
 }
+
+// R2B (Mechanical Seal Engineering Drawing + Revision BOM Real Read
+// Path). Three bounded, additive-only reads over the pre-existing
+// Engineering Drawing domain (migration 038/Drawing-R4,
+// routers/engineering_drawing.py) -- reverse lookup only added this
+// MWO (GET /api/ltsa/seals/{seal_code}/engineering-drawings); revisions/
+// bom reuse the router's own existing endpoints unchanged. Same list-
+// unwrapping convention as getSeals()/getDocuments(). Callers must fetch
+// per drawing/revision only as needed (this seal's linked drawings, then
+// each one's CURRENT revision, then that revision's BOM) -- never every
+// revision/BOM eagerly, to avoid N+1.
+export async function getEngineeringDrawingsForSeal(sealCode) {
+    const response = await apiFetch(`${API_URL}/api/ltsa/seals/${encodeURIComponent(sealCode)}/engineering-drawings`);
+
+    if (!response.ok) {
+        throw new Error("Engineering Drawings API unavailable");
+    }
+
+    const payload = await response.json();
+
+    if (payload?.success === false) {
+        throw new Error(payload?.message || "Engineering Drawings API returned a failure");
+    }
+
+    return Array.isArray(payload?.data) ? payload.data : [];
+}
+
+export async function getEngineeringDrawingRevisions(drawingCode) {
+    const response = await apiFetch(`${API_URL}/api/ltsa/engineering-drawings/${encodeURIComponent(drawingCode)}/revisions`);
+
+    if (!response.ok) {
+        throw new Error("Engineering Drawing Revisions API unavailable");
+    }
+
+    const payload = await response.json();
+
+    if (payload?.success === false) {
+        throw new Error(payload?.message || "Engineering Drawing Revisions API returned a failure");
+    }
+
+    return Array.isArray(payload?.data) ? payload.data : [];
+}
+
+export async function getEngineeringDrawingBom(revisionCode) {
+    const response = await apiFetch(`${API_URL}/api/ltsa/engineering-drawing-revisions/${encodeURIComponent(revisionCode)}/bom`);
+
+    if (!response.ok) {
+        throw new Error("Engineering Drawing BOM API unavailable");
+    }
+
+    const payload = await response.json();
+
+    if (payload?.success === false) {
+        throw new Error(payload?.message || "Engineering Drawing BOM API returned a failure");
+    }
+
+    return Array.isArray(payload?.data) ? payload.data : [];
+}

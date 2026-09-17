@@ -8,7 +8,8 @@ import MechanicalSealStock from "./MechanicalSealStock";
 import {
   getSeals, getSealCompatibility, getSealStock, postEngineeringAI,
   getPMSchedules, getCMReports, getWorkOrders, updateSealIdentifiers,
-  getDocuments,
+  getDocuments, getEngineeringDrawingsForSeal, getEngineeringDrawingRevisions,
+  getEngineeringDrawingBom,
 } from "../../../api/ai5rClient";
 import { mapSealRecord, resolveCompatiblePumps, resolveStock } from "../utils/sealMapping";
 import { useOptionalAuth } from "../auth/AuthContext";
@@ -335,6 +336,81 @@ export default function Seal({ seals: sealsProp, onNavigate }) {
     [documentRecords, selectedSeal]
   );
 
+  // R2B (Mechanical Seal Engineering Drawing + Revision BOM Real Read
+  // Path) -- distinct domain from R2A's Documents above: seal_engineering_
+  // document (direct FK) vs. engineering_drawing reached via the generic,
+  // write-time-validated engineering_drawing_link (target_type='SEAL',
+  // target_code exactly seal_registry.seal_code, no fuzzy/substring
+  // match). Per-selection fetch (like PM/CM/WorkOrder above), not a
+  // global list -- GET /api/ltsa/seals/{seal_code}/engineering-drawings
+  // is inherently seal-scoped, unlike getSeals()/getDocuments(). Bounded
+  // by design: for each linked drawing, at most one revisions call (to
+  // resolve its explicit current_revision_code -- never a fabricated
+  // "latest by date" guess) and, only when that revision exists, one BOM
+  // call for that single revision -- never every revision, never a
+  // revision x BOM cross product. A fetch failure degrades to an honest
+  // error message (not silently swallowed to empty, unlike Documents
+  // above) since Drawings/BOM have no comparably cheap "just empty"
+  // interpretation once a seal has drawings pending resolution.
+  const [linkedDrawings, setLinkedDrawings] = useState([]);
+  const [linkedDrawingsLoading, setLinkedDrawingsLoading] = useState(false);
+  const [linkedDrawingsError, setLinkedDrawingsError] = useState(null);
+  const [drawingBomGroups, setDrawingBomGroups] = useState([]);
+  const [bomLoading, setBomLoading] = useState(false);
+
+  useEffect(() => {
+    // Never fetched on the sealsProp path -- same discipline as every
+    // other real-backend fetch in this file (compatibilityRecords/
+    // stockRecords/documentRecords above): a caller supplying its own
+    // seals prop (every "with injected data" test, Seal.engineeringAI.
+    // test.jsx, Seal.identifiers.test.jsx) gets no real fetch at all.
+    if (sealsProp !== undefined || !selectedSeal) {
+      setLinkedDrawings([]);
+      setLinkedDrawingsError(null);
+      setDrawingBomGroups([]);
+      return undefined;
+    }
+    let active = true;
+    setLinkedDrawingsLoading(true);
+    setBomLoading(true);
+    getEngineeringDrawingsForSeal(selectedSeal.code)
+      .then(async (drawings) => {
+        if (!active) return;
+        setLinkedDrawings(drawings);
+        setLinkedDrawingsError(null);
+        const groups = await Promise.all(
+          drawings.map(async (drawing) => {
+            if (!drawing.current_revision_code) {
+              return { drawing, revision: null, bomLines: [] };
+            }
+            const revisions = await getEngineeringDrawingRevisions(drawing.drawing_code).catch(() => []);
+            const revision = revisions.find((r) => r.revision_code === drawing.current_revision_code) ?? null;
+            if (!revision) {
+              return { drawing, revision: null, bomLines: [] };
+            }
+            const bomLines = await getEngineeringDrawingBom(revision.revision_code).catch(() => []);
+            return { drawing, revision, bomLines };
+          })
+        );
+        if (active) setDrawingBomGroups(groups);
+      })
+      .catch(() => {
+        if (active) {
+          setLinkedDrawingsError("Engineering drawings could not be loaded.");
+          setLinkedDrawings([]);
+          setDrawingBomGroups([]);
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setLinkedDrawingsLoading(false);
+          setBomLoading(false);
+        }
+      });
+    return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sealsProp, selectedSeal?.code]);
+
   // MWO-LTSA-042/042A -- Open Pump / Open Drawing reuse the exact same
   // onNavigate(key, context) mechanism every other cross-workspace link
   // in this codebase already uses (CMDetailPanel's "Related Pump":
@@ -464,6 +540,11 @@ export default function Seal({ seals: sealsProp, onNavigate }) {
                   workOrderRecords={relatedWorkOrders}
                   documents={selectedSealDocuments}
                   documentsLoading={documentsLoading}
+                  linkedDrawings={linkedDrawings}
+                  linkedDrawingsLoading={linkedDrawingsLoading}
+                  linkedDrawingsError={linkedDrawingsError}
+                  drawingBomGroups={drawingBomGroups}
+                  bomLoading={bomLoading}
                   canEditIdentifiers={canEditIdentifiers}
                   onUpdateIdentifiers={handleUpdateIdentifiers}
                   onOpenPump={handleOpenPump}

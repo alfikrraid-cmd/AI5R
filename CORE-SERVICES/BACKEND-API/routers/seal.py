@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from dependencies import (
     get_current_user,
+    get_engineering_drawing_repository,
     get_import_database_runner,
     get_installation_report_fitment_repository,
     get_pump_gateway,
@@ -102,6 +103,34 @@ router = APIRouter(dependencies=[Depends(require_permission("seal.read"))])
 @router.get("/api/ltsa/seals")
 def list_ltsa_seals(seal_gateway=Depends(get_seal_gateway)) -> Payload:
     return seal_gateway.list_seals()
+
+
+# R2B (Mechanical Seal Engineering Drawing + Revision BOM Real Read Path)
+# -- reverse lookup, additive and read-only. engineering_drawing_link
+# already supports a deterministic, write-time-validated
+# (target_type='SEAL', target_code exactly seal_registry.seal_code, no
+# fuzzy/substring/alias match -- EngineeringDrawingRepository's own
+# _validate_target) link from a drawing to a Mechanical Seal master
+# identity; nothing previously queried it in that direction. No new
+# table, no new gateway -- EngineeringDrawingRepository.
+# list_drawings_for_seal() (added this MWO) is the only new code, reused
+# here exactly as the router's existing engineering-drawing endpoints
+# already consume that same repository. Explicit "drawing.read" on top
+# of this router's own "seal.read" (defense in depth: the payload is
+# drawing content reached via a seal-shaped URL) -- the same additional-
+# permission-on-top-of-router-default pattern master.edit/
+# seal.lifecycle_write already use below for their own routes.
+@router.get(
+    "/api/ltsa/seals/{seal_code}/engineering-drawings",
+    dependencies=[Depends(require_permission("drawing.read"))],
+)
+def list_seal_engineering_drawings(
+    seal_code: str,
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
+    repository=Depends(get_engineering_drawing_repository),
+) -> Payload:
+    rows = repository.list_drawings_for_seal(seal_code, scope=resolve_area_scope(current_user))
+    return {"success": True, "data": rows}
 
 
 # MWO-LTSA-SEAL-UNIT-IDENTITY-FOUNDATION-001 -- read support only (no

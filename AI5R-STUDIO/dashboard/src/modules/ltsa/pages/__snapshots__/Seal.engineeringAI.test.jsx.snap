@@ -134,6 +134,22 @@ exports[`Snapshot > matches the SealOpenDesignView Engineering AI section snapsh
         role="tab"
         type="button"
       >
+        Drawings
+      </button>
+      <button
+        aria-selected="false"
+        class="workspace-tab"
+        role="tab"
+        type="button"
+      >
+        BOM
+      </button>
+      <button
+        aria-selected="false"
+        class="workspace-tab"
+        role="tab"
+        type="button"
+      >
         History
       </button>
       <button

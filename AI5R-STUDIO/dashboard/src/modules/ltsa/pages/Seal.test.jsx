@@ -17,6 +17,9 @@ import {
   getSealUnitInstallationReports,
   getSealUnitHistory,
   getDocuments,
+  getEngineeringDrawingsForSeal,
+  getEngineeringDrawingRevisions,
+  getEngineeringDrawingBom,
 } from "../../../api/ai5rClient";
 import sampleSeals from "../data/sampleSeals";
 
@@ -57,6 +60,9 @@ vi.mock("../../../api/ai5rClient", () => ({
   getSealUnitInstallationReports: vi.fn(),
   getSealUnitHistory: vi.fn(),
   getDocuments: vi.fn(),
+  getEngineeringDrawingsForSeal: vi.fn(),
+  getEngineeringDrawingRevisions: vi.fn(),
+  getEngineeringDrawingBom: vi.fn(),
 }));
 
 beforeEach(() => {
@@ -88,6 +94,12 @@ beforeEach(() => {
   // path, SealOpenDesignView.jsx), so any real-fetch-path test triggers
   // this call. Additive only, keeps the mock in sync.
   getDocuments.mockResolvedValue([]);
+  // R2B -- getEngineeringDrawingsForSeal/Revisions/Bom added, same
+  // reason: Seal.jsx now fetches these once a seal is selected (Drawings/
+  // BOM tabs, SealOpenDesignView.jsx). Additive only.
+  getEngineeringDrawingsForSeal.mockResolvedValue([]);
+  getEngineeringDrawingRevisions.mockResolvedValue([]);
+  getEngineeringDrawingBom.mockResolvedValue([]);
 });
 
 afterEach(() => {

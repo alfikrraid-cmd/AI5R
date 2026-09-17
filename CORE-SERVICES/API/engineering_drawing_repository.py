@@ -242,6 +242,36 @@ class EngineeringDrawingRepository:
         )
         return {"success": True, "data": rows, "items": rows, "count": len(rows), "total": total, "limit": limit, "offset": offset}
 
+    def list_drawings_for_seal(self, seal_code: str, *, scope: frozenset[str] | None = None) -> list[dict]:
+        """R2B -- reverse lookup: Mechanical Seal -> its linked Engineering
+        Drawings. Exact match only, mirroring _validate_target's own
+        write-time discipline: target_type = 'SEAL' AND target_code =
+        seal_code verbatim (no fuzzy/substring/alias matching), non-
+        retracted links only (l.retracted_at IS NULL, the same convention
+        list_links_for_drawing already uses). A drawing linked via
+        ASSET/COMPONENT only, or linked to a different seal_code, is
+        never returned -- there is no other way into this result set.
+
+        Area-scoped by the exact same _drawing_area_scope_clause every
+        other single-drawing route (get_engineering_drawing,
+        list_engineering_drawing_revisions, ...) already applies: a
+        drawing with ONLY a SEAL link (no ASSET link) has no
+        determinable area and is therefore correctly excluded for a
+        restricted (non-None) scope -- R4 Section 16's own disclosed
+        fail-closed rule, not a new policy introduced here.
+        """
+        clause = self._drawing_area_scope_clause("d", scope)
+        columns = ", ".join(f"d.{c.strip()}" for c in _DRAWING_SELECT_COLUMNS.split(","))
+        rows = _json_query(
+            f"SELECT DISTINCT {columns} FROM engineering_drawing d "
+            f"JOIN engineering_drawing_link l ON l.drawing_code = d.drawing_code "
+            f"WHERE l.target_type = 'SEAL' AND l.target_code = {_sql(seal_code)} "
+            f"AND l.retracted_at IS NULL AND {clause} "
+            f"ORDER BY d.drawing_code",
+            self._runner,
+        )
+        return rows
+
     def update_drawing(self, drawing_code: str, *, values: dict, updated_by: str) -> dict | None:
         existing = self.find_drawing(drawing_code)
         if existing is None:
