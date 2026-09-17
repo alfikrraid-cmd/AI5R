@@ -11,6 +11,7 @@ import {
   getSealUnitWarranty,
   getSealUnitInstallationReports,
   getSealUnitHistory,
+  getConditionMonitoringReadings,
 } from "../../../api/ai5rClient";
 import { AuthProvider } from "../auth/AuthContext";
 import sampleSeals from "../data/sampleSeals";
@@ -35,6 +36,7 @@ vi.mock("../../../api/ai5rClient", () => ({
   getSealUnitWarranty: vi.fn(),
   getSealUnitInstallationReports: vi.fn(),
   getSealUnitHistory: vi.fn(),
+  getConditionMonitoringReadings: vi.fn(),
   onUnauthorized: vi.fn(),
 }));
 
@@ -56,6 +58,7 @@ beforeEach(() => {
   getSealUnitWarranty.mockResolvedValue([]);
   getSealUnitInstallationReports.mockResolvedValue([]);
   getSealUnitHistory.mockResolvedValue([]);
+  getConditionMonitoringReadings.mockResolvedValue([]);
 });
 
 afterEach(() => {

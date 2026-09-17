@@ -403,8 +403,18 @@ export async function getPMOccurrences() {
     throw new Error("PM occurrences API returned an invalid list");
 }
 
-export async function getConditionMonitoringReadings() {
-    const response = await apiFetch(`${API_URL}/api/ltsa/condition-monitoring-readings`);
+// MWO-R2C3 -- optional assetCode is additive only: omitted, this call is
+// byte-for-byte the same request it always was (existing
+// ConditionMonitoringWorkspace.jsx usage untouched). Passed, it hits the
+// same route's new ?asset_code= filter (routers/condition_monitoring.py),
+// itself a thin wrapper over the repository's existing, already-trusted
+// list_by_asset(asset_code) -- bounded to one pump, never the fleet-wide
+// table getAllConditionMonitoringReadings() pages through.
+export async function getConditionMonitoringReadings({ assetCode } = {}) {
+    const url = assetCode
+        ? `${API_URL}/api/ltsa/condition-monitoring-readings?asset_code=${encodeURIComponent(assetCode)}`
+        : `${API_URL}/api/ltsa/condition-monitoring-readings`;
+    const response = await apiFetch(url);
 
     if (!response.ok) {
         throw new Error("Condition Monitoring readings API unavailable");

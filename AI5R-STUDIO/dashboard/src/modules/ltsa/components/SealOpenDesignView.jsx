@@ -90,6 +90,7 @@ export default function SealOpenDesignView({
   installedSince,
   pmRecords = [],
   cmRecords = [],
+  conditionMonitoringReadings = [],
   workOrderRecords = [],
   documents = [],
   documentsLoading = false,
@@ -245,7 +246,25 @@ export default function SealOpenDesignView({
       items: pmRecords.map((pm) => ({ key: pm.id, name: pm.id, meta: pm.nextDue ? `Jatuh tempo ${pm.nextDue}` : pm.procedure, flagLabel: pm.status })),
       emptyReason: !resolvedAssetCode ? ltsaEmptyReason : dataEmptyReason,
     },
-    { id: "cm", title: "Related Condition Monitoring", items: [], emptyReason: !resolvedAssetCode ? ltsaEmptyReason : dataEmptyReason },
+    {
+      id: "cm",
+      title: "Related Condition Monitoring",
+      // MWO-R2C3 -- genuine condition_monitoring_reading rows (never
+      // Corrective Maintenance -- see "Related CM Reports" below, a
+      // separate legacy group left untouched). Seal Master -> compatible
+      // pump -> CM reading only; no physical-seal-unit claim.
+      items: conditionMonitoringReadings.map((cm) => ({
+        key: cm.id,
+        name: cm.id,
+        meta: [
+          cm.readingDate ? `Reading ${cm.readingDate}` : "Reading date N/A",
+          `DE leak: ${cm.leakDe === true ? "Yes" : cm.leakDe === false ? "No" : "N/A"}`,
+          `NDE leak: ${cm.leakNde === true ? "Yes" : cm.leakNde === false ? "No" : "N/A"}`,
+        ].join(" · "),
+        flagLabel: cm.status ?? "N/A",
+      })),
+      emptyReason: !resolvedAssetCode ? ltsaEmptyReason : dataEmptyReason,
+    },
     { id: "fa", title: "Related Failure Analysis", items: [], emptyReason: !resolvedAssetCode ? ltsaEmptyReason : dataEmptyReason },
     {
       id: "cm-reports",

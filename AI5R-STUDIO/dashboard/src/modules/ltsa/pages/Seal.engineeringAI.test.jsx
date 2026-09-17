@@ -16,6 +16,7 @@ import {
   getSealUnitWarranty,
   getSealUnitInstallationReports,
   getSealUnitHistory,
+  getConditionMonitoringReadings,
 } from "../../../api/ai5rClient";
 import sampleSeals from "../data/sampleSeals";
 
@@ -37,11 +38,16 @@ vi.mock("../../../api/ai5rClient", () => ({
   getSealUnitWarranty: vi.fn(),
   getSealUnitInstallationReports: vi.fn(),
   getSealUnitHistory: vi.fn(),
+  getConditionMonitoringReadings: vi.fn(),
 }));
 
 beforeEach(() => {
   getPMSchedules.mockResolvedValue([]);
   getCMReports.mockResolvedValue([]);
+  // MWO-R2C3 -- same reason as getPMSchedules/getCMReports/getWorkOrders
+  // above: Seal.jsx now also fetches genuine Condition Monitoring
+  // unconditionally once a seal resolves an asset code.
+  getConditionMonitoringReadings.mockResolvedValue([]);
   getWorkOrders.mockResolvedValue([]);
   getSealUnits.mockResolvedValue([]);
   getSealUnitLifecycle.mockResolvedValue([]);

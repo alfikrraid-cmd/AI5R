@@ -9,7 +9,7 @@ import {
   getSeals, getSealCompatibility, getSealStock, postEngineeringAI,
   getPMSchedules, getCMReports, getWorkOrders, updateSealIdentifiers,
   getDocuments, getEngineeringDrawingsForSeal, getEngineeringDrawingRevisions,
-  getEngineeringDrawingBom,
+  getEngineeringDrawingBom, getConditionMonitoringReadings,
 } from "../../../api/ai5rClient";
 import { mapSealRecord, resolveCompatiblePumps, resolveStock } from "../utils/sealMapping";
 import { useOptionalAuth } from "../auth/AuthContext";
@@ -283,6 +283,50 @@ export default function Seal({ seals: sealsProp, onNavigate }) {
     return () => { active = false; };
   }, [resolvedAssetCode]);
 
+  // MWO-R2C3 -- genuine Condition Monitoring readings. NOT the same as
+  // relatedCM above: that is legacy Corrective Maintenance
+  // (getCMReports()/mapCMReportRecord -- cm_report_code/failure_category/
+  // root_cause/corrective_action, unchanged, still feeds the separate
+  // "Related CM Reports" group below). This is condition_monitoring_
+  // reading -- mechanical_seal_leak_de/nde, mechseal_temp_de/nde, real
+  // measurement fields -- via the new bounded ?asset_code= filter
+  // (routers/condition_monitoring.py's own list_by_asset(asset_code)),
+  // never getAllConditionMonitoringReadings()'s fleet-wide fetch. Uses
+  // the same single resolvedAssetCode every other Related group here
+  // already relies on -- a Seal Master's compatible pump(s) collapse to
+  // this one authoritative asset the same way PM/CM-reports/Work Orders
+  // above already do, not an N-per-pump fan-out. Seal Master -> compatible
+  // pump -> CM reading is the only relationship this proves -- never a
+  // physical-seal-unit claim.
+  const [conditionMonitoringReadings, setConditionMonitoringReadings] = useState([]);
+
+  useEffect(() => {
+    if (!resolvedAssetCode) {
+      setConditionMonitoringReadings([]);
+      return undefined;
+    }
+    let active = true;
+    getConditionMonitoringReadings({ assetCode: resolvedAssetCode })
+      .then((readings) => {
+        if (!active) return;
+        setConditionMonitoringReadings(readings.map((r) => ({
+          id: r.condition_monitoring_reading_code,
+          assetCode: r.asset_code,
+          readingDate: r.reading_date ?? null,
+          leakDe: r.mechanical_seal_leak_de ?? null,
+          leakNde: r.mechanical_seal_leak_nde ?? null,
+          tempDe: r.mechseal_temp_de ?? null,
+          tempNde: r.mechseal_temp_nde ?? null,
+          status: r.workflow_status ?? null,
+          finding: r.finding ?? null,
+        })));
+      })
+      .catch(() => {
+        if (active) setConditionMonitoringReadings([]);
+      });
+    return () => { active = false; };
+  }, [resolvedAssetCode]);
+
   // R2A (Mechanical Seal Documents/Drawings/BOM Real Read Path) -- the
   // Documents tab previously rendered five hardcoded "—" rows with no
   // backend call at all. seal_engineering_document.seal_code is a real,
@@ -537,6 +581,7 @@ export default function Seal({ seals: sealsProp, onNavigate }) {
                   installedSince={installedSince}
                   pmRecords={relatedPM}
                   cmRecords={relatedCM}
+                  conditionMonitoringReadings={conditionMonitoringReadings}
                   workOrderRecords={relatedWorkOrders}
                   documents={selectedSealDocuments}
                   documentsLoading={documentsLoading}

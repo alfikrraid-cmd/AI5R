@@ -104,10 +104,39 @@ def list_ltsa_condition_monitoring_readings(
     condition_monitoring_reading_repository=Depends(get_condition_monitoring_reading_repository),
     limit: int = Query(25, ge=1, le=100),
     offset: int = Query(0, ge=0),
+    asset_code: str | None = Query(None),
+    pump_gateway=Depends(get_pump_gateway),
     current_user: AuthenticatedIdentity = Depends(get_current_user),
 ) -> Payload:
+    scope = resolve_area_scope(current_user)
+    # MWO-R2C3 -- bounded, exact-match single-asset read path (Mechanical
+    # Seal Detail's "Related Condition Monitoring"), reusing the existing
+    # trusted list_by_asset(asset_code) this repository already exposes to
+    # copilot_ask_service/equipment_360_service/ltsa_knowledge_service --
+    # no new SQL. list_by_asset() itself carries no area scope (same as
+    # every other by-code/by-asset repository method in this codebase),
+    # so the same is_asset_in_scope() re-check this router's own
+    # get_ltsa_condition_monitoring_reading (by code) already applies is
+    # reused here, once, since every row list_by_asset returns shares the
+    # one requested asset_code. Omitting asset_code preserves list_all()'s
+    # existing limit/offset behavior byte-for-byte -- untouched.
+    if asset_code is not None:
+        if scope is not None and not is_asset_in_scope(asset_code, scope, pump_gateway):
+            rows: list[dict] = []
+        else:
+            rows = condition_monitoring_reading_repository.list_by_asset(asset_code)
+        return {
+            "success": True,
+            "message": "Condition Monitoring reading list retrieved",
+            "count": len(rows),
+            "data": rows,
+            "items": rows,
+            "total": len(rows),
+            "limit": limit,
+            "offset": offset,
+        }
     return condition_monitoring_reading_repository.list_all(
-        scope=resolve_area_scope(current_user), limit=limit, offset=offset
+        scope=scope, limit=limit, offset=offset
     )
 
 

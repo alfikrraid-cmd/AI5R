@@ -20,6 +20,7 @@ import {
   getEngineeringDrawingsForSeal,
   getEngineeringDrawingRevisions,
   getEngineeringDrawingBom,
+  getConditionMonitoringReadings,
 } from "../../../api/ai5rClient";
 import sampleSeals from "../data/sampleSeals";
 
@@ -63,6 +64,7 @@ vi.mock("../../../api/ai5rClient", () => ({
   getEngineeringDrawingsForSeal: vi.fn(),
   getEngineeringDrawingRevisions: vi.fn(),
   getEngineeringDrawingBom: vi.fn(),
+  getConditionMonitoringReadings: vi.fn(),
 }));
 
 beforeEach(() => {
@@ -100,6 +102,10 @@ beforeEach(() => {
   getEngineeringDrawingsForSeal.mockResolvedValue([]);
   getEngineeringDrawingRevisions.mockResolvedValue([]);
   getEngineeringDrawingBom.mockResolvedValue([]);
+  // MWO-R2C3 -- getConditionMonitoringReadings added, same reason: Seal.jsx
+  // now fetches it (genuine Condition Monitoring, bounded to the resolved
+  // asset). Additive only.
+  getConditionMonitoringReadings.mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -337,6 +343,31 @@ describe("Seal workspace -- Open Pump / Open Drawing navigation (MWO-LTSA-042A)"
     fireEvent.click(screen.getByRole("tab", { name: "Documents" }));
 
     expect(() => fireEvent.click(screen.getByText("Buka Drawing →"))).not.toThrow();
+  });
+});
+
+describe("Seal workspace -- bounded genuine Condition Monitoring fetch (MWO-R2C3)", () => {
+  it("calls getConditionMonitoringReadings with the resolved asset code only -- never the fleet-wide fetch", async () => {
+    render(<Seal seals={sampleSeals} onNavigate={vi.fn()} />);
+    fireEvent.click(screen.getByText("MS-JC-0001"));
+
+    await screen.findByText("MS-JC-0001");
+
+    expect(getConditionMonitoringReadings).toHaveBeenCalledWith({ assetCode: "PMP-001" });
+    expect(getConditionMonitoringReadings).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps getCMReports (legacy Corrective Maintenance) as a separate call, not the source of genuine readings", async () => {
+    render(<Seal seals={sampleSeals} onNavigate={vi.fn()} />);
+    fireEvent.click(screen.getByText("MS-JC-0001"));
+
+    await screen.findByText("MS-JC-0001");
+
+    // Both fire (each feeds its own, separate display group), but with
+    // no shared arguments/return value coupling them -- proving Related
+    // Condition Monitoring's data does not come from getCMReports().
+    expect(getCMReports).toHaveBeenCalled();
+    expect(getConditionMonitoringReadings).toHaveBeenCalledWith({ assetCode: "PMP-001" });
   });
 });
 
