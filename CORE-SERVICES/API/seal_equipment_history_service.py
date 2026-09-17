@@ -178,37 +178,71 @@ def _warranty_to_timeline(assessments: list[dict[str, Any]]) -> list[TimelineEve
     return events
 
 
+def _historical_service_activity_to_timeline(records: list[dict[str, Any]]) -> list[TimelineEvent]:
+    events = []
+    for record in records:
+        occurred_at = record.get("event_date")
+        if occurred_at is not None and not isinstance(occurred_at, str):
+            occurred_at = occurred_at.isoformat()
+        ref = record.get("source_reference") or record.get("activity_id")
+        event_id = ref if ref and str(ref).startswith("SERVICE_ACTIVITY:") else f"SERVICE_ACTIVITY:{ref}"
+        events.append(
+            TimelineEvent(
+                id=str(event_id),
+                event_type=TimelineCategory.SEAL_INSTALL,
+                occurred_at=occurred_at,
+                title=f"Seal Service Activity ({record.get('seal_type') or record.get('raw_tag')})",
+                description=record.get("raw_job_description") or record.get("remarks"),
+                severity=TimelineSeverity.UNKNOWN,
+                source=TimelineSource.SERVICE_ACTIVITY,
+                derived=False,
+                payload=dict(record),
+            )
+        )
+    return events
+
+
 def build_seal_events_for_pump(
     pump_tag_number: str,
     *,
-    seal_lifecycle_event_repository: "SealLifecycleEventRepository",
-    seal_inspection_repository: "SealInspectionRepository",
-    seal_repair_repository: "SealRepairRepository",
-    seal_warranty_assessment_repository: "SealWarrantyAssessmentRepository",
-    installation_report_fitment_repository: "InstallationReportFitmentRepository",
+    seal_lifecycle_event_repository: Any | None = None,
+    seal_inspection_repository: Any | None = None,
+    seal_repair_repository: Any | None = None,
+    seal_warranty_assessment_repository: Any | None = None,
+    installation_report_fitment_repository: Any | None = None,
+    historical_seal_service_activity_repository: Any | None = None,
 ) -> tuple[TimelineEvent, ...]:
     """Every event here is attributed via ITS OWN stored pump reference,
     never seal_unit.current_pump_tag_number (this MWO's own CRITICAL
     rule) -- see this module's own header for the full attribution
     chain per event type."""
-    lifecycle_events = seal_lifecycle_event_repository.list_by_pump(pump_tag_number)
-    reports = installation_report_fitment_repository.list_by_pump(pump_tag_number)
-    reports_by_install_event_id = {
-        r["installation_event_id"]: r for r in reports if r.get("installation_event_id")
-    }
-
-    inspections = seal_inspection_repository.list_by_pump(pump_tag_number)
-    inspection_ids = [i["inspection_id"] for i in inspections]
-    repairs = seal_repair_repository.list_by_inspection_ids(inspection_ids) if inspection_ids else []
-    pump_by_inspection_id = {i["inspection_id"]: pump_tag_number for i in inspections}
-
-    warranty_assessments = seal_warranty_assessment_repository.list_by_pump(pump_tag_number)
-
     out: list[TimelineEvent] = []
-    out.extend(_lifecycle_events_to_timeline(lifecycle_events, reports_by_install_event_id=reports_by_install_event_id))
-    out.extend(_inspections_to_timeline(inspections))
-    out.extend(_repairs_to_timeline(repairs, pump_by_inspection_id=pump_by_inspection_id))
-    out.extend(_warranty_to_timeline(warranty_assessments))
+
+    if seal_lifecycle_event_repository is not None:
+        lifecycle_events = seal_lifecycle_event_repository.list_by_pump(pump_tag_number)
+        reports = installation_report_fitment_repository.list_by_pump(pump_tag_number) if installation_report_fitment_repository else []
+        reports_by_install_event_id = {
+            r["installation_event_id"]: r for r in reports if r.get("installation_event_id")
+        }
+        out.extend(_lifecycle_events_to_timeline(lifecycle_events, reports_by_install_event_id=reports_by_install_event_id))
+
+    if seal_inspection_repository is not None:
+        inspections = seal_inspection_repository.list_by_pump(pump_tag_number)
+        out.extend(_inspections_to_timeline(inspections))
+        if seal_repair_repository is not None:
+            inspection_ids = [i["inspection_id"] for i in inspections]
+            repairs = seal_repair_repository.list_by_inspection_ids(inspection_ids) if inspection_ids else []
+            pump_by_inspection_id = {i["inspection_id"]: pump_tag_number for i in inspections}
+            out.extend(_repairs_to_timeline(repairs, pump_by_inspection_id=pump_by_inspection_id))
+
+    if seal_warranty_assessment_repository is not None:
+        warranty_assessments = seal_warranty_assessment_repository.list_by_pump(pump_tag_number)
+        out.extend(_warranty_to_timeline(warranty_assessments))
+
+    if historical_seal_service_activity_repository is not None:
+        historical_activities = historical_seal_service_activity_repository.list_by_pump(pump_tag_number)
+        out.extend(_historical_service_activity_to_timeline(historical_activities))
+
     return tuple(out)
 
 

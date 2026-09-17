@@ -45,6 +45,7 @@ from API.seal_inspection_service import SealInspectionRepository
 from API.seal_repair_service import SealRepairRepository
 from API.seal_warranty_service import SealWarrantyAssessmentRepository
 from API.installation_fitment_service import InstallationReportFitmentRepository
+from API.historical_seal_service_activity_repository import HistoricalSealServiceActivityRepository
 from API.historical_pm_cmon_staging_repository import HistoricalPMCMONStagingRepository
 from API.pm_occurrence_gateway import PMOccurrenceGateway
 from API.pm_occurrence_repository import PMOccurrenceRepository
@@ -115,15 +116,16 @@ def _resolve_import_database_config() -> DatabaseConfig:
             port=int(os.getenv("AI5R_POSTGRES_PORT", "5432")),
             user=os.getenv("AI5R_POSTGRES_USER", "ai5r"),
             password=os.getenv("AI5R_POSTGRES_PASSWORD", ""),
-            database=os.getenv("AI5R_LTSA_POSTGRES_DB", "ai5r_runtime"),
+            database=os.getenv("AI5R_LTSA_POSTGRES_DB", "ltsa_brain"),
         )
 
-    default_env_file = CORE_SERVICES_DIR / "RUNTIME" / ".env.verify.local"
+    local_verify = CORE_SERVICES_DIR / "RUNTIME" / ".env.verify.local"
+    default_env_file = local_verify if local_verify.exists() else CORE_SERVICES_DIR / "RUNTIME" / ".env.example"
     default_compose_file = CORE_SERVICES_DIR / "RUNTIME" / "compose.yaml"
     return DatabaseConfig(
         env_file=Path(os.getenv("AI5R_IMPORT_ENV_FILE") or default_env_file),
         compose_file=Path(os.getenv("AI5R_IMPORT_COMPOSE_FILE") or default_compose_file),
-        database=os.getenv("AI5R_LTSA_POSTGRES_DB", "ai5r_runtime"),
+        database=os.getenv("AI5R_LTSA_POSTGRES_DB", "ltsa_brain"),
     )
 
 
@@ -229,6 +231,7 @@ _seal_inspection_repository = SealInspectionRepository(_import_database_runner)
 _seal_repair_repository = SealRepairRepository(_import_database_runner)
 _seal_warranty_assessment_repository = SealWarrantyAssessmentRepository(_import_database_runner)
 _installation_report_fitment_repository = InstallationReportFitmentRepository(_import_database_runner)
+_historical_seal_service_activity_repository = HistoricalSealServiceActivityRepository(_import_database_runner)
 
 # MWO-LTSA-031D -- built from the same singleton Gateway instances above,
 # not fresh ones -- no second set of Gateways is constructed anywhere.
@@ -277,6 +280,7 @@ _equipment_timeline_service = EquipmentTimelineService(
     seal_warranty_assessment_repository=_seal_warranty_assessment_repository,
     installation_report_fitment_repository=_installation_report_fitment_repository,
     mechanical_seal_stock_repository=_mechanical_seal_stock_repository,
+    historical_seal_service_activity_repository=_historical_seal_service_activity_repository,
 )
 
 _seal_leak_diagnostic_service = SealLeakDiagnosticService(
@@ -555,6 +559,10 @@ def get_seal_warranty_assessment_repository() -> SealWarrantyAssessmentRepositor
 
 def get_installation_report_fitment_repository() -> InstallationReportFitmentRepository:
     return _installation_report_fitment_repository
+
+
+def get_historical_seal_service_activity_repository() -> HistoricalSealServiceActivityRepository:
+    return _historical_seal_service_activity_repository
 
 
 _ltsa_analytics_service = LTSAAnalyticsService(_import_database_runner)

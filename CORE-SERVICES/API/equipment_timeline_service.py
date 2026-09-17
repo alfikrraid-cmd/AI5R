@@ -91,6 +91,7 @@ class EquipmentTimelineService:
         seal_warranty_assessment_repository: Any | None = None,
         installation_report_fitment_repository: Any | None = None,
         mechanical_seal_stock_repository: Any | None = None,
+        historical_seal_service_activity_repository: Any | None = None,
     ) -> None:
         self._knowledge_service = knowledge_service or LTSAKnowledgeService()
         self._installation_gateway = installation_gateway or InstallationGateway()
@@ -104,6 +105,7 @@ class EquipmentTimelineService:
         self._seal_warranty_assessment_repository = seal_warranty_assessment_repository
         self._installation_report_fitment_repository = installation_report_fitment_repository
         self._mechanical_seal_stock_repository = mechanical_seal_stock_repository
+        self._historical_seal_service_activity_repository = historical_seal_service_activity_repository
 
     @property
     def _seal_repos_available(self) -> bool:
@@ -186,7 +188,7 @@ class EquipmentTimelineService:
         failure_events = self._build_failure_events(knowledge.breakdown_history)
 
         seal_events: tuple[TimelineEvent, ...] = ()
-        if self._seal_repos_available:
+        if self._seal_repos_available or self._historical_seal_service_activity_repository is not None:
             seal_events = build_seal_events_for_pump(
                 tag_number,
                 seal_lifecycle_event_repository=self._seal_lifecycle_event_repository,
@@ -194,6 +196,7 @@ class EquipmentTimelineService:
                 seal_repair_repository=self._seal_repair_repository,
                 seal_warranty_assessment_repository=self._seal_warranty_assessment_repository,
                 installation_report_fitment_repository=self._installation_report_fitment_repository,
+                historical_seal_service_activity_repository=self._historical_seal_service_activity_repository,
             )
 
         lifecycle_events: list[TimelineEvent] = []
