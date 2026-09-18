@@ -7,7 +7,10 @@ describe("permissions", () => {
     // goes through can()/visibleTabKeys(), same as production callers must.
     const tapAdmin = { role: ROLES.TAP_ADMIN };
     expect(can(tapAdmin, PERMISSIONS.IMPORT_EXECUTE)).toBe(true);
-    expect(can(tapAdmin, PERMISSIONS.ADMIN_ACCESS)).toBe(true);
+    expect(can(tapAdmin, PERMISSIONS.ADMIN_ACCESS)).toBe(false);
+    expect(can(tapAdmin, PERMISSIONS.WHATSAPP_ADMIN)).toBe(true);
+    expect(can(tapAdmin, "admin.superuser")).toBe(false);
+    expect(can(tapAdmin, "admin.users")).toBe(true);
   });
 
   it("TAP_ENGINEER sees engineering capability but not admin/import", () => {
@@ -121,6 +124,10 @@ describe("permissions", () => {
   it("SUPERUSER (fallback fixture) sees admin access and every engineering capability", () => {
     const session = { role: ROLES.SUPERUSER };
     expect(can(session, PERMISSIONS.ADMIN_ACCESS)).toBe(true);
+    expect(can(session, PERMISSIONS.WHATSAPP_ADMIN)).toBe(true);
+    expect(can(session, "admin.superuser")).toBe(true);
+    expect(can(session, "admin.users")).toBe(true);
+    expect(visibleTabKeys(session)).toContain("whatsapp-groups");
     expect(can(session, PERMISSIONS.IMPORT_EXECUTE)).toBe(true);
     expect(can(session, PERMISSIONS.PUMP_READ)).toBe(true);
   });

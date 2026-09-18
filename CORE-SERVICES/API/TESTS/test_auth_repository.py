@@ -213,9 +213,10 @@ def test_create_user_writes_normalized_username_and_nullable_email():
     repo.create_user(username=" Ravi ", email=None, password_hash="scrypt$...", created_by="actor-uuid")
 
     sql = runner.scalar_calls[0]
-    assert "INSERT INTO users (username, email, password_hash" in sql
+    assert "INSERT INTO users (username, name, email, password_hash" in sql
     assert "'ravi'" in sql
     assert "NULL" in sql
+    assert "'scrypt$...'" in sql
 
 
 def test_find_user_by_username_uses_normalized_username_lookup():
