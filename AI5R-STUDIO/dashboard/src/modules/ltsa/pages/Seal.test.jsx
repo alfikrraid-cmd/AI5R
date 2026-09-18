@@ -21,6 +21,7 @@ import {
   getEngineeringDrawingRevisions,
   getEngineeringDrawingBom,
   getConditionMonitoringReadings,
+  getSealUsageHistory,
 } from "../../../api/ai5rClient";
 import sampleSeals from "../data/sampleSeals";
 
@@ -65,6 +66,7 @@ vi.mock("../../../api/ai5rClient", () => ({
   getEngineeringDrawingRevisions: vi.fn(),
   getEngineeringDrawingBom: vi.fn(),
   getConditionMonitoringReadings: vi.fn(),
+  getSealUsageHistory: vi.fn(),
 }));
 
 beforeEach(() => {
@@ -106,6 +108,10 @@ beforeEach(() => {
   // now fetches it (genuine Condition Monitoring, bounded to the resolved
   // asset). Additive only.
   getConditionMonitoringReadings.mockResolvedValue([]);
+  // R2J -- getSealUsageHistory added, same reason: Seal.jsx now fetches it
+  // once a seal is selected (Usage History tab, SealOpenDesignView.jsx).
+  // Additive only.
+  getSealUsageHistory.mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -399,5 +405,45 @@ describe("Seal workspace -- Contract Coverage card (MWO-LTSA-044)", () => {
     // page -- getAllByText, not getByText.
     expect(screen.getAllByText("Engineering AI").length).toBeGreaterThan(0);
     expect(screen.getByText("Asset Analytics")).toBeTruthy();
+  });
+});
+
+// MWO-LTSA-SEAL-USAGE-HISTORY-READ-MODEL-001 (R2J) -- Usage History tab
+// wiring. Mirrors the R2B Drawings/BOM fetch discipline: one bounded,
+// per-selection call to getSealUsageHistory(sealCode), never fetched on
+// the sealsProp path, never called more than once per selection.
+describe("Seal workspace -- Usage History fetch wiring (R2J)", () => {
+  it("calls getSealUsageHistory exactly once, with the selected seal's code, when a seal is selected", async () => {
+    getSeals.mockResolvedValue(RAW_SEALS);
+    getSealUsageHistory.mockResolvedValue([]);
+    render(<Seal />);
+    await screen.findByText("MS-FS-0101");
+
+    fireEvent.click(screen.getByText("MS-FS-0101"));
+    fireEvent.click(screen.getByRole("tab", { name: "Usage History" }));
+
+    expect(await screen.findByText(/no usage history recorded for this mechanical seal/i)).toBeTruthy();
+    expect(getSealUsageHistory).toHaveBeenCalledTimes(1);
+    expect(getSealUsageHistory).toHaveBeenCalledWith("SC-101");
+  });
+
+  it("never calls getSealUsageHistory when a seals prop is explicitly provided (override, not the default fetch path)", () => {
+    render(<Seal seals={sampleSeals} />);
+    fireEvent.click(screen.getByText("MS-JC-0001"));
+
+    expect(getSealUsageHistory).not.toHaveBeenCalled();
+  });
+
+  it("shows an explicit, recoverable error state (not a silently empty history) when the API call fails", async () => {
+    getSeals.mockResolvedValue(RAW_SEALS);
+    getSealUsageHistory.mockRejectedValue(new Error("Seal Usage History API unavailable"));
+    render(<Seal />);
+    await screen.findByText("MS-FS-0101");
+
+    fireEvent.click(screen.getByText("MS-FS-0101"));
+    fireEvent.click(screen.getByRole("tab", { name: "Usage History" }));
+
+    expect(await screen.findByTestId("seal-usage-history-error")).toBeTruthy();
+    expect(screen.queryByText(/no usage history recorded/i)).toBeNull();
   });
 });

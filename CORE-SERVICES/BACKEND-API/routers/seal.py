@@ -9,6 +9,7 @@ from dependencies import (
     get_engineering_drawing_repository,
     get_import_database_runner,
     get_installation_report_fitment_repository,
+    get_installation_report_repository,
     get_pump_gateway,
     get_seal_gateway,
     get_seal_inspection_repository,
@@ -24,6 +25,7 @@ from dependencies import (
 from API.auth_service import AuthenticatedIdentity, resolve_area_scope
 from API.pump_area_scope import filter_records_by_asset_scope, is_area_in_scope, resolve_asset_area
 from API.seal_equipment_history_service import build_seal_unit_history
+from API.mechanical_seal_usage_history_service import list_seal_usage_history
 from API.seal_lifecycle_service import (
     IncompatiblePumpError,
     InvalidLifecycleTransitionError,
@@ -131,6 +133,35 @@ def list_seal_engineering_drawings(
 ) -> Payload:
     rows = repository.list_drawings_for_seal(seal_code, scope=resolve_area_scope(current_user))
     return {"success": True, "data": rows}
+
+
+# MWO-LTSA-SEAL-USAGE-HISTORY-READ-MODEL-001 (R2I) -- pure read-time
+# projection (Chief-Architect-approved Option 1 in R2H: no new table, no
+# migration, no persistence), reusing InstallationReportRepository
+# (already the correct direct-DB path for installation_report -- its own
+# header comment records that InstallationGateway's n8n webhook was
+# never registered in production) and SealGateway (the same one
+# list_ltsa_seals above already trusts). All matching logic lives in
+# mechanical_seal_usage_history_service.py, an unmodified port of the
+# canonical classifier's own exact-match rule -- no fuzzy/substring
+# matching, no heuristic intervention classification from free text
+# (R2C's own proven boilerplate-summary trap). Deliberately UNSCOPED,
+# same "seal-catalog-shaped identity" precedent as list_ltsa_seals/
+# seal_units above -- a seal design's usage history is not one pump's
+# data to hide from another area.
+@router.get("/api/ltsa/seals/{seal_code}/usage-history")
+def list_seal_usage_history_route(
+    seal_code: str,
+    installation_report_repository=Depends(get_installation_report_repository),
+    seal_gateway=Depends(get_seal_gateway),
+) -> Payload:
+    installations = installation_report_repository.list_installations_for_usage_history()
+    seals_response = seal_gateway.list_seals()
+    registry_rows = seals_response.get("data") if isinstance(seals_response, dict) else None
+    if not isinstance(registry_rows, list):
+        registry_rows = []
+    events = list_seal_usage_history(installations, registry_rows, seal_code)
+    return {"success": True, "data": events}
 
 
 # MWO-LTSA-SEAL-UNIT-IDENTITY-FOUNDATION-001 -- read support only (no

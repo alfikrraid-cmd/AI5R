@@ -4,7 +4,7 @@ import AssetIdentityHeader, { HealthCard } from "./AssetIdentityHeader";
 import WorkspaceTabStrip from "./WorkspaceTabStrip";
 import { IconSeal } from "./LTSANavIcons";
 import { Section, InfoRow, StatusSignal, RefGroup } from "./open-design";
-import { Table } from "../../../design-system";
+import { Table, Badge, EmptyState } from "../../../design-system";
 import {
   EngineeringAIStatus,
   EngineeringAISummary,
@@ -83,6 +83,65 @@ function lifecycleCurrentIndex(status) {
   return 1;
 }
 
+// MWO-LTSA-SEAL-USAGE-HISTORY-READ-MODEL-001 (R2J) -- presentation-only
+// label maps over the R2I backend's structured vocabulary (mission
+// sections 5/6/10). UNKNOWN is NOT an error -- every unmapped/unknown
+// intervention_type falls back to the same neutral "Intervention Not
+// Classified" label, never a crash or a fabricated guess. Frontend never
+// parses summary/site_activities/BOM free text to pick a different label
+// here -- these maps only ever key off the backend's own structured
+// intervention_type/intervention_actions/master_association_status
+// fields.
+const USAGE_HISTORY_INTERVENTION_LABEL = {
+  NEW_INSTALLATION: "New Installation",
+  REPLACEMENT: "Mechanical Seal Replacement",
+  REPAIR: "Repair",
+  REINSTALLATION: "Reinstallation",
+  INSPECTION: "Inspection",
+  OTHER: "Other",
+  UNKNOWN: "Intervention Not Classified",
+};
+
+function usageHistoryInterventionLabel(interventionType) {
+  return USAGE_HISTORY_INTERVENTION_LABEL[interventionType] || USAGE_HISTORY_INTERVENTION_LABEL.UNKNOWN;
+}
+
+// COMPONENT_REPLACE != COMPLETE_SEAL_REPLACE (hard invariant carried from
+// R2C/R2G/R2H/R2I) -- a component-level replacement must never read as a
+// complete mechanical seal replacement.
+const USAGE_HISTORY_ACTION_LABEL = {
+  COMPONENT_REPLACE: "Components replaced",
+  REINSTALL: "Seal reinstalled",
+  CLEAN: "Cleaned",
+  LAPPING: "Lapping",
+  COMPLETE_SEAL_REPLACE: "Complete mechanical seal replaced",
+};
+
+function usageHistoryDetail(event) {
+  if (event.detail && String(event.detail).trim()) {
+    return event.detail;
+  }
+  const actions = Array.isArray(event.intervention_actions) ? event.intervention_actions : [];
+  if (actions.length === 0) {
+    return "—";
+  }
+  return actions.map((action) => USAGE_HISTORY_ACTION_LABEL[action] || action).join(", ");
+}
+
+const USAGE_HISTORY_STATUS_LABEL = {
+  CONFIRMED: "Confirmed",
+  AMBIGUOUS: "Review Required",
+  UNRESOLVED: "Master Unresolved",
+  PROVENANCE_HOLD: "Provenance Hold",
+};
+
+const USAGE_HISTORY_STATUS_VARIANT = {
+  CONFIRMED: "success",
+  AMBIGUOUS: "warning",
+  UNRESOLVED: "warning",
+  PROVENANCE_HOLD: "danger",
+};
+
 export default function SealOpenDesignView({
   seal,
   stock,
@@ -99,10 +158,14 @@ export default function SealOpenDesignView({
   linkedDrawingsError = null,
   drawingBomGroups = [],
   bomLoading = false,
+  usageHistory = [],
+  usageHistoryLoading = false,
+  usageHistoryError = null,
   canEditIdentifiers = false,
   onUpdateIdentifiers,
   onOpenPump,
   onOpenDrawing,
+  onOpenInstallationSource,
   onBack,
   aiResponse,
   aiReady,
@@ -131,6 +194,12 @@ export default function SealOpenDesignView({
     { key: "drawings", label: "Drawings" },
     { key: "bom", label: "BOM" },
     { key: "history", label: "History" },
+    // R2J -- Usage History: a live, read-time projection over
+    // installation_report x seal_registry (GET /api/ltsa/seals/{seal_code}
+    // /usage-history), distinct from the existing "History" tab above
+    // (which remains PM/CM/WorkOrder Related Engineering + Lifecycle,
+    // unchanged).
+    { key: "usage-history", label: "Usage History" },
     { key: "ai-insight", label: "AI Insight" },
   ];
 
@@ -643,6 +712,105 @@ export default function SealOpenDesignView({
                   </div>
                 );
               })}
+            </div>
+          </Section>
+        </div>
+      )}
+
+      {activeTab === "usage-history" && (
+        <div className="workspace-tab-body">
+          <Section id="usage-history-section" title="Usage History">
+            <div style={{ marginTop: "var(--space-2)" }} data-od-id="usage-history-list">
+              {usageHistoryLoading ? (
+                <p className="confidence-label" data-testid="seal-usage-history-loading">
+                  Loading usage history…
+                </p>
+              ) : usageHistoryError ? (
+                <p className="confidence-label" role="alert" data-testid="seal-usage-history-error">
+                  {usageHistoryError}
+                </p>
+              ) : usageHistory.length === 0 ? (
+                <EmptyState
+                  title="No usage history"
+                  description="No usage history recorded for this mechanical seal."
+                />
+              ) : (
+                <Table
+                  rowKey="event_id"
+                  // See the BOM table's own comment above -- design-system's
+                  // Table has no render-callback support, it renders
+                  // item[column.key] verbatim. Cell values below are either
+                  // plain display strings or, for SOURCE/STATUS, pre-built
+                  // React elements (Table happily renders any node as a
+                  // table-cell child) -- never a `render` prop that would
+                  // silently never run.
+                  data={usageHistory.map((event) => {
+                    const statusKey = event.master_association_status;
+                    const isProvenanceHold =
+                      statusKey === "PROVENANCE_HOLD" || event.review?.provenance === "CONTRADICTION_FOUND";
+                    const isClickableInstallationSource =
+                      event.source_type === "INSTALLATION_REPORT" &&
+                      !!event.source_id &&
+                      typeof onOpenInstallationSource === "function";
+
+                    return {
+                      event_id: event.event_id,
+                      date: event.event_date || "—",
+                      pump: event.pump_tag || "—",
+                      eventLabel: usageHistoryInterventionLabel(event.intervention_type),
+                      detail: usageHistoryDetail(event),
+                      runningDays: event.running_days == null ? "N/A" : String(event.running_days),
+                      source: isClickableInstallationSource ? (
+                        <button
+                          type="button"
+                          className="btn-link"
+                          data-testid="seal-usage-history-source-link"
+                          onClick={() => onOpenInstallationSource(event.source_id)}
+                        >
+                          Installation Report
+                        </button>
+                      ) : event.source_type === "INSTALLATION_REPORT" ? (
+                        "Installation Report"
+                      ) : (
+                        event.source_type || "—"
+                      ),
+                      status: (
+                        // Three review dimensions (intervention/
+                        // master_association/provenance) stay independent
+                        // signals, never collapsed into one flag: the badge
+                        // reflects master_association_status only, and a
+                        // provenance contradiction gets its own always-
+                        // visible caption below it -- never hover-only,
+                        // never hidden even when the type/size match looks
+                        // clean (R2G's INSTL-041-2026 precedent).
+                        <div data-testid="seal-usage-history-status-cell">
+                          <Badge variant={USAGE_HISTORY_STATUS_VARIANT[statusKey] || "purple"}>
+                            {USAGE_HISTORY_STATUS_LABEL[statusKey] || statusKey}
+                          </Badge>
+                          {isProvenanceHold && (
+                            <div
+                              className="confidence-label"
+                              data-testid="seal-usage-history-provenance-warning"
+                              style={{ marginTop: "var(--space-1)" }}
+                            >
+                              Provenance contradiction — source identity not confirmed.
+                            </div>
+                          )}
+                        </div>
+                      ),
+                    };
+                  })}
+                  columns={[
+                    { key: "date", header: "Date" },
+                    { key: "pump", header: "Pump" },
+                    { key: "eventLabel", header: "Event" },
+                    { key: "detail", header: "Detail" },
+                    { key: "runningDays", header: "Running Days" },
+                    { key: "source", header: "Source" },
+                    { key: "status", header: "Status" },
+                  ]}
+                />
+              )}
             </div>
           </Section>
         </div>

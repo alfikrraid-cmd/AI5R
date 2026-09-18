@@ -9,7 +9,7 @@ import {
   getSeals, getSealCompatibility, getSealStock, postEngineeringAI,
   getPMSchedules, getCMReports, getWorkOrders, updateSealIdentifiers,
   getDocuments, getEngineeringDrawingsForSeal, getEngineeringDrawingRevisions,
-  getEngineeringDrawingBom, getConditionMonitoringReadings,
+  getEngineeringDrawingBom, getConditionMonitoringReadings, getSealUsageHistory,
 } from "../../../api/ai5rClient";
 import { mapSealRecord, resolveCompatiblePumps, resolveStock } from "../utils/sealMapping";
 import { useOptionalAuth } from "../auth/AuthContext";
@@ -455,6 +455,45 @@ export default function Seal({ seals: sealsProp, onNavigate }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sealsProp, selectedSeal?.code]);
 
+  // MWO-LTSA-SEAL-USAGE-HISTORY-READ-MODEL-001 (R2J) -- Usage History tab,
+  // distinct from the existing History tab (PM/CM/WorkOrder) above. Same
+  // per-selection, sealsProp-gated discipline as Documents/Drawings: one
+  // GET /api/ltsa/seals/{seal_code}/usage-history call per selected seal,
+  // never a loop, never fetched on the sealsProp path. A fetch failure
+  // surfaces as an explicit, recoverable error state -- never silently
+  // downgraded to an empty history.
+  const [usageHistory, setUsageHistory] = useState([]);
+  const [usageHistoryLoading, setUsageHistoryLoading] = useState(false);
+  const [usageHistoryError, setUsageHistoryError] = useState(null);
+
+  useEffect(() => {
+    if (sealsProp !== undefined || !selectedSeal) {
+      setUsageHistory([]);
+      setUsageHistoryError(null);
+      setUsageHistoryLoading(false);
+      return undefined;
+    }
+    let active = true;
+    setUsageHistoryLoading(true);
+    setUsageHistoryError(null);
+    getSealUsageHistory(selectedSeal.code)
+      .then((events) => {
+        if (!active) return;
+        setUsageHistory(events);
+        setUsageHistoryError(null);
+      })
+      .catch((error) => {
+        if (active) {
+          setUsageHistory([]);
+          setUsageHistoryError(error?.message || "Usage history could not be loaded.");
+        }
+      })
+      .finally(() => {
+        if (active) setUsageHistoryLoading(false);
+      });
+    return () => { active = false; };
+  }, [sealsProp, selectedSeal?.code]);
+
   // MWO-LTSA-042/042A -- Open Pump / Open Drawing reuse the exact same
   // onNavigate(key, context) mechanism every other cross-workspace link
   // in this codebase already uses (CMDetailPanel's "Related Pump":
@@ -479,6 +518,17 @@ export default function Seal({ seals: sealsProp, onNavigate }) {
   // navContext shape.
   function handleOpenDrawing() {
     onNavigate?.("drawing", { assetTag: resolvedAssetCode });
+  }
+
+  // MWO-LTSA-SEAL-USAGE-HISTORY-READ-MODEL-001 (R2J) -- Usage History's
+  // SOURCE column links to the Installation Workspace via the exact same
+  // onNavigate(key, {selectId}) contract InstallationWorkspace.jsx already
+  // honors (navContext.selectId matched against installation.id, which
+  // mapInstallationRecord() sets to record.installation_code -- the same
+  // value the usage-history event's own source_id carries). No new route,
+  // no new navContext shape.
+  function handleOpenInstallationSource(installationCode) {
+    onNavigate?.("installation", { selectId: installationCode });
   }
 
   const [aiResponse, setAiResponse] = useState(null), [aiLoading, setAiLoading] = useState(false), [aiError, setAiError] = useState(null);
@@ -590,10 +640,14 @@ export default function Seal({ seals: sealsProp, onNavigate }) {
                   linkedDrawingsError={linkedDrawingsError}
                   drawingBomGroups={drawingBomGroups}
                   bomLoading={bomLoading}
+                  usageHistory={usageHistory}
+                  usageHistoryLoading={usageHistoryLoading}
+                  usageHistoryError={usageHistoryError}
                   canEditIdentifiers={canEditIdentifiers}
                   onUpdateIdentifiers={handleUpdateIdentifiers}
                   onOpenPump={handleOpenPump}
                   onOpenDrawing={handleOpenDrawing}
+                  onOpenInstallationSource={handleOpenInstallationSource}
                   onBack={() => onNavigate?.("dashboard")}
                   aiResponse={aiResponse}
                   aiReady={aiReady}

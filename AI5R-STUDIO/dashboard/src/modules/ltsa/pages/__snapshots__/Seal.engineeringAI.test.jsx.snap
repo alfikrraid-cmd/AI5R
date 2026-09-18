@@ -153,6 +153,14 @@ exports[`Snapshot > matches the SealOpenDesignView Engineering AI section snapsh
         History
       </button>
       <button
+        aria-selected="false"
+        class="workspace-tab"
+        role="tab"
+        type="button"
+      >
+        Usage History
+      </button>
+      <button
         aria-selected="true"
         class="workspace-tab is-active"
         role="tab"

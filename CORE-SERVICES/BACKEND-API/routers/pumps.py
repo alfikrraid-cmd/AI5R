@@ -15,12 +15,14 @@ from API.maintenance_intelligence_service import (
     get_pump_last_pm,
     get_pump_spare_parts,
 )
+from API.mechanical_seal_usage_history_service import list_pump_seal_usage_history
 from dependencies import (
     get_cm_report_gateway,
     get_condition_monitoring_reading_gateway,
     get_current_user,
     get_engineering_context_engine,
     get_equipment_timeline_service,
+    get_installation_report_repository,
     get_ltsa_knowledge_service,
     get_maintenance_history_gateway,
     get_pm_occurrence_gateway,
@@ -145,6 +147,33 @@ def get_ltsa_pump_open_work_orders(
         "openWO": len(work_orders),
         "data": work_orders,
     }
+
+
+# MWO-LTSA-SEAL-USAGE-HISTORY-READ-MODEL-001 (R2I) -- pump-centric mirror
+# of routers/seal.py's list_seal_usage_history_route: same pure
+# projection, same shared service module, but SCOPED via this file's own
+# _guard_tag_in_scope() (tag IS the pump, per that helper's own header
+# comment) -- every other pump-attributable sub-resource in this file
+# already gates the same way. Includes events regardless of master-
+# association resolution (R2H section 6/R2I section 8: unresolved
+# history is never discarded here) -- only routers/seal.py's own route
+# requires CONFIRMED.
+@router.get("/api/ltsa/pumps/{tag}/seal-usage-history")
+def get_ltsa_pump_seal_usage_history(
+    tag: str,
+    installation_report_repository=Depends(get_installation_report_repository),
+    seal_gateway=Depends(get_seal_gateway),
+    pump_gateway=Depends(get_pump_gateway),
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
+) -> Payload:
+    _guard_tag_in_scope(tag, pump_gateway, current_user)
+    installations = installation_report_repository.list_installations_for_usage_history()
+    seals_response = seal_gateway.list_seals()
+    registry_rows = seals_response.get("data") if isinstance(seals_response, dict) else None
+    if not isinstance(registry_rows, list):
+        registry_rows = []
+    events = list_pump_seal_usage_history(installations, registry_rows, tag)
+    return {"success": True, "data": events}
 
 
 # Last PM / lastPM (WO-PUMP-004, per ADR-PUMP-002; updated under

@@ -82,6 +82,21 @@ class InstallationReportRepository:
             "count": len(rows),
         }
 
+    def list_installations_for_usage_history(self) -> list[dict[str, Any]]:
+        # MWO-LTSA-SEAL-USAGE-HISTORY-READ-MODEL-001 (R2I) -- additive,
+        # narrow-purpose read: the exact columns
+        # mechanical_seal_usage_history_service.py's pure projection needs
+        # (seal_size and pump_tag_number beyond list_installations()'s own
+        # fixed 6-column set above, which Copilot's fleet-installation
+        # answer never needed). Same direct-DB pattern as every other
+        # method in this file -- no new table, no new gateway.
+        rows = _json_query(
+            "SELECT installation_code, report_date, plant_equip_no, pump_tag_number, "
+            "seal_code, seal_type, seal_size FROM installation_report",
+            self._runner,
+        )
+        return rows
+
     def find_by_installation_code(self, installation_code: str) -> dict[str, Any] | None:
         rows = _json_query(
             f"SELECT installation_code, pump_tag_number, source_document_name "

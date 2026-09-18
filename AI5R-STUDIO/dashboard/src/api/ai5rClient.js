@@ -1762,6 +1762,27 @@ export async function getEngineeringDrawingsForSeal(sealCode) {
     return Array.isArray(payload?.data) ? payload.data : [];
 }
 
+// MWO-LTSA-SEAL-USAGE-HISTORY-READ-MODEL-001 (R2J) -- single, bounded read
+// against the R2I read-time projection endpoint (GET
+// /api/ltsa/seals/{seal_code}/usage-history). Same list-unwrapping
+// convention as getEngineeringDrawingsForSeal() above. One call per
+// selected seal -- never called in a loop.
+export async function getSealUsageHistory(sealCode) {
+    const response = await apiFetch(`${API_URL}/api/ltsa/seals/${encodeURIComponent(sealCode)}/usage-history`);
+
+    if (!response.ok) {
+        throw new Error("Seal Usage History API unavailable");
+    }
+
+    const payload = await response.json();
+
+    if (payload?.success === false) {
+        throw new Error(payload?.message || "Seal Usage History API returned a failure");
+    }
+
+    return Array.isArray(payload?.data) ? payload.data : [];
+}
+
 export async function getEngineeringDrawingRevisions(drawingCode) {
     const response = await apiFetch(`${API_URL}/api/ltsa/engineering-drawings/${encodeURIComponent(drawingCode)}/revisions`);
 
