@@ -17,9 +17,36 @@
  * sealChamberShaftInspection, the four observation lists), so this is
  * also required for crash prevention, not just data-fidelity.
  */
-export function mapInstallationRecord(record) {
+// MWO-LTSA-INSTALLATION-UI-PHASE-1 -- pump_tag_number is the real FK
+// column (distinct from plantEquipNo's free-text transcription of the
+// report's own printed field); mapped separately so search/area-lookup
+// use the canonical identity, never the free-text one.
+//
+// area is NOT an installation_report column -- there is none (confirmed
+// against CANONICAL_SCHEMA.sql). It is resolved from the SAME canonical
+// pump/asset area every other LTSA workspace already reads (pumpMapping.js's
+// own `area: record.area`, sourced from GET /api/ltsa/pumps), passed in
+// here as `pumpAreaByTag` (a Map<pumpTagNumber, area> built once by the
+// caller from an already-fetched pump list) -- reusing the existing
+// canonical area source, never a second mapping system.
+//
+// assemblyGpn is NOT wired to a live source. The two tables that model
+// Assembly GPN (mechanical_seal_stock_pool/mechanical_seal_stock_application)
+// have no client-exposed, equipment-tag-keyed lookup today, and even if
+// they did, complete_seal_gpn is populated on only 2 of 226
+// mechanical_seal_stock_application rows and 0 of 44 mechanical_seal_stock_pool
+// rows system-wide (verified via production read-only audit) -- so wiring
+// it now would show "N/A" for effectively every record regardless. Kept
+// as an explicit null/N/A field rather than joined against seal_type
+// (which would be inferring GPN from Seal Type, explicitly disallowed)
+// so the slot exists and is correct the moment a real source appears.
+export function mapInstallationRecord(record, pumpAreaByTag) {
   return {
     id: record.installation_code,
+
+    pumpTagNumber: record.pump_tag_number ?? null,
+    area: pumpAreaByTag?.get(record.pump_tag_number) ?? null,
+    assemblyGpn: null,
 
     reportNo: record.report_no ?? null,
     tsoNo: record.tso_no ?? null,
@@ -121,4 +148,16 @@ export function mapInstallationRecord(record) {
       ? record.post_installation_readings
       : null,
   };
+}
+
+// MWO-LTSA-INSTALLATION-UI-PHASE-1 -- Phase 1 search only (Pump Tag +
+// Seal Type, per this MWO's own explicit scope; not a general/advanced
+// filter). Mirrors matchesDocumentSearch()'s own shape above.
+export function matchesInstallationSearch(installation, term) {
+  if (!term) {
+    return true;
+  }
+
+  const haystack = `${installation.pumpTagNumber ?? ""} ${installation.plantEquipNo ?? ""} ${installation.sealType ?? ""}`.toLowerCase();
+  return haystack.includes(term.toLowerCase());
 }

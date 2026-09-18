@@ -14,9 +14,16 @@ import {
 // getCMReports/getWorkOrders are gone: Pump.jsx now fetches ONE endpoint,
 // getPumpLifecycle(tag), for everything Related Engineering/Current
 // State/Compatibility used to resolve from five separate calls.
-// getPumpOpenWorkOrders stays -- it is a registry-list-level fetch
-// (PumpRegistryTable's own openWO column, resolved for every row), not a
-// lifecycle-detail concern, so it is unaffected by this MWO.
+//
+// MWO-PUMP-REGISTRY-N1-REMOVAL-R1 -- getPumpOpenWorkOrders is mocked here
+// only so withResolvedOpenWO()/getPumpOpenWorkOrders() staying importable
+// elsewhere doesn't break this file's module mock shape. The Pump
+// registry's initial load no longer calls it at all (it used to fire one
+// call per pump -- 252 in production -- via Promise.all, colliding with
+// nginx's own rate limiter for no real data, since the Work Order n8n
+// LIST workflow isn't deployed and work_order has 0 production rows
+// regardless). See the "N+1 removed" describe block below for the actual
+// proof.
 // MWO-LTSA-UI-V2-001 -- Seal & Inventory: getSeals()/getSealCompatibility()
 // are the two already-existing endpoints Seal.jsx already fetches, now
 // also fetched once (not per-pump) by Pump.jsx to enrich lifecycle's
@@ -123,6 +130,9 @@ const EMPTY_LIFECYCLE_DATA = {
 
 function loadPumps(records = PUMPS) {
   getPumps.mockResolvedValue(records);
+  // Not called by the initial registry load any more (see the "N+1
+  // removed" describe block below) -- mocked only so an unexpected call
+  // from unrelated code would fail loudly instead of hanging.
   getPumpOpenWorkOrders.mockResolvedValue({ success: true, openWO: 0, data: [] });
   getPumpLifecycle.mockResolvedValue({ success: true, tag_number: null, data: EMPTY_LIFECYCLE_DATA });
   getSeals.mockResolvedValue([]);
@@ -292,16 +302,63 @@ describe("Pump workspace page", () => {
     expect(onNavigate).toHaveBeenCalledWith("history", { assetTag: "305-P-2" });
   });
 
-  it("resolves openWO per pump via the canonical API", async () => {
-    loadPumps();
-    getPumpOpenWorkOrders.mockImplementation((tag) =>
-      Promise.resolve({ success: true, tag_number: tag, openWO: tag === "641-P-5" ? 2 : 0, data: [] })
-    );
-    render(<Pump />);
-    await screen.findByText("641-P-5");
+  // MWO-PUMP-REGISTRY-N1-REMOVAL-R1 -- replaces the old "resolves openWO
+  // per pump via the canonical API" test, which asserted exactly the N+1
+  // fan-out this MWO removes (one getPumpOpenWorkOrders call per pump,
+  // fired unconditionally on every registry load).
+  describe("Pump registry N+1 removed (MWO-PUMP-REGISTRY-N1-REMOVAL-R1)", () => {
+    it("calls getPumps exactly once on initial load", async () => {
+      loadPumps();
+      render(<Pump />);
+      await screen.findByText("211-P-1A");
 
-    expect(getPumpOpenWorkOrders).toHaveBeenCalledWith("641-P-5");
-    expect(screen.getByText("2")).toBeTruthy();
+      expect(getPumps).toHaveBeenCalledOnce();
+    });
+
+    it("makes ZERO getPumpOpenWorkOrders calls on initial load", async () => {
+      loadPumps();
+      render(<Pump />);
+      await screen.findByText("211-P-1A");
+
+      expect(getPumpOpenWorkOrders).not.toHaveBeenCalled();
+    });
+
+    it("still makes ZERO per-pump Work Order calls with 252 pumps (production-scale)", async () => {
+      const manyPumps = Array.from({ length: 252 }, (_, i) => ({
+        tag_number: `TAG-${i}`,
+        name: `Pump ${i}`,
+        area: "Area",
+        manufacturer: "Mfr",
+        pump_type: "Centrifugal",
+        seal_type: "Type",
+        location: "Loc",
+        status: "RUNNING",
+        criticality: "MEDIUM",
+      }));
+      loadPumps(manyPumps);
+      render(<Pump />);
+      await screen.findByText("TAG-0");
+
+      expect(getPumps).toHaveBeenCalledOnce();
+      expect(getPumpOpenWorkOrders).not.toHaveBeenCalled();
+    });
+
+    it("renders the registry once the pump list resolves, with no Work Order dependency", async () => {
+      loadPumps();
+      render(<Pump />);
+
+      for (const pump of PUMPS) {
+        expect(await screen.findByText(pump.tag_number)).toBeTruthy();
+      }
+    });
+
+    it("shows N/A, never a fabricated 0, for openWO since it is never resolved during initial load", async () => {
+      loadPumps();
+      render(<Pump />);
+      await screen.findByText("211-P-1A");
+
+      expect(screen.getAllByText("N/A").length).toBeGreaterThan(0);
+    });
   });
 
   it("resolves lifecycle lazily for the selected pump only, via the canonical API", async () => {
@@ -765,5 +822,183 @@ describe("Engineering Navigation (MWO-LTSA-070)", () => {
     const cmonRow = (await screen.findByText("Condition Monitoring CMONR-2")).closest(".part-item");
 
     expect(cmonRow.textContent).not.toContain("Same Visit");
+  });
+});
+
+// MWO-ASSET360-CARD-COMPLETENESS-R1 -- Current Seal/Current Installation
+// (Overview tab) and Documents (Documents tab) now surface fields that
+// were already mapped by pumpLifecycleMapping.js but never rendered
+// (shaftSize/material/reportNo/sourceDocumentName) or were hardcoded to
+// an unconditional empty string (Documents). No new API call, no new
+// mapping -- see PumpOpenDesignView.jsx's own comments at each change.
+describe("Asset360 card completeness (MWO-ASSET360-CARD-COMPLETENESS-R1)", () => {
+  const CARD_TAG = "211-P-8A";
+
+  const CARD_PUMPS = [
+    {
+      tag_number: CARD_TAG,
+      name: "Debutanizer Feed Pump",
+      area: "FRAKSINASI",
+      manufacturer: null,
+      pump_type: "BB",
+      seal_type: "T48MP",
+      location: null,
+      status: "RUNNING",
+      criticality: null,
+    },
+  ];
+
+  function currentStateWith(overrides) {
+    return {
+      ...EMPTY_LIFECYCLE_DATA.current_state,
+      ...overrides,
+    };
+  }
+
+  async function renderCard(currentState) {
+    getPumps.mockResolvedValue(CARD_PUMPS);
+    getPumpOpenWorkOrders.mockResolvedValue({ success: true, openWO: 0, data: [] });
+    getSeals.mockResolvedValue([]);
+    getSealCompatibility.mockResolvedValue([]);
+    postEngineeringAI.mockResolvedValue({
+      summary: "", findings: [], confidence: null, evidence: [], recommendations: [],
+      risk: null, remaining_life: null, provider: "UNKNOWN", model: "UNKNOWN", latency: 0,
+      token_usage: {}, trace_id: "trace-test", execution_status: "SUCCESS", source_references: [], error: null,
+    });
+    getPumpLifecycle.mockResolvedValue({
+      success: true,
+      tag_number: CARD_TAG,
+      data: { ...EMPTY_LIFECYCLE_DATA, tag_number: CARD_TAG, current_state: currentState },
+    });
+
+    render(<Pump />);
+    await screen.findByText(CARD_TAG);
+    fireEvent.click(screen.getByText(CARD_TAG));
+    await screen.findByRole("heading", { name: CARD_TAG });
+  }
+
+  const REAL_INSTALLATION = {
+    installation_code: "INSTL-042-2026",
+    report_no: "042/INSTL/TAP/06-2026",
+    report_date: "2026-06-08",
+    plant_equip_no: CARD_TAG,
+    seal_code: null,
+    seal_type: "T48MP",
+    seal_manufacture: "John Crane",
+    drawing_no: "E12894",
+    source_document_name: "SCAN 042 INSTALLATION REPORT 211-P-8A.pdf",
+  };
+
+  const REAL_SEAL = {
+    seal_code: null,
+    seal_name: null,
+    manufacturer: "John Crane",
+    model: null,
+    shaft_size: '3.1/2"',
+    material: "QAR171/P",
+    temperature_limit: null,
+    pressure_limit: null,
+    status: null,
+    installation_code: "INSTL-042-2026",
+    installed_at: "2026-06-08",
+    source: "installation_report",
+  };
+
+  // A + B
+  it("A/B: Current Seal card renders Shaft Size and Material", async () => {
+    await renderCard(currentStateWith({ current_installation: REAL_INSTALLATION, current_seal: REAL_SEAL }));
+
+    expect(await screen.findByText("Shaft Size")).toBeTruthy();
+    expect(screen.getByText('3.1/2"')).toBeTruthy();
+    expect(screen.getByText("Material")).toBeTruthy();
+    expect(screen.getByText("QAR171/P")).toBeTruthy();
+
+    // Pre-existing fields must still be present, unchanged (preserve rule).
+    // getAllByText, not getByText: "Manufacturer" is also a real, unrelated
+    // Asset Information label on this same page.
+    expect(screen.getAllByText("Manufacturer").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("John Crane").length).toBeGreaterThan(0);
+  });
+
+  // C + D
+  it("C/D: missing Shaft Size/Material fall back to the established Not Available label", async () => {
+    const sealWithoutShaftOrMaterial = { ...REAL_SEAL, shaft_size: null, material: null };
+    await renderCard(currentStateWith({ current_installation: REAL_INSTALLATION, current_seal: sealWithoutShaftOrMaterial }));
+
+    expect(await screen.findByText("Shaft Size")).toBeTruthy();
+    expect(screen.getByText("Material")).toBeTruthy();
+    // Not Available appears for both, plus possibly other fields -- at
+    // least 2 occurrences proves neither was silently dropped or fabricated.
+    expect(screen.getAllByText("Not Available").length).toBeGreaterThanOrEqual(2);
+  });
+
+  // E + F
+  it("E/F: Current Installation card renders Report No and Source Document", async () => {
+    await renderCard(currentStateWith({ current_installation: REAL_INSTALLATION, current_seal: REAL_SEAL }));
+
+    expect(await screen.findByText("Report No")).toBeTruthy();
+    expect(screen.getByText("042/INSTL/TAP/06-2026")).toBeTruthy();
+    expect(screen.getByText("Source Document")).toBeTruthy();
+    expect(screen.getByText("SCAN 042 INSTALLATION REPORT 211-P-8A.pdf")).toBeTruthy();
+
+    // Pre-existing fields must still be present, unchanged.
+    expect(screen.getByText("Installation Code")).toBeTruthy();
+    expect(screen.getByText("INSTL-042-2026")).toBeTruthy();
+    expect(screen.getByText("Drawing No")).toBeTruthy();
+    expect(screen.getByText("E12894")).toBeTruthy();
+  });
+
+  // G
+  it("G: no installation at all is handled safely -- honest Not Available, no crash", async () => {
+    await renderCard(currentStateWith({ current_installation: null, current_seal: null }));
+
+    expect(await screen.findAllByText("Not Available")).toBeTruthy();
+  });
+
+  // H
+  it("H: Documents tab shows the honest empty state when relatedEngineering.documents is []", async () => {
+    await renderCard(currentStateWith({ current_installation: REAL_INSTALLATION, current_seal: REAL_SEAL }));
+    fireEvent.click(screen.getByRole("tab", { name: "Documents" }));
+
+    expect(await screen.findByText(/No document types available yet\./)).toBeTruthy();
+  });
+
+  // I
+  it("I: Documents tab renders real document metadata and drops the unconditional empty string when documents exist", async () => {
+    const lifecycleWithDocuments = currentStateWith({ current_installation: REAL_INSTALLATION, current_seal: REAL_SEAL });
+    getPumps.mockResolvedValue(CARD_PUMPS);
+    getPumpOpenWorkOrders.mockResolvedValue({ success: true, openWO: 0, data: [] });
+    getSeals.mockResolvedValue([]);
+    getSealCompatibility.mockResolvedValue([]);
+    postEngineeringAI.mockResolvedValue({
+      summary: "", findings: [], confidence: null, evidence: [], recommendations: [],
+      risk: null, remaining_life: null, provider: "UNKNOWN", model: "UNKNOWN", latency: 0,
+      token_usage: {}, trace_id: "trace-test", execution_status: "SUCCESS", source_references: [], error: null,
+    });
+    getPumpLifecycle.mockResolvedValue({
+      success: true,
+      tag_number: CARD_TAG,
+      data: {
+        ...EMPTY_LIFECYCLE_DATA,
+        tag_number: CARD_TAG,
+        current_state: lifecycleWithDocuments,
+        related_engineering: {
+          ...EMPTY_LIFECYCLE_DATA.related_engineering,
+          documents: [
+            { document_code: "DOC-SEAL-DS-1", title: "Seal Datasheet T48MP", document_type: "DATASHEET", status: "APPROVED" },
+          ],
+        },
+      },
+    });
+
+    render(<Pump />);
+    await screen.findByText(CARD_TAG);
+    fireEvent.click(screen.getByText(CARD_TAG));
+    await screen.findByRole("heading", { name: CARD_TAG });
+    fireEvent.click(screen.getByRole("tab", { name: "Documents" }));
+
+    expect(await screen.findByText("Seal Datasheet T48MP")).toBeTruthy();
+    expect(screen.getByText("DATASHEET")).toBeTruthy();
+    expect(screen.queryByText(/No document types available yet\./)).toBeNull();
   });
 });

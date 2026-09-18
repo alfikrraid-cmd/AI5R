@@ -93,7 +93,13 @@ export default function PumpRegistryTable({ pumps, selectedCode, onSelect }) {
                     <span style={{ color: colors.textMuted }}>—</span>
                   )}
                 </td>
-                <td style={tdStyle}>{pump.openWO}</td>
+                {/* MWO-PUMP-REGISTRY-N1-REMOVAL-R1 -- openWO is now null
+                    whenever it hasn't been (or can't be) resolved, never a
+                    fabricated 0 -- render the honest "N/A", matching every
+                    other unresolved-field convention already used on this
+                    row (criticality's own "—" for a genuinely absent value
+                    is a different, disclosed case: see the comment above). */}
+                <td style={tdStyle}>{pump.openWO ?? "N/A"}</td>
                 <td style={tdStyle}>
                   <Badge variant={statusBadgeVariant(pump.status)}>{pump.status}</Badge>
                 </td>

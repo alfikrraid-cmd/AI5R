@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mapInstallationRecord } from "./installationMapping";
+import { mapInstallationRecord, matchesInstallationSearch } from "./installationMapping";
 import sampleInstallations from "../data/sampleInstallations";
 
 // MWO-LTSA-060 -- the raw shape a real installation_report row takes once
@@ -9,6 +9,7 @@ import sampleInstallations from "../data/sampleInstallations";
 // 002_seed.sql byte-for-byte).
 const RAW_RECORD = {
   installation_code: "INSTL-001-2026",
+  pump_tag_number: "211-P-14B",
   report_no: "001/INSTL /TAP/01-2026",
   tso_no: null,
   report_date: "January 06, 2026",
@@ -190,8 +191,15 @@ describe("mapInstallationRecord", () => {
 
     expect(mapped.id).toBe("INSTL-001-2026");
     expect(mapped.reportNo).toBe("001/INSTL /TAP/01-2026");
+    expect(mapped.pumpTagNumber).toBe("211-P-14B");
     expect(mapped.plantEquipNo).toBe("211-P-14B");
     expect(mapped.drawingNo).toBe("E12914");
+    // MWO-LTSA-INSTALLATION-UI-PHASE-1 -- no pumpAreaByTag map passed, so
+    // area stays honestly null rather than guessed from an unrelated field.
+    expect(mapped.area).toBeNull();
+    // No wired source exists yet -- always null, never derived from Seal
+    // Type/Seal Code.
+    expect(mapped.assemblyGpn).toBeNull();
     // MWO-LTSA-068 -- two previously-unmapped, already-existing columns.
     expect(mapped.sealCode).toBeNull();
     expect(mapped.sourceDocumentName).toBe("SCAN 001 INSTALLATION REPORT 211-P-14B.pdf");
@@ -209,6 +217,18 @@ describe("mapInstallationRecord", () => {
 
     expect(mapped.id).toBe(sampleInstallations[0].id);
     expect(mappedWithoutId).toEqual(expectedWithoutId);
+  });
+
+  it("resolves area from the given pumpAreaByTag map, keyed by the real pump_tag_number FK", () => {
+    const pumpAreaByTag = new Map([["211-P-14B", "HCC"]]);
+    const mapped = mapInstallationRecord(RAW_RECORD, pumpAreaByTag);
+    expect(mapped.area).toBe("HCC");
+  });
+
+  it("area stays null when the pump tag has no entry in the given map, never guessed", () => {
+    const pumpAreaByTag = new Map([["999-P-9", "OM_UTL"]]);
+    const mapped = mapInstallationRecord(RAW_RECORD, pumpAreaByTag);
+    expect(mapped.area).toBeNull();
   });
 
   it("defaults every nested array field to [], never null, when the column is null -- InstallationOpenDesignView.jsx calls unguarded .map() on them", () => {
@@ -294,5 +314,25 @@ describe("mapInstallationRecord", () => {
 
     const mapped = mapInstallationRecord(sparse);
     expect(mapped.postInstallationReadings).toBeNull();
+  });
+});
+
+describe("matchesInstallationSearch", () => {
+  const mapped = mapInstallationRecord(RAW_RECORD, new Map([["211-P-14B", "HCC"]]));
+
+  it("matches with no search term", () => {
+    expect(matchesInstallationSearch(mapped, "")).toBe(true);
+  });
+
+  it("matches by pump tag number, case-insensitive", () => {
+    expect(matchesInstallationSearch(mapped, "211-p-14b")).toBe(true);
+  });
+
+  it("matches by seal type", () => {
+    expect(matchesInstallationSearch(mapped, "T15W")).toBe(true);
+  });
+
+  it("does not match an unrelated term", () => {
+    expect(matchesInstallationSearch(mapped, "999-P-9")).toBe(false);
   });
 });

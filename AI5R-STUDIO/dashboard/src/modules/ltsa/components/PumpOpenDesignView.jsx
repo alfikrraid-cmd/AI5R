@@ -367,6 +367,10 @@ export default function PumpOpenDesignView({
       emptyReason: lifecycleEmptyReason,
     },
   ];
+  // MWO-ASSET360-CARD-COMPLETENESS-R1 -- the Documents TAB's own top
+  // section reuses this exact same group (see below) instead of
+  // maintaining a second, hardcoded "no documents" string.
+  const documentsGroup = relatedGroups.find((group) => group.id === "documents");
 
   // MWO-LTSA-070 -- Timeline events become clickable for the types that
   // have a real target workspace (INSTALLATION/PM/CM/WORK_ORDER, per this
@@ -561,6 +565,14 @@ export default function PumpOpenDesignView({
                     <InfoRow label="Manufacturer" value={fmtOrNotAvailable(currentSeal.manufacturer)} />
                     <InfoRow label="Model" value={fmtOrNotAvailable(currentSeal.model)} />
                     <InfoRow label="Status" value={fmtOrNotAvailable(currentSeal.status)} />
+                    {/* MWO-ASSET360-CARD-COMPLETENESS-R1 -- shaftSize/
+                        material already flow through pumpLifecycleMapping.js's
+                        mapCurrentSeal() (record.shaft_size/record.material) and
+                        the backend already returns real values (Asset360
+                        Installation direct-DB wire-in) -- this card simply
+                        never displayed them. No new fetch, no new mapping. */}
+                    <InfoRow label="Shaft Size" value={fmtOrNotAvailable(currentSeal.shaftSize)} />
+                    <InfoRow label="Material" value={fmtOrNotAvailable(currentSeal.material)} />
                   </>
                 ) : (
                   <InfoRow label="Current Seal" value={lifecycleLoading ? "Loading…" : NOT_AVAILABLE} />
@@ -571,8 +583,16 @@ export default function PumpOpenDesignView({
                 {currentInstallation ? (
                   <>
                     <InfoRow label="Installation Code" value={currentInstallation.installationCode ?? NOT_AVAILABLE} />
+                    {/* MWO-ASSET360-CARD-COMPLETENESS-R1 -- reportNo/
+                        sourceDocument were already mapped and already
+                        rendered one tab over (Documents' own Current
+                        Installation section below) -- added here too for
+                        at-a-glance completeness, same fields, same source,
+                        no new fetch. */}
+                    <InfoRow label="Report No" value={fmtOrNotAvailable(currentInstallation.reportNo)} />
                     <InfoRow label="Report Date" value={fmtOrNotAvailable(currentInstallation.reportDate)} />
                     <InfoRow label="Drawing No" value={fmtOrNotAvailable(currentInstallation.drawingNo)} />
+                    <InfoRow label="Source Document" value={fmtOrNotAvailable(currentInstallation.sourceDocumentName)} />
                   </>
                 ) : (
                   <InfoRow label="Installation" value={lifecycleLoading ? "Loading…" : NOT_AVAILABLE} />
@@ -687,9 +707,24 @@ export default function PumpOpenDesignView({
                 Buka Drawing →
               </button>
             </div>
-            <p className="confidence-label" style={{ marginTop: "var(--space-2)" }}>
-              No document types available yet.
-            </p>
+            {/* MWO-ASSET360-CARD-COMPLETENESS-R1 -- this used to be an
+                unconditional "No document types available yet." string,
+                never actually reading relatedEngineering.documents at all
+                -- reuses the SAME documentsGroup (identical id/items/
+                mapping) the Related Engineering tab's own "Documents"
+                RefGroup already builds below; no second fetch, no new
+                mapping, no new document backend, no invented URL/download
+                action. Still an honest empty state when there is nothing
+                to show (documentsGroup.items is [] until the separate,
+                already-identified seal-engineering-document n8n gap is
+                fixed -- out of this MWO's scope, not attempted here). */}
+            <div style={{ marginTop: "var(--space-2)" }}>
+              <RefGroup
+                title="Document Types"
+                items={documentsGroup.items}
+                emptyReason="No document types available yet."
+              />
+            </div>
           </section>
 
           <Section id="current-installation-section" title="Current Installation">

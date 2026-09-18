@@ -61,12 +61,33 @@ from ltsa_pump_inventory_db_upsert import _json_query, _sql  # noqa: E402
 if TYPE_CHECKING:
     from ltsa_pump_inventory_db_upsert import DatabaseRunner
 
-# Real installation_report columns (CANONICAL_SCHEMA.sql) -- only the ones
-# Copilot's fleet-installation answer actually needs (pump identity, real
-# recorded date, seal identity for "useful seal information if recorded").
-# No SELECT *: a fixed, disclosed column list, matching this file's own
-# read-only, narrow-purpose scope.
-_SELECT_COLUMNS = "installation_code, report_no, report_date, plant_equip_no, seal_code, seal_type"
+# Real installation_report columns (CANONICAL_SCHEMA.sql). Originally just
+# what Copilot's fleet-installation answer needed (pump identity, real
+# recorded date, seal identity); MWO-INSTALLATION-DIRECT-DB-READ-PATH-R1
+# extends the SAME list (not a second query) with pump_tag_number (the
+# real FK column installationMapping.js's mapInstallationRecord() reads
+# for search/area-lookup, migration 018 -- distinct from plant_equip_no's
+# free-text transcription), drawing_no, and source_document_name, since
+# list_installations() is now also the Installation Workspace REST
+# endpoint's own read path, not just Copilot's narrower one.
+#
+# MWO-ASSET360-INSTALLATION-DIRECT-DB-WIRE-IN-R1 -- extends the SAME list
+# again with seal_manufacture, seal_size, material_code, and signatures:
+# list_installations() is now ALSO EquipmentTimelineService's own read
+# path (_list_installations()), whose _build_current_seal()/
+# _derive_engineer() read these four fields as the installation-report
+# fallback for Current Seal's manufacturer/shaft_size/material and for
+# deriving Engineer from the report's own signatures. Without them,
+# Current Seal/Engineer would silently degrade to null for every pump
+# whenever seal_registry itself has no matching row -- a real
+# completeness loss versus the (broken) gateway's own full-row shape,
+# not a business-logic change. No SELECT *: still a fixed, disclosed
+# column list.
+_SELECT_COLUMNS = (
+    "installation_code, report_no, report_date, plant_equip_no, seal_code, seal_type, "
+    "pump_tag_number, drawing_no, source_document_name, "
+    "seal_manufacture, seal_size, material_code, signatures"
+)
 
 
 class InstallationReportRepository:
@@ -83,9 +104,17 @@ class InstallationReportRepository:
         }
 
     def find_by_installation_code(self, installation_code: str) -> dict[str, Any] | None:
+        # MWO-INSTALLATION-DETAIL-DIRECT-DB-R1 -- widened from its original
+        # 3-column selection (installation_code, pump_tag_number,
+        # source_document_name -- installation_report_attribution_
+        # service.py's own guard logic only ever reads those two) to the
+        # SAME _SELECT_COLUMNS list_installations() already uses, since
+        # this method is now also the /api/ltsa/installations/{code}
+        # detail endpoint's own read path. Still one column-list constant,
+        # still no second query shape -- attribution's caller is
+        # unaffected by the extra keys it never reads.
         rows = _json_query(
-            f"SELECT installation_code, pump_tag_number, source_document_name "
-            f"FROM installation_report WHERE installation_code = {_sql(installation_code)}",
+            f"SELECT {_SELECT_COLUMNS} FROM installation_report WHERE installation_code = {_sql(installation_code)}",
             self._runner,
         )
         return rows[0] if rows else None

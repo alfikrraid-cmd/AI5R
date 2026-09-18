@@ -25,6 +25,18 @@ function formatDateOnly(value) {
  * not a business-data decision (ADR-PUMP-001's own distinction).
  * openWO/lastPM default here and are resolved separately (both Derived and
  * real, per WO-PUMP-003/WO-PUMP-004 and ADR-PUMP-002), never fabricated.
+ *
+ * MWO-PUMP-REGISTRY-N1-REMOVAL-R1 -- openWO's default changed from the
+ * literal `0` to `null` (rendered "N/A" by PumpRegistryTable.jsx). `0`
+ * presented an unresolved/never-checked Work Order state as a confirmed
+ * "zero open work orders" fact -- exactly the fabrication this MWO's own
+ * "unknown must never be represented as confirmed 0" rule forbids, made
+ * concrete now that the Pump registry's initial load no longer calls
+ * withResolvedOpenWO() at all (see Pump.jsx) and the Work Order n8n LIST
+ * workflow isn't deployed regardless. withResolvedOpenWO() itself is
+ * kept, unused by the registry's initial load, for a future Work Order
+ * MWO to re-wire (bulk or lazy) once real data exists.
+ *
  * spareParts defaults to [] and is resolved separately too (real, per
  * MWO-INV-CTX-001 / withResolvedSpareParts in inventoryContextMapping.js),
  * same lazy-on-selection convention as lastPM.
@@ -47,7 +59,7 @@ export function mapPumpRecord(record) {
     runtimeHours: 0,
     lastPM: null,
     nextPM: null,
-    openWO: 0,
+    openWO: null,
     recommendation: null,
     knowledgeLinks: [],
     spareParts: [],
@@ -57,12 +69,15 @@ export function mapPumpRecord(record) {
 /**
  * Resolves `openWO` from the Work Order API (WO-PUMP-003) for one
  * already-mapped pump. Never throws -- a failed lookup leaves openWO at
- * its safe default (0) rather than failing the whole list for one row.
+ * its safe default (null/"N/A", per this file's own header comment)
+ * rather than failing the whole list for one row. Not called by the Pump
+ * registry's initial load any more (MWO-PUMP-REGISTRY-N1-REMOVAL-R1) --
+ * kept for a future Work Order MWO's reuse.
  */
 export async function withResolvedOpenWO(pump) {
   try {
     const result = await getPumpOpenWorkOrders(pump.tag);
-    return { ...pump, openWO: result?.openWO ?? 0 };
+    return { ...pump, openWO: result?.openWO ?? null };
   } catch {
     return pump;
   }

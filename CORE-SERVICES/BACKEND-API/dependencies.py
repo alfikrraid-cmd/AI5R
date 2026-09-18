@@ -272,6 +272,13 @@ _recommendation_engine = RecommendationEngine()
 # instances -- EquipmentTimelineService.build_lifecycle() now merges in
 # SEAL_INSTALL/SEAL_REMOVE/SEAL_INSPECTION/SEAL_REPAIR/SEAL_RETURN_TO_
 # STOCK/SEAL_SCRAP/SEAL_WARRANTY timeline events alongside PM/CM/etc.
+#
+# MWO-ASSET360-INSTALLATION-DIRECT-DB-WIRE-IN-R1 -- installation_report_
+# repository is the SAME _installation_report_repository singleton
+# get_installation_report_repository() already returns for the
+# /api/ltsa/installations REST route -- not a second instance. Lets
+# _list_installations() bypass the never-registered ltsa/installation/
+# list n8n webhook the same way that route already does.
 _equipment_timeline_service = EquipmentTimelineService(
     knowledge_service=_ltsa_knowledge_service,
     seal_lifecycle_event_repository=_seal_lifecycle_event_repository,
@@ -281,6 +288,7 @@ _equipment_timeline_service = EquipmentTimelineService(
     installation_report_fitment_repository=_installation_report_fitment_repository,
     mechanical_seal_stock_repository=_mechanical_seal_stock_repository,
     historical_seal_service_activity_repository=_historical_seal_service_activity_repository,
+    installation_report_repository=_installation_report_repository,
 )
 
 _seal_leak_diagnostic_service = SealLeakDiagnosticService(

@@ -68,7 +68,16 @@ export default function KnowledgeReviewWorkspaceView({ knowledgePackage, onNavig
 
   const pumps = rawPumps.map(mapPumpRecord);
   const seals = rawSeals.map(mapSealRecord);
-  const installations = rawInstallations.map(mapInstallationRecord);
+  // MWO-LTSA-INSTALLATION-UI-PHASE-1 -- mapInstallationRecord() now takes
+  // a second, optional pumpAreaByTag argument; a bare `.map(mapInstallationRecord)`
+  // reference would leak Array.prototype.map's own (index, array) as that
+  // second/third argument (index?.get is not a function) -- wrapped, the
+  // same defensive shape mapDocumentRecord already uses two lines below.
+  // rawPumps is already in scope here (used for `pumps` above), so this
+  // reuses the exact same canonical area source InstallationWorkspace.jsx
+  // uses, not a second one.
+  const pumpAreaByTag = new Map(rawPumps.map((pump) => [pump.tag_number, pump.area]));
+  const installations = rawInstallations.map((record) => mapInstallationRecord(record, pumpAreaByTag));
   const documents = rawDocuments.map((record) => mapDocumentRecord(record, [], rawDocuments));
   const drawings = deriveDrawingRecords(rawDocuments).map((record) => mapDocumentRecord(record, [], rawDocuments));
 
