@@ -40,7 +40,7 @@ export default function Table({ rows, columns, data, rowKey, onRowClick, selecte
               >
                 {columns.map((column) => (
                   <td key={column.key} style={{ padding: spacing.xs, color: colors.text }}>
-                    {item[column.key]}
+                    {column.render ? column.render(item[column.key], item) : item[column.key]}
                   </td>
                 ))}
               </tr>

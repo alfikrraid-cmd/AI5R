@@ -261,6 +261,8 @@ class UserRecord:
     password_hash: str
     status: str
     username: str | None = None
+    name: str | None = None
+    last_login: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -300,6 +302,8 @@ class AuthenticatedIdentity:
     data_scope_type: str | None = None
     data_scope_value: str | None = None
     username: str | None = None
+    name: str | None = None
+    last_login: str | None = None
 
 
 def normalize_username(username: str | None) -> str:
@@ -339,11 +343,19 @@ def authenticate(repository: AuthRepositoryProtocol, identifier: str, password: 
     if membership is None:
         raise AuthenticationError("No active organization membership")
 
+    if hasattr(repository, "update_last_login"):
+        try:
+            repository.update_last_login(user.id)
+        except Exception:
+            pass
+
     token = issue_access_token(user.id, membership.organization_id)
     identity = AuthenticatedIdentity(
         user_id=user.id,
         email=user.email,
         username=user.username,
+        name=user.name,
+        last_login=user.last_login,
         organization_id=membership.organization_id,
         organization_code=membership.organization_code,
         role=membership.role,
@@ -373,6 +385,8 @@ def resolve_identity(repository: AuthRepositoryProtocol, user_id: str, organizat
         user_id=user.id,
         email=user.email,
         username=user.username,
+        name=user.name,
+        last_login=user.last_login,
         organization_id=membership.organization_id,
         organization_code=membership.organization_code,
         role=membership.role,

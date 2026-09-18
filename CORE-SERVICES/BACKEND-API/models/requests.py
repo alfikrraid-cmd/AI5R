@@ -40,6 +40,7 @@ class CopilotAskRequest(BaseModel):
 # field back).
 class AdminCreateUserRequest(BaseModel):
     username: str
+    name: str | None = None
     email: str | None = None
     password: str
     organization_id: str

@@ -79,7 +79,7 @@ export default function AdminUsersView({ canManageUsers = false, session = null 
   const [actionError, setActionError] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
   const [createForm, setCreateForm] = useState({
-    username: "", email: "", password: "", organizationId: session?.organization?.id ?? "", role: "TAP_ENGINEER",
+    username: "", name: "", email: "", password: "", organizationId: session?.organization?.id ?? "", role: "TAP_ENGINEER",
   });
   const roleOptions = roleOptionsFor(session);
   const isTapAdmin = session?.role === "TAP_ADMIN";
@@ -106,9 +106,8 @@ export default function AdminUsersView({ canManageUsers = false, session = null 
       await action();
       reload();
     } catch (err) {
-      // Verbatim backend detail (e.g. "TAP_ADMIN is not authorized to
-      // manage SUPERUSER accounts", "this is the last active SUPERUSER
-      // account") -- never a generic "failed" message.
+      // Verbatim backend detail (e.g. "SUPERUSER access required",
+      // "this is the last active SUPERUSER account")
       setActionError(err.message);
     }
   }
@@ -131,17 +130,19 @@ export default function AdminUsersView({ canManageUsers = false, session = null 
 
   function handleCreateSubmit(event) {
     event.preventDefault();
-    runAction(() =>
-      createAdminUser({
-        username: createForm.username,
-        email: createForm.email || null,
-        password: createForm.password,
-        organizationId: isTapAdmin ? currentOrganizationId : createForm.organizationId,
-        role: createForm.role,
-      })
-    );
+    const payload = {
+      username: createForm.username,
+      email: createForm.email || null,
+      password: createForm.password,
+      organizationId: isTapAdmin ? currentOrganizationId : createForm.organizationId,
+      role: createForm.role,
+    };
+    if (createForm.name) {
+      payload.name = createForm.name;
+    }
+    runAction(() => createAdminUser(payload));
     setShowCreate(false);
-    setCreateForm({ username: "", email: "", password: "", organizationId: currentOrganizationId, role: roleOptions[0] ?? "TAP_ENGINEER" });
+    setCreateForm({ username: "", name: "", email: "", password: "", organizationId: currentOrganizationId, role: roleOptions[0] ?? "TAP_ENGINEER" });
   }
 
   if (!canManageUsers) {
@@ -155,8 +156,8 @@ export default function AdminUsersView({ canManageUsers = false, session = null 
   return (
     <div className="ltsa-open-design" data-testid="admin-users-view">
       <PageHeader
-        title="Users"
-        subtitle="LTSA Admin — user administration"
+        title="User Management"
+        subtitle="Administration > User Management"
         actions={<Button onClick={() => setShowCreate((v) => !v)}>{showCreate ? "Cancel" : "Create User"}</Button>}
       />
 
@@ -174,6 +175,12 @@ export default function AdminUsersView({ canManageUsers = false, session = null 
             value={createForm.username}
             onChange={(e) => setCreateForm((f) => ({ ...f, username: e.target.value }))}
             required
+          />
+          <input
+            aria-label="Name"
+            placeholder="Name"
+            value={createForm.name}
+            onChange={(e) => setCreateForm((f) => ({ ...f, name: e.target.value }))}
           />
           <input
             aria-label="Email"
@@ -238,7 +245,7 @@ export default function AdminUsersView({ canManageUsers = false, session = null 
           data={users}
           columns={[
             { key: "username", header: "Username", render: (v) => v ?? "N/A" },
-            { key: "email", header: "Email", render: (v) => v ?? "N/A" },
+            { key: "name", header: "Name", render: (v, user) => v || user?.email || "N/A" },
             {
               key: "role",
               header: "Role",
@@ -250,8 +257,8 @@ export default function AdminUsersView({ canManageUsers = false, session = null 
               header: "Status",
               render: (status) => <Badge variant={status === "ACTIVE" ? "success" : "danger"}>{status}</Badge>,
             },
+            { key: "last_login", header: "Last Login", render: (v) => v ?? "Never" },
             { key: "created_at", header: "Created At" },
-            { key: "updated_at", header: "Last Updated At" },
             {
               key: "actions",
               header: "Actions",

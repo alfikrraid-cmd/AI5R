@@ -230,8 +230,8 @@ describe("LTSAAuthGate", () => {
   });
 });
 
-// MWO-LTSA-ADMIN-USERS-WIRING-001
-describe("Admin Users navigation visibility (capability-driven, never role === \"...\")", () => {
+// MWO-LTSA-ADMIN-USERS-WIRING-001 & SUPERUSER-ONLY USER MANAGEMENT
+describe("Admin Users navigation visibility (capability-driven, strict SUPERUSER-only)", () => {
   afterEach(() => {
     window.history.pushState({}, "", "/ltsa");
   });
@@ -244,34 +244,34 @@ describe("Admin Users navigation visibility (capability-driven, never role === \
     fireEvent.click(screen.getByRole("button", { name: new RegExp(nameMatch, "i") }));
   }
 
-  it("SUPERUSER sees the Admin — Users menu item", async () => {
+  it("SUPERUSER sees the Administration > User Management menu item", async () => {
     await loginAndOpenMenu("su@tap.co.id", "Sari Wulandari");
-    expect(screen.getByText("Admin — Users")).toBeInTheDocument();
+    expect(screen.getByText("Administration > User Management")).toBeInTheDocument();
   });
 
-  it("TAP_ADMIN sees the Admin — Users menu item", async () => {
+  it("TAP_ADMIN does not see the Administration > User Management menu item", async () => {
     await loginAndOpenMenu("admin@tap.co.id", "Andra Wicaksono");
-    expect(screen.getByText("Admin — Users")).toBeInTheDocument();
+    expect(screen.queryByText("Administration > User Management")).not.toBeInTheDocument();
   });
 
-  it("TAP_ENGINEER does not see the Admin — Users menu item", async () => {
+  it("TAP_ENGINEER does not see the Administration > User Management menu item", async () => {
     await loginAndOpenMenu("engineer@tap.co.id", "Rizal Pratama");
-    expect(screen.queryByText("Admin — Users")).not.toBeInTheDocument();
+    expect(screen.queryByText("Administration > User Management")).not.toBeInTheDocument();
   });
 
-  it("JOHN_CRANE_ENGINEER does not see the Admin — Users menu item", async () => {
+  it("JOHN_CRANE_ENGINEER does not see the Administration > User Management menu item", async () => {
     await loginAndOpenMenu("jc@johncrane.internal", "Kenji Watanabe");
-    expect(screen.queryByText("Admin — Users")).not.toBeInTheDocument();
+    expect(screen.queryByText("Administration > User Management")).not.toBeInTheDocument();
   });
 
-  it("PERTAMINA_ENGINEER does not see the Admin — Users menu item", async () => {
+  it("PERTAMINA_ENGINEER does not see the Administration > User Management menu item", async () => {
     await loginAndOpenMenu("budi.santoso@pertamina.com", "Budi Santoso");
-    expect(screen.queryByText("Admin — Users")).not.toBeInTheDocument();
+    expect(screen.queryByText("Administration > User Management")).not.toBeInTheDocument();
   });
 
-  it("PERTAMINA_VIEWER does not see the Admin — Users menu item", async () => {
+  it("PERTAMINA_VIEWER does not see the Administration > User Management menu item", async () => {
     await loginAndOpenMenu("viewer@pertamina.com", "Siti Rahayu");
-    expect(screen.queryByText("Admin — Users")).not.toBeInTheDocument();
+    expect(screen.queryByText("Administration > User Management")).not.toBeInTheDocument();
   });
 });
 
@@ -280,19 +280,29 @@ describe("Direct route: /ltsa/admin/users (Phase 3 -- hiding the nav item is not
     window.history.pushState({}, "", "/ltsa");
   });
 
-  it("clicking Admin — Users navigates to AdminUsersView with canManageUsers=true for TAP_ADMIN, and hides LTSAWorkspace", async () => {
+  it("clicking Administration > User Management navigates to AdminUsersView with canManageUsers=true for SUPERUSER, and hides LTSAWorkspace", async () => {
     render(<LTSAAuthGate />);
     await screen.findByRole("heading", { name: "Sign in" });
-    await login("admin@tap.co.id");
+    await login("su@tap.co.id");
     await screen.findByTestId("ltsa-workspace-stub");
 
-    fireEvent.click(screen.getByRole("button", { name: /andra wicaksono/i }));
-    fireEvent.click(screen.getByText("Admin — Users"));
+    fireEvent.click(screen.getByRole("button", { name: /sari wulandari/i }));
+    fireEvent.click(screen.getByText("Administration > User Management"));
 
     const stub = await screen.findByTestId("admin-users-view-stub");
     expect(stub.textContent).toBe("true");
     expect(screen.queryByTestId("ltsa-workspace-stub")).not.toBeInTheDocument();
     expect(window.location.pathname).toBe("/ltsa/admin/users");
+  });
+
+  it("a TAP_ADMIN who manually navigates to the route reaches AdminUsersView only with canManageUsers=false -- strict SUPERUSER-only enforcement", async () => {
+    window.history.pushState({}, "", "/ltsa/admin/users");
+    render(<LTSAAuthGate />);
+    await screen.findByRole("heading", { name: "Sign in" });
+    await login("admin@tap.co.id");
+
+    const stub = await screen.findByTestId("admin-users-view-stub");
+    expect(stub.textContent).toBe("false");
   });
 
   it("a TAP_ENGINEER who manually navigates to the route reaches AdminUsersView only with canManageUsers=false -- the real gate stays in AdminUsersView/the backend, not a blocked render", async () => {
@@ -328,11 +338,11 @@ describe("Direct route: /ltsa/admin/users (Phase 3 -- hiding the nav item is not
   it("Back to LTSA Workspace returns from the admin route to the normal capability-gated workspace", async () => {
     render(<LTSAAuthGate />);
     await screen.findByRole("heading", { name: "Sign in" });
-    await login("admin@tap.co.id");
+    await login("su@tap.co.id");
     await screen.findByTestId("ltsa-workspace-stub");
 
-    fireEvent.click(screen.getByRole("button", { name: /andra wicaksono/i }));
-    fireEvent.click(screen.getByText("Admin — Users"));
+    fireEvent.click(screen.getByRole("button", { name: /sari wulandari/i }));
+    fireEvent.click(screen.getByText("Administration > User Management"));
     await screen.findByTestId("admin-users-view-stub");
 
     fireEvent.click(screen.getByText("Back to LTSA Workspace"));

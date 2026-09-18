@@ -55,7 +55,7 @@ export const PERMISSIONS = Object.freeze({
   REPORTS_READ: "maintenance.read",
   ANALYTICS_READ: "internal_component.read",
   HISTORY_READ: "maintenance.read",
-  ADMIN_ACCESS: "admin.users",
+  ADMIN_ACCESS: "admin.superuser",
   // MWO-LTSA-SEAL-INVENTORY-IDENTIFIERS-001 -- manual completion of
   // seal_registry.kimap_pertamina/gpn_john_crane (PATCH /api/ltsa/seals/
   // {seal_code}). Reuses master.edit verbatim, not a new permission --
@@ -114,7 +114,6 @@ export const ROLE_PERMISSIONS = Object.freeze({
     PERMISSIONS.INTERNAL_COMPONENT_READ,
     PERMISSIONS.ENGINEERING_AI_ASK,
     PERMISSIONS.ANALYTICS_READ,
-    PERMISSIONS.ADMIN_ACCESS,
     PERMISSIONS.MASTER_EDIT,
     // real backend grant: maintenance.write + maintenance.admin_review,
     // NOT maintenance.technical_review (TAP_ADMIN cannot technically
@@ -250,8 +249,7 @@ export const TAB_PERMISSIONS = Object.freeze({
   // AI5R-WHATSAPP-GROUP-ADMIN-001 -- reuses admin.users verbatim, the
   // same backend permission routers/whatsapp_group_agent_admin.py's own
   // register/activate endpoints already require -- no new permission
-  // string invented for this tab.
-  "whatsapp-groups": PERMISSIONS.ADMIN_ACCESS,
+  "whatsapp-groups": "admin.users",
   // UI/UX Redesign Phase B -- three new sidebar-only nav entries, each
   // reusing an existing permission verbatim (no new backend permission
   // invented, same discipline as every other entry above):

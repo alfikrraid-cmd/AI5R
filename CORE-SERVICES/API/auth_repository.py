@@ -106,8 +106,8 @@ class AuthRepository:
         Users UI's own per-organization row. LEFT JOIN so a user with no
         membership yet (mid-creation) still appears."""
         return _json_query(
-            "SELECT u.id, u.username, u.email, u.status AS user_status, "
-            "u.created_at, u.updated_at, u.created_by, u.updated_by, "
+            "SELECT u.id, u.username, u.name, u.email, u.status AS user_status, "
+            "u.last_login, u.created_at, u.updated_at, u.created_by, u.updated_by, "
             "m.organization_id, o.code AS organization_code, o.name AS organization_name, "
             "m.role, m.status AS membership_status "
             "FROM users u "
@@ -116,6 +116,14 @@ class AuthRepository:
             "ORDER BY u.created_at ASC",
             self._runner,
         )
+
+    def update_last_login(self, user_id: str) -> None:
+        try:
+            self._runner.execute_script(
+                f"UPDATE users SET last_login = NOW() WHERE id = {_sql(user_id)};"
+            )
+        except Exception:
+            pass
 
     def count_active_superusers(self) -> int:
         """Last-SUPERUSER-safety's own source of truth -- always the CURRENT
@@ -143,29 +151,12 @@ class AuthRepository:
     # --- writes (bootstrap-admin script + the new Admin Users router;
     # never called on the ordinary request path) ---------------------------
 
-    def create_user(self, *, email: str | None, password_hash: str, username: str | None = None, created_by: str | None = None) -> str:
-        # MWO-LTSA-AUTH-001A -- _json_query's own `FROM (sql) t` wrapping
-        # only works for a plain SELECT; a data-modifying INSERT...
-        # RETURNING needs a real CTE (same fix shape as
-        # import_session_repository.py's claim_for_execution()). Caught
-        # against real Postgres (Task 5) -- every prior test used a fake
-        # repository, which can't surface an invalid-SQL bug like this.
-        #
-        # MWO-LTSA-AUTH-003A-FINAL -- created_by/updated_by (migration
-        # 012); created_by defaults to NULL (the bootstrap-admin script's
-        # own first-user case, no prior authenticated actor exists yet;
-        # _sql(None) already renders NULL). updated_by is set equal to
-        # created_by at INSERT time (the creator is, trivially, also the
-        # first "last editor") -- never overwritten on subsequent reads,
-        # only on a real later UPDATE (Hard Rule 19: creator is never
-        # overwritten by a later editor -- created_by itself is never
-        # touched by update_user_status/update_membership_role/
-        # update_password_hash below).
+    def create_user(self, *, email: str | None, password_hash: str, username: str | None = None, name: str | None = None, created_by: str | None = None) -> str:
         rows = json.loads(
             self._runner.query_scalar(
                 "WITH ins AS ("
-                "INSERT INTO users (username, email, password_hash, created_by, updated_by) VALUES "
-                f"({_sql(normalize_username(username) if username is not None else None)}, {_sql(email.lower() if email else None)}, {_sql(password_hash)}, {_sql(created_by)}, {_sql(created_by)}) "
+                "INSERT INTO users (username, name, email, password_hash, created_by, updated_by) VALUES "
+                f"({_sql(normalize_username(username) if username is not None else None)}, {_sql(name)}, {_sql(email.lower() if email else None)}, {_sql(password_hash)}, {_sql(created_by)}, {_sql(created_by)}) "
                 "RETURNING id"
                 ") SELECT COALESCE(json_agg(row_to_json(t))::text, '[]') FROM ins t;"
             )
@@ -186,6 +177,7 @@ class AuthRepository:
         self,
         *,
         username: str,
+        name: str | None = None,
         email: str | None,
         password_hash: str,
         organization_id: str,
@@ -195,8 +187,8 @@ class AuthRepository:
         rows = json.loads(
             self._runner.query_scalar(
                 "WITH ins_user AS ("
-                "INSERT INTO users (username, email, password_hash, created_by, updated_by) VALUES "
-                f"({_sql(normalize_username(username))}, {_sql(email.lower() if email else None)}, {_sql(password_hash)}, {_sql(created_by)}, {_sql(created_by)}) "
+                "INSERT INTO users (username, name, email, password_hash, created_by, updated_by) VALUES "
+                f"({_sql(normalize_username(username))}, {_sql(name)}, {_sql(email.lower() if email else None)}, {_sql(password_hash)}, {_sql(created_by)}, {_sql(created_by)}) "
                 "RETURNING id"
                 "), ins_membership AS ("
                 "INSERT INTO organization_memberships (user_id, organization_id, role, created_by, updated_by) "
@@ -240,7 +232,15 @@ class AuthRepository:
 
 
 def _row_to_user(row: dict) -> UserRecord:
-    return UserRecord(id=row["id"], email=row.get("email"), password_hash=row["password_hash"], status=row["status"], username=row.get("username"))
+    return UserRecord(
+        id=row["id"],
+        email=row.get("email"),
+        password_hash=row["password_hash"],
+        status=row["status"],
+        username=row.get("username"),
+        name=row.get("name"),
+        last_login=str(row.get("last_login")) if row.get("last_login") is not None else None,
+    )
 
 
 def _row_to_membership(row: dict) -> MembershipRecord:

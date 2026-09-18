@@ -1182,11 +1182,11 @@ export async function getAdminUsers() {
     return Array.isArray(payload?.users) ? payload.users : [];
 }
 
-export async function createAdminUser({ username, email, password, organizationId, role }) {
+export async function createAdminUser({ username, name, email, password, organizationId, role }) {
     return _adminUsersRequest(`${API_URL}/api/admin/users`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, email: email || null, password, organization_id: organizationId, role }),
+        body: JSON.stringify({ username, name: name || null, email: email || null, password, organization_id: organizationId, role }),
     });
 }
 

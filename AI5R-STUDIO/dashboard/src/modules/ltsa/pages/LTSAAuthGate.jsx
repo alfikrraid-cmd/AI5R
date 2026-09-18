@@ -82,8 +82,8 @@ function IdentityBar({ session, onLogout, canManageUsers, isAdminUsersRoute, onN
                     own canManageUsers prop remain the real gate even if a
                     non-admin user reaches the route directly. */}
                 {canManageUsers && !isAdminUsersRoute && (
-                  <button type="button" className="btn-link auth-identity-admin-users" onClick={onNavigateAdminUsers}>
-                    Admin — Users
+                  <button type="button" className="btn-link auth-identity-admin-users" onClick={onNavigateAdminUsers} aria-label="Administration > User Management">
+                    Administration &gt; User Management
                   </button>
                 )}
                 {isAdminUsersRoute && (

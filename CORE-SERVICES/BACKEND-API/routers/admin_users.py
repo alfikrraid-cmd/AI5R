@@ -55,8 +55,10 @@ def _user_summary(row: dict) -> dict:
     return {
         "id": row["id"],
         "username": row.get("username"),
+        "name": row.get("name"),
         "email": row.get("email"),
         "status": row["user_status"],
+        "last_login": row.get("last_login"),
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
         "created_by": row.get("created_by"),
@@ -99,9 +101,8 @@ def _target_create_organization(current_user, requested_organization_id: str) ->
 def _with_manage_flag(row: dict, current_user) -> dict:
     summary = _user_summary(row)
     summary["can_manage"] = (
-        summary.get("role") is not None
-        and _is_same_organization(current_user, summary.get("organization_id"))
-        and can_delegate_role(current_user.role, summary["role"])
+        current_user.role == "SUPERUSER"
+        or "admin.superuser" in current_user.permissions
     )
     return summary
 
@@ -109,6 +110,11 @@ def _with_manage_flag(row: dict, current_user) -> dict:
 def _require_admin_users(current_user) -> None:
     if "admin.users" not in current_user.permissions:
         raise HTTPException(status_code=403, detail="Missing permission: admin.users")
+
+
+def _require_superuser(current_user) -> None:
+    if current_user.role != "SUPERUSER" and "admin.superuser" not in current_user.permissions:
+        raise HTTPException(status_code=403, detail="SUPERUSER access required")
 
 
 def _require_same_organization_as_target(current_user, auth_repository, user_id: str) -> None:
@@ -139,7 +145,7 @@ def _target_role_or_404(auth_repository, user_id: str, organization_id: str) -> 
 
 @router.get("/api/admin/users")
 def list_users(current_user=Depends(get_current_user), auth_repository=Depends(get_auth_repository)) -> Payload:
-    _require_admin_users(current_user)
+    _require_superuser(current_user)
     return {"users": [_with_manage_flag(row, current_user) for row in auth_repository.list_users()]}
 
 
@@ -149,7 +155,7 @@ def create_user(
     current_user=Depends(get_current_user),
     auth_repository=Depends(get_auth_repository),
 ) -> Payload:
-    _require_admin_users(current_user)
+    _require_superuser(current_user)
     if payload.role not in ROLE_PERMISSIONS:
         raise HTTPException(status_code=422, detail="Unknown role")
 
@@ -173,18 +179,25 @@ def create_user(
     if email and auth_repository.find_user_by_email(email) is not None:
         raise HTTPException(status_code=409, detail="Email already exists")
 
+    kwargs = {
+        "username": username,
+        "email": email,
+        "password_hash": hash_password(payload.password),
+        "organization_id": target_organization_id,
+        "role": payload.role,
+        "created_by": current_user.user_id,
+    }
+    if payload.name is not None:
+        kwargs["name"] = payload.name
     try:
-        user_id = auth_repository.create_user_with_membership(
-            username=username,
-            email=email,
-            password_hash=hash_password(payload.password),
-            organization_id=target_organization_id,
-            role=payload.role,
-            created_by=current_user.user_id,
-        )
+        try:
+            user_id = auth_repository.create_user_with_membership(**kwargs)
+        except TypeError:
+            kwargs.pop("name", None)
+            user_id = auth_repository.create_user_with_membership(**kwargs)
     except Exception as error:
         raise HTTPException(status_code=500, detail="User creation failed before persistence completed") from error
-    return {"id": user_id, "username": username, "email": email, "organization_id": target_organization_id, "role": payload.role}
+    return {"id": user_id, "username": username, "name": payload.name, "email": email, "organization_id": target_organization_id, "role": payload.role}
 
 @router.patch("/api/admin/users/{user_id}/status")
 def update_user_status(
@@ -193,7 +206,7 @@ def update_user_status(
     current_user=Depends(get_current_user),
     auth_repository=Depends(get_auth_repository),
 ) -> Payload:
-    _require_admin_users(current_user)
+    _require_superuser(current_user)
     membership = auth_repository.find_active_membership_for_user(user_id)
     target_role = membership.role if membership else None
     if target_role is not None:
@@ -224,7 +237,7 @@ def update_membership_role(
     current_user=Depends(get_current_user),
     auth_repository=Depends(get_auth_repository),
 ) -> Payload:
-    _require_admin_users(current_user)
+    _require_superuser(current_user)
     current_role = _target_role_or_404(auth_repository, user_id, payload.organization_id)
     _require_same_organization(current_user, payload.organization_id)
 
@@ -257,7 +270,7 @@ def reset_password(
     current_user=Depends(get_current_user),
     auth_repository=Depends(get_auth_repository),
 ) -> Payload:
-    _require_admin_users(current_user)
+    _require_superuser(current_user)
     membership = auth_repository.find_active_membership_for_user(user_id)
     if membership is not None:
         _require_same_organization(current_user, membership.organization_id)

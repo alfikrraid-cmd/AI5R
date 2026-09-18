@@ -143,8 +143,13 @@ class TestPermissionGate:
         response = client.get("/api/admin/users")
         assert response.status_code == 403
 
-    def test_tap_admin_has_admin_users_and_can_list(self):
+    def test_tap_admin_without_superuser_gets_403(self):
         _override(role="TAP_ADMIN")
+        response = client.get("/api/admin/users")
+        assert response.status_code == 403
+
+    def test_superuser_can_list_users(self):
+        _override(role="SUPERUSER")
         response = client.get("/api/admin/users")
         assert response.status_code == 200
 
@@ -159,7 +164,7 @@ class TestListUsers:
             assert "password_hash" not in user
             assert "password" not in user
 
-    def test_tap_admin_list_marks_unmanageable_rows_without_failing_page(self):
+    def test_superuser_list_marks_manageable_rows(self):
         class MixedRoleRepo(FakeAuthRepository):
             def list_users(self):
                 rows = super().list_users()
@@ -167,11 +172,11 @@ class TestListUsers:
                 rows.append({**rows[0], "id": "su-1", "role": "SUPERUSER"})
                 return rows
 
-        _override(role="TAP_ADMIN", repo=MixedRoleRepo())
+        _override(role="SUPERUSER", repo=MixedRoleRepo())
         response = client.get("/api/admin/users")
         assert response.status_code == 200
         users = response.json()["users"]
-        assert [user["can_manage"] for user in users] == [True, False, False]
+        assert [user["can_manage"] for user in users] == [True, True, True]
 
 class TestCreateUser:
     def test_superuser_can_create_any_role(self):
@@ -179,10 +184,11 @@ class TestCreateUser:
         _override(role="SUPERUSER", repo=repo)
         response = client.post(
             "/api/admin/users",
-            json={"username": "newuser", "email": "new@tap.internal", "password": "s3cret-pw", "organization_id": "org-tap", "role": "TAP_ENGINEER"},
+            json={"username": "newuser", "name": "New User", "email": "new@tap.internal", "password": "s3cret-pw", "organization_id": "org-tap", "role": "TAP_ENGINEER"},
         )
         assert response.status_code == 200
         assert repo.created_users[0]["created_by"] == "actor-1"
+        assert response.json()["name"] == "New User"
         assert "password" not in response.json()
         assert "password_hash" not in response.json()
 
@@ -195,14 +201,15 @@ class TestCreateUser:
         )
         assert repo.created_users[0]["password_hash"] != "s3cret-pw"
 
-    def test_tap_admin_can_create_tap_engineer(self):
+    def test_tap_admin_cannot_create_user(self):
         repo = FakeAuthRepository()
         _override(role="TAP_ADMIN", repo=repo)
         response = client.post(
             "/api/admin/users",
             json={"username": "newuser", "email": "new@tap.internal", "password": "s3cret-pw", "organization_id": "org-tap", "role": "TAP_ENGINEER"},
         )
-        assert response.status_code == 200
+        assert response.status_code == 403
+        assert repo.created_users == []
 
     def test_tap_admin_cannot_create_superuser(self):
         repo = FakeAuthRepository()
@@ -213,15 +220,6 @@ class TestCreateUser:
         )
         assert response.status_code == 403
         assert repo.created_users == []
-
-    def test_tap_admin_can_create_john_crane_engineer(self):
-        repo = FakeAuthRepository()
-        _override(role="TAP_ADMIN", repo=repo)
-        response = client.post(
-            "/api/admin/users",
-            json={"username": "jcuser", "email": "jc@johncrane.internal", "password": "s3cret-pw", "organization_id": "org-tap", "role": "JOHN_CRANE_ENGINEER"},
-        )
-        assert response.status_code == 200
 
     def test_tap_admin_cannot_create_tap_admin(self):
         repo = FakeAuthRepository()
@@ -310,12 +308,19 @@ class TestCreateUser:
         assert repo.created_memberships == []
 
 class TestUpdateUserStatus:
-    def test_disabling_an_ordinary_user_succeeds(self):
+    def test_superuser_disabling_an_ordinary_user_succeeds(self):
         repo = FakeAuthRepository(memberships={("u-1", "org-tap"): FakeMembership("org-tap", "TAP", "TAP_ENGINEER")})
-        _override(role="TAP_ADMIN", repo=repo)
+        _override(role="SUPERUSER", repo=repo)
         response = client.patch("/api/admin/users/u-1/status", json={"status": "DISABLED"})
         assert response.status_code == 200
         assert repo.status_updates[0]["updated_by"] == "actor-1"
+
+    def test_tap_admin_cannot_update_status(self):
+        repo = FakeAuthRepository(memberships={("u-1", "org-tap"): FakeMembership("org-tap", "TAP", "TAP_ENGINEER")})
+        _override(role="TAP_ADMIN", repo=repo)
+        response = client.patch("/api/admin/users/u-1/status", json={"status": "DISABLED"})
+        assert response.status_code == 403
+        assert repo.status_updates == []
 
     def test_disabling_the_last_active_superuser_is_refused(self):
         repo = FakeAuthRepository(
@@ -403,12 +408,19 @@ class TestUpdateMembershipRole:
 class TestResetPassword:
     def test_reset_never_echoes_the_new_password_or_its_hash(self):
         repo = FakeAuthRepository(memberships={("u-1", "org-tap"): FakeMembership("org-tap", "TAP", "TAP_ENGINEER")})
-        _override(role="TAP_ADMIN", repo=repo)
+        _override(role="SUPERUSER", repo=repo)
         response = client.post("/api/admin/users/u-1/password-reset", json={"new_password": "brand-new-pw"})
         assert response.status_code == 200
         body_text = response.text
         assert "brand-new-pw" not in body_text
         assert repo.password_updates[0]["password_hash"] != "brand-new-pw"
+
+    def test_tap_admin_cannot_reset_any_password(self):
+        repo = FakeAuthRepository(memberships={("u-1", "org-tap"): FakeMembership("org-tap", "TAP", "TAP_ENGINEER")})
+        _override(role="TAP_ADMIN", repo=repo)
+        response = client.post("/api/admin/users/u-1/password-reset", json={"new_password": "brand-new-pw"})
+        assert response.status_code == 403
+        assert repo.password_updates == []
 
     def test_tap_admin_cannot_reset_a_superuser_password(self):
         repo = FakeAuthRepository(memberships={("su-1", "org-tap"): FakeMembership("org-tap", "TAP", "SUPERUSER")})
