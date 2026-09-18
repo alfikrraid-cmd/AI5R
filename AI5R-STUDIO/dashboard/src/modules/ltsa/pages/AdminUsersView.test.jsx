@@ -92,6 +92,19 @@ describe("AdminUsersView list", () => {
     await waitFor(() => expect(screen.getByText("tap-eng@tap.internal")).toBeTruthy());
     expect(screen.getAllByText("2026-01-01T00:00:00").length).toBeGreaterThan(0);
   });
+
+  it("renders table with proper container and muted styling for null fields", async () => {
+    render(<AdminUsersView canManageUsers={true} />);
+    await waitFor(() => expect(screen.getByText("tap-eng@tap.internal")).toBeTruthy());
+
+    const naElement = screen.getByText("N/A");
+    expect(naElement).toBeTruthy();
+    expect(naElement.style.color).toContain("--ltsa-text-muted");
+
+    const view = screen.getByTestId("admin-users-view");
+    expect(view.className).toContain("ltsa-open-design");
+    expect(view.className).toContain("admin-users-view");
+  });
 });
 
 describe("AdminUsersView actions", () => {

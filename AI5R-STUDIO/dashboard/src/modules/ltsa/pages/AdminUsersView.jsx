@@ -72,6 +72,11 @@ function canManageUser(session, user) {
   return canManageRole(session, user?.role);
 }
 
+function renderMuted(text) {
+  return <span style={{ color: "var(--ltsa-text-muted, #4B5563)" }}>{text}</span>;
+}
+
+
 export default function AdminUsersView({ canManageUsers = false, session = null }) {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -147,14 +152,14 @@ export default function AdminUsersView({ canManageUsers = false, session = null 
 
   if (!canManageUsers) {
     return (
-      <div className="ltsa-open-design" data-testid="admin-users-denied">
+      <div className="ltsa-open-design admin-users-view" data-testid="admin-users-denied">
         <EmptyState title="Not authorized" description="Your account does not have admin.users access." />
       </div>
     );
   }
 
   return (
-    <div className="ltsa-open-design" data-testid="admin-users-view">
+    <div className="ltsa-open-design admin-users-view" data-testid="admin-users-view">
       <PageHeader
         title="User Management"
         subtitle="Administration > User Management"
@@ -168,7 +173,7 @@ export default function AdminUsersView({ canManageUsers = false, session = null 
       )}
 
       {showCreate && (
-        <form onSubmit={handleCreateSubmit} data-testid="admin-users-create-form" style={{ marginBottom: "var(--space-4)" }}>
+        <form onSubmit={handleCreateSubmit} data-testid="admin-users-create-form" style={{ marginBottom: "var(--space-4)", display: "flex", flexWrap: "wrap", gap: "var(--space-2)", alignItems: "center" }}>
           <input
             aria-label="Username"
             placeholder="Username"
@@ -244,20 +249,20 @@ export default function AdminUsersView({ canManageUsers = false, session = null 
           rowKey="id"
           data={users}
           columns={[
-            { key: "username", header: "Username", render: (v) => v ?? "N/A" },
-            { key: "name", header: "Name", render: (v, user) => v || user?.email || "N/A" },
+            { key: "username", header: "Username", render: (v) => v || renderMuted("N/A") },
+            { key: "name", header: "Name", render: (v, user) => v || user?.email || renderMuted("N/A") },
             {
               key: "role",
               header: "Role",
-              render: (role) => <Badge variant={ROLE_BADGE_VARIANT[role] ?? "purple"}>{role ?? "—"}</Badge>,
+              render: (role) => <Badge variant={ROLE_BADGE_VARIANT[role] ?? "purple"}>{role ?? renderMuted("—")}</Badge>,
             },
-            { key: "organization_code", header: "Organization", render: (v) => v ?? "—" },
+            { key: "organization_code", header: "Organization", render: (v) => v || renderMuted("—") },
             {
               key: "status",
               header: "Status",
               render: (status) => <Badge variant={status === "ACTIVE" ? "success" : "danger"}>{status}</Badge>,
             },
-            { key: "last_login", header: "Last Login", render: (v) => v ?? "Never" },
+            { key: "last_login", header: "Last Login", render: (v) => v || renderMuted("Never") },
             { key: "created_at", header: "Created At" },
             {
               key: "actions",

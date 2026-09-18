@@ -1,10 +1,12 @@
 import colors from "../theme/colors";
 import spacing from "../theme/spacing";
 
-export default function Table({ rows, columns, data, rowKey, onRowClick, selectedKey }) {
+export default function Table({ rows, columns, data, rowKey, onRowClick, selectedKey, className = "" }) {
+  const tableClass = ["ds-table", className].filter(Boolean).join(" ");
+
   if (columns) {
     return (
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+      <table className={tableClass} style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead>
           <tr>
             {columns.map((column) => (

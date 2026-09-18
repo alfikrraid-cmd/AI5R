@@ -32,6 +32,14 @@
   --status-high:      oklch(52% 0.17 40);
   --status-critical:  oklch(50% 0.19 25);
 
+  /* Bridge design-system CSS custom properties to LTSA Open Design tokens */
+  --ltsa-bg:         var(--bg);
+  --ltsa-surface:    var(--surface);
+  --ltsa-border:     var(--border);
+  --ltsa-text:       var(--fg);
+  --ltsa-text-muted: var(--muted);
+  --ltsa-text-on-navy: #ffffff;
+
   /* ---- Type ---- */
   --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif;
   --font-body:    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
@@ -417,3 +425,66 @@ html[data-theme="dark"] .ltsa-open-design {
 .ltsa-open-design .kpi-strip-value.tone-normal { color: var(--status-normal); }
 .ltsa-open-design .kpi-strip-value.tone-attention { color: var(--status-attention); }
 .ltsa-open-design .kpi-strip-value.tone-critical { color: var(--status-critical); }
+
+/* ---------- UI-ADMIN-CONTRAST -- Admin Users & Design-System Table Integration ---------- */
+.ltsa-open-design.admin-users-view,
+.ltsa-open-design[data-testid="admin-users-view"],
+.ltsa-open-design[data-testid="admin-users-denied"] {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-6) 100px;
+}
+
+.ltsa-open-design table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.ltsa-open-design table th {
+  color: var(--muted) !important;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: var(--space-3) var(--space-3);
+  border-bottom: 1px solid var(--border) !important;
+  text-align: left;
+}
+
+.ltsa-open-design table td {
+  color: var(--fg) !important;
+  font-size: var(--text-sm);
+  padding: var(--space-3) var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+
+.ltsa-open-design table tbody tr:hover td {
+  background: var(--surface-2);
+}
+
+.ltsa-open-design [data-testid="badge"] {
+  color: #ffffff !important;
+}
+
+.ltsa-open-design .ds-button {
+  color: #ffffff !important;
+}
+
+.ltsa-open-design select {
+  background: var(--surface);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  font-size: var(--text-sm);
+}
+
+.ltsa-open-design input {
+  background: var(--surface);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  font-size: var(--text-sm);
+}
+
