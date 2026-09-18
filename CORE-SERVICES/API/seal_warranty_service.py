@@ -26,7 +26,7 @@ import calendar
 import json
 import sys
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -36,7 +36,8 @@ if str(_INGESTION_DIR) not in sys.path:
 
 from ltsa_pump_inventory_db_upsert import _json_query, _sql  # noqa: E402
 
-from .seal_unit_repository import is_valid_uuid  # noqa: E402
+from .seal_lifecycle_service import SealLifecycleEventRepository  # noqa: E402
+from .seal_unit_repository import SealUnitRepository, is_valid_uuid  # noqa: E402
 
 if TYPE_CHECKING:
     from ltsa_pump_inventory_db_upsert import DatabaseRunner
@@ -46,6 +47,27 @@ WARRANTY_MONTHS = 18
 WINDOW_STATUSES = frozenset({"WITHIN_WARRANTY_WINDOW", "OUT_OF_WARRANTY", "INSUFFICIENT_DATA"})
 DECISION_STATUSES = frozenset({"PENDING_EXAMINATION", "ACCEPTED", "REJECTED", "NOT_APPLICABLE"})
 _DECISIONS_REQUIRING_INSPECTION = frozenset({"ACCEPTED", "REJECTED"})
+
+# MECHANICAL-SEAL-DOMAIN-CONSOLIDATION-R1 -- Part E "EXPIRING SOON"
+# threshold. Deliberately separate from WINDOW_STATUSES/window_status
+# above: window_status answers "was a specific failure/claim within the
+# warranty window" (reference date = failure_date/claim_date, an
+# assessment-scoped fact, never "now"). TIME_STATUSES/time_status below
+# answers a different question -- "as of right now, where does this
+# seal's warranty stand" -- which is legitimately today-relative by
+# design (an EXPIRING SOON banner is supposed to change day by day).
+# Keeping the threshold as one named constant here, imported wherever
+# needed, is the "centralized, not scattered" requirement -- no other
+# module may hard-code 90.
+EXPIRING_SOON_DAYS = 90
+
+TIME_STATUSES = frozenset({"WITHIN_WARRANTY_PERIOD", "EXPIRING_SOON", "WARRANTY_PERIOD_ENDED"})
+
+# Repeated verbatim everywhere a time_status is shown (Part E "WARRANTY
+# LANGUAGE" -- time eligibility and contractual eligibility are
+# different; this codebase must never say "WARRANTY VALID" or otherwise
+# imply a claim is pre-approved just because the seal is young).
+WARRANTY_ELIGIBILITY_NOTE = "Warranty eligibility is subject to applicable terms and conditions."
 
 _ASSESSMENT_COLUMNS = (
     "assessment_id, seal_unit_id, installation_event_id, inspection_id, claim_date, failure_date, "
@@ -158,6 +180,102 @@ def calculate_warranty_window(
         window_status = "OUT_OF_WARRANTY"
 
     return WarrantyWindow(installation_date=installation_date, warranty_end=warranty_end, window_status=window_status)
+
+
+@dataclass(frozen=True)
+class WarrantyTimeStatus:
+    installation_date: datetime
+    warranty_end: datetime
+    days_remaining: int
+    time_status: str
+
+
+def calculate_time_status(installation_date: datetime, *, now: datetime) -> WarrantyTimeStatus:
+    """Today-relative warranty standing (Part E). Pure, no DB access.
+
+    Boundary rule matches calculate_warranty_window's own (exactly on
+    warranty_end is still within): time_status is WARRANTY_PERIOD_ENDED
+    only once `now` is strictly after warranty_end."""
+    warranty_end = _add_calendar_months(installation_date, WARRANTY_MONTHS)
+    days_remaining = (warranty_end - now).days
+    if now > warranty_end:
+        time_status = "WARRANTY_PERIOD_ENDED"
+    elif days_remaining <= EXPIRING_SOON_DAYS:
+        time_status = "EXPIRING_SOON"
+    else:
+        time_status = "WITHIN_WARRANTY_PERIOD"
+    return WarrantyTimeStatus(
+        installation_date=installation_date,
+        warranty_end=warranty_end,
+        days_remaining=days_remaining,
+        time_status=time_status,
+    )
+
+
+def build_seal_unit_warranty_overview(
+    runner: "DatabaseRunner", seal_unit_id: str, *, now: datetime | None = None
+) -> dict:
+    """Part E's proactive "Warranty" tab view for a seal_unit -- distinct
+    from seal_warranty_assessment (a claim/investigation record, only
+    created when someone actually files a claim). This never writes
+    anything; it is a pure read-time projection over already-authoritative
+    facts (seal_unit.current_pump_tag_number + the matching INSTALL
+    seal_lifecycle_event), reusing SealUnitRepository/
+    SealLifecycleEventRepository rather than introducing a new SQL
+    surface (AI5R "reuse before create").
+
+    Never fabricates an installation date: if the unit is not currently
+    installed (current_pump_tag_number IS NULL), or no INSTALL event on
+    the current pump can be found, installation_date/warranty_end/
+    days_remaining stay None and time_status is "N/A" -- exactly the
+    "missing installation date = warranty status N/A/unknown" rule.
+    """
+    if now is None:
+        now = datetime.now(timezone.utc)
+
+    unit = SealUnitRepository(runner).find_by_id(seal_unit_id)
+    if unit is None:
+        raise SealUnitNotFoundError(seal_unit_id)
+
+    overview = {
+        "seal_unit_id": seal_unit_id,
+        "seal_code": unit.get("seal_code"),
+        "current_pump_tag_number": unit.get("current_pump_tag_number"),
+        "installation_date": None,
+        "warranty_end": None,
+        "warranty_period_months": WARRANTY_MONTHS,
+        "expiring_soon_days": EXPIRING_SOON_DAYS,
+        "days_remaining": None,
+        "time_status": "N/A",
+        "eligibility_note": WARRANTY_ELIGIBILITY_NOTE,
+    }
+
+    current_pump = unit.get("current_pump_tag_number")
+    if not current_pump:
+        return overview
+
+    events = SealLifecycleEventRepository(runner).list_by_seal_unit(seal_unit_id)
+    install_events_on_current_pump = [
+        event
+        for event in events
+        if event.get("event_type") == "INSTALL" and event.get("pump_tag_number") == current_pump
+    ]
+    if not install_events_on_current_pump:
+        return overview
+
+    # list_by_seal_unit orders ASC by event_at, event_id -- the last
+    # matching entry is the most recent INSTALL onto the current pump.
+    installation_date = _parse(install_events_on_current_pump[-1]["event_at"])
+    window = calculate_time_status(installation_date, now=now)
+    overview.update(
+        {
+            "installation_date": window.installation_date.isoformat(),
+            "warranty_end": window.warranty_end.isoformat(),
+            "days_remaining": window.days_remaining,
+            "time_status": window.time_status,
+        }
+    )
+    return overview
 
 
 def create_warranty_assessment(
@@ -375,6 +493,9 @@ __all__ = [
     "WARRANTY_MONTHS",
     "WINDOW_STATUSES",
     "DECISION_STATUSES",
+    "EXPIRING_SOON_DAYS",
+    "TIME_STATUSES",
+    "WARRANTY_ELIGIBILITY_NOTE",
     "SealWarrantyError",
     "SealUnitNotFoundError",
     "InstallationEventNotFoundError",
@@ -388,7 +509,10 @@ __all__ = [
     "MissingDecisionReasonError",
     "InvalidDecisionError",
     "WarrantyWindow",
+    "WarrantyTimeStatus",
     "calculate_warranty_window",
+    "calculate_time_status",
+    "build_seal_unit_warranty_overview",
     "create_warranty_assessment",
     "decide_assessment",
     "SealWarrantyAssessmentRepository",

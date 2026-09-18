@@ -46,15 +46,20 @@ from routers import (
     auth,
     cm_report,
     condition_monitoring,
+    condition_monitoring_field_form,
+    condition_monitoring_measurement,
     copilot,
     dashboard,
     document,
     engineering_ai,
+    engineering_drawing,
     fleet,
     health,
     historical_review,
     import_router,
     installation,
+    ltsa_contract,
+    ltsa_finding,
     maintenance,
     mechanical_seal_stock,
     organization,
@@ -69,6 +74,7 @@ from routers import (
     whatsapp_group_agent_admin,
     whatsapp_intake,
     whatsapp_webhook,
+    workforce,
 )
 
 app = FastAPI(
@@ -144,6 +150,13 @@ app.include_router(pm_schedule.router)
 app.include_router(pm_occurrence.router)
 app.include_router(cm_report.router)
 app.include_router(condition_monitoring.router)
+app.include_router(condition_monitoring_field_form.router)
+app.include_router(condition_monitoring_measurement.router)
+app.include_router(engineering_drawing.router)
+app.include_router(ltsa_contract.router)
+app.include_router(ltsa_finding.router)
 app.include_router(pm_cm_evidence.router)
 app.include_router(record_edit.router)
 app.include_router(historical_review.router)
+app.include_router(workforce.router)
+

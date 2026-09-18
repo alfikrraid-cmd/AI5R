@@ -16,6 +16,7 @@ import {
   getSealUnitWarranty,
   getSealUnitInstallationReports,
   getSealUnitHistory,
+  getConditionMonitoringReadings,
 } from "../../../api/ai5rClient";
 import sampleSeals from "../data/sampleSeals";
 
@@ -37,11 +38,16 @@ vi.mock("../../../api/ai5rClient", () => ({
   getSealUnitWarranty: vi.fn(),
   getSealUnitInstallationReports: vi.fn(),
   getSealUnitHistory: vi.fn(),
+  getConditionMonitoringReadings: vi.fn(),
 }));
 
 beforeEach(() => {
   getPMSchedules.mockResolvedValue([]);
   getCMReports.mockResolvedValue([]);
+  // MWO-R2C3 -- same reason as getPMSchedules/getCMReports/getWorkOrders
+  // above: Seal.jsx now also fetches genuine Condition Monitoring
+  // unconditionally once a seal resolves an asset code.
+  getConditionMonitoringReadings.mockResolvedValue([]);
   getWorkOrders.mockResolvedValue([]);
   getSealUnits.mockResolvedValue([]);
   getSealUnitLifecycle.mockResolvedValue([]);
@@ -99,9 +105,19 @@ afterEach(() => {
 // AI (status/summary/findings/evidence/recommendation/source references)
 // now lives under the "AI Insight" tab, not always-visible -- callers that
 // need it pass tab="AI Insight".
+// MECHANICAL-SEAL-DOMAIN-CONSOLIDATION-R1 Part B -- the registry table no
+// longer shows the legacy seal_code as a column (Seal ID/GPN/Seal Type/
+// Size/Manufacturer/Status instead), so a row must now be selected by its
+// sealId text. The detail panel's own <h1> heading is unchanged (still
+// seal.code, SealOpenDesignView untouched) -- only the CLICK target moves.
+function sealIdFor(code) {
+  const seal = sampleSeals.find((item) => item.code === code);
+  return seal?.sealId ?? code;
+}
+
 async function renderAndSelect(code = "SC-001", tab = null) {
   render(<Seal seals={sampleSeals} />);
-  fireEvent.click(screen.getByText(code));
+  fireEvent.click(screen.getByText(sealIdFor(code)));
   await screen.findByRole("heading", { name: code });
   if (tab) {
     fireEvent.click(screen.getByRole("tab", { name: tab }));
@@ -203,7 +219,7 @@ describe("POST invocation", () => {
     const seal = sampleSeals.find((item) => item.compatiblePumps.length === 0);
     expect(seal).toBeTruthy();
     render(<Seal seals={sampleSeals} />);
-    fireEvent.click(screen.getByText(seal.code));
+    fireEvent.click(screen.getByText(seal.sealId));
     await screen.findByRole("heading", { name: seal.code });
     expect(postEngineeringAI).not.toHaveBeenCalled();
   });
@@ -212,11 +228,11 @@ describe("POST invocation", () => {
     postEngineeringAI.mockResolvedValue(AI_RESPONSE);
     render(<Seal seals={sampleSeals} />);
 
-    fireEvent.click(screen.getByText("SC-001"));
+    fireEvent.click(screen.getByText(sealIdFor("SC-001")));
     await waitFor(() => expect(postEngineeringAI).toHaveBeenCalledTimes(1));
     const firstTraceId = postEngineeringAI.mock.calls[0][0].trace_id;
 
-    fireEvent.click(screen.getByText("SC-003"));
+    fireEvent.click(screen.getByText(sealIdFor("SC-003")));
     await waitFor(() => expect(postEngineeringAI).toHaveBeenCalledTimes(2));
     const secondCall = postEngineeringAI.mock.calls[1][0];
 
@@ -312,7 +328,7 @@ describe("Loading state (reuses the Failure Analysis / Pump model)", () => {
     let resolvePromise;
     postEngineeringAI.mockReturnValue(new Promise((resolve) => { resolvePromise = resolve; }));
     render(<Seal seals={sampleSeals} />);
-    fireEvent.click(screen.getByText("SC-001"));
+    fireEvent.click(screen.getByText(sealIdFor("SC-001")));
     await screen.findByRole("heading", { name: "SC-001" });
     fireEvent.click(screen.getByRole("tab", { name: "AI Insight" }));
 
@@ -325,7 +341,7 @@ describe("Loading state (reuses the Failure Analysis / Pump model)", () => {
     let resolvePromise;
     postEngineeringAI.mockReturnValue(new Promise((resolve) => { resolvePromise = resolve; }));
     render(<Seal seals={sampleSeals} />);
-    fireEvent.click(screen.getByText("SC-001"));
+    fireEvent.click(screen.getByText(sealIdFor("SC-001")));
     await screen.findByRole("heading", { name: "SC-001" });
     fireEvent.click(screen.getByRole("tab", { name: "AI Insight" }));
 
@@ -397,7 +413,7 @@ describe("No compatible pump (Seal-specific edge case)", () => {
     // active -- getAllByText, not getByText, since Reason alone is >= 1.
     const seal = sampleSeals.find((item) => item.compatiblePumps.length === 0);
     render(<Seal seals={sampleSeals} />);
-    fireEvent.click(screen.getByText(seal.code));
+    fireEvent.click(screen.getByText(seal.sealId));
     await screen.findByRole("heading", { name: seal.code });
     fireEvent.click(screen.getByRole("tab", { name: "AI Insight" }));
     // MWO-LTSA-046 P1 -- Engineering AI's "Reason" now shows the short
@@ -413,7 +429,7 @@ describe("No compatible pump (Seal-specific edge case)", () => {
   it("shows an Unavailable status label, not Error", async () => {
     const seal = sampleSeals.find((item) => item.compatiblePumps.length === 0);
     render(<Seal seals={sampleSeals} />);
-    fireEvent.click(screen.getByText(seal.code));
+    fireEvent.click(screen.getByText(seal.sealId));
     await screen.findByRole("heading", { name: seal.code });
     fireEvent.click(screen.getByRole("tab", { name: "AI Insight" }));
     expect((await screen.findAllByText("Unavailable")).length).toBeGreaterThan(0);
@@ -442,7 +458,7 @@ describe("Regression: existing Seal Workspace behavior is unchanged", () => {
   it("still renders all 10 sample seals in the registry table", () => {
     render(<Seal seals={sampleSeals} />);
     sampleSeals.forEach((seal) => {
-      expect(screen.getByText(seal.code)).toBeTruthy();
+      expect(screen.getByText(seal.sealId)).toBeTruthy();
     });
   });
 
@@ -454,15 +470,15 @@ describe("Regression: existing Seal Workspace behavior is unchanged", () => {
   it("still filters the registry table by search text", () => {
     render(<Seal seals={sampleSeals} />);
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "AESSEAL" } });
-    expect(screen.getByText("SC-005")).toBeTruthy();
-    expect(screen.queryByText("SC-001")).toBeNull();
+    expect(screen.getByText(sealIdFor("SC-005"))).toBeTruthy();
+    expect(screen.queryByText(sealIdFor("SC-001"))).toBeNull();
   });
 
   it("still filters the registry table by status", () => {
     render(<Seal seals={sampleSeals} />);
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "FAULT" } });
-    expect(screen.getByText("SC-007")).toBeTruthy();
-    expect(screen.queryByText("SC-001")).toBeNull();
+    expect(screen.getByText(sealIdFor("SC-007"))).toBeTruthy();
+    expect(screen.queryByText(sealIdFor("SC-001"))).toBeNull();
   });
 
   it("still renders the seal's recommendation alongside the Engineering AI section", async () => {
@@ -492,7 +508,7 @@ describe("Snapshot", () => {
     // this component (SNAPSHOT_SEMANTIC_CHANGE, not CRLF noise).
     postEngineeringAI.mockResolvedValue(AI_RESPONSE);
     const { container } = render(<Seal seals={sampleSeals} />);
-    fireEvent.click(screen.getByText("SC-001"));
+    fireEvent.click(screen.getByText(sealIdFor("SC-001")));
     await screen.findByRole("heading", { name: "SC-001" });
     fireEvent.click(screen.getByRole("tab", { name: "AI Insight" }));
     await screen.findByText(AI_RESPONSE.summary);
@@ -571,14 +587,14 @@ describe("Self-audit: only postEngineeringAI is used, no duplication, no forbidd
   it("does not clear the previous seal's AI response as raw JSON on the screen while a new one loads", async () => {
     postEngineeringAI.mockResolvedValue(AI_RESPONSE);
     render(<Seal seals={sampleSeals} />);
-    fireEvent.click(screen.getByText("SC-001"));
+    fireEvent.click(screen.getByText(sealIdFor("SC-001")));
     await screen.findByRole("heading", { name: "SC-001" });
     fireEvent.click(screen.getByRole("tab", { name: "AI Insight" }));
     await screen.findByText(AI_RESPONSE.summary);
 
     let resolveSecond;
     postEngineeringAI.mockReturnValue(new Promise((resolve) => { resolveSecond = resolve; }));
-    fireEvent.click(screen.getByText("SC-003"));
+    fireEvent.click(screen.getByText(sealIdFor("SC-003")));
 
     await waitFor(() => expect(screen.queryByText(AI_RESPONSE.summary)).toBeNull());
     expect(screen.getByText("Generating seal summary…")).toBeTruthy();

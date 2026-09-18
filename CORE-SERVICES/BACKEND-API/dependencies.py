@@ -33,6 +33,12 @@ from API.import_session_repository import ImportSessionRepository
 from API.installation_report_repository import InstallationReportRepository
 from API.mechanical_seal_stock_repository import MechanicalSealStockRepository
 from API.installation_gateway import InstallationGateway
+from API.ltsa_contract_repository import LtsaContractRepository
+from API.ltsa_contract_coverage_service import ContractCoverageService
+from API.ltsa_finding_repository import LtsaFindingRepository
+from API.condition_monitoring_measurement_repository import ConditionMonitoringMeasurementRepository
+from API.engineering_drawing_promotion_service import EngineeringDrawingPromotionService
+from API.engineering_drawing_repository import EngineeringDrawingRepository
 from API.ltsa_knowledge_service import LTSAKnowledgeService
 from API.recommendation_engine import RecommendationEngine
 from API.maintenance_history_gateway import MaintenanceHistoryGateway
@@ -195,6 +201,35 @@ _pm_schedule_repository = PMScheduleRepository(_import_database_runner)
 _cm_report_repository = CMReportRepository(_import_database_runner)
 _condition_monitoring_schedule_repository = ConditionMonitoringScheduleRepository(_import_database_runner)
 _pm_cm_evidence_repository = PMCMEvidenceRepository(_import_database_runner)
+
+# MWO-LTSA-CONTRACT-SCOPE-R3 -- same singleton again. Read-only this phase
+# (R3 Section A/H); ContractCoverageService is the one Aggregate both new
+# GET routes share (routers/ltsa_contract.py), same "One Aggregate, One
+# API, no frontend business logic" discipline FleetReliabilityService
+# already establishes.
+_ltsa_contract_repository = LtsaContractRepository(_import_database_runner)
+_ltsa_contract_coverage_service = ContractCoverageService(_ltsa_contract_repository)
+
+# MWO-LTSA-REPORTING-R4-1 -- same singleton-DatabaseRunner pattern as
+# every other LTSA repository above; moves LtsaFindingRepository/
+# ConditionMonitoringMeasurementRepository (already implemented and
+# tested in R4, self-contained pending this exact wiring) into the real
+# DI surface now that this file is no longer concurrently dirty.
+_ltsa_finding_repository = LtsaFindingRepository(_import_database_runner)
+_condition_monitoring_measurement_repository = ConditionMonitoringMeasurementRepository(_import_database_runner)
+
+# MWO-LTSA-DRAWING-INPUT-R4 -- same singleton-DatabaseRunner pattern.
+_engineering_drawing_repository = EngineeringDrawingRepository(_import_database_runner)
+
+# MWO-LTSA-DRAWING-INPUT-R5D.2 -- EngineeringDrawingPromotionService
+# manages its OWN real psycopg2 connection per call (frozen R5D.1 core
+# design -- it needs true multi-statement transaction control
+# DatabaseRunner's own query_scalar()/execute_script() cannot provide, see
+# that module's own docstring), so it is constructed from the SAME
+# DatabaseConfig _import_database_runner already holds
+# (_import_database_runner.config) -- not a second connection
+# configuration, just the one already-established source of truth reused.
+_engineering_drawing_promotion_service = EngineeringDrawingPromotionService(_import_database_runner.config)
 
 # MWO-LTSA-AUDIT-CHANGE-HISTORY-001 -- same singleton again; the one,
 # canonical, append-only ledger every domain's record_edit_service.py
@@ -496,6 +531,30 @@ def get_seal_master_data_repository() -> SealMasterDataRepository:
     return _seal_master_data_repository
 
 
+def get_ltsa_contract_repository() -> LtsaContractRepository:
+    return _ltsa_contract_repository
+
+
+def get_ltsa_contract_coverage_service() -> ContractCoverageService:
+    return _ltsa_contract_coverage_service
+
+
+def get_ltsa_finding_repository() -> LtsaFindingRepository:
+    return _ltsa_finding_repository
+
+
+def get_condition_monitoring_measurement_repository() -> ConditionMonitoringMeasurementRepository:
+    return _condition_monitoring_measurement_repository
+
+
+def get_engineering_drawing_repository() -> EngineeringDrawingRepository:
+    return _engineering_drawing_repository
+
+
+def get_engineering_drawing_promotion_service() -> EngineeringDrawingPromotionService:
+    return _engineering_drawing_promotion_service
+
+
 def get_pm_occurrence_repository() -> PMOccurrenceRepository:
     return _pm_occurrence_repository
 
@@ -701,3 +760,104 @@ def get_group_message_rate_limiter() -> InMemoryRateLimiter:
 def get_group_media_store() -> WhatsAppGroupMediaStore:
     return _group_media_store
 
+
+from API.workforce_service import WorkforceService
+
+_workforce_service = WorkforceService()
+
+
+def get_workforce_service() -> WorkforceService:
+    return _workforce_service
+
+
+def get_live_stream_api(
+    workforce_service: WorkforceService = Depends(get_workforce_service),
+) -> LiveStreamAPI:
+    return workforce_service.live_stream_api
+
+
+# ==============================================================================
+# CM R5D — FIELD FORM PREVIEW IN-MEMORY STORE
+# ==============================================================================
+
+import threading
+import time
+
+
+class FieldFormPreviewStore:
+    """Thread-safe, ephemeral in-memory store for field form preview sessions.
+
+    INVARIANTS:
+    - Zero database writes (ephemeral by design; survives within process lifetime only).
+    - Thread-safe via threading.Lock().
+    - Bounded maximum capacity (default 100 entries).
+    - TTL eviction policy (default 3600 seconds / 1 hour).
+    - Lazy pruning on put() and get().
+    """
+
+    def __init__(self, max_entries: int = 100, ttl_seconds: float = 3600.0) -> None:
+        self._store: dict[str, tuple[float, dict[str, Any]]] = {}
+        self._max_entries = max_entries
+        self._ttl_seconds = ttl_seconds
+        self._lock = threading.Lock()
+
+    def _prune_expired_locked(self, now: float) -> None:
+        expired_keys = [
+            k for k, (ts, _) in self._store.items()
+            if now - ts > self._ttl_seconds
+        ]
+        for k in expired_keys:
+            del self._store[k]
+
+    def put(self, preview_id: str, data: dict[str, Any]) -> None:
+        now = time.monotonic()
+        with self._lock:
+            self._prune_expired_locked(now)
+            existing = self._store.get(preview_id)
+            if existing is not None:
+                _, existing_data = existing
+                # Immutability enforcement: once approved, canonical snapshot and batch content hash cannot be mutated
+                if existing_data.get("summary", {}).get("review_status") == "ACCEPTED_FOR_FUTURE_APPLY":
+                    if data.get("canonical_snapshot") != existing_data.get("canonical_snapshot") or \
+                       data.get("batch_content_hash") != existing_data.get("batch_content_hash"):
+                        raise ValueError("IMMUTABLE_APPROVED_PREVIEW: Cannot mutate canonical snapshot of an approved preview.")
+            if len(self._store) >= self._max_entries and preview_id not in self._store:
+                # FIFO eviction of oldest entry
+                oldest_key = next(iter(self._store))
+                del self._store[oldest_key]
+            self._store[preview_id] = (now, data)
+
+    def get(self, preview_id: str) -> dict[str, Any] | None:
+        now = time.monotonic()
+        with self._lock:
+            entry = self._store.get(preview_id)
+            if entry is None:
+                return None
+            ts, data = entry
+            if now - ts > self._ttl_seconds:
+                del self._store[preview_id]
+                return None
+            return data
+
+    def clear(self) -> None:
+        with self._lock:
+            self._store.clear()
+
+    @property
+    def max_entries(self) -> int:
+        return self._max_entries
+
+    @property
+    def ttl_seconds(self) -> float:
+        return self._ttl_seconds
+
+    def __len__(self) -> int:
+        with self._lock:
+            return len(self._store)
+
+
+_field_form_preview_store = FieldFormPreviewStore()
+
+
+def get_field_form_preview_store() -> FieldFormPreviewStore:
+    return _field_form_preview_store

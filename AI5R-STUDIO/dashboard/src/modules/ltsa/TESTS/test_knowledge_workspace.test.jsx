@@ -771,6 +771,13 @@ describe("Mechanical Seal (MWO-LTSA-ASSET360-MECHANICAL-SEAL-WIRING-001) -- curr
             temperature_limit: null,
             pressure_limit: null,
             status: "INSTALLED",
+            // MWO-ASSET360-CURRENT-INSTALLATION-SEMANTIC-FIX-R1 --
+            // additive field this MWO introduces: the seal body's own
+            // status-signal line now reads installation_status (proves
+            // installation existence), never `status` (unchanged,
+            // seal_registry-only -- still what the section header's own
+            // badge reads via data.mechanicalSeal?.status below).
+            installation_status: "Installed",
             installation_code: "INSTL-001-2026",
             installed_at: "2026-01-06",
             source: "seal_registry",
@@ -787,10 +794,57 @@ describe("Mechanical Seal (MWO-LTSA-ASSET360-MECHANICAL-SEAL-WIRING-001) -- curr
     expect(within(currentGroup).getByText("T48MP")).toBeInTheDocument();
     expect(within(currentGroup).getByText("John Crane")).toBeInTheDocument();
     expect(within(currentGroup).getByText("1K1K")).toBeInTheDocument();
-    // "INSTALLED" legitimately renders twice: the section header's own
-    // badge (badge={data.mechanicalSeal?.status}) AND the seal body's
-    // status-signal line.
-    expect(within(sealSection).getAllByText("INSTALLED").length).toBeGreaterThan(0);
+    // Two DIFFERENT facts, deliberately not the same text anymore: the
+    // section header's own badge (badge={data.mechanicalSeal?.status})
+    // still reads "INSTALLED" (unchanged, seal_registry.status), while the
+    // seal body's status-signal line now reads installation_status
+    // ("Installed") -- proven independently below, not asserted as the
+    // same string twice.
+    expect(within(sealSection).getByText("INSTALLED")).toBeInTheDocument();
+    expect(within(currentGroup).getByText("Installed")).toBeInTheDocument();
+  });
+
+  it("MWO-ASSET360-CURRENT-INSTALLATION-SEMANTIC-FIX-R1 -- renders Installed (never Unknown) when a real installation exists but no seal_code resolved, without fabricating identity", async () => {
+    // The exact reported case (920-P-2C): a real installation_report
+    // (installed_at/source_document_name present) but seal_code null --
+    // `status` stays null (no Seal Registry match), same as before this
+    // fix; installation_status is the new, independent "Installed" signal.
+    getPumpKnowledge.mockResolvedValue(
+      backendResponse({
+        data: {
+          ...backendResponse().data,
+          current_seal: {
+            seal_code: null,
+            seal_name: null,
+            manufacturer: "John Crane",
+            model: null,
+            shaft_size: null,
+            material: null,
+            temperature_limit: null,
+            pressure_limit: null,
+            status: null,
+            installation_status: "Installed",
+            installation_code: "INSTL-920P2C-001",
+            installed_at: "2026-02-21",
+            source: "installation_report",
+            source_document_name: "SCAN 010 INSTALLATION REPORT 920-P-2C.pdf",
+          },
+        },
+      })
+    );
+
+    render(<KnowledgeWorkspace tag={TAG} />);
+
+    await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());
+    const sealSection = screen.getByTestId("knowledge-section-seal");
+    const currentGroup = within(sealSection).getByTestId("knowledge-seal-current");
+    expect(within(currentGroup).getByText("Installed")).toBeInTheDocument();
+    expect(within(currentGroup).queryByText("Unknown")).not.toBeInTheDocument();
+    expect(within(currentGroup).getByText("2026-02-21")).toBeInTheDocument();
+    expect(within(currentGroup).getByText("SCAN 010 INSTALLATION REPORT 920-P-2C.pdf")).toBeInTheDocument();
+    // Identity fields with no authoritative source stay honest, never
+    // fabricated from Configured Seal Type or installation_status.
+    expect(within(currentGroup).getAllByText("Not recorded").length).toBeGreaterThanOrEqual(3);
   });
 
   it("leaves current-installation fields with no authoritative source as an honest 'Unavailable', never fabricated", async () => {

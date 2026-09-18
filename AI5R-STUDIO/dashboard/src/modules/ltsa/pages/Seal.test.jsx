@@ -16,6 +16,11 @@ import {
   getSealUnitWarranty,
   getSealUnitInstallationReports,
   getSealUnitHistory,
+  getDocuments,
+  getEngineeringDrawingsForSeal,
+  getEngineeringDrawingRevisions,
+  getEngineeringDrawingBom,
+  getConditionMonitoringReadings,
 } from "../../../api/ai5rClient";
 import sampleSeals from "../data/sampleSeals";
 
@@ -55,6 +60,11 @@ vi.mock("../../../api/ai5rClient", () => ({
   getSealUnitWarranty: vi.fn(),
   getSealUnitInstallationReports: vi.fn(),
   getSealUnitHistory: vi.fn(),
+  getDocuments: vi.fn(),
+  getEngineeringDrawingsForSeal: vi.fn(),
+  getEngineeringDrawingRevisions: vi.fn(),
+  getEngineeringDrawingBom: vi.fn(),
+  getConditionMonitoringReadings: vi.fn(),
 }));
 
 beforeEach(() => {
@@ -81,15 +91,33 @@ beforeEach(() => {
   getSealUnitWarranty.mockResolvedValue([]);
   getSealUnitInstallationReports.mockResolvedValue([]);
   getSealUnitHistory.mockResolvedValue([]);
+  // R2A -- getDocuments() added, same reason as getSealCompatibility/
+  // getSealStock above: Seal.jsx now fetches it (Documents tab real read
+  // path, SealOpenDesignView.jsx), so any real-fetch-path test triggers
+  // this call. Additive only, keeps the mock in sync.
+  getDocuments.mockResolvedValue([]);
+  // R2B -- getEngineeringDrawingsForSeal/Revisions/Bom added, same
+  // reason: Seal.jsx now fetches these once a seal is selected (Drawings/
+  // BOM tabs, SealOpenDesignView.jsx). Additive only.
+  getEngineeringDrawingsForSeal.mockResolvedValue([]);
+  getEngineeringDrawingRevisions.mockResolvedValue([]);
+  getEngineeringDrawingBom.mockResolvedValue([]);
+  // MWO-R2C3 -- getConditionMonitoringReadings added, same reason: Seal.jsx
+  // now fetches it (genuine Condition Monitoring, bounded to the resolved
+  // asset). Additive only.
+  getConditionMonitoringReadings.mockResolvedValue([]);
 });
 
 afterEach(() => {
   vi.clearAllMocks();
 });
 
+// MECHANICAL-SEAL-DOMAIN-CONSOLIDATION-R1 -- seal_id added (raw API
+// shape). Synthetic test data; not derived from a real migration 044
+// run (which only maps 'John Crane' manufacturers today).
 const RAW_SEALS = [
-  { seal_code: "SC-101", seal_name: "Flowserve ISC2", manufacturer: "Flowserve", status: "ACTIVE" },
-  { seal_code: "SC-102", seal_name: "AESSEAL P8", manufacturer: "AESSEAL", status: "FAULT" },
+  { seal_code: "SC-101", seal_id: "MS-FS-0101", seal_name: "Flowserve ISC2", manufacturer: "Flowserve", status: "ACTIVE" },
+  { seal_code: "SC-102", seal_id: "MS-AS-0102", seal_name: "AESSEAL P8", manufacturer: "AESSEAL", status: "FAULT" },
 ];
 
 describe("Seal workspace page -- real backend fetch (MWO-LTSA-041)", () => {
@@ -112,7 +140,7 @@ describe("Seal workspace page -- real backend fetch (MWO-LTSA-041)", () => {
     render(<Seal />);
 
     expect(await screen.findByText("Seals could not be loaded.")).toBeTruthy();
-    expect(screen.queryByText("SC-101")).toBeNull();
+    expect(screen.queryByText("MS-FS-0101")).toBeNull();
   });
 
   it("shows the existing empty state when the API returns zero seals -- no fabricated data", async () => {
@@ -126,27 +154,30 @@ describe("Seal workspace page -- real backend fetch (MWO-LTSA-041)", () => {
     getSeals.mockResolvedValue(RAW_SEALS);
     render(<Seal />);
 
-    expect(await screen.findByText("SC-101")).toBeTruthy();
-    expect(screen.getByText("SC-102")).toBeTruthy();
+    expect(await screen.findByText("MS-FS-0101")).toBeTruthy();
+    expect(screen.getByText("MS-AS-0102")).toBeTruthy();
     expect(getSeals).toHaveBeenCalledOnce();
   });
 
   it("shows an empty state in the detail panel before any seal is selected", async () => {
     getSeals.mockResolvedValue(RAW_SEALS);
     render(<Seal />);
-    await screen.findByText("SC-101");
+    await screen.findByText("MS-FS-0101");
 
     expect(screen.getByText(/no seal selected/i)).toBeTruthy();
   });
 
   it("shows the selected seal's detail, mapped from the real API record, when a row is clicked", async () => {
     // UI-D1.2 -- the identity header's <h1> is the seal's CODE; name is
-    // adjacent subtitle text, not a second heading.
+    // adjacent subtitle text, not a second heading. Row selection now
+    // happens via the registry's Seal ID column (MS-FS-0101), not the
+    // legacy code (SealOpenDesignView's own heading is unchanged -- it
+    // still renders seal.code).
     getSeals.mockResolvedValue(RAW_SEALS);
     render(<Seal />);
-    await screen.findByText("SC-101");
+    await screen.findByText("MS-FS-0101");
 
-    fireEvent.click(screen.getByText("SC-101"));
+    fireEvent.click(screen.getByText("MS-FS-0101"));
 
     expect(screen.getByRole("heading", { name: "SC-101" })).toBeTruthy();
     expect(screen.getAllByText("Flowserve ISC2").length).toBeGreaterThan(0);
@@ -164,14 +195,14 @@ describe("Seal workspace page -- with injected data (fixture, not shown to real 
     render(<Seal seals={sampleSeals} />);
 
     sampleSeals.forEach((seal) => {
-      expect(screen.getByText(seal.code)).toBeTruthy();
+      expect(screen.getByText(seal.sealId)).toBeTruthy();
     });
   });
 
   it("shows the selected seal's detail when a registry row is clicked", () => {
     render(<Seal seals={sampleSeals} />);
 
-    fireEvent.click(screen.getByText("SC-003"));
+    fireEvent.click(screen.getByText("MS-FS-0003"));
 
     expect(screen.getByRole("heading", { name: "SC-003" })).toBeTruthy();
     expect(screen.getAllByText("Flowserve ISC2").length).toBeGreaterThan(0);
@@ -182,8 +213,8 @@ describe("Seal workspace page -- with injected data (fixture, not shown to real 
 
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "AESSEAL" } });
 
-    expect(screen.getByText("SC-005")).toBeTruthy();
-    expect(screen.queryByText("SC-001")).toBeNull();
+    expect(screen.getByText("MS-AS-0005")).toBeTruthy();
+    expect(screen.queryByText("MS-JC-0001")).toBeNull();
   });
 
   it("filters the registry table by status", () => {
@@ -191,8 +222,8 @@ describe("Seal workspace page -- with injected data (fixture, not shown to real 
 
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "FAULT" } });
 
-    expect(screen.getByText("SC-007")).toBeTruthy();
-    expect(screen.queryByText("SC-001")).toBeNull();
+    expect(screen.getByText("MS-JC-0007")).toBeTruthy();
+    expect(screen.queryByText("MS-JC-0001")).toBeNull();
   });
 });
 
@@ -206,9 +237,9 @@ describe("Seal workspace -- Compatible Pumps resolved from getSealCompatibility 
       { seal_code: "SC-101", pump_tag_number: "211-P-1A", notes: null },
     ]);
     render(<Seal onNavigate={vi.fn()} />);
-    await screen.findByText("SC-101");
+    await screen.findByText("MS-FS-0101");
 
-    fireEvent.click(screen.getByText("SC-101"));
+    fireEvent.click(screen.getByText("MS-FS-0101"));
     // UI-D1.2 -- Compatible Pumps now render inside the Compatible tab's
     // "Related Pumps" RefGroup, not always-visible.
     fireEvent.click(screen.getByRole("tab", { name: "Compatible" }));
@@ -222,7 +253,7 @@ describe("Seal workspace -- Compatible Pumps resolved from getSealCompatibility 
     // survives untouched -- the bug this test guards against would show
     // compatiblePumps silently reset to [].
     render(<Seal seals={sampleSeals} />);
-    fireEvent.click(screen.getByText("SC-001"));
+    fireEvent.click(screen.getByText("MS-JC-0001"));
     fireEvent.click(screen.getByRole("tab", { name: "Compatible" }));
 
     expect(screen.getByText("PMP-001")).toBeTruthy();
@@ -268,7 +299,7 @@ describe("Seal workspace -- Open Pump / Open Drawing navigation (MWO-LTSA-042A)"
   it("calls onNavigate('pump', {selectId}) when the Action Bar's 'Buka Pump' is clicked", () => {
     const onNavigate = vi.fn();
     render(<Seal seals={sampleSeals} onNavigate={onNavigate} />);
-    fireEvent.click(screen.getByText("SC-001"));
+    fireEvent.click(screen.getByText("MS-JC-0001"));
 
     fireEvent.click(screen.getByText("Buka Pump →"));
 
@@ -283,7 +314,7 @@ describe("Seal workspace -- Open Pump / Open Drawing navigation (MWO-LTSA-042A)"
   it("calls onNavigate('drawing', {assetTag}) when 'Buka Drawing' is clicked -- MWO-LTSA-051A: passes the resolved pump tag so Drawing Workspace can fetch that pump's real drawings", () => {
     const onNavigate = vi.fn();
     render(<Seal seals={sampleSeals} onNavigate={onNavigate} />);
-    fireEvent.click(screen.getByText("SC-001"));
+    fireEvent.click(screen.getByText("MS-JC-0001"));
     fireEvent.click(screen.getByRole("tab", { name: "Documents" }));
 
     fireEvent.click(screen.getByText("Buka Drawing →"));
@@ -300,7 +331,7 @@ describe("Seal workspace -- Open Pump / Open Drawing navigation (MWO-LTSA-042A)"
     const seal = sampleSeals.find((item) => item.compatiblePumps.length === 0);
     render(<Seal seals={sampleSeals} onNavigate={vi.fn()} />);
 
-    fireEvent.click(screen.getByText(seal.code));
+    fireEvent.click(screen.getByText(seal.sealId));
 
     expect(screen.getByText(/Outside LTSA scope/)).toBeTruthy();
     expect(screen.queryByText("Buka Pump →")).toBeNull();
@@ -308,10 +339,35 @@ describe("Seal workspace -- Open Pump / Open Drawing navigation (MWO-LTSA-042A)"
 
   it("does not throw when 'Buka Drawing' is clicked with no onNavigate prop supplied", () => {
     render(<Seal seals={sampleSeals} />);
-    fireEvent.click(screen.getByText("SC-001"));
+    fireEvent.click(screen.getByText("MS-JC-0001"));
     fireEvent.click(screen.getByRole("tab", { name: "Documents" }));
 
     expect(() => fireEvent.click(screen.getByText("Buka Drawing →"))).not.toThrow();
+  });
+});
+
+describe("Seal workspace -- bounded genuine Condition Monitoring fetch (MWO-R2C3)", () => {
+  it("calls getConditionMonitoringReadings with the resolved asset code only -- never the fleet-wide fetch", async () => {
+    render(<Seal seals={sampleSeals} onNavigate={vi.fn()} />);
+    fireEvent.click(screen.getByText("MS-JC-0001"));
+
+    await screen.findByText("MS-JC-0001");
+
+    expect(getConditionMonitoringReadings).toHaveBeenCalledWith({ assetCode: "PMP-001" });
+    expect(getConditionMonitoringReadings).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps getCMReports (legacy Corrective Maintenance) as a separate call, not the source of genuine readings", async () => {
+    render(<Seal seals={sampleSeals} onNavigate={vi.fn()} />);
+    fireEvent.click(screen.getByText("MS-JC-0001"));
+
+    await screen.findByText("MS-JC-0001");
+
+    // Both fire (each feeds its own, separate display group), but with
+    // no shared arguments/return value coupling them -- proving Related
+    // Condition Monitoring's data does not come from getCMReports().
+    expect(getCMReports).toHaveBeenCalled();
+    expect(getConditionMonitoringReadings).toHaveBeenCalledWith({ assetCode: "PMP-001" });
   });
 });
 
@@ -322,7 +378,7 @@ describe("Seal workspace -- Open Pump / Open Drawing navigation (MWO-LTSA-042A)"
 describe("Seal workspace -- Contract Coverage card (MWO-LTSA-044)", () => {
   it("shows 'LTSA Covered' for a seal that resolves a compatible pump", () => {
     render(<Seal seals={sampleSeals} />);
-    fireEvent.click(screen.getByText("SC-001"));
+    fireEvent.click(screen.getByText("MS-JC-0001"));
 
     // "LTSA Covered" legitimately appears twice: the Contract Coverage
     // card and the Action Bar's denser .meta line -- both reuse the same
@@ -333,7 +389,7 @@ describe("Seal workspace -- Contract Coverage card (MWO-LTSA-044)", () => {
   it("shows 'Outside LTSA Contract' with the explanatory note and Unavailable list for a seal with no compatible pump", () => {
     const seal = sampleSeals.find((item) => item.compatiblePumps.length === 0);
     render(<Seal seals={sampleSeals} />);
-    fireEvent.click(screen.getByText(seal.code));
+    fireEvent.click(screen.getByText(seal.sealId));
 
     expect(screen.getAllByText("Outside LTSA Contract").length).toBeGreaterThan(0);
     // MWO-LTSA-047 -- message shortened further to one short sentence.

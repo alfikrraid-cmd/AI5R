@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import PumpWorkspaceDrawer from "./PumpWorkspaceDrawer";
 import AssetIdentityHeader, { HealthCard } from "./AssetIdentityHeader";
 import WorkspaceTabStrip from "./WorkspaceTabStrip";
 import { IconSeal } from "./LTSANavIcons";
 import { Section, InfoRow, StatusSignal, RefGroup } from "./open-design";
+import { Table } from "../../../design-system";
 import {
   EngineeringAIStatus,
   EngineeringAISummary,
@@ -89,7 +90,15 @@ export default function SealOpenDesignView({
   installedSince,
   pmRecords = [],
   cmRecords = [],
+  conditionMonitoringReadings = [],
   workOrderRecords = [],
+  documents = [],
+  documentsLoading = false,
+  linkedDrawings = [],
+  linkedDrawingsLoading = false,
+  linkedDrawingsError = null,
+  drawingBomGroups = [],
+  bomLoading = false,
   canEditIdentifiers = false,
   onUpdateIdentifiers,
   onOpenPump,
@@ -108,11 +117,19 @@ export default function SealOpenDesignView({
   // Chief's reference tab list for the Mechanical Seal Workspace. Purely a
   // display grouping over sections that already existed -- see each tab's
   // own comment below for exactly which pre-existing section moved where.
+  //
+  // R2B -- Drawings/BOM added, explicitly authorized (Chief Architect's
+  // own canonical chain: Seal -> Engineering Drawing SEAL link -> Drawing
+  // Revision -> BOM Lines). Kept distinct from Documents (R2A,
+  // seal_engineering_document -- a different table/domain, untouched by
+  // this addition) per that same instruction.
   const [activeTab, setActiveTab] = useState("overview");
   const SEAL_TABS = [
     { key: "overview", label: "Overview" },
     { key: "compatible", label: "Compatible" },
     { key: "documents", label: "Documents" },
+    { key: "drawings", label: "Drawings" },
+    { key: "bom", label: "BOM" },
     { key: "history", label: "History" },
     { key: "ai-insight", label: "AI Insight" },
   ];
@@ -160,6 +177,31 @@ export default function SealOpenDesignView({
     setTimeout(() => setToast(null), 2600);
   }
 
+  // R2A -- real seal_engineering_document rows (documents prop, mapped by
+  // Seal.jsx via documentMapping.js's mapDocumentRecord, exact-match on
+  // seal_code). Grouped by the raw document_type enum verbatim (DRAWING/
+  // DATASHEET/INSTALLATION_GUIDE/INSPECTION_SHEET/MAINTENANCE_MANUAL/
+  // SERVICE_BULLETIN/ENGINEERING_SPECIFICATION) -- never translated into
+  // the old placeholder's Drawing/Datasheet/Installation Procedure/
+  // Certificates/Revision History labels, since no real, evidenced
+  // mapping between the two vocabularies exists (documentMapping.js's own
+  // disclosed-gap discipline; inventing one here would be fabricated
+  // metadata). Only groups with at least one real document are rendered.
+  const documentGroups = useMemo(() => {
+    const byType = new Map();
+    for (const doc of documents) {
+      const type = doc.documentType ?? "UNSPECIFIED";
+      if (!byType.has(type)) byType.set(type, []);
+      byType.get(type).push({
+        key: doc.id,
+        name: doc.title || doc.documentNumber || doc.id,
+        meta: doc.documentNumber ? `No. ${doc.documentNumber}` : undefined,
+        flagLabel: doc.currentRevision ? `Rev ${doc.currentRevision}` : undefined,
+      });
+    }
+    return [...byType.entries()].map(([type, items]) => ({ type, items }));
+  }, [documents]);
+
   const meta = statusMeta(seal.status);
 
   const coverageMeta = resolvedAssetCode
@@ -204,7 +246,25 @@ export default function SealOpenDesignView({
       items: pmRecords.map((pm) => ({ key: pm.id, name: pm.id, meta: pm.nextDue ? `Jatuh tempo ${pm.nextDue}` : pm.procedure, flagLabel: pm.status })),
       emptyReason: !resolvedAssetCode ? ltsaEmptyReason : dataEmptyReason,
     },
-    { id: "cm", title: "Related Condition Monitoring", items: [], emptyReason: !resolvedAssetCode ? ltsaEmptyReason : dataEmptyReason },
+    {
+      id: "cm",
+      title: "Related Condition Monitoring",
+      // MWO-R2C3 -- genuine condition_monitoring_reading rows (never
+      // Corrective Maintenance -- see "Related CM Reports" below, a
+      // separate legacy group left untouched). Seal Master -> compatible
+      // pump -> CM reading only; no physical-seal-unit claim.
+      items: conditionMonitoringReadings.map((cm) => ({
+        key: cm.id,
+        name: cm.id,
+        meta: [
+          cm.readingDate ? `Reading ${cm.readingDate}` : "Reading date N/A",
+          `DE leak: ${cm.leakDe === true ? "Yes" : cm.leakDe === false ? "No" : "N/A"}`,
+          `NDE leak: ${cm.leakNde === true ? "Yes" : cm.leakNde === false ? "No" : "N/A"}`,
+        ].join(" · "),
+        flagLabel: cm.status ?? "N/A",
+      })),
+      emptyReason: !resolvedAssetCode ? ltsaEmptyReason : dataEmptyReason,
+    },
     { id: "fa", title: "Related Failure Analysis", items: [], emptyReason: !resolvedAssetCode ? ltsaEmptyReason : dataEmptyReason },
     {
       id: "cm-reports",
@@ -419,13 +479,143 @@ export default function SealOpenDesignView({
                 Buka Drawing →
               </button>
             </div>
-            <div style={{ marginTop: "var(--space-2)" }}>
-              <div className="eyebrow" style={{ marginBottom: "var(--space-2)" }}>Document Types</div>
-              <InfoRow label="Drawing" value="—" valueClassName="ref-group-empty" />
-              <InfoRow label="Datasheet" value="—" valueClassName="ref-group-empty" />
-              <InfoRow label="Installation Procedure" value="—" valueClassName="ref-group-empty" />
-              <InfoRow label="Certificates" value="—" valueClassName="ref-group-empty" />
-              <InfoRow label="Revision History" value="—" valueClassName="ref-group-empty" />
+            <div style={{ marginTop: "var(--space-2)" }} data-od-id="documents-list">
+              {documentsLoading ? (
+                <p className="confidence-label" data-testid="seal-documents-loading">
+                  Loading documents…
+                </p>
+              ) : documentGroups.length === 0 ? (
+                <p className="confidence-label ref-group-empty" data-testid="seal-documents-empty">
+                  No linked engineering documents for this seal.
+                </p>
+              ) : (
+                documentGroups.map((group) => (
+                  <RefGroup key={group.type} title={group.type} items={group.items} />
+                ))
+              )}
+            </div>
+          </section>
+        </div>
+      )}
+
+      {activeTab === "drawings" && (
+        <div className="workspace-tab-body">
+          <section className="assessment-section" data-od-id="drawings-section">
+            <div className="section-head">
+              <span className="eyebrow">Engineering Drawings</span>
+            </div>
+            <div style={{ marginTop: "var(--space-2)" }} data-od-id="drawings-list">
+              {linkedDrawingsLoading ? (
+                <p className="confidence-label" data-testid="seal-drawings-loading">
+                  Loading engineering drawings…
+                </p>
+              ) : linkedDrawingsError ? (
+                <p className="confidence-label" role="alert" data-testid="seal-drawings-error">
+                  {linkedDrawingsError}
+                </p>
+              ) : linkedDrawings.length === 0 ? (
+                <p className="confidence-label ref-group-empty" data-testid="seal-drawings-empty">
+                  No linked engineering drawings.
+                </p>
+              ) : (
+                <RefGroup
+                  title="Linked Drawings"
+                  items={linkedDrawings.map((drawing) => ({
+                    key: drawing.drawing_code,
+                    name: drawing.title || drawing.drawing_number || drawing.drawing_code,
+                    meta: drawing.drawing_number ? `No. ${drawing.drawing_number}` : undefined,
+                    flagLabel: drawing.current_revision_code ? `Rev ${drawing.current_revision_code}` : undefined,
+                  }))}
+                />
+              )}
+            </div>
+          </section>
+        </div>
+      )}
+
+      {activeTab === "bom" && (
+        <div className="workspace-tab-body">
+          <section className="assessment-section" data-od-id="bom-section">
+            <div className="section-head">
+              <span className="eyebrow">BOM</span>
+            </div>
+            <div style={{ marginTop: "var(--space-2)" }} data-od-id="bom-list">
+              {linkedDrawingsLoading || bomLoading ? (
+                <p className="confidence-label" data-testid="seal-bom-loading">
+                  Loading BOM…
+                </p>
+              ) : linkedDrawingsError ? (
+                <p className="confidence-label" role="alert" data-testid="seal-bom-error">
+                  {linkedDrawingsError}
+                </p>
+              ) : linkedDrawings.length === 0 ? (
+                <p className="confidence-label ref-group-empty" data-testid="seal-bom-empty-no-drawing">
+                  No linked engineering drawings.
+                </p>
+              ) : (
+                // BOM_SCOPE=DRAWING_REVISION (Chief Architect's own
+                // canonical chain) -- one block per linked drawing's
+                // CURRENT revision, never flattened into one master-seal
+                // list. A drawing with no current revision, or a
+                // revision with zero BOM lines, is its own distinct
+                // empty state -- never silently merged with "no linked
+                // drawings" above.
+                drawingBomGroups.map(({ drawing, revision, bomLines }) => (
+                  <div key={drawing.drawing_code} className="assessment-section" style={{ marginBottom: "var(--space-4)" }} data-od-id="bom-drawing-group">
+                    <div className="eyebrow">{drawing.title || drawing.drawing_number || drawing.drawing_code}</div>
+                    {!revision ? (
+                      <p className="confidence-label ref-group-empty" data-testid="seal-bom-no-current-revision">
+                        No current revision set for this drawing.
+                      </p>
+                    ) : (
+                      <>
+                        <p className="confidence-label" style={{ marginBottom: "var(--space-2)" }}>
+                          Revision {revision.revision ?? revision.revision_code}
+                        </p>
+                        {bomLines.length === 0 ? (
+                          <p className="confidence-label ref-group-empty" data-testid="seal-bom-empty-no-lines">
+                            No BOM recorded for this revision.
+                          </p>
+                        ) : (
+                          <Table
+                            rowKey="bom_line_code"
+                            // design-system's Table renders item[column.key]
+                            // verbatim -- it has no render-callback support
+                            // (confirmed by reading Table.jsx; several other
+                            // callers in this codebase pass an unused
+                            // `render` prop that Table silently ignores, a
+                            // pre-existing gap this MWO does not fix
+                            // elsewhere). Pre-shaping display-ready fields
+                            // here, rather than relying on a `render` prop
+                            // that would not actually run, so every cell
+                            // shows what it claims to.
+                            data={bomLines.map((line) => ({
+                              bom_line_code: line.bom_line_code,
+                              item_position: line.item_position || "—",
+                              component: line.component_description || line.component_id || "—",
+                              // internal_component_master.gpn_number is
+                              // never returned by this read path (BOM
+                              // lines carry component_id only) -- honestly
+                              // N/A, never inferred/guessed from
+                              // component_id or seal type.
+                              part_number: NOT_AVAILABLE,
+                              quantity: line.quantity ?? "—",
+                              material: line.material_or_specification || "—",
+                            }))}
+                            columns={[
+                              { key: "item_position", header: "Position" },
+                              { key: "component", header: "Component" },
+                              { key: "part_number", header: "Part Number" },
+                              { key: "quantity", header: "Qty" },
+                              { key: "material", header: "Material" },
+                            ]}
+                          />
+                        )}
+                      </>
+                    )}
+                  </div>
+                ))
+              )}
             </div>
           </section>
         </div>

@@ -4,9 +4,12 @@ import SealFilterBar from "../components/SealFilterBar";
 import SealRegistryTable from "../components/SealRegistryTable";
 import SealOpenDesignView from "../components/SealOpenDesignView";
 import PhysicalSealWorkspace from "../components/PhysicalSealWorkspace";
+import MechanicalSealStock from "./MechanicalSealStock";
 import {
   getSeals, getSealCompatibility, getSealStock, postEngineeringAI,
   getPMSchedules, getCMReports, getWorkOrders, updateSealIdentifiers,
+  getDocuments, getEngineeringDrawingsForSeal, getEngineeringDrawingRevisions,
+  getEngineeringDrawingBom, getConditionMonitoringReadings,
 } from "../../../api/ai5rClient";
 import { mapSealRecord, resolveCompatiblePumps, resolveStock } from "../utils/sealMapping";
 import { useOptionalAuth } from "../auth/AuthContext";
@@ -14,6 +17,7 @@ import { can, PERMISSIONS } from "../auth/permissions";
 import { mapPMScheduleRecord } from "../utils/pmMapping";
 import { mapCMReportRecord } from "../utils/cmMapping";
 import { mapWorkOrderRecord } from "../utils/workOrderMapping";
+import { mapDocumentRecord } from "../utils/documentMapping";
 import generateTraceId from "../utils/generateTraceId";
 import "./Seal.css";
 import "./MaintenanceHistory.css";
@@ -47,6 +51,14 @@ function resolveAssetCode(seal) {
 // kimapPertamina/gpnJohnCrane are nullable (Hard Rule 6: missing
 // identifiers must not block operations) -- `?? ""` before lowercasing
 // avoids crashing search on every not-yet-completed seal.
+// MECHANICAL-SEAL-DOMAIN-CONSOLIDATION-R1 Part B -- extended to Seal ID
+// (seal.sealId, the new MS-JC-NNNN identifier). type/manufacturer are
+// now defensively `?? ""` before lowercasing: seal.type used to be
+// hard-coded null for every real seal (so this line was unreachable in
+// practice, only ever exercised by fixtures that supplied a string) --
+// now that mapSealRecord surfaces the real seal_type column, a seal this
+// migration could not safely backfill legitimately still has type=null,
+// and a non-empty search term must not crash on it.
 function matchesSearch(seal, search) {
   const term = search.trim().toLowerCase();
 
@@ -56,8 +68,9 @@ function matchesSearch(seal, search) {
 
   return (
     seal.name.toLowerCase().includes(term) ||
-    seal.type.toLowerCase().includes(term) ||
-    seal.manufacturer.toLowerCase().includes(term) ||
+    (seal.sealId ?? "").toLowerCase().includes(term) ||
+    (seal.type ?? "").toLowerCase().includes(term) ||
+    (seal.manufacturer ?? "").toLowerCase().includes(term) ||
     (seal.kimapPertamina ?? "").toLowerCase().includes(term) ||
     (seal.gpnJohnCrane ?? "").toLowerCase().includes(term) ||
     seal.compatiblePumps.some((tag) => tag.toLowerCase().includes(term))
@@ -184,6 +197,18 @@ export default function Seal({ seals: sealsProp, onNavigate }) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [selectedCode, setSelectedCode] = useState(null);
+  // MECHANICAL-SEAL-DOMAIN-CONSOLIDATION-R1 Part B -- Registry/Stock
+  // sub-tabs inside the Mechanical Seal workspace, the same "Tabs strip"
+  // pattern PhysicalSealWorkspace.jsx already uses one level down (not a
+  // new UI pattern). Additive: LTSAWorkspace.jsx's own top-level
+  // "inventory" tab/MechanicalSealStock.jsx/its tests are all untouched
+  // and still work standalone -- this only gives Stock a second,
+  // in-context entry point, per Part C's "accessible inside Mechanical
+  // Seal UX" requirement. Full removal of the separate top-level nav
+  // item is a larger, harder-to-reverse IA change (deep links, capability
+  // allowedKeys, QuickNavigationPanel destinations) left for a follow-up
+  // Chief Architect decision, not decided unilaterally here.
+  const [subView, setSubView] = useState("registry");
 
   const statusOptions = useMemo(
     () => [...new Set(seals.map((seal) => seal.status))],
@@ -258,6 +283,178 @@ export default function Seal({ seals: sealsProp, onNavigate }) {
     return () => { active = false; };
   }, [resolvedAssetCode]);
 
+  // MWO-R2C3 -- genuine Condition Monitoring readings. NOT the same as
+  // relatedCM above: that is legacy Corrective Maintenance
+  // (getCMReports()/mapCMReportRecord -- cm_report_code/failure_category/
+  // root_cause/corrective_action, unchanged, still feeds the separate
+  // "Related CM Reports" group below). This is condition_monitoring_
+  // reading -- mechanical_seal_leak_de/nde, mechseal_temp_de/nde, real
+  // measurement fields -- via the new bounded ?asset_code= filter
+  // (routers/condition_monitoring.py's own list_by_asset(asset_code)),
+  // never getAllConditionMonitoringReadings()'s fleet-wide fetch. Uses
+  // the same single resolvedAssetCode every other Related group here
+  // already relies on -- a Seal Master's compatible pump(s) collapse to
+  // this one authoritative asset the same way PM/CM-reports/Work Orders
+  // above already do, not an N-per-pump fan-out. Seal Master -> compatible
+  // pump -> CM reading is the only relationship this proves -- never a
+  // physical-seal-unit claim.
+  const [conditionMonitoringReadings, setConditionMonitoringReadings] = useState([]);
+
+  useEffect(() => {
+    if (!resolvedAssetCode) {
+      setConditionMonitoringReadings([]);
+      return undefined;
+    }
+    let active = true;
+    getConditionMonitoringReadings({ assetCode: resolvedAssetCode })
+      .then((readings) => {
+        if (!active) return;
+        setConditionMonitoringReadings(readings.map((r) => ({
+          id: r.condition_monitoring_reading_code,
+          assetCode: r.asset_code,
+          readingDate: r.reading_date ?? null,
+          leakDe: r.mechanical_seal_leak_de ?? null,
+          leakNde: r.mechanical_seal_leak_nde ?? null,
+          tempDe: r.mechseal_temp_de ?? null,
+          tempNde: r.mechseal_temp_nde ?? null,
+          status: r.workflow_status ?? null,
+          finding: r.finding ?? null,
+        })));
+      })
+      .catch(() => {
+        if (active) setConditionMonitoringReadings([]);
+      });
+    return () => { active = false; };
+  }, [resolvedAssetCode]);
+
+  // R2A (Mechanical Seal Documents/Drawings/BOM Real Read Path) -- the
+  // Documents tab previously rendered five hardcoded "—" rows with no
+  // backend call at all. seal_engineering_document.seal_code is a real,
+  // NOT NULL foreign key to seal_registry.seal_code (BP-SEAL-ENGINEERING-
+  // DOCUMENT/004_alter_add_acquisition_fields.sql) -- a deterministic,
+  // exact-match master linkage, never a fuzzy/substring guess. GET
+  // /api/ltsa/documents (routers/document.py, MWO-LTSA-062) already
+  // exposes every seal_engineering_document row (all seven document_type
+  // values, including DRAWING) scoped by the same area-scope rule
+  // Document Workspace already uses; getDocuments()/mapDocumentRecord()
+  // are the same, already-tested client/mapping functions Document
+  // Workspace calls (DocumentWorkspace.jsx) -- reused verbatim, nothing
+  // new added to either. Independent fetch (not the top getSeals()
+  // Promise.all): a documents-fetch failure must not affect the seal
+  // list itself, and mirrors the exact same
+  // Promise.all([getDocuments(), getSealCompatibility()]).catch(() => [])
+  // "degrade, never fabricate" discipline DocumentWorkspace.jsx already
+  // established for this identical fetch.
+  const [documentRecords, setDocumentRecords] = useState([]);
+  const [documentsLoading, setDocumentsLoading] = useState(sealsProp === undefined);
+
+  useEffect(() => {
+    if (sealsProp !== undefined) {
+      setDocumentsLoading(false);
+      return undefined;
+    }
+    let active = true;
+    setDocumentsLoading(true);
+    Promise.all([getDocuments(), getSealCompatibility()])
+      .then(([documents, compatibility]) => {
+        if (!active) return;
+        setDocumentRecords(
+          documents.map((record) => mapDocumentRecord(record, compatibility, documents))
+        );
+      })
+      .catch(() => {
+        if (active) setDocumentRecords([]);
+      })
+      .finally(() => {
+        if (active) setDocumentsLoading(false);
+      });
+    return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sealsProp]);
+
+  // Exact-match on seal_registry.seal_code only -- the same identity the
+  // classifier's own CANONICAL RULE requires elsewhere (never substring/
+  // contains/fuzzy). No seal selected -> no documents, not "all documents".
+  const selectedSealDocuments = useMemo(
+    () => (selectedSeal ? documentRecords.filter((doc) => doc.sealCode === selectedSeal.code) : []),
+    [documentRecords, selectedSeal]
+  );
+
+  // R2B (Mechanical Seal Engineering Drawing + Revision BOM Real Read
+  // Path) -- distinct domain from R2A's Documents above: seal_engineering_
+  // document (direct FK) vs. engineering_drawing reached via the generic,
+  // write-time-validated engineering_drawing_link (target_type='SEAL',
+  // target_code exactly seal_registry.seal_code, no fuzzy/substring
+  // match). Per-selection fetch (like PM/CM/WorkOrder above), not a
+  // global list -- GET /api/ltsa/seals/{seal_code}/engineering-drawings
+  // is inherently seal-scoped, unlike getSeals()/getDocuments(). Bounded
+  // by design: for each linked drawing, at most one revisions call (to
+  // resolve its explicit current_revision_code -- never a fabricated
+  // "latest by date" guess) and, only when that revision exists, one BOM
+  // call for that single revision -- never every revision, never a
+  // revision x BOM cross product. A fetch failure degrades to an honest
+  // error message (not silently swallowed to empty, unlike Documents
+  // above) since Drawings/BOM have no comparably cheap "just empty"
+  // interpretation once a seal has drawings pending resolution.
+  const [linkedDrawings, setLinkedDrawings] = useState([]);
+  const [linkedDrawingsLoading, setLinkedDrawingsLoading] = useState(false);
+  const [linkedDrawingsError, setLinkedDrawingsError] = useState(null);
+  const [drawingBomGroups, setDrawingBomGroups] = useState([]);
+  const [bomLoading, setBomLoading] = useState(false);
+
+  useEffect(() => {
+    // Never fetched on the sealsProp path -- same discipline as every
+    // other real-backend fetch in this file (compatibilityRecords/
+    // stockRecords/documentRecords above): a caller supplying its own
+    // seals prop (every "with injected data" test, Seal.engineeringAI.
+    // test.jsx, Seal.identifiers.test.jsx) gets no real fetch at all.
+    if (sealsProp !== undefined || !selectedSeal) {
+      setLinkedDrawings([]);
+      setLinkedDrawingsError(null);
+      setDrawingBomGroups([]);
+      return undefined;
+    }
+    let active = true;
+    setLinkedDrawingsLoading(true);
+    setBomLoading(true);
+    getEngineeringDrawingsForSeal(selectedSeal.code)
+      .then(async (drawings) => {
+        if (!active) return;
+        setLinkedDrawings(drawings);
+        setLinkedDrawingsError(null);
+        const groups = await Promise.all(
+          drawings.map(async (drawing) => {
+            if (!drawing.current_revision_code) {
+              return { drawing, revision: null, bomLines: [] };
+            }
+            const revisions = await getEngineeringDrawingRevisions(drawing.drawing_code).catch(() => []);
+            const revision = revisions.find((r) => r.revision_code === drawing.current_revision_code) ?? null;
+            if (!revision) {
+              return { drawing, revision: null, bomLines: [] };
+            }
+            const bomLines = await getEngineeringDrawingBom(revision.revision_code).catch(() => []);
+            return { drawing, revision, bomLines };
+          })
+        );
+        if (active) setDrawingBomGroups(groups);
+      })
+      .catch(() => {
+        if (active) {
+          setLinkedDrawingsError("Engineering drawings could not be loaded.");
+          setLinkedDrawings([]);
+          setDrawingBomGroups([]);
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setLinkedDrawingsLoading(false);
+          setBomLoading(false);
+        }
+      });
+    return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sealsProp, selectedSeal?.code]);
+
   // MWO-LTSA-042/042A -- Open Pump / Open Drawing reuse the exact same
   // onNavigate(key, context) mechanism every other cross-workspace link
   // in this codebase already uses (CMDetailPanel's "Related Pump":
@@ -322,69 +519,100 @@ export default function Seal({ seals: sealsProp, onNavigate }) {
     <div>
       <PageHeader title="Seal Workspace" subtitle="LTSA Engineering — Mechanical Seal Registry" />
 
-      <SealFilterBar
-        searchValue={search}
-        onSearchChange={setSearch}
-        statusFilter={statusFilter}
-        onStatusFilterChange={setStatusFilter}
-        statusOptions={statusOptions}
-      />
-
-      <div className="seal-workspace-layout">
-        <div className="seal-workspace-registry">
-          {listLoading ? (
-            <Panel>
-              <p>Loading seals...</p>
-            </Panel>
-          ) : listError ? (
-            <Panel>
-              <p role="alert">{listError}</p>
-            </Panel>
-          ) : seals.length === 0 ? (
-            <EmptyState
-              title="No seals available"
-              description="The Seal Registry has no backend data source yet."
-            />
-          ) : (
-            <SealRegistryTable
-              seals={filteredSeals}
-              selectedCode={selectedCode}
-              onSelect={setSelectedCode}
-            />
-          )}
-        </div>
-
-        <div className="seal-workspace-detail">
-          {selectedSeal ? (
-            <SealOpenDesignView
-              seal={selectedSeal}
-              stock={selectedStock}
-              resolvedAssetCode={resolvedAssetCode}
-              installedSince={installedSince}
-              pmRecords={relatedPM}
-              cmRecords={relatedCM}
-              workOrderRecords={relatedWorkOrders}
-              canEditIdentifiers={canEditIdentifiers}
-              onUpdateIdentifiers={handleUpdateIdentifiers}
-              onOpenPump={handleOpenPump}
-              onOpenDrawing={handleOpenDrawing}
-              onBack={() => onNavigate?.("dashboard")}
-              aiResponse={aiResponse}
-              aiReady={aiReady}
-              aiStatusText={aiStatusText}
-              aiStatusVariant={aiStatusVariant}
-              aiStatusLabel={aiStatusLabel}
-            />
-          ) : (
-            <EmptyState
-              title="No seal selected"
-              description="Select a seal from the registry table to view its details."
-            />
-          )}
-        </div>
+      <div className="seal-workspace-subtabs" style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        <button
+          type="button"
+          aria-pressed={subView === "registry"}
+          onClick={() => setSubView("registry")}
+        >
+          Registry
+        </button>
+        <button
+          type="button"
+          aria-pressed={subView === "stock"}
+          onClick={() => setSubView("stock")}
+        >
+          Stock / Inventory
+        </button>
       </div>
 
-      <PhysicalSealWorkspace sealTypes={seals} />
+      {subView === "stock" ? (
+        <MechanicalSealStock />
+      ) : (
+        <>
+          <SealFilterBar
+            searchValue={search}
+            onSearchChange={setSearch}
+            statusFilter={statusFilter}
+            onStatusFilterChange={setStatusFilter}
+            statusOptions={statusOptions}
+          />
+
+          <div className="seal-workspace-layout">
+            <div className="seal-workspace-registry">
+              {listLoading ? (
+                <Panel>
+                  <p>Loading seals...</p>
+                </Panel>
+              ) : listError ? (
+                <Panel>
+                  <p role="alert">{listError}</p>
+                </Panel>
+              ) : seals.length === 0 ? (
+                <EmptyState
+                  title="No seals available"
+                  description="The Seal Registry has no backend data source yet."
+                />
+              ) : (
+                <SealRegistryTable
+                  seals={filteredSeals}
+                  selectedCode={selectedCode}
+                  onSelect={setSelectedCode}
+                />
+              )}
+            </div>
+
+            <div className="seal-workspace-detail">
+              {selectedSeal ? (
+                <SealOpenDesignView
+                  seal={selectedSeal}
+                  stock={selectedStock}
+                  resolvedAssetCode={resolvedAssetCode}
+                  installedSince={installedSince}
+                  pmRecords={relatedPM}
+                  cmRecords={relatedCM}
+                  conditionMonitoringReadings={conditionMonitoringReadings}
+                  workOrderRecords={relatedWorkOrders}
+                  documents={selectedSealDocuments}
+                  documentsLoading={documentsLoading}
+                  linkedDrawings={linkedDrawings}
+                  linkedDrawingsLoading={linkedDrawingsLoading}
+                  linkedDrawingsError={linkedDrawingsError}
+                  drawingBomGroups={drawingBomGroups}
+                  bomLoading={bomLoading}
+                  canEditIdentifiers={canEditIdentifiers}
+                  onUpdateIdentifiers={handleUpdateIdentifiers}
+                  onOpenPump={handleOpenPump}
+                  onOpenDrawing={handleOpenDrawing}
+                  onBack={() => onNavigate?.("dashboard")}
+                  aiResponse={aiResponse}
+                  aiReady={aiReady}
+                  aiStatusText={aiStatusText}
+                  aiStatusVariant={aiStatusVariant}
+                  aiStatusLabel={aiStatusLabel}
+                />
+              ) : (
+                <EmptyState
+                  title="No seal selected"
+                  description="Select a seal from the registry table to view its details."
+                />
+              )}
+            </div>
+          </div>
+
+          <PhysicalSealWorkspace sealTypes={seals} />
+        </>
+      )}
     </div>
   );
 }

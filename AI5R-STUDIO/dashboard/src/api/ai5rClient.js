@@ -403,8 +403,18 @@ export async function getPMOccurrences() {
     throw new Error("PM occurrences API returned an invalid list");
 }
 
-export async function getConditionMonitoringReadings() {
-    const response = await apiFetch(`${API_URL}/api/ltsa/condition-monitoring-readings`);
+// MWO-R2C3 -- optional assetCode is additive only: omitted, this call is
+// byte-for-byte the same request it always was (existing
+// ConditionMonitoringWorkspace.jsx usage untouched). Passed, it hits the
+// same route's new ?asset_code= filter (routers/condition_monitoring.py),
+// itself a thin wrapper over the repository's existing, already-trusted
+// list_by_asset(asset_code) -- bounded to one pump, never the fleet-wide
+// table getAllConditionMonitoringReadings() pages through.
+export async function getConditionMonitoringReadings({ assetCode } = {}) {
+    const url = assetCode
+        ? `${API_URL}/api/ltsa/condition-monitoring-readings?asset_code=${encodeURIComponent(assetCode)}`
+        : `${API_URL}/api/ltsa/condition-monitoring-readings`;
+    const response = await apiFetch(url);
 
     if (!response.ok) {
         throw new Error("Condition Monitoring readings API unavailable");
@@ -1006,6 +1016,17 @@ export async function createSealUnitRepair(sealUnitId, repair) {
 export async function getSealUnitWarranty(sealUnitId) {
     const payload = await _ltsaJsonRequest(`/api/ltsa/seal-units/${encodeURIComponent(sealUnitId)}/warranty`);
     return unwrapLtsaList(payload, "Seal Unit Warranty");
+}
+
+// MECHANICAL-SEAL-DOMAIN-CONSOLIDATION-R1 -- proactive, always-available
+// "Warranty" tab view for a seal unit (today-relative time_status),
+// distinct from getSealUnitWarranty above (a list of claim/investigation
+// assessments, only present once one has actually been created).
+export async function getSealUnitWarrantyOverview(sealUnitId) {
+    const payload = await _ltsaJsonRequest(
+        `/api/ltsa/seal-units/${encodeURIComponent(sealUnitId)}/warranty-overview`
+    );
+    return unwrapLtsaDetail(payload, "Seal Unit Warranty Overview");
 }
 
 export async function createSealUnitWarrantyAssessment(sealUnitId, assessment) {
@@ -1713,4 +1734,62 @@ export async function askCopilot(question, assetContext) {
     }
 
     return payload;
+}
+
+// R2B (Mechanical Seal Engineering Drawing + Revision BOM Real Read
+// Path). Three bounded, additive-only reads over the pre-existing
+// Engineering Drawing domain (migration 038/Drawing-R4,
+// routers/engineering_drawing.py) -- reverse lookup only added this
+// MWO (GET /api/ltsa/seals/{seal_code}/engineering-drawings); revisions/
+// bom reuse the router's own existing endpoints unchanged. Same list-
+// unwrapping convention as getSeals()/getDocuments(). Callers must fetch
+// per drawing/revision only as needed (this seal's linked drawings, then
+// each one's CURRENT revision, then that revision's BOM) -- never every
+// revision/BOM eagerly, to avoid N+1.
+export async function getEngineeringDrawingsForSeal(sealCode) {
+    const response = await apiFetch(`${API_URL}/api/ltsa/seals/${encodeURIComponent(sealCode)}/engineering-drawings`);
+
+    if (!response.ok) {
+        throw new Error("Engineering Drawings API unavailable");
+    }
+
+    const payload = await response.json();
+
+    if (payload?.success === false) {
+        throw new Error(payload?.message || "Engineering Drawings API returned a failure");
+    }
+
+    return Array.isArray(payload?.data) ? payload.data : [];
+}
+
+export async function getEngineeringDrawingRevisions(drawingCode) {
+    const response = await apiFetch(`${API_URL}/api/ltsa/engineering-drawings/${encodeURIComponent(drawingCode)}/revisions`);
+
+    if (!response.ok) {
+        throw new Error("Engineering Drawing Revisions API unavailable");
+    }
+
+    const payload = await response.json();
+
+    if (payload?.success === false) {
+        throw new Error(payload?.message || "Engineering Drawing Revisions API returned a failure");
+    }
+
+    return Array.isArray(payload?.data) ? payload.data : [];
+}
+
+export async function getEngineeringDrawingBom(revisionCode) {
+    const response = await apiFetch(`${API_URL}/api/ltsa/engineering-drawing-revisions/${encodeURIComponent(revisionCode)}/bom`);
+
+    if (!response.ok) {
+        throw new Error("Engineering Drawing BOM API unavailable");
+    }
+
+    const payload = await response.json();
+
+    if (payload?.success === false) {
+        throw new Error(payload?.message || "Engineering Drawing BOM API returned a failure");
+    }
+
+    return Array.isArray(payload?.data) ? payload.data : [];
 }

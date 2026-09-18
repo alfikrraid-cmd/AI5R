@@ -8,9 +8,17 @@
  * `code` field, consistent with the two workspaces describing the same
  * plant.
  */
+// MECHANICAL-SEAL-DOMAIN-CONSOLIDATION-R1 -- sealId added per entry
+// (already-mapped shape, same as mapSealRecord's output). Synthetic test
+// data only, not derived from any real migration 044 run -- prefixes
+// beyond JC (John Crane) are illustrative of a future multi-OEM catalog,
+// not a claim that this repo's OEM-prefix mapping already covers them
+// (migration 044 itself only maps 'John Crane' today, per its own
+// preflight check).
 const sampleSeals = [
   {
     code: "SC-001",
+    sealId: "MS-JC-0001",
     name: "John Crane Type 21",
     type: "Single Mechanical Seal",
     manufacturer: "John Crane",
@@ -22,6 +30,7 @@ const sampleSeals = [
   },
   {
     code: "SC-002",
+    sealId: "MS-JC-0002",
     name: "John Crane Type 1",
     type: "Single Mechanical Seal",
     manufacturer: "John Crane",
@@ -33,6 +42,7 @@ const sampleSeals = [
   },
   {
     code: "SC-003",
+    sealId: "MS-FS-0003",
     name: "Flowserve ISC2",
     type: "Dual Cartridge Seal",
     manufacturer: "Flowserve",
@@ -44,6 +54,7 @@ const sampleSeals = [
   },
   {
     code: "SC-004",
+    sealId: "MS-FS-0004",
     name: "Flowserve-210",
     type: "Cartridge Seal (API Plan 11/21)",
     manufacturer: "Flowserve",
@@ -55,6 +66,7 @@ const sampleSeals = [
   },
   {
     code: "SC-005",
+    sealId: "MS-AS-0005",
     name: "AESSEAL P8",
     type: "Component Seal (API Plan 52)",
     manufacturer: "AESSEAL",
@@ -66,6 +78,7 @@ const sampleSeals = [
   },
   {
     code: "SC-006",
+    sealId: "MS-GF-0006",
     name: "Grundfos Cartridge Seal",
     type: "Cartridge Seal",
     manufacturer: "Grundfos",
@@ -77,6 +90,7 @@ const sampleSeals = [
   },
   {
     code: "SC-007",
+    sealId: "MS-JC-0007",
     name: "John Crane 502",
     type: "Dual Pressurized Seal (API Plan 53A)",
     manufacturer: "John Crane",
@@ -88,6 +102,7 @@ const sampleSeals = [
   },
   {
     code: "SC-008",
+    sealId: "MS-EB-0008",
     name: "EagleBurgmann HSU",
     type: "Dual Pressurized Seal (API Plan 53A)",
     manufacturer: "EagleBurgmann",
@@ -99,6 +114,7 @@ const sampleSeals = [
   },
   {
     code: "SC-009",
+    sealId: "MS-CH-0009",
     name: "Chesterton 155",
     type: "Split Seal",
     manufacturer: "Chesterton",
@@ -110,6 +126,7 @@ const sampleSeals = [
   },
   {
     code: "SC-010",
+    sealId: "MS-EB-0010",
     name: "Burgmann M7N",
     type: "Single Mechanical Seal (API Plan 11)",
     manufacturer: "EagleBurgmann",

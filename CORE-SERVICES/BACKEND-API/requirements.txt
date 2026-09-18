@@ -6,3 +6,4 @@ xlrd
 psycopg2-binary
 PyJWT
 pdfplumber
+minio==7.2.20
