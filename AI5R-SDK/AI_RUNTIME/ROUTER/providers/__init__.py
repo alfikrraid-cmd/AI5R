@@ -1,4 +1,5 @@
 from .claude_provider import ClaudeConfig, ClaudeProvider
+from .dahono_provider import DahonoProvider
 from .deepseek_provider import DeepSeekProvider
 from .gemini_provider import GeminiConfig, GeminiProvider
 from .grok_provider import GrokProvider
@@ -10,6 +11,7 @@ from .openrouter_provider import OpenRouterProvider
 __all__ = [
     "ClaudeConfig",
     "ClaudeProvider",
+    "DahonoProvider",
     "DeepSeekProvider",
     "GeminiConfig",
     "GeminiProvider",

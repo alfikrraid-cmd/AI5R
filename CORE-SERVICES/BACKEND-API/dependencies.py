@@ -611,6 +611,7 @@ def _build_copilot_ai_client():
     from AI_RUNTIME.ROUTER.router import Router
     from AI_RUNTIME.ROUTER.providers import (
         ClaudeProvider,
+        DahonoProvider,
         DeepSeekProvider,
         GeminiProvider,
         GrokProvider,
@@ -634,6 +635,14 @@ def _build_copilot_ai_client():
         if os.getenv(env_var):
             router.register_provider(provider_cls())
     router.register_provider(OllamaProvider())  # no key required, local-only
+
+    # Dahono is registered LAST and only when BOTH AI5R_DAHONO_API_KEY and
+    # AI5R_DAHONO_MODEL are set. Every provider's estimate_cost() is 0.0, so
+    # CostPolicy ties are broken by registration order: registering last keeps
+    # Dahono from becoming the automatic primary ahead of direct providers.
+    dahono = DahonoProvider.from_env()
+    if dahono is not None:
+        router.register_provider(dahono)
 
     # A registered provider is not a REACHABLE one -- Ollama has no key to
     # gate on, and a remote provider's key may be invalid/expired. Actual
