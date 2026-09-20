@@ -643,7 +643,10 @@ def get_installation_report_fitment_repository() -> InstallationReportFitmentRep
 # MWO's own runtime audit: no AI provider env var is set anywhere in
 # CORE-SERVICES/RUNTIME/.env.example or compose.yaml).
 def _build_copilot_ai_client():
+    from AI_RUNTIME.ROUTER.metrics import Metrics
+    from AI_RUNTIME.ROUTER.provider_selector import ProviderSelector
     from AI_RUNTIME.ROUTER.router import Router
+    from AI_RUNTIME.ROUTER.routing_policy import parse_routing_policy
     from AI_RUNTIME.ROUTER.providers import (
         ClaudeProvider,
         DahonoProvider,
@@ -657,7 +660,16 @@ def _build_copilot_ai_client():
     )
     from API.engineering_ai_client import EngineeringAIClient
 
-    router = Router()
+    # AI5R_ROUTING_POLICY: missing/blank -> AUTO (unchanged behavior); an
+    # invalid value raises RoutingPolicyError here (no silent fallback). The
+    # selector shares Router's Metrics so latency/availability feedback from
+    # FallbackManager still reaches it.
+    routing_policy = parse_routing_policy(os.getenv("AI5R_ROUTING_POLICY"))
+    metrics = Metrics()
+    router = Router(
+        metrics=metrics,
+        provider_selector=ProviderSelector(metrics=metrics, routing_policy=routing_policy),
+    )
     for env_var, provider_cls in (
         ("AI5R_CLAUDE_API_KEY", ClaudeProvider),
         ("AI5R_OPENAI_API_KEY", OpenAIProvider),
