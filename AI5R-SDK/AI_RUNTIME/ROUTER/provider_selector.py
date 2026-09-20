@@ -7,6 +7,7 @@ from OSA.LLM_PROVIDER import BaseLLMProvider, LLMRequest
 from .cost_policy import CostPolicy
 from .exceptions import NoProviderAvailableError
 from .metrics import Metrics
+from .routing_policy import RoutingPolicy
 
 Policy = Callable[[BaseLLMProvider, LLMRequest], bool]
 
@@ -16,7 +17,7 @@ class ProviderSelector:
     preference of providers to try, per the routing pipeline:
 
     Capability (upstream, CapabilityRouter) -> Health -> Cost -> Latency ->
-    Policy -> Availability.
+    Explicit routing order -> Policy -> Availability.
 
     Returns every surviving candidate in preference order (not just the
     winner) so FallbackManager can walk the rest on failure.
@@ -28,11 +29,13 @@ class ProviderSelector:
         metrics: Metrics | None = None,
         policies: list[Policy] | None = None,
         max_consecutive_failures: int = 3,
+        routing_policy: RoutingPolicy | None = None,
     ):
         self._cost_policy = cost_policy or CostPolicy()
         self._metrics = metrics or Metrics()
         self._policies = policies or []
         self._max_consecutive_failures = max_consecutive_failures
+        self._routing_policy = routing_policy or RoutingPolicy()
 
     def order(
         self, candidates: list[BaseLLMProvider], request: LLMRequest
@@ -53,6 +56,11 @@ class ProviderSelector:
 
         # Latency: stable-sort by observed average latency (0.0 for unseen providers)
         ranked = sorted(ranked, key=lambda p: self._metrics.average_latency(p.provider_name))
+
+        # Explicit routing order: stable reorder only (AUTO = no-op); runs after
+        # Latency so operator intent outranks it, before Policy/Availability so
+        # it can never revive a filtered or tripped provider.
+        ranked = self._routing_policy.order(ranked)
 
         # Policy: injectable custom predicates (enterprise rules, allow/deny, etc.)
         for policy in self._policies:
