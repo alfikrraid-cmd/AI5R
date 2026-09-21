@@ -1,19 +1,25 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from API.STREAMING.live_stream_api import LiveStreamAPI
 from API.workforce_service import WorkforceService
+from API.auth_service import AuthenticatedIdentity
+from API.workforce_run_repository import RunConflict
+from API.workforce_text_executor import MISSION_TYPE, SYNTHETIC_TEXT, WorkforceTextExecutor
 from dependencies import (
     get_copilot_ai_client,
     get_live_stream_api,
     get_workforce_service,
     require_permission,
+    get_current_user,
+    get_workforce_pilot_ai_client,
+    get_workforce_run_repository,
 )
 from WORKFORCE.approval_chain_runtime import (
     ChiefApprovalRecord,
@@ -22,8 +28,8 @@ from WORKFORCE.approval_chain_runtime import (
 
 router = APIRouter(tags=["workforce"])
 
-# Authorization foundation only: future pilot endpoints must use these
-# dependencies and persist the returned AuthenticatedIdentity.user_id as actor.
+# Pilot endpoints use these Authorization R1 dependencies and persist the
+# returned AuthenticatedIdentity.user_id as actor.
 # Review body: decision, exact draft_version, optional note; never identity.
 # Each gate checks only its own capability, without requiring the other.
 require_pilot_execute = require_permission("workforce.pilot.execute")
@@ -32,6 +38,75 @@ require_pilot_review = require_permission("workforce.pilot.review")
 # SECURITY DEBT: legacy /tasks/{work_item_id}/release below trusts payload
 # approver_id/approver_role/is_human. Preserved for compatibility; the pilot
 # must not reuse TaskReleaseRequest or its identity trust model.
+
+
+class PilotStartRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    mission_type: Literal["WORKFORCE_TEXT_DOCUMENTATION_PILOT"] = MISSION_TYPE
+    input_text: Literal[SYNTHETIC_TEXT] = SYNTHETIC_TEXT
+    idempotency_key: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
+
+
+class PilotReviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    decision: Literal["APPROVE", "REJECT"]
+    draft_version: int = Field(ge=1, strict=True)
+    note: str | None = Field(default=None, max_length=1000)
+
+
+def require_pilot_read(actor: AuthenticatedIdentity = Depends(get_current_user)):
+    if not actor.permissions.intersection({"workforce.pilot.execute", "workforce.pilot.review"}):
+        raise HTTPException(status_code=403, detail="Missing pilot permission")
+    return actor
+
+
+def _pilot_http_error(error):
+    if isinstance(error, KeyError):
+        return HTTPException(status_code=404, detail="Pilot run not found")
+    return HTTPException(status_code=409 if isinstance(error, RunConflict) else 422, detail=str(error))
+
+
+@router.post("/api/workforce/pilot/runs")
+def start_pilot_run(
+    payload: PilotStartRequest,
+    actor=Depends(require_pilot_execute),
+    repository=Depends(get_workforce_run_repository),
+    client=Depends(get_workforce_pilot_ai_client),
+    service: WorkforceService = Depends(get_workforce_service),
+):
+    try:
+        return service.start_pilot(actor=actor, repository=repository,
+                                   executor=WorkforceTextExecutor(client), **payload.model_dump())
+    except (KeyError, ValueError) as error:
+        raise _pilot_http_error(error) from error
+
+
+@router.get("/api/workforce/pilot/runs/{run_id}")
+def get_pilot_run(
+    run_id: str,
+    actor=Depends(require_pilot_read),
+    repository=Depends(get_workforce_run_repository),
+    service: WorkforceService = Depends(get_workforce_service),
+):
+    try:
+        return service.get_pilot(actor=actor, repository=repository, run_id=run_id)
+    except KeyError as error:
+        raise _pilot_http_error(error) from error
+
+
+@router.post("/api/workforce/pilot/runs/{run_id}/review")
+def review_pilot_run(
+    run_id: str,
+    payload: PilotReviewRequest,
+    actor=Depends(require_pilot_review),
+    repository=Depends(get_workforce_run_repository),
+    service: WorkforceService = Depends(get_workforce_service),
+):
+    try:
+        return service.review_pilot(actor=actor, repository=repository, run_id=run_id,
+                                    **payload.model_dump())
+    except (KeyError, ValueError) as error:
+        raise _pilot_http_error(error) from error
 
 
 class TaskAssignRequest(BaseModel):

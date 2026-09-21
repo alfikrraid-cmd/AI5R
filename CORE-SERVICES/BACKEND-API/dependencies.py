@@ -642,7 +642,7 @@ def get_installation_report_fitment_repository() -> InstallationReportFitmentRep
 # are configured, which is this repo's current state (confirmed by this
 # MWO's own runtime audit: no AI provider env var is set anywhere in
 # CORE-SERVICES/RUNTIME/.env.example or compose.yaml).
-def _build_copilot_ai_client():
+def _build_copilot_ai_client(*, routing_policy_name: str | None = None):
     from AI_RUNTIME.ROUTER.metrics import Metrics
     from AI_RUNTIME.ROUTER.provider_selector import ProviderSelector
     from AI_RUNTIME.ROUTER.router import Router
@@ -664,7 +664,9 @@ def _build_copilot_ai_client():
     # invalid value raises RoutingPolicyError here (no silent fallback). The
     # selector shares Router's Metrics so latency/availability feedback from
     # FallbackManager still reaches it.
-    routing_policy = parse_routing_policy(os.getenv("AI5R_ROUTING_POLICY"))
+    routing_policy = parse_routing_policy(
+        routing_policy_name if routing_policy_name is not None else os.getenv("AI5R_ROUTING_POLICY")
+    )
     metrics = Metrics()
     router = Router(
         metrics=metrics,
@@ -705,6 +707,21 @@ _copilot_ai_client = _build_copilot_ai_client()
 
 def get_copilot_ai_client():
     return _copilot_ai_client
+
+
+def get_workforce_pilot_ai_client():
+    # Fresh complete composition: no shared selector, metrics, provider or pin.
+    return _build_copilot_ai_client(routing_policy_name="DAHONO_PRIMARY")
+
+
+def get_workforce_run_repository():
+    from API.workforce_run_repository import WorkforceRunRepository
+
+    # Explicit opt-in local storage; never use the LTSA production database.
+    path = os.getenv("AI5R_WORKFORCE_PILOT_DB")
+    if os.getenv("AI5R_ENV", "").lower() == "production" or not path or not Path(path).is_absolute():
+        raise HTTPException(status_code=503, detail="Pilot requires an isolated absolute local database path outside production")
+    return WorkforceRunRepository(path)
 
 
 def get_current_user(authorization: str | None = Header(default=None)) -> AuthenticatedIdentity:
