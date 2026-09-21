@@ -113,6 +113,12 @@ services:
       WHATSAPP_CLOUD_API_TOKEN: ${WHATSAPP_CLOUD_API_TOKEN}
       WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID}
       WHATSAPP_GRAPH_API_VERSION: ${WHATSAPP_GRAPH_API_VERSION}
+      # AI5R Workforce Pilot runtime configuration
+      AI5R_DAHONO_API_KEY: ${AI5R_DAHONO_API_KEY}
+      AI5R_DAHONO_MODEL: ${AI5R_DAHONO_MODEL}
+      AI5R_WORKFORCE_PILOT_DB: /var/lib/ai5r/workforce/workforce_pilot.db
+    volumes:
+      - /home/unikom666/AI5R-PROD-DATA/workforce:/var/lib/ai5r/workforce
     networks:
       - edge
       - backend
