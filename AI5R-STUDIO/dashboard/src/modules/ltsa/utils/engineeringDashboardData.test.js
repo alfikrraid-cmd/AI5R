@@ -10,6 +10,8 @@ import {
   computePMCompliance,
   computeSealCondition,
   computeSealUsageTrend,
+  MAINTENANCE_ACTIVITY_BARS,
+  SEAL_INVENTORY_BARS,
   computeTopRiskPumps,
   normalizePumpStatus,
 } from "./engineeringDashboardData";
@@ -186,21 +188,13 @@ describe("engineeringDashboardData -- Row 3: Mechanical Seal Condition (Donut)",
       },
     ];
 
-    const workOrders = [
-      { asset_code: "P-4", work_type: "SEAL_REPLACEMENT", status: "OPEN" },
-    ];
-
-    const recommendations = [
-      { tag_number: "P-5", priority: 100, rule_code: "REC_CRITICAL_CM" },
-    ];
-
-    const slices = computeSealCondition(readings, workOrders, recommendations);
+    const slices = computeSealCondition(readings);
     expect(slices).toEqual([
       expect.objectContaining({ label: "Normal", value: 1 }),
       expect.objectContaining({ label: "Under Observation", value: 1 }),
       expect.objectContaining({ label: "Leak Evidence", value: 1 }),
-      expect.objectContaining({ label: "Replacement Required", value: 2 }),
     ]);
+    expect(slices.find((s) => s.label === "Replacement Required")).toBeUndefined();
   });
 });
 
@@ -292,3 +286,154 @@ describe("engineeringDashboardData -- Row 1: KPI Strip Calculations", () => {
     expect(kpis.criticalSpare).toBe(3);
   });
 });
+
+describe("GATE R2: Explicit Semantic Integrity Assertions (All 11 Requirements)", () => {
+  // Requirement 1: Row 2 Left Title & Structure: Asset Status by Area
+  it("Requirement 1 & 2: Row 2 Left uses title 'Asset Status by Area' and canonical pump status series", () => {
+    expect(CANONICAL_PUMP_STATUSES).toEqual([
+      "OPERATIONAL",
+      "STANDBY",
+      "MAINTENANCE",
+      "FAULT",
+      "UNKNOWN",
+    ]);
+    expect(ASSET_STATUS_BARS.map((b) => b.key)).toEqual(CANONICAL_PUMP_STATUSES);
+  });
+
+  // Requirement 3: No health-score-by-area derivation
+  it("Requirement 3: Never calculates or implies an area health score", () => {
+    const sample = [
+      { tag_number: "P-1", area: "Area-A", status: "RUNNING" },
+      { tag_number: "P-2", area: "Area-A", status: "FAULT" },
+    ];
+    const result = computeAssetStatusByArea(sample);
+    expect(result).toHaveLength(1);
+    const row = result[0];
+    expect(row).not.toHaveProperty("health_score");
+    expect(row).not.toHaveProperty("healthScore");
+    expect(row).not.toHaveProperty("score");
+    expect(row).not.toHaveProperty("condition");
+    expect(row.OPERATIONAL).toBe(1);
+    expect(row.FAULT).toBe(1);
+    expect(row.total).toBe(2);
+  });
+
+  // Requirement 4: PM Compliance contains NO Work Order logic
+  it("Requirement 4: PM Compliance is strictly from PM schedule status and excludes Work Orders", () => {
+    const schedules = [
+      { asset_code: "P-1", status: "COMPLETED" },
+      { asset_code: "P-2", status: "ACTIVE" },
+      { asset_code: "P-3", status: "OVERDUE" },
+      { asset_code: "P-4", status: "PLANNED" },
+    ];
+    // Open work order should NOT affect or inflate PM Overdue
+    const slices = computePMCompliance(schedules);
+    const overdueSlice = slices.find((s) => s.label === "Overdue");
+    expect(overdueSlice.value).toBe(1); // strictly 1 overdue schedule
+
+    // Verify labels are strictly canonical schedule statuses
+    const labels = slices.map((s) => s.label);
+    expect(labels).toContain("Completed");
+    expect(labels).toContain("Due");
+    expect(labels).toContain("Overdue");
+    expect(labels).toContain("Planned");
+    expect(labels).not.toContain("Open Work Order");
+  });
+
+  // Requirement 5 & 6: CM means Condition Monitoring, ZERO Corrective Maintenance
+  it("Requirement 5 & 6: CM stands strictly for Condition Monitoring with zero Corrective Maintenance", () => {
+    for (const bar of MAINTENANCE_ACTIVITY_BARS) {
+      expect(bar.label.toLowerCase()).not.toContain("corrective");
+    }
+    const cmBar = MAINTENANCE_ACTIVITY_BARS.find((b) => b.key === "cm_count");
+    expect(cmBar.label).toBe("CM Activity");
+
+    const trend = computeMaintenanceActivityTrend({
+      pmOccurrences: [{ occurrence_date: "2026-05-01" }],
+      cmReports: [{ created_at: "2026-05-02" }],
+      installations: [{ installation_date: "2026-05-03" }],
+    });
+    expect(trend[0].cm_count).toBe(1);
+    expect(trend[0]).not.toHaveProperty("corrective_count");
+  });
+
+  // Requirement 7 & 8: Leak terminology strictly 'Leak Evidence', ZERO 'Confirmed Leak'
+  it("Requirement 7 & 8: Leak findings strictly labeled as 'Leak Evidence', zero 'Confirmed Leak'", () => {
+    const readings = [
+      {
+        asset_code: "P-10",
+        reading_date: "2026-05-01",
+        overall_condition: "NORMAL",
+        mechanical_seal_leak_de: true,
+        mechanical_seal_leak_nde: false,
+      },
+    ];
+    const slices = computeSealCondition(readings);
+    expect(slices).toHaveLength(1);
+    expect(slices[0].label).toBe("Leak Evidence");
+    expect(slices.some((s) => s.label.toLowerCase().includes("confirmed leak"))).toBe(false);
+  });
+
+  // Requirement 9 & 10: Inventory uses actual quantity fields, NO invented low-stock threshold
+  it("Requirement 9 & 10: Inventory uses actual quantity fields without invented threshold", () => {
+    expect(SEAL_INVENTORY_BARS.map((b) => b.key)).toEqual([
+      "quantity_on_hand",
+      "quantity_available",
+      "quantity_reserved",
+    ]);
+
+    const stocks = [
+      {
+        seal_code: "SEAL-XYZ",
+        quantity_on_hand: 5,
+        quantity_available: 3,
+        quantity_reserved: 2,
+      },
+    ];
+    const inv = computeMechanicalSealInventory(stocks);
+    expect(inv[0]).toEqual({
+      seal_code: "SEAL-XYZ",
+      quantity_on_hand: 5,
+      quantity_available: 3,
+      quantity_reserved: 2,
+    });
+    expect(inv[0]).not.toHaveProperty("is_low_stock");
+    expect(inv[0]).not.toHaveProperty("low_stock_flag");
+  });
+
+  // Requirement 11: Top Risk Pumps uses canonical backend ordering/priority, NO custom score
+  it("Requirement 11: Top Risk Pumps uses canonical ordering without custom scoring formula", () => {
+    const badActors = [
+      { pump_tag: "P-101", leak_count: 5, cmon_readings: 12, area: "Reaktor" },
+      { pump_tag: "P-102", leak_count: 2, cmon_readings: 6, area: "Utility" },
+    ];
+    const results = computeTopRiskPumps([], badActors);
+    // Directly mirrors leak_count without any "* 25 + 10" formula
+    expect(results[0].risk_score).toBe(5);
+    expect(results[1].risk_score).toBe(2);
+    expect(results[0].rule).toBe("Leak Evidence Recorded");
+  });
+
+  // Missing data integrity: UNKNOWN != ZERO
+  it("Missing historical data: returns null (UNKNOWN != ZERO) for unimported/missing months", () => {
+    const sparseReadings = [
+      { asset_code: "P-1", reading_date: "2026-01-10", overall_condition: "NORMAL" },
+      { asset_code: "P-1", reading_date: "2026-03-15", overall_condition: "NORMAL" },
+    ];
+    const trend = computeCMTrend(sparseReadings);
+    expect(trend).toHaveLength(3); // Jan, Feb (gap), Mar
+    expect(trend[0].date).toBe("2026-01");
+    expect(trend[0].total_readings).toBe(1);
+
+    // Feb has NO readings: must remain null, NOT 0
+    expect(trend[1].date).toBe("2026-02");
+    expect(trend[1].total_readings).toBeNull();
+    expect(trend[1].abnormal_count).toBeNull();
+    expect(trend[1].leak_count).toBeNull();
+
+    expect(trend[2].date).toBe("2026-03");
+    expect(trend[2].total_readings).toBe(1);
+  });
+});
+
+

@@ -1,15 +1,24 @@
 /**
- * MWO-LTSA-DASHBOARD-ALL-ANALYTICS-VISUALIZATION-R1
+ * MWO-LTSA-DASHBOARD-ALL-ANALYTICS-VISUALIZATION-R1 / R2
  * Diagram-First Engineering Analytics Data Transformation Layer.
  *
- * Sourced strictly from real production data:
+ * Sourced strictly from real canonical production data:
  * - REAL PRODUCTION DATA ONLY: No mocks, no synthetic records, no hardcoded counts.
  * - UNKNOWN != ZERO: Missing or unimported historical months return null so charts render gaps.
  * - CANONICAL PUMP STATUS: OPERATIONAL, STANDBY, MAINTENANCE, FAULT, UNKNOWN.
- *   DO NOT create a derived "Health Score by Area" from % OPERATIONAL + STANDBY.
+ *   DO NOT calculate or imply an area health score.
+ * - PM COMPLIANCE: Sourced strictly from PM schedule states (COMPLETED, DUE, OVERDUE, PLANNED).
+ *   DO NOT mix Work Orders into PM Compliance. Open Work Orders are NOT PM Overdue.
+ * - CM = CONDITION MONITORING (inspections, readings, vibration). ZERO corrective maintenance semantics.
+ * - LEAK EVIDENCE: Sourced from mechanical_seal_leak_de / mechanical_seal_leak_nde flags.
+ *   Labeled strictly as "Leak Evidence", never "Confirmed Leak".
+ * - MECHANICAL SEAL CONDITION: Traced to canonical fields (Normal, Under Observation, Leak Evidence).
+ *   No non-canonical "Replacement Required" category or priority >= 100 threshold heuristics.
  * - MECHANICAL SEAL INVENTORY: Visualizes actual canonical quantities
  *   (quantity_on_hand, quantity_available, quantity_reserved).
  *   DO NOT invent Low Stock / Out of Stock thresholds.
+ * - TOP RISK PUMPS: Sourced from canonical backend ordering / priority (leak_count or priority).
+ *   DO NOT calculate a custom combined risk score.
  */
 
 import colors from "../../../design-system/theme/colors";
@@ -52,7 +61,8 @@ export const ASSET_STATUS_BARS = [
  * Row 2 LEFT: Asset Status by Area
  * Stacked bar chart data: groups pumps by area, counting each canonical status.
  *
- * Title: "Asset Status by Area" (DO NOT call this Fleet Health by Area).
+ * TITLE: "Asset Status by Area"
+ * NO health score by area calculated or implied.
  */
 export function computeAssetStatusByArea(pumps = [], areaFilter = null) {
   if (!Array.isArray(pumps) || pumps.length === 0) return [];
@@ -89,8 +99,10 @@ export function computeAssetStatusByArea(pumps = [], areaFilter = null) {
 
 /**
  * Row 2 RIGHT: PM Compliance
- * Donut chart: canonical PM schedule status.
- * Canonical statuses: COMPLETED, ACTIVE (Due), OVERDUE, PLANNED.
+ * Donut chart: canonical PM schedule status only.
+ * Canonical statuses: COMPLETED, ACTIVE / DUE, OVERDUE, PLANNED.
+ *
+ * WORK ORDERS ARE NOT USED FOR PM COMPLIANCE.
  */
 export function computePMCompliance(pmSchedules = [], areaFilter = null, pumpAreaMap = {}) {
   if (!Array.isArray(pmSchedules) || pmSchedules.length === 0) return [];
@@ -120,7 +132,7 @@ export function computePMCompliance(pmSchedules = [], areaFilter = null, pumpAre
     } else if (st === "PLANNED" || st === "SCHEDULED" || st === "DRAFT") {
       planned += 1;
     } else {
-      active += 1; // default to active if running
+      active += 1;
     }
   }
 
@@ -137,8 +149,11 @@ export function computePMCompliance(pmSchedules = [], areaFilter = null, pumpAre
 /**
  * Row 3 LEFT: Condition Monitoring Trend
  * Line chart over time.
- * UNKNOWN != ZERO: Missing or unimported historical months return null so
+ * UNKNOWN != ZERO: Missing or unimported historical coverage returns null so
  * TimeSeriesChart renders gaps / N/A rather than a false 0.
+ *
+ * CM = Condition Monitoring inspections & readings.
+ * Leak findings labeled as "Leak Evidence".
  */
 export function computeCMTrend(readings = [], periodMonths = 6, areaFilter = null, pumpAreaMap = {}) {
   if (!Array.isArray(readings) || readings.length === 0) return [];
@@ -181,12 +196,25 @@ export function computeCMTrend(readings = [], periodMonths = 6, areaFilter = nul
     }
   }
 
-  // Generate continuous month keys for the period to detect missing months
   const sortedMonths = Array.from(monthMap.keys()).sort();
   if (sortedMonths.length === 0) return [];
 
+  const [startY, startM] = sortedMonths[0].split("-").map(Number);
+  const [endY, endM] = sortedMonths[sortedMonths.length - 1].split("-").map(Number);
+  const allMonths = [];
+  let curY = startY;
+  let curM = startM;
+  while (curY < endY || (curY === endY && curM <= endM)) {
+    allMonths.push(`${curY}-${String(curM).padStart(2, "0")}`);
+    curM += 1;
+    if (curM > 12) {
+      curM = 1;
+      curY += 1;
+    }
+  }
+
   const points = [];
-  for (const m of sortedMonths) {
+  for (const m of allMonths) {
     const b = monthMap.get(m);
     if (b && b.total_readings > 0) {
       points.push({
@@ -196,7 +224,7 @@ export function computeCMTrend(readings = [], periodMonths = 6, areaFilter = nul
         leak_count: b.leak_count,
       });
     } else {
-      // Missing data: null value for gap rendering
+      // Missing data: null value for gap rendering (UNKNOWN != ZERO)
       points.push({
         date: m,
         total_readings: null,
@@ -211,20 +239,21 @@ export function computeCMTrend(readings = [], periodMonths = 6, areaFilter = nul
 
 /**
  * Row 3 RIGHT: Mechanical Seal Condition
- * Donut chart: strictly traced to canonical fields/rules:
- * - Leak Evidence: leak flags True (mechanical_seal_leak_de or mechanical_seal_leak_nde)
- * - Replacement Required: open seal work order / recommendation priority >= 100
- * - Under Observation: abnormal/critical condition without leak
- * - Normal: normal condition
+ * Donut chart traced strictly to canonical fields:
+ * - Normal: normal condition without leak evidence
+ * - Under Observation: abnormal/critical condition without leak evidence
+ * - Leak Evidence: active leak detected (mechanical_seal_leak_de or mechanical_seal_leak_nde)
+ *
+ * NOTE: Non-canonical "Replacement Required" category REMOVED per Gate R2 audit.
+ * No priority >= 100 or visualization-only heuristics.
  */
 export function computeSealCondition(
   readings = [],
-  workOrders = [],
-  recommendations = [],
   pumpAreaMap = {},
   areaFilter = null
 ) {
-  // Determine latest condition for each pump
+  if (!Array.isArray(readings) || readings.length === 0) return [];
+
   const pumpState = new Map();
 
   const isAreaMatch = (tag) => {
@@ -232,29 +261,7 @@ export function computeSealCondition(
     return pumpAreaMap[tag] === areaFilter;
   };
 
-  // 1. Tag pumps with Replacement Required (open seal WO or priority >= 100 recommendation)
-  for (const wo of workOrders) {
-    const tag = wo.asset_code || wo.pump_tag;
-    if (!tag || !isAreaMatch(tag)) continue;
-    const woType = String(wo.work_type || wo.type || "").toUpperCase();
-    const isSealWO = woType.includes("SEAL") || woType.includes("MECHANICAL_SEAL");
-    const isOpen = !["COMPLETED", "CLOSED", "CANCELLED"].includes(String(wo.status || "").toUpperCase());
-    if (isSealWO && isOpen) {
-      pumpState.set(tag, "Replacement Required");
-    }
-  }
-
-  for (const rec of recommendations) {
-    const tag = rec.tag_number || rec.asset_code;
-    if (!tag || !isAreaMatch(tag)) continue;
-    const priority = Number(rec.priority) || 0;
-    const rule = String(rec.rule_code || rec.title || "").toUpperCase();
-    if (priority >= 100 || rule.includes("CRITICAL_CM") || rule.includes("SEAL_REPLACEMENT")) {
-      pumpState.set(tag, "Replacement Required");
-    }
-  }
-
-  // 2. Process readings: sort by date ascending so latest reading takes precedence (if not already Replacement Required)
+  // Sort by date ascending so latest reading takes precedence
   const sortedReadings = [...readings].sort((a, b) => {
     const da = a.reading_date || a.date || "";
     const db = b.reading_date || b.date || "";
@@ -264,9 +271,6 @@ export function computeSealCondition(
   for (const r of sortedReadings) {
     const tag = r.asset_code || r.pump_tag;
     if (!tag || !isAreaMatch(tag)) continue;
-
-    // Do not override if already determined as Replacement Required
-    if (pumpState.get(tag) === "Replacement Required") continue;
 
     const hasLeak = Boolean(r.mechanical_seal_leak_de || r.mechanical_seal_leak_nde);
     if (hasLeak) {
@@ -286,20 +290,17 @@ export function computeSealCondition(
   let normal = 0;
   let observation = 0;
   let leak = 0;
-  let replacement = 0;
 
   for (const state of pumpState.values()) {
     if (state === "Normal") normal += 1;
     else if (state === "Under Observation") observation += 1;
     else if (state === "Leak Evidence") leak += 1;
-    else if (state === "Replacement Required") replacement += 1;
   }
 
   const slices = [
     { label: "Normal", value: normal, color: colors.success },
     { label: "Under Observation", value: observation, color: colors.warning },
     { label: "Leak Evidence", value: leak, color: colors.danger },
-    { label: "Replacement Required", value: replacement, color: "#e11d48" },
   ];
 
   return slices.filter((s) => s.value > 0);
@@ -308,15 +309,16 @@ export function computeSealCondition(
 /**
  * Row 4: Maintenance Activity Trend
  * Full-width grouped bar chart across months:
- * - PM Count
- * - CM Count
- * - Seal Replacement Count
+ * - PM Count (Preventive Maintenance)
+ * - CM Count (Condition Monitoring activities / inspections)
+ * - Seal Replacement Count (actual seal replacement / installation events)
+ *
+ * CM = Condition Monitoring. ZERO corrective maintenance semantics.
  */
 export function computeMaintenanceActivityTrend({
   pmOccurrences = [],
   cmReports = [],
   installations = [],
-  workOrders = [],
   trendsData = null,
   areaFilter = null,
   pumpAreaMap = {},
@@ -352,7 +354,7 @@ export function computeMaintenanceActivityTrend({
     return pumpAreaMap[tag] === areaFilter;
   };
 
-  // 1. PM occurrences
+  // 1. PM occurrences (Preventive Maintenance)
   for (const pm of pmOccurrences) {
     const tag = pm.asset_code || pm.pump_tag;
     if (!isAreaMatch(tag)) continue;
@@ -360,25 +362,16 @@ export function computeMaintenanceActivityTrend({
     if (bucket) bucket.pm_count += 1;
   }
 
-  // 2. CM reports / corrective work orders
+  // 2. CM reports (Condition Monitoring activities / inspections)
+  // Sourced strictly from CM inspection events, NEVER from corrective work orders
   for (const cm of cmReports) {
     const tag = cm.asset_code || cm.pump_tag;
     if (!isAreaMatch(tag)) continue;
-    const bucket = getBucket(cm.created_at || cm.report_date);
+    const bucket = getBucket(cm.created_at || cm.report_date || cm.reading_date);
     if (bucket) bucket.cm_count += 1;
   }
 
-  for (const wo of workOrders) {
-    const tag = wo.asset_code || wo.pump_tag;
-    if (!isAreaMatch(tag)) continue;
-    const woType = String(wo.work_type || "").toUpperCase();
-    if (woType.includes("CORRECTIVE") || woType.includes("BREAKDOWN")) {
-      const bucket = getBucket(wo.created_at || wo.date);
-      if (bucket) bucket.cm_count += 1;
-    }
-  }
-
-  // 3. Seal replacements / installations
+  // 3. Seal replacements (actual mechanical seal installations / replacements)
   for (const inst of installations) {
     const tag = inst.asset_code || inst.pump_tag;
     if (!isAreaMatch(tag)) continue;
@@ -391,14 +384,20 @@ export function computeMaintenanceActivityTrend({
 
 export const MAINTENANCE_ACTIVITY_BARS = [
   { key: "pm_count", label: "PM Executed", color: colors.success },
-  { key: "cm_count", label: "CM / Corrective", color: colors.warning },
-  { key: "seal_replacements", label: "Seal Replacement", color: colors.info },
+  { key: "cm_count", label: "CM Activity", color: colors.info },
+  { key: "seal_replacements", label: "Seal Replacement", color: colors.warning },
 ];
 
 /**
  * Row 5 LEFT: Top Risk Pumps
  * Horizontal bar chart:
  * [{ pump_tag, risk_score, leak_count, cmon_readings, area, rule }]
+ *
+ * Uses CANONICAL backend ordering and fields:
+ * - bad_actors: leak_count (from ORDER BY leak_count DESC, cmon_readings DESC)
+ * - top_risks: priority (from ORDER BY priority DESC)
+ *
+ * NO custom formula or combined score (CUSTOM_RISK_SCORE=NO).
  */
 export function computeTopRiskPumps(topRisks = [], badActors = [], areaFilter = null) {
   const list = [];
@@ -408,28 +407,32 @@ export function computeTopRiskPumps(topRisks = [], badActors = [], areaFilter = 
       if (areaFilter && areaFilter !== "ALL" && ba.area !== areaFilter) continue;
       list.push({
         pump_tag: ba.pump_tag || ba.tag_number,
-        risk_score: (ba.leak_count || 1) * 25 + (ba.pm_count ? 10 : 0),
-        leak_count: ba.leak_count || 0,
-        cmon_readings: ba.cmon_readings || 0,
+        risk_score: Number(ba.leak_count ?? 0),
+        leak_count: Number(ba.leak_count ?? 0),
+        cmon_readings: Number(ba.cmon_readings ?? 0),
         area: ba.area || "Unassigned",
-        rule: ba.leak_count > 0 ? "Repeat Leak Detected" : "Observation Alert",
+        rule: (ba.leak_count ?? 0) > 0 ? "Leak Evidence Recorded" : "Under CM Observation",
       });
     }
-  } else if (Array.isArray(topRisks) && topRisks.length > 0) {
+    return list.slice(0, 7);
+  }
+
+  if (Array.isArray(topRisks) && topRisks.length > 0) {
     for (const tr of topRisks) {
       if (areaFilter && areaFilter !== "ALL" && tr.area && tr.area !== areaFilter) continue;
       list.push({
         pump_tag: tr.tag_number || tr.pump_tag,
-        risk_score: tr.priority || 80,
-        leak_count: tr.priority >= 100 ? 2 : 1,
-        cmon_readings: 1,
+        risk_score: Number(tr.priority ?? 0),
+        leak_count: 0,
+        cmon_readings: 0,
         area: tr.area || "Fleet",
         rule: tr.rule_code || tr.title || "Critical Asset",
       });
     }
+    return list.slice(0, 7);
   }
 
-  return list.sort((a, b) => b.risk_score - a.risk_score).slice(0, 7);
+  return [];
 }
 
 /**
@@ -452,14 +455,14 @@ export function computeMechanicalSealInventory(sealStocks = [], overview = null)
     }));
   }
 
-  // Bounded overview fallback if sealStocks array not yet loaded
+  // Bounded overview fallback if individual seal items not yet loaded
   if (overview && overview.seal_stock_count !== undefined) {
     return [
       {
-        seal_code: "Total Fleet Seal Stock",
-        quantity_on_hand: overview.seal_stock_count ?? 0,
-        quantity_available: (overview.seal_stock_count ?? 0) - (overview.low_stock_seal_count ?? 0),
-        quantity_reserved: overview.low_stock_seal_count ?? 0,
+        seal_code: "Total Fleet Stock",
+        quantity_on_hand: Number(overview.seal_stock_count ?? 0),
+        quantity_available: Number(overview.seal_stock_count ?? 0),
+        quantity_reserved: 0,
       },
     ];
   }
@@ -474,35 +477,32 @@ export const SEAL_INVENTORY_BARS = [
 ];
 
 /**
- * Row 6 (OPTIONAL): Mechanical Seal Usage / Service Trend
- * Time series of seal replacement events by month.
+ * Row 6 (OPTIONAL): Mechanical Seal Service Trend
  */
-export function computeSealUsageTrend(installations = []) {
-  if (!Array.isArray(installations) || installations.length === 0) return [];
+export function computeSealUsageTrend(replacementHistory = []) {
+  if (!Array.isArray(replacementHistory) || replacementHistory.length === 0) return [];
 
   const monthMap = new Map();
-  for (const inst of installations) {
-    const dt = inst.installation_date || inst.created_at;
-    if (!dt) continue;
-    const m = dt.slice(0, 7);
+  for (const h of replacementHistory) {
+    const d = h.replacement_date || h.date || h.installation_date;
+    if (!d) continue;
+    const m = d.slice(0, 7);
     monthMap.set(m, (monthMap.get(m) || 0) + 1);
   }
 
-  const sortedMonths = Array.from(monthMap.keys()).sort();
-  return sortedMonths.map((m) => ({
-    date: m,
-    seal_replacements: monthMap.get(m),
-  }));
+  return Array.from(monthMap.entries())
+    .map(([date, seal_replacements]) => ({ date, seal_replacements }))
+    .sort((a, b) => a.date.localeCompare(b.date));
 }
 
 /**
- * Row 1: KPI Strip Calculations
- * Computes the 6 target cards:
+ * Row 1: KPI Calculations
+ * Sourced strictly from real production data:
  * 1. Fleet Health (reliability index or N/A)
  * 2. Total Pumps (fleet count)
  * 3. Active Leak / Abnormal Finding (actual CM leak evidence)
  * 4. PM Due (canonical active/due PM schedules)
- * 5. PM Overdue (canonical overdue PM schedules)
+ * 5. PM Overdue (canonical overdue PM schedules, NEVER work orders)
  * 6. Critical Spare (actual spare stock availability)
  */
 export function computeDashboardKpis({
@@ -512,7 +512,6 @@ export function computeDashboardKpis({
   analyticsKpis = null,
   readings = [],
   pmSchedules = [],
-  sealStock = [],
   areaFilter = null,
 } = {}) {
   // 1. Fleet Health: only when returned by existing reliability service
@@ -529,7 +528,7 @@ export function computeDashboardKpis({
     activeLeaks = readings.filter((r) => r.mechanical_seal_leak_de || r.mechanical_seal_leak_nde).length;
   }
 
-  // 4. PM Due & 5. PM Overdue
+  // 4. PM Due & 5. PM Overdue (strictly from PM schedule status, never work orders)
   let pmDue = null;
   let pmOverdue = null;
   if (Array.isArray(pmSchedules) && pmSchedules.length > 0) {

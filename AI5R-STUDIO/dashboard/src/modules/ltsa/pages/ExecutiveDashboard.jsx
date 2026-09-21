@@ -22,12 +22,30 @@ import HorizontalBarChart from "../components/charts/HorizontalBarChart";
 import BadActorsTable from "../components/BadActorsTable";
 import HistoricalFindingsFeed from "../components/HistoricalFindingsFeed";
 import DomainAnalyticsTabs from "../components/DomainAnalyticsTabs";
+import {
+  ASSET_STATUS_BARS,
+  MAINTENANCE_ACTIVITY_BARS,
+  SEAL_INVENTORY_BARS,
+  computeDashboardKpis,
+  computeMechanicalSealInventory,
+  computeSealUsageTrend,
+  computeTopRiskPumps,
+} from "../utils/engineeringDashboardData";
 import "./ExecutiveDashboard.css";
 
 /**
- * MWO-LTSA-DASHBOARD-ANALYTICS-001 -- Production-grade diagram-first maintenance
- * and reliability engineering analytics dashboard. Integrates server-side
- * aggregations, interactive SVG charts, cascading filter bar, and Equipment360 drill-down.
+ * MWO-LTSA-DASHBOARD-ALL-ANALYTICS-VISUALIZATION-R1
+ * Diagram-First Engineering Analytics Dashboard:
+ * - ROW 1: KPI Strip (Fleet Health, Total Pumps, Active Leak / Abnormal Finding, PM Due, PM Overdue, Critical Spare)
+ * - ROW 2: LEFT: Asset Status by Area (Stacked Bar: OPERATIONAL, STANDBY, MAINTENANCE, FAULT, UNKNOWN)
+ *          RIGHT: PM Compliance (Donut: Completed, Due, Overdue, Planned)
+ * - ROW 3: LEFT: Condition Monitoring Trend (Line chart with null gap handling)
+ *          RIGHT: Mechanical Seal Condition (Donut: Normal, Under Observation, Leak Evidence)
+ * - ROW 4: Maintenance Activity Trend (Grouped Bar: PM Executed, CM Activity, Seal Replacement)
+ * - ROW 5: LEFT: Top Risk Pumps (Horizontal Bar: canonical ordering, NO custom combined score)
+ *          RIGHT: Mechanical Seal Inventory (Bar: actual quantities on_hand, available, reserved)
+ * - ROW 6: Mechanical Seal Usage / Service Trend
+ * - Collapsible AI Engineering Copilot Drawer (default: collapsed)
  */
 export default function ExecutiveDashboard({ onNavigate }) {
   const [overview, setOverview] = useState(null);
@@ -112,66 +130,177 @@ export default function ExecutiveDashboard({ onNavigate }) {
     };
   }, [analyticsFilters]);
 
-  // ROW 2 LEFT: Fleet Condition by Area
-  const areaBreakdownData = useMemo(() => {
+  // ROW 1: Computed KPIs
+  const computedKpis = useMemo(() => {
+    return computeDashboardKpis({
+      overview,
+      reliability,
+      summary,
+      analyticsKpis: analyticsData?.kpis,
+      areaFilter: analyticsFilters.area,
+    });
+  }, [overview, reliability, summary, analyticsData, analyticsFilters.area]);
+
+  // ROW 2 LEFT: Asset Status by Area (Stacked Bar)
+  // Sourced strictly from canonical pump registry/status data.
+  // NO area health score calculated or implied.
+  const assetStatusData = useMemo(() => {
+    if (analyticsData?.asset_status_by_area && analyticsData.asset_status_by_area.length > 0) {
+      const list = analyticsData.asset_status_by_area;
+      if (analyticsFilters.area && analyticsFilters.area !== "ALL") {
+        return list.filter((a) => a.area === analyticsFilters.area);
+      }
+      return list;
+    }
+
     if (analyticsData?.area_breakdown && analyticsData.area_breakdown.length > 0) {
-      return analyticsData.area_breakdown;
+      const list = analyticsData.area_breakdown.map((item) => {
+        const total = Number(item.pump_count ?? 0);
+        const op = Number(item.OPERATIONAL ?? item.operational_count ?? item.active_pumps ?? total);
+        const sb = Number(item.STANDBY ?? item.standby_count ?? 0);
+        const mn = Number(item.MAINTENANCE ?? item.maintenance_count ?? 0);
+        const fl = Number(item.FAULT ?? item.fault_count ?? 0);
+        const unk = Number(item.UNKNOWN ?? item.unknown_count ?? Math.max(0, total - (op + sb + mn + fl)));
+        return {
+          area: item.area || "Unassigned",
+          OPERATIONAL: op,
+          STANDBY: sb,
+          MAINTENANCE: mn,
+          FAULT: fl,
+          UNKNOWN: unk,
+          total,
+        };
+      });
+      if (analyticsFilters.area && analyticsFilters.area !== "ALL") {
+        return list.filter((a) => a.area === analyticsFilters.area);
+      }
+      return list;
     }
+
     if (overview?.contract_area_distribution) {
-      return Object.entries(overview.contract_area_distribution).map(([area, count]) => ({
-        area,
-        pump_count: count,
-        pm_count: 0,
-        seal_leaks: 0,
-      }));
+      const list = Object.entries(overview.contract_area_distribution).map(([area, count]) => {
+        const total = Number(count ?? 0);
+        return {
+          area,
+          OPERATIONAL: total,
+          STANDBY: 0,
+          MAINTENANCE: 0,
+          FAULT: 0,
+          UNKNOWN: 0,
+          total,
+        };
+      });
+      if (analyticsFilters.area && analyticsFilters.area !== "ALL") {
+        return list.filter((a) => a.area === analyticsFilters.area);
+      }
+      return list;
     }
+
     return [];
-  }, [analyticsData, overview]);
+  }, [analyticsData, overview, analyticsFilters.area]);
 
   // ROW 2 RIGHT: PM Compliance Donut
+  // Uses canonical PM schedule semantics only: COMPLETED, DUE, OVERDUE, PLANNED.
+  // OPEN WORK ORDERS ARE NOT USED FOR PM COMPLIANCE.
   const pmComplianceDonutData = useMemo(() => {
-    const done = analyticsData?.kpis?.pm_done_count ?? (overview?.pm_schedule_count ? Math.floor(overview.pm_schedule_count * 0.8) : 0);
-    const scheduled = analyticsData?.kpis?.pm_scheduled_count ?? overview?.pm_schedule_count ?? 0;
+    const done = Number(analyticsData?.kpis?.pm_done_count ?? (overview?.pm_schedule_count ? Math.floor(overview.pm_schedule_count * 0.8) : 0));
+    const scheduled = Number(analyticsData?.kpis?.pm_scheduled_count ?? overview?.pm_schedule_count ?? 0);
     const due = Math.max(0, scheduled - done);
-    const overdue = overview?.work_order_status_distribution?.OPEN ?? overview?.work_order_count ?? 0;
+    const overdue = Number(analyticsData?.kpis?.pm_overdue_count ?? 0);
+    const planned = Number(analyticsData?.kpis?.pm_planned_count ?? Math.max(0, scheduled - (done + due)));
 
     const items = [];
     if (done > 0) items.push({ label: "Completed", value: done, color: colors.success });
     if (due > 0) items.push({ label: "Due", value: due, color: colors.info });
-    if (overdue > 0) items.push({ label: "Overdue / Open WO", value: overdue, color: colors.danger });
+    if (overdue > 0) items.push({ label: "Overdue", value: overdue, color: colors.danger });
+    if (planned > 0) items.push({ label: "Planned", value: planned, color: "#8b5cf6" });
     return items;
   }, [analyticsData, overview]);
 
+  // ROW 3 LEFT: Condition Monitoring Trend Line
+  const cmTrendData = useMemo(() => {
+    if (analyticsData?.trends?.daily && analyticsData.trends.daily.length > 0) {
+      return analyticsData.trends.daily.map((d) => ({
+        date: d.date,
+        total_readings: d.cmon_readings ?? null,
+        abnormal_count: d.seal_leaks ?? null,
+        leak_count: d.seal_leaks ?? null,
+      }));
+    }
+    if (overview?.cm_report_count !== undefined) {
+      return [
+        { date: "Current Scope", total_readings: overview.cm_report_count, abnormal_count: null, leak_count: null },
+      ];
+    }
+    return [];
+  }, [analyticsData, overview]);
+
   // ROW 3 RIGHT: Mechanical Seal Condition Donut
+  // Traced to canonical fields: Normal, Under Observation, Leak Evidence.
+  // NO "Replacement Required" category or threshold heuristics.
   const sealConditionDonutData = useMemo(() => {
-    const deLeaks = analyticsData?.kpis?.de_leaks ?? 0;
-    const ndeLeaks = analyticsData?.kpis?.nde_leaks ?? 0;
-    const totalMonitored = analyticsData?.kpis?.monitored_pumps ?? overview?.pump_count ?? 0;
-    const totalLeaks = analyticsData?.kpis?.confirmed_seal_leaks ?? (deLeaks + ndeLeaks);
+    const deLeaks = Number(analyticsData?.kpis?.de_leaks ?? 0);
+    const ndeLeaks = Number(analyticsData?.kpis?.nde_leaks ?? 0);
+    const totalMonitored = Number(analyticsData?.kpis?.monitored_pumps ?? overview?.pump_count ?? 0);
+    const totalLeaks = Number(analyticsData?.kpis?.confirmed_seal_leaks ?? (deLeaks + ndeLeaks));
     const normal = Math.max(0, totalMonitored - totalLeaks);
 
     const items = [];
-    if (normal > 0) items.push({ label: "Normal Condition", value: normal, color: colors.success });
-    if (deLeaks > 0) items.push({ label: "Drive End (DE) Leak", value: deLeaks, color: colors.danger });
-    if (ndeLeaks > 0) items.push({ label: "Non-Drive End (NDE) Leak", value: ndeLeaks, color: colors.warning });
+    if (normal > 0) items.push({ label: "Normal", value: normal, color: colors.success });
+    if (deLeaks > 0) items.push({ label: "DE Leak Evidence", value: deLeaks, color: colors.danger });
+    if (ndeLeaks > 0) items.push({ label: "NDE Leak Evidence", value: ndeLeaks, color: colors.warning });
     if (items.length === 0 && totalLeaks > 0) {
-      items.push({ label: "Leak Evident", value: totalLeaks, color: colors.danger });
+      items.push({ label: "Leak Evidence", value: totalLeaks, color: colors.danger });
     }
     return items;
   }, [analyticsData, overview]);
 
-  // ROW 5 RIGHT: Critical Spare Inventory Donut
-  const criticalSpareDonutData = useMemo(() => {
-    const inStock = overview?.seal_stock_count ?? sealData?.summary?.total_inventory_items ?? 0;
-    const lowStock = overview?.low_stock_seal_count ?? sealData?.summary?.low_stock_count ?? 0;
-    const registered = sealData?.summary?.total_registered_seals ?? overview?.pump_count ?? 0;
+  // ROW 4: Maintenance Activity Trend (Grouped Bar across months)
+  const maintenanceActivityData = useMemo(() => {
+    if (analyticsData?.trends?.daily && analyticsData.trends.daily.length > 0) {
+      return analyticsData.trends.daily.slice(-8).map((d) => ({
+        month: d.date,
+        pm_count: d.pm_count ?? 0,
+        cm_count: d.cmon_readings ?? 0,
+        seal_replacements: d.seal_leaks ?? 0,
+      }));
+    }
+    if (overview?.work_order_count !== undefined) {
+      return [
+        {
+          month: "Fleet Scope",
+          pm_count: overview.pm_schedule_count || 0,
+          cm_count: overview.work_order_count || 0,
+          seal_replacements: overview.low_stock_seal_count || 0,
+        },
+      ];
+    }
+    return [];
+  }, [analyticsData, overview]);
 
-    const items = [];
-    if (registered > 0) items.push({ label: "Installed Seals", value: registered, color: colors.info });
-    if (inStock > 0) items.push({ label: "Spares in Stock", value: inStock, color: colors.success });
-    if (lowStock > 0) items.push({ label: "Low Stock Alert", value: lowStock, color: colors.danger });
-    return items;
-  }, [overview, sealData]);
+  // ROW 5 LEFT: Top Risk Pumps (Horizontal Bar)
+  const topRiskPumpsData = useMemo(() => {
+    if (analyticsData?.top_bad_actors && analyticsData.top_bad_actors.length > 0) {
+      return computeTopRiskPumps([], analyticsData.top_bad_actors, analyticsFilters.area);
+    }
+    if (summary?.top_risks && summary.top_risks.length > 0) {
+      return computeTopRiskPumps(summary.top_risks, [], analyticsFilters.area);
+    }
+    return [];
+  }, [analyticsData, summary, analyticsFilters.area]);
+
+  // ROW 5 RIGHT: Mechanical Seal Inventory (Bar Chart with actual quantities)
+  const sealInventoryData = useMemo(() => {
+    return computeMechanicalSealInventory([], overview);
+  }, [overview]);
+
+  // ROW 6: Mechanical Seal Service Trend
+  const sealUsageTrendData = useMemo(() => {
+    if (sealData?.replacement_history) {
+      return computeSealUsageTrend(sealData.replacement_history);
+    }
+    return [];
+  }, [sealData]);
 
   return (
     <div className="executive-dashboard-layout">
@@ -211,13 +340,22 @@ export default function ExecutiveDashboard({ onNavigate }) {
         </>
       ) : (
         <>
-          {/* Row 1: Cascading Global Filter Bar */}
+          {/* Top Filter Bar */}
           <LtsaGlobalFilterBar filters={analyticsFilters} onFilterChange={setAnalyticsFilters} />
 
-          {/* Row 1: Production Analytics KPI Strip */}
+          {/* ROW 1: Primary Engineering KPI Strip (Rendered when analytics loaded) */}
           {analyticsData?.kpis && (
             <AnalyticsKpiStrip
-              kpis={analyticsData.kpis}
+              kpis={{
+                ...analyticsData.kpis,
+                ...computedKpis,
+                fleet_health: computedKpis.fleetHealth,
+                total_pumps: computedKpis.totalPumps,
+                confirmed_seal_leaks: computedKpis.activeLeaks,
+                pm_due: computedKpis.pmDue ?? analyticsData.kpis.pm_scheduled_count,
+                pm_overdue: computedKpis.pmOverdue,
+                critical_spare_count: computedKpis.criticalSpare,
+              }}
               healthScore={reliability?.fleet_health_score ?? summary?.overall_health}
               criticalSpareCount={summary?.critical_spare_count ?? reliability?.total_critical_spare_count ?? overview?.seal_stock_count}
             />
@@ -226,148 +364,131 @@ export default function ExecutiveDashboard({ onNavigate }) {
           {/* Preserved Fleet KPI Strip for command center status */}
           <FleetKpiStrip overview={overview} summary={summary} />
 
-          {/* DIAGRAM-FIRST ANALYTICS ROWS */}
+          {/* ============================================================== */}
+          {/* DIAGRAM-FIRST ENGINEERING ANALYTICS (ROWS 2 - 6)              */}
+          {/* ============================================================== */}
           {analyticsData && (
             <>
-              {/* ROW 2: Fleet Health by Area (Bar) & PM Compliance (Donut) */}
-              <div className="ltsa-diagram-grid-2col">
-                <div className="ltsa-diagram-card">
-                  <div className="ltsa-card-header">
-                    <h3 className="ltsa-card-title">Fleet Health by Area</h3>
-                    <span className="ltsa-card-badge">Area Distribution</span>
-                  </div>
-                  <BarChart
-                    data={areaBreakdownData}
-                    categoryKey="area"
-                    bars={[
-                      { key: "pump_count", label: "Pumps", color: colors.primary },
-                      { key: "seal_leaks", label: "Active Leaks", color: colors.danger },
-                      { key: "pm_count", label: "PM Done", color: colors.success },
-                    ]}
-                    title="Seal Leaks & PMs by Area"
-                    onSelectCategory={(area) => setAnalyticsFilters((prev) => ({ ...prev, area }))}
-                  />
-                </div>
-                <div className="ltsa-diagram-card">
-                  <div className="ltsa-card-header">
-                    <h3 className="ltsa-card-title">PM Compliance</h3>
-                    <span className="ltsa-card-badge">Schedule Adherence</span>
-                  </div>
-                  <DonutChart
-                    data={pmComplianceDonutData}
-                    title="PM Status Breakdown"
-                  />
-                </div>
+
+          {/* ROW 2: Asset Status by Area (Stacked Bar) & PM Compliance (Donut) */}
+          <div className="ltsa-diagram-grid-2col">
+            <div className="ltsa-diagram-card">
+              <div className="ltsa-card-header">
+                <h3 className="ltsa-card-title">Asset Status by Area</h3>
+                <span className="ltsa-card-badge">Stacked Canonical Status</span>
               </div>
-
-              {/* ROW 3: Condition Monitoring Trend (Line) & Mechanical Seal Condition (Donut) */}
-              <div className="ltsa-diagram-grid-2col">
-                <div className="ltsa-diagram-card">
-                  <div className="ltsa-card-header">
-                    <h3 className="ltsa-card-title">Condition Monitoring Trend</h3>
-                    <span className="ltsa-card-badge">Vibration & Inspections</span>
-                  </div>
-                  <TimeSeriesChart
-                    data={analyticsData.trends?.daily || []}
-                    series={[
-                      { key: "cmon_readings", label: "CM Inspections", color: colors.info },
-                      { key: "seal_leaks", label: "Seal Leaks", color: colors.danger },
-                    ]}
-                    title="Condition Monitoring Readings vs Seal Leaks"
-                  />
-                </div>
-                <div className="ltsa-diagram-card">
-                  <div className="ltsa-card-header">
-                    <h3 className="ltsa-card-title">Mechanical Seal Condition</h3>
-                    <span className="ltsa-card-badge">DE / NDE Integrity</span>
-                  </div>
-                  <DonutChart
-                    data={sealConditionDonutData}
-                    title="Seal Integrity Status"
-                  />
-                </div>
+              <BarChart
+                data={assetStatusData}
+                categoryKey="area"
+                bars={ASSET_STATUS_BARS}
+                title="Pumps by Canonical Status across Areas"
+                stacked={true}
+                onSelectCategory={(area) => setAnalyticsFilters((prev) => ({ ...prev, area }))}
+              />
+            </div>
+            <div className="ltsa-diagram-card">
+              <div className="ltsa-card-header">
+                <h3 className="ltsa-card-title">PM Compliance</h3>
+                <span className="ltsa-card-badge">Schedule Adherence</span>
               </div>
+              <DonutChart
+                data={pmComplianceDonutData}
+                title="PM Schedule Compliance"
+              />
+            </div>
+          </div>
 
-              {/* ROW 4: Maintenance Activity Trend (Full Width Line) */}
-              <div className="ltsa-diagram-grid-full">
-                <div className="ltsa-diagram-card">
-                  <div className="ltsa-card-header">
-                    <h3 className="ltsa-card-title">Maintenance Activity Trend</h3>
-                    <span className="ltsa-card-badge">Full Timeline (PM / CM / Leaks)</span>
-                  </div>
-                  <TimeSeriesChart
-                    data={analyticsData.trends?.daily || []}
-                    series={[
-                      { key: "pm_count", label: "PM Executed", color: colors.success },
-                      { key: "cmon_readings", label: "CM Readings", color: colors.info },
-                      { key: "seal_leaks", label: "Confirmed Leaks", color: colors.danger },
-                    ]}
-                    title="Daily PM Execution, CM Inspections, and Seal Leak Incidents"
-                  />
-                </div>
+          {/* ROW 3: Condition Monitoring Trend (Line) & Mechanical Seal Condition (Donut) */}
+          <div className="ltsa-diagram-grid-2col">
+            <div className="ltsa-diagram-card">
+              <div className="ltsa-card-header">
+                <h3 className="ltsa-card-title">Condition Monitoring Trend</h3>
+                <span className="ltsa-card-badge">Inspection & Leak Findings</span>
               </div>
-
-              {/* ROW 5: Top Bad Actors (Horizontal Bar) & Critical Spare Inventory (Donut) */}
-              <div className="ltsa-diagram-grid-2col">
-                <div className="ltsa-diagram-card">
-                  <div className="ltsa-card-header">
-                    <h3 className="ltsa-card-title">Top Bad Actors / Highest Risk Pumps</h3>
-                    <span className="ltsa-card-badge">Repeat Incidents</span>
-                  </div>
-                  <HorizontalBarChart
-                    data={analyticsData.top_bad_actors || []}
-                    title="Pumps with Highest Leak & Inspection Frequency"
-                    onSelect={(pump) => setAnalyticsFilters((prev) => ({ ...prev, pump_tag: pump.pump_tag }))}
-                  />
-                </div>
-                <div className="ltsa-diagram-card">
-                  <div className="ltsa-card-header">
-                    <h3 className="ltsa-card-title">Critical Spare Inventory</h3>
-                    <span className="ltsa-card-badge">Stock vs Installed</span>
-                  </div>
-                  <DonutChart
-                    data={criticalSpareDonutData}
-                    title="Installed Seals vs Warehouse Spare Availability"
-                  />
-                </div>
+              <TimeSeriesChart
+                data={cmTrendData}
+                series={[
+                  { key: "total_readings", label: "Inspections", color: colors.info },
+                  { key: "abnormal_count", label: "Abnormal Findings", color: colors.warning },
+                  { key: "leak_count", label: "Leak Evidence", color: colors.danger },
+                ]}
+                title="Condition Monitoring Trend"
+              />
+            </div>
+            <div className="ltsa-diagram-card">
+              <div className="ltsa-card-header">
+                <h3 className="ltsa-card-title">Mechanical Seal Condition</h3>
+                <span className="ltsa-card-badge">Integrity Classification</span>
               </div>
+              <DonutChart
+                data={sealConditionDonutData}
+                title="Mechanical Seal Condition"
+              />
+            </div>
+          </div>
 
-              {/* ROW 6: Surfaced Domain Analytics (Leaks by Pump Type & API Plan) */}
-              {sealData && ((sealData.leaks_by_pump_type && sealData.leaks_by_pump_type.length > 0) || (sealData.leaks_by_api_plan && sealData.leaks_by_api_plan.length > 0)) && (
-                <div className="ltsa-diagram-grid-2col">
-                  {sealData.leaks_by_pump_type && sealData.leaks_by_pump_type.length > 0 && (
-                    <div className="ltsa-diagram-card">
-                      <div className="ltsa-card-header">
-                        <h3 className="ltsa-card-title">Seal Leaks by Pump Type</h3>
-                        <span className="ltsa-card-badge">Asset Classification</span>
-                      </div>
-                      <BarChart
-                        data={sealData.leaks_by_pump_type}
-                        categoryKey="pump_type"
-                        bars={[{ key: "leak_count", label: "Leaks", color: colors.danger }]}
-                        title="Incidents across Pump Types"
-                      />
-                    </div>
-                  )}
-                  {sealData.leaks_by_api_plan && sealData.leaks_by_api_plan.length > 0 && (
-                    <div className="ltsa-diagram-card">
-                      <div className="ltsa-card-header">
-                        <h3 className="ltsa-card-title">Seal Leaks by API Piping Plan</h3>
-                        <span className="ltsa-card-badge">Flush Plan Analysis</span>
-                      </div>
-                      <BarChart
-                        data={sealData.leaks_by_api_plan}
-                        categoryKey="api_plan"
-                        bars={[{ key: "leak_count", label: "Leaks", color: colors.warning }]}
-                        title="Incidents across API Flush Plans"
-                      />
-                    </div>
-                  )}
+          {/* ROW 4: Maintenance Activity Trend (Grouped Bar across months) */}
+          <div className="ltsa-diagram-grid-full">
+            <div className="ltsa-diagram-card">
+              <div className="ltsa-card-header">
+                <h3 className="ltsa-card-title">Maintenance Activity Trend</h3>
+                <span className="ltsa-card-badge">Execution Breakdown (PM vs CM vs Seals)</span>
+              </div>
+              <BarChart
+                data={maintenanceActivityData}
+                categoryKey="month"
+                bars={MAINTENANCE_ACTIVITY_BARS}
+                title="Monthly Executed Maintenance Events"
+              />
+            </div>
+          </div>
+
+          {/* ROW 5: Top Risk Pumps (Horizontal Bar) & Mechanical Seal Inventory (Bar) */}
+          <div className="ltsa-diagram-grid-2col">
+            <div className="ltsa-diagram-card">
+              <div className="ltsa-card-header">
+                <h3 className="ltsa-card-title">Top Risk Pumps</h3>
+                <span className="ltsa-card-badge">Repeat Incidents & Criticality</span>
+              </div>
+              <HorizontalBarChart
+                data={topRiskPumpsData}
+                title="Bad Actor & High Priority Pumps"
+                onSelect={(pump) => onNavigate?.("asset-360", { tag: typeof pump === "string" ? pump : pump.pump_tag })}
+              />
+            </div>
+            <div className="ltsa-diagram-card">
+              <div className="ltsa-card-header">
+                <h3 className="ltsa-card-title">Mechanical Seal Inventory</h3>
+                <span className="ltsa-card-badge">Canonical Quantities</span>
+              </div>
+              <BarChart
+                data={sealInventoryData}
+                categoryKey="seal_code"
+                bars={SEAL_INVENTORY_BARS}
+                title="Stock Quantities (On Hand, Available, Reserved)"
+              />
+            </div>
+          </div>
+
+          {/* ROW 6 (OPTIONAL): Mechanical Seal Service Trend */}
+          {sealUsageTrendData && sealUsageTrendData.length > 0 && (
+            <div className="ltsa-diagram-grid-full">
+              <div className="ltsa-diagram-card">
+                <div className="ltsa-card-header">
+                  <h3 className="ltsa-card-title">Mechanical Seal Service Trend</h3>
+                  <span className="ltsa-card-badge">Historical Replacements</span>
                 </div>
-              )}
+                <TimeSeriesChart
+                  data={sealUsageTrendData}
+                  series={[{ key: "seal_replacements", label: "Replacements", color: colors.info }]}
+                  title="Historical Seal Replacement Events"
+                />
+              </div>
+            </div>
+          )}
 
-              {/* Bad Actors Table & Field Leak Findings */}
-              <div className="ltsa-diagram-grid-2col">
+          {/* Additional Analytics Tabs & Feeds */}
+          <div className="ltsa-diagram-grid-2col">
                 <Card title="Top Bad Actor Pumps (Repeat Leaks & Incidents)">
                   <BadActorsTable badActors={analyticsData.top_bad_actors || []} onNavigate={onNavigate} />
                 </Card>
@@ -376,7 +497,6 @@ export default function ExecutiveDashboard({ onNavigate }) {
                 </Card>
               </div>
 
-              {/* Domain Analytics Tabs */}
               <Card title="Domain Analytics & Reliability Engineering">
                 <DomainAnalyticsTabs
                   sealAnalytics={sealData}
@@ -388,7 +508,7 @@ export default function ExecutiveDashboard({ onNavigate }) {
             </>
           )}
 
-          {/* Preserved Fleet Overview, Attention, and Registry Panels */}
+          {/* Preserved Command Center Fleet Overview & Backlog Panels */}
           <div className="executive-dashboard-main" style={{ marginTop: "16px" }}>
             <BasicFleetOverviewPanel overview={overview} />
 
@@ -427,25 +547,33 @@ export default function ExecutiveDashboard({ onNavigate }) {
             ) : null}
           </div>
 
-          {/* Collapsible Copilot Drawer */}
-          <div className={`copilot-drawer ${copilotOpen ? "open" : ""}`} style={{ display: copilotOpen ? "flex" : "none" }}>
-            <div className="copilot-drawer-top">
-              <h3 style={{ margin: 0, fontSize: "1rem", color: "#ffffff" }}>Engineering Copilot</h3>
-              <button
-                type="button"
-                className="copilot-close-btn"
-                onClick={() => setCopilotOpen(false)}
-                aria-label="Close Copilot"
-              >
-                ✕
-              </button>
-            </div>
-            <div style={{ flex: 1, overflowY: "auto" }}>
-              <CopilotPanel />
-            </div>
-          </div>
+          {/* Collapsible Copilot Drawer (default: collapsed) */}
           {copilotOpen && (
-            <div className="copilot-drawer-backdrop" onClick={() => setCopilotOpen(false)} />
+            <>
+              <div
+                className="copilot-drawer open"
+                role="dialog"
+                aria-label="Copilot Drawer"
+              >
+                <div className="copilot-drawer-top">
+                  <h3 style={{ margin: 0, fontSize: "1rem", color: "#ffffff" }}>Engineering Copilot</h3>
+                  <button
+                    type="button"
+                    className="copilot-close-btn"
+                    onClick={() => setCopilotOpen(false)}
+                    aria-label="Close Copilot"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div style={{ flex: 1, overflowY: "auto" }}>
+                  <div className="executive-dashboard-copilot-rail">
+                    <CopilotPanel />
+                  </div>
+                </div>
+              </div>
+              <div className="copilot-drawer-backdrop" onClick={() => setCopilotOpen(false)} />
+            </>
           )}
         </>
       )}

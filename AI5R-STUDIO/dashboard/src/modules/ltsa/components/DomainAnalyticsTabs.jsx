@@ -106,7 +106,7 @@ export default function DomainAnalyticsTabs({
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "16px" }}>
             <div style={{ background: "rgba(255,255,255,0.02)", border: `1px solid ${colors.border}`, borderRadius: "6px", padding: "14px" }}>
               <BarChart
-                title="Confirmed Leaks by Pump Type"
+                title="Leak Evidence by Pump Type"
                 data={sealAnalytics?.leaks_by_pump_type || []}
                 categoryKey="pump_type"
                 bars={[{ key: "leak_count", label: "Leaks", color: colors.danger }]}
@@ -115,7 +115,7 @@ export default function DomainAnalyticsTabs({
 
             <div style={{ background: "rgba(255,255,255,0.02)", border: `1px solid ${colors.border}`, borderRadius: "6px", padding: "14px" }}>
               <BarChart
-                title="Confirmed Leaks by API Plan"
+                title="Leak Evidence by API Plan"
                 data={sealAnalytics?.leaks_by_api_plan || []}
                 categoryKey="api_plan"
                 bars={[{ key: "leak_count", label: "Leaks", color: colors.warning }]}
@@ -225,7 +225,7 @@ export default function DomainAnalyticsTabs({
                 <tr style={{ borderBottom: `1px solid ${colors.border}`, color: colors.textMuted }}>
                   <th style={{ padding: "8px 10px", fontWeight: 600 }}>Contract Area</th>
                   <th style={{ padding: "8px 10px", fontWeight: 600, textAlign: "center" }}>PM Done</th>
-                  <th style={{ padding: "8px 10px", fontWeight: 600, textAlign: "center" }}>Confirmed Leaks</th>
+                  <th style={{ padding: "8px 10px", fontWeight: 600, textAlign: "center" }}>Leak Evidence</th>
                   <th style={{ padding: "8px 10px", fontWeight: 600, textAlign: "right" }}>Proactive Ratio</th>
                 </tr>
               </thead>
