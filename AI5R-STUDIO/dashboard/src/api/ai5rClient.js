@@ -8,6 +8,36 @@ const API_URL = import.meta.env.VITE_API_URL || "http://localhost:18000";
 // storage key, so there is exactly one place a token can live.
 const SESSION_KEY = "ai5r.ltsa.session";
 
+// Bounded synchronous pilot: reuse canonical auth; never retry mutations.
+async function workforcePilotRequest(path, body) {
+  const response = await apiFetch(`${API_URL}/api/workforce/pilot/runs${path}`, body ? {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    timeoutMs: 180000,
+  } : {});
+  if (!response.ok) {
+    const error = new Error("Workforce request failed");
+    error.status = response.status;
+    throw error;
+  }
+  return response.json();
+}
+
+export function startWorkforcePilotRun(idempotencyKey) {
+  return workforcePilotRequest("", { idempotency_key: idempotencyKey });
+}
+
+export function getWorkforcePilotRun(runId) {
+  return workforcePilotRequest(`/${encodeURIComponent(runId)}`);
+}
+
+export function reviewWorkforcePilotRun(runId, decision, draftVersion, note) {
+  return workforcePilotRequest(`/${encodeURIComponent(runId)}/review`, {
+    decision, draft_version: draftVersion, ...(note ? { note } : {}),
+  });
+}
+
 export function getStoredSession() {
   const raw = window.localStorage.getItem(SESSION_KEY);
   if (!raw) return null;
