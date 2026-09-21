@@ -683,10 +683,24 @@ def get_workforce_run_repository():
     from API.workforce_run_repository import WorkforceRunRepository
 
     # Explicit opt-in local storage; never use the LTSA production database.
-    path = os.getenv("AI5R_WORKFORCE_PILOT_DB")
-    if os.getenv("AI5R_ENV", "").lower() == "production" or not path or not Path(path).is_absolute():
-        raise HTTPException(status_code=503, detail="Pilot requires an isolated absolute local database path outside production")
-    return WorkforceRunRepository(path)
+    path_str = os.getenv("AI5R_WORKFORCE_PILOT_DB")
+    if not path_str or not path_str.strip():
+        raise HTTPException(status_code=503, detail="Pilot requires an explicit database path")
+
+    from pathlib import PurePosixPath
+
+    raw_path = Path(path_str.strip())
+    if not (raw_path.is_absolute() or PurePosixPath(path_str.strip()).is_absolute()):
+        raise HTTPException(status_code=503, detail="Pilot requires an isolated absolute local database path")
+
+    resolved = raw_path.resolve()
+    if os.getenv("AI5R_ENV", "").lower() == "production":
+        dedicated_dir = Path("/var/lib/ai5r/workforce").resolve()
+        if not resolved.is_relative_to(dedicated_dir) or resolved == dedicated_dir or resolved.name == "":
+            raise HTTPException(status_code=503, detail="Production pilot database must reside within /var/lib/ai5r/workforce/")
+
+    resolved.parent.mkdir(parents=True, exist_ok=True)
+    return WorkforceRunRepository(str(resolved))
 
 
 def get_current_user(authorization: str | None = Header(default=None)) -> AuthenticatedIdentity:

@@ -230,15 +230,70 @@ def test_isolated_factory_and_environment(monkeypatch):
     assert deps._build_copilot_ai_client()._router.provider_selector._routing_policy.mode is RoutingMode.LOCAL_FIRST
 
 
-def test_repository_configuration_is_explicit_and_nonproduction(monkeypatch, tmp_path):
+def test_repository_configuration_is_explicit_and_production_guard(monkeypatch, tmp_path):
     from fastapi import HTTPException
+    from API.workforce_run_repository import WorkforceRunRepository
+
+    # H. No implicit/default DB path introduced; B. production + missing path => 503
     monkeypatch.delenv("AI5R_WORKFORCE_PILOT_DB", raising=False)
-    with pytest.raises(HTTPException):
-        deps.get_workforce_run_repository()
-    monkeypatch.setenv("AI5R_WORKFORCE_PILOT_DB", str(tmp_path / "pilot.db"))
     monkeypatch.setenv("AI5R_ENV", "production")
-    with pytest.raises(HTTPException):
+    with pytest.raises(HTTPException) as exc:
         deps.get_workforce_run_repository()
+    assert exc.value.status_code == 503
+
+    # B (blank path) => 503
+    monkeypatch.setenv("AI5R_WORKFORCE_PILOT_DB", "   ")
+    with pytest.raises(HTTPException) as exc:
+        deps.get_workforce_run_repository()
+    assert exc.value.status_code == 503
+
+    # C. production + relative path => 503
+    monkeypatch.setenv("AI5R_WORKFORCE_PILOT_DB", "./workforce.db")
+    with pytest.raises(HTTPException) as exc:
+        deps.get_workforce_run_repository()
+    assert exc.value.status_code == 503
+
+    # D. production + /tmp/workforce.db => 503
+    monkeypatch.setenv("AI5R_WORKFORCE_PILOT_DB", "/tmp/workforce.db")
+    with pytest.raises(HTTPException) as exc:
+        deps.get_workforce_run_repository()
+    assert exc.value.status_code == 503
+
+    # E. production + /app/workforce.db => 503
+    monkeypatch.setenv("AI5R_WORKFORCE_PILOT_DB", "/app/workforce.db")
+    with pytest.raises(HTTPException) as exc:
+        deps.get_workforce_run_repository()
+    assert exc.value.status_code == 503
+
+    # F. production + /var/lib/ai5r/workforce/../ltsa.db => 503 (traversal prevention)
+    monkeypatch.setenv("AI5R_WORKFORCE_PILOT_DB", "/var/lib/ai5r/workforce/../ltsa.db")
+    with pytest.raises(HTTPException) as exc:
+        deps.get_workforce_run_repository()
+    assert exc.value.status_code == 503
+
+    # Production + root of dedicated dir (/var/lib/ai5r/workforce) => 503 (must be a file within dir)
+    monkeypatch.setenv("AI5R_WORKFORCE_PILOT_DB", "/var/lib/ai5r/workforce")
+    with pytest.raises(HTTPException) as exc:
+        deps.get_workforce_run_repository()
+    assert exc.value.status_code == 503
+
+    # G. Nonproduction absolute isolated path => ACCEPT
+    monkeypatch.setenv("AI5R_ENV", "development")
+    nonprod_db = str(tmp_path / "nonprod_pilot.db")
+    monkeypatch.setenv("AI5R_WORKFORCE_PILOT_DB", nonprod_db)
+    repo_dev = deps.get_workforce_run_repository()
+    assert isinstance(repo_dev, WorkforceRunRepository)
+    assert Path(repo_dev.path).resolve() == Path(nonprod_db).resolve()
+
+    # A. production + /var/lib/ai5r/workforce/workforce_pilot.db => ACCEPT
+    # I. repository remains WorkforceRunRepository / isolated SQLite
+    monkeypatch.setenv("AI5R_ENV", "production")
+    canonical_prod_db = "/var/lib/ai5r/workforce/workforce_pilot.db"
+    monkeypatch.setenv("AI5R_WORKFORCE_PILOT_DB", canonical_prod_db)
+    repo_prod = deps.get_workforce_run_repository()
+    assert isinstance(repo_prod, WorkforceRunRepository)
+    assert Path(repo_prod.path).resolve() == Path(canonical_prod_db).resolve()
+
 
 
 def test_interrupted_claim_survives_reopen_without_retry(setup):
