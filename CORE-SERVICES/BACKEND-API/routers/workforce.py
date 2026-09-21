@@ -13,6 +13,7 @@ from dependencies import (
     get_copilot_ai_client,
     get_live_stream_api,
     get_workforce_service,
+    require_permission,
 )
 from WORKFORCE.approval_chain_runtime import (
     ChiefApprovalRecord,
@@ -20,6 +21,17 @@ from WORKFORCE.approval_chain_runtime import (
 )
 
 router = APIRouter(tags=["workforce"])
+
+# Authorization foundation only: future pilot endpoints must use these
+# dependencies and persist the returned AuthenticatedIdentity.user_id as actor.
+# Review body: decision, exact draft_version, optional note; never identity.
+# Each gate checks only its own capability, without requiring the other.
+require_pilot_execute = require_permission("workforce.pilot.execute")
+require_pilot_review = require_permission("workforce.pilot.review")
+
+# SECURITY DEBT: legacy /tasks/{work_item_id}/release below trusts payload
+# approver_id/approver_role/is_human. Preserved for compatibility; the pilot
+# must not reuse TaskReleaseRequest or its identity trust model.
 
 
 class TaskAssignRequest(BaseModel):
