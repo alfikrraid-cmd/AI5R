@@ -13,13 +13,14 @@ export default function BarChart({
     { key: "pm_count", label: "PMs", color: colors.success },
   ],
   title = "Area Comparison",
+  stacked = false,
   onSelectCategory,
 }) {
   const [hoveredIndex, setHoveredIndex] = useState(null);
 
-  const { items, maxY, xStep, barWidth, plotHeight } = useMemo(() => {
+  const { items, maxY, xStep, barWidth, plotHeight, plotWidth } = useMemo(() => {
     if (!data || data.length === 0) {
-      return { items: [], maxY: 10, xStep: 0, barWidth: 0, plotHeight: 0 };
+      return { items: [], maxY: 10, xStep: 0, barWidth: 0, plotHeight: 0, plotWidth: 0 };
     }
 
     // Slice to top 8 items max so bars remain legible
@@ -27,17 +28,24 @@ export default function BarChart({
 
     let maxVal = 0;
     for (const item of topData) {
-      for (const bar of bars) {
-        const val = Number(item[bar.key]) || 0;
-        if (val > maxVal) maxVal = val;
+      if (stacked) {
+        const sumVal = bars.reduce((acc, bar) => acc + (Number(item[bar.key]) || 0), 0);
+        if (sumVal > maxVal) maxVal = sumVal;
+      } else {
+        for (const bar of bars) {
+          const val = Number(item[bar.key]) || 0;
+          if (val > maxVal) maxVal = val;
+        }
       }
     }
-    const safeMax = maxVal > 0 ? Math.ceil(maxVal * 1.2) : 5;
+    const safeMax = maxVal > 0 ? Math.ceil(maxVal * 1.15) : 5;
 
     const pWidth = WIDTH - PAD.left - PAD.right;
     const pHeight = HEIGHT - PAD.top - PAD.bottom;
     const step = pWidth / topData.length;
-    const bWidth = Math.max(6, Math.min(24, (step * 0.7) / bars.length));
+    const bWidth = stacked
+      ? Math.max(12, Math.min(36, step * 0.5))
+      : Math.max(6, Math.min(24, (step * 0.7) / bars.length));
 
     return {
       items: topData,
@@ -47,7 +55,7 @@ export default function BarChart({
       plotHeight: pHeight,
       plotWidth: pWidth,
     };
-  }, [data, bars]);
+  }, [data, bars, stacked]);
 
   if (!data || data.length === 0) {
     return (
@@ -124,6 +132,9 @@ export default function BarChart({
             const groupStartX = groupCenterX - totalGroupWidth / 2;
             const labelText = String(item[categoryKey] ?? "N/A");
 
+            let currentStackedY = PAD.top + plotHeight;
+            const stackedBarX = groupCenterX - barWidth / 2;
+
             return (
               <g
                 key={`group-${idx}`}
@@ -144,10 +155,29 @@ export default function BarChart({
                   {labelText.length > 9 ? `${labelText.slice(0, 8)}…` : labelText}
                 </text>
 
-                {/* Individual bars */}
+                {/* Individual or stacked bars */}
                 {bars.map((bar, bIdx) => {
                   const val = Number(item[bar.key]) || 0;
                   const bHeight = maxY > 0 ? (val / maxY) * plotHeight : 0;
+                  
+                  if (stacked) {
+                    if (val === 0) return null;
+                    currentStackedY -= bHeight;
+                    return (
+                      <rect
+                        key={`bar-${idx}-${bIdx}`}
+                        x={stackedBarX}
+                        y={currentStackedY}
+                        width={barWidth}
+                        height={Math.max(bHeight, 2)}
+                        rx="1"
+                        fill={bar.color}
+                        opacity={hoveredIndex === null || hoveredIndex === idx ? 1 : 0.4}
+                        style={{ transition: "opacity 0.2s ease" }}
+                      />
+                    );
+                  }
+
                   const bX = groupStartX + bIdx * (barWidth + 4);
                   const bY = PAD.top + plotHeight - bHeight;
 
@@ -199,6 +229,12 @@ export default function BarChart({
                 <span style={{ fontWeight: 700 }}>{items[hoveredIndex][b.key] ?? 0}</span>
               </div>
             ))}
+            {stacked && (
+              <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", color: colors.text, marginTop: "4px", borderTop: `1px solid ${colors.border}`, paddingTop: "4px" }}>
+                <span>Total:</span>
+                <span style={{ fontWeight: 700 }}>{bars.reduce((sum, b) => sum + (Number(items[hoveredIndex][b.key]) || 0), 0)}</span>
+              </div>
+            )}
           </div>
         )}
       </div>

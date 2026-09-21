@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import TimeSeriesChart from "./TimeSeriesChart";
 import BarChart from "./BarChart";
 import DonutChart from "./DonutChart";
+import HorizontalBarChart from "./HorizontalBarChart";
 
 describe("TimeSeriesChart Component", () => {
   it("renders SVG with role=img and title", () => {
@@ -64,6 +65,31 @@ describe("DonutChart Component", () => {
   it("handles empty or zero data gracefully", () => {
     render(<DonutChart data={[]} />);
     expect(screen.getByText(/no distribution data available/i)).toBeTruthy();
+  });
+});
+
+describe("HorizontalBarChart Component", () => {
+  it("renders ranked bars and handles pump selection", () => {
+    const data = [
+      { pump_tag: "011-P-1A", leak_count: 4, area: "MA1", cmon_readings: 12 },
+      { pump_tag: "022-P-2B", leak_count: 2, area: "MA2", cmon_readings: 8 },
+    ];
+    const onSelect = vi.fn();
+    render(<HorizontalBarChart data={data} onSelect={onSelect} />);
+
+    expect(screen.getByTestId("horizontal-bar-chart")).toBeTruthy();
+    expect(screen.getByText("011-P-1A")).toBeTruthy();
+    expect(screen.getByText("022-P-2B")).toBeTruthy();
+    expect(screen.getByText("MA1")).toBeTruthy();
+    expect(screen.getByText("4 leaks")).toBeTruthy();
+
+    fireEvent.click(screen.getByText("011-P-1A"));
+    expect(onSelect).toHaveBeenCalledWith("011-P-1A");
+  });
+
+  it("handles empty data gracefully", () => {
+    render(<HorizontalBarChart data={[]} />);
+    expect(screen.getByText(/no risk\/bad actor records identified/i)).toBeTruthy();
   });
 });
 

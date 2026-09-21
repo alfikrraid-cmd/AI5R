@@ -49,9 +49,11 @@ export default function TimeSeriesChart({
     for (const s of series) {
       scaledSeries[s.key] = data.map((d, i) => {
         const x = n > 1 ? PAD.left + (i / (n - 1)) * plotWidth : PAD.left + plotWidth / 2;
-        const val = Number(d[s.key]) || 0;
-        const y = PAD.top + plotHeight - (val / safeMax) * plotHeight;
-        return { x, y, value: val, date: d.date, raw: d };
+        const rawVal = d[s.key];
+        const isMissing = rawVal === null || rawVal === undefined;
+        const val = isMissing ? null : Number(rawVal);
+        const y = isMissing ? null : PAD.top + plotHeight - (val / safeMax) * plotHeight;
+        return { x, y, value: val, isMissing, date: d.date, raw: d };
       });
     }
 
@@ -164,32 +166,50 @@ export default function TimeSeriesChart({
             const pts = pointsBySeries[s.key] || [];
             if (pts.length === 0) return null;
 
-            const pathD = pts.reduce((acc, p, idx) => `${acc} ${idx === 0 ? "M" : "L"} ${p.x} ${p.y}`, "");
+            let pathD = "";
+            let inSegment = false;
+            for (const p of pts) {
+              if (p.isMissing || p.y === null) {
+                inSegment = false;
+                continue;
+              }
+              if (!inSegment) {
+                pathD += ` M ${p.x} ${p.y}`;
+                inSegment = true;
+              } else {
+                pathD += ` L ${p.x} ${p.y}`;
+              }
+            }
 
             return (
               <g key={`series-${s.key}`}>
-                <path
-                  d={pathD}
-                  fill="none"
-                  stroke={s.color}
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                {pts.map((p, idx) => (
-                  <circle
-                    key={`${s.key}-${idx}`}
-                    cx={p.x}
-                    cy={p.y}
-                    r={activePoint?.index === idx ? "5" : "3"}
-                    fill={s.color}
-                    stroke={colors.panel}
-                    strokeWidth="1.5"
-                    style={{ cursor: "pointer", transition: "r 0.15s ease" }}
-                    onMouseEnter={() => setActivePoint({ index: idx, date: p.date, raw: p.raw, x: p.x, y: p.y })}
-                    onMouseLeave={() => setActivePoint(null)}
+                {pathD && (
+                  <path
+                    d={pathD.trim()}
+                    fill="none"
+                    stroke={s.color}
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
                   />
-                ))}
+                )}
+                {pts.map((p, idx) => {
+                  if (p.isMissing || p.y === null) return null;
+                  return (
+                    <circle
+                      key={`${s.key}-${idx}`}
+                      cx={p.x}
+                      cy={p.y}
+                      r={activePoint?.index === idx ? "5" : "3"}
+                      fill={s.color}
+                      stroke={colors.panel}
+                      strokeWidth="1.5"
+                      style={{ cursor: "pointer", transition: "r 0.15s ease" }}
+                      onMouseEnter={() => setActivePoint({ index: idx, date: p.date, raw: p.raw, x: p.x, y: p.y })}
+                      onMouseLeave={() => setActivePoint(null)}
+                    />
+                  );
+                })}
               </g>
             );
           })}
@@ -229,12 +249,16 @@ export default function TimeSeriesChart({
             <div style={{ fontWeight: 600, color: colors.text, marginBottom: "4px" }}>
               {formatDateLabel(activePoint.date)}
             </div>
-            {series.map((s) => (
-              <div key={s.key} style={{ display: "flex", justifyContent: "space-between", gap: "12px", color: s.color }}>
-                <span>{s.label}:</span>
-                <span style={{ fontWeight: 700 }}>{activePoint.raw[s.key] ?? 0}</span>
-              </div>
-            ))}
+            {series.map((s) => {
+              const val = activePoint.raw[s.key];
+              const displayVal = val === null || val === undefined ? "N/A" : val;
+              return (
+                <div key={s.key} style={{ display: "flex", justifyContent: "space-between", gap: "12px", color: s.color }}>
+                  <span>{s.label}:</span>
+                  <span style={{ fontWeight: 700 }}>{displayVal}</span>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
