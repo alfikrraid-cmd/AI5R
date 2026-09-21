@@ -39,6 +39,14 @@ const APPLICATION_MANIFEST = [
     defaultPath: "/od",
     slug: "od",
   },
+  {
+    applicationId: "workforce",
+    displayName: "Workforce",
+    basePath: "/workforce",
+    status: "active",
+    entry: "workforce",
+    standalone: true,
+  },
 ];
 
 export function loadApplicationDescriptors(manifest = APPLICATION_MANIFEST) {

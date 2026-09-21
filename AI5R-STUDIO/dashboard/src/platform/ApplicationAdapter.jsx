@@ -2,6 +2,7 @@ import { Tabs } from "../design-system";
 import LTSAAuthGate from "../modules/ltsa/pages/LTSAAuthGate";
 import ODWorkspace from "../modules/od/pages/ODWorkspace";
 import Landing from "./Landing";
+import WorkforceWorkspace from "../modules/workforce/WorkforceWorkspace";
 
 export const PUMP_WORKSPACE_ROUTE = "/ltsa/pump-workspace";
 export const PM_WORKSPACE_ROUTE = "/ltsa/pm-workspace";
@@ -32,6 +33,9 @@ export default function ApplicationAdapter({
   organizationContext,
   platformContext,
 }) {
+  if (application?.applicationId === "workforce") {
+    return <WorkforceWorkspace />;
+  }
   if (application?.applicationId === "ltsa") {
     // MWO-LTSA-STANDALONE-PRODUCT-SHELL-001 -- LTSA is a standalone
     // product (ApplicationDescriptor.standalone): it must render without
