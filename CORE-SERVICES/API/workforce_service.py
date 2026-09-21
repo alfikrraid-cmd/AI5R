@@ -93,6 +93,47 @@ class WorkforceService:
                 return e
         return None
 
+    def start_pilot(self, *, actor, repository, executor, mission_type, input_text, idempotency_key):
+        from time import perf_counter
+        from API.workforce_text_executor import REQUESTED_POLICY
+
+        executor.validate(mission_type, input_text)
+        if not isinstance(idempotency_key, str) or not 1 <= len(idempotency_key) <= 128:
+            raise ValueError("Invalid idempotency key")
+        employee = self.find_employee_by_position("DOCUMENTATION_ENGINEER")
+        if employee is None:
+            raise ValueError("Documentation employee unavailable")
+        run, created = repository.claim(
+            organization_id=actor.organization_id, requester_id=actor.user_id,
+            idempotency_key=idempotency_key, mission_type=mission_type,
+            requested_policy=REQUESTED_POLICY,
+            employee={"employee_id": employee.employee_id, "identity_id": employee.identity_id,
+                      "position_id": employee.position_id, "employee_name": employee.employee_name},
+        )
+        if not created:
+            return run
+        started = perf_counter()
+        try:
+            result = executor.execute(mission_type, input_text)
+        except Exception:
+            # Never store exception strings: providers may include credentials or prompts.
+            result = None
+        return repository.finish_execution(
+            run["run_id"], result=result, elapsed_ms=round((perf_counter() - started) * 1000),
+        )
+
+    def get_pilot(self, *, actor, repository, run_id):
+        run = repository.get(run_id)
+        if run["organization_id"] != actor.organization_id:
+            raise KeyError("Pilot run not found")
+        return run
+
+    def review_pilot(self, *, actor, repository, run_id, decision, draft_version, note):
+        self.get_pilot(actor=actor, repository=repository, run_id=run_id)
+        # Completion approves text only; no release/event/tool/action dispatch.
+        return repository.review(run_id, reviewer_id=actor.user_id, decision=decision,
+                                 draft_version=draft_version, note=note)
+
     def find_employee_by_position(self, position_id: str) -> DigitalEmployee | None:
         return self._employee_by_pos.get(position_id) or self._employee_by_pos.get(position_id.upper())
 

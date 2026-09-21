@@ -5,7 +5,7 @@ from typing import Any
 
 from AI_RUNTIME.ROUTER.model_registry import ModelDescriptor
 from AI_RUNTIME.ROUTER.router import Router
-from OSA.LLM_PROVIDER import CostEstimate, HealthStatus, LLMRequest
+from OSA.LLM_PROVIDER import CostEstimate, HealthStatus, LLMRequest, LLMResponse
 
 # MWO-AI-002: Engineering AI Client.
 #
@@ -60,6 +60,21 @@ class EngineeringAIClient:
         )
         response = self._dispatch(request, capability)
         return response.content
+
+    def generate_response(
+        self,
+        prompt: str,
+        *,
+        system_prompt: str = "",
+        temperature: float = 0.2,
+        capability: str = "chat",
+        metadata: dict[str, Any] | None = None,
+    ) -> LLMResponse:
+        """Return canonical per-call provenance without changing legacy generate()."""
+        return self._dispatch(LLMRequest(
+            prompt=prompt, system_prompt=system_prompt,
+            temperature=temperature, metadata=metadata,
+        ), capability)
 
     def generate_json(
         self,

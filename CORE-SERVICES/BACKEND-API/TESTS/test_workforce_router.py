@@ -27,9 +27,12 @@ def fresh_workforce_service():
     service = WorkforceService(organization_name="AI5R Test Enterprise")
     app.dependency_overrides[get_workforce_service] = lambda: service
     app.dependency_overrides[get_live_stream_api] = lambda: service.live_stream_api
+    # Deterministic tests must never reach the configured live AI providers.
+    app.dependency_overrides[get_copilot_ai_client] = lambda: None
     yield service
     app.dependency_overrides.pop(get_workforce_service, None)
     app.dependency_overrides.pop(get_live_stream_api, None)
+    app.dependency_overrides.pop(get_copilot_ai_client, None)
 
 
 
