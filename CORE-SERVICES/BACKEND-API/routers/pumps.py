@@ -184,12 +184,15 @@ def get_ltsa_pump_last_pm(
 @router.get("/api/ltsa/pumps/{tag}/last-cm")
 def get_ltsa_pump_last_cm(
     tag: str,
-    cm_report_gateway=Depends(get_cm_report_gateway),
+    condition_monitoring_reading_gateway=Depends(get_condition_monitoring_reading_gateway),
     pump_gateway=Depends(get_pump_gateway),
     current_user: AuthenticatedIdentity = Depends(get_current_user),
 ) -> Payload:
     _guard_tag_in_scope(tag, pump_gateway, current_user)
-    return get_pump_last_cm(tag, cm_report_gateway=cm_report_gateway)
+    return get_pump_last_cm(
+        tag,
+        condition_monitoring_reading_gateway=condition_monitoring_reading_gateway,
+    )
 
 
 @router.get("/api/ltsa/pumps/{tag}/condition-monitoring-flag")

@@ -168,27 +168,25 @@ def get_pump_last_pm(
 
 def get_pump_last_cm(
     tag_number: str,
-    cm_report_gateway: CMReportGateway | None = None,
+    condition_monitoring_reading_gateway: ConditionMonitoringReadingGateway | None = None,
+    cm_report_gateway: Any | None = None,
 ) -> dict[str, Any]:
-    """Show Last CM: the most recent cm_report for this pump, per
-    ADR-ASSET360-001. Simpler than get_pump_last_pm's shape: cm_report is
-    the sole source, with no work_order-linked comparison, since
-    ADR-CM-001 already established cm_report as Corrective Maintenance's
-    own canonical record, independent of whether a Work Order exists for
-    a given incident.
-
-    Sorted by `created_at` -- cm_report has no dedicated
-    "occurred_at"/"reported_at" field, so this is a disclosed judgment
-    call (the closest available proxy for "when this report was filed"),
-    not an assumption presented as fact.
+    """Show Last CM: the most recent condition_monitoring_reading for this pump,
+    per LTSA PM/CM semantic cutover R1 (CM = Condition Monitoring).
+    Sorted by reading_date DESC. Legacy cm_report is not queried.
     """
-
-    cm_report_gateway = cm_report_gateway or CMReportGateway()
-    response = cm_report_gateway.list_cm_reports()
+    condition_monitoring_reading_gateway = (
+        condition_monitoring_reading_gateway or ConditionMonitoringReadingGateway()
+    )
+    response = condition_monitoring_reading_gateway.list_condition_monitoring_readings()
     records = [
         record for record in (response.get("data") or []) if record.get("asset_code") == tag_number
     ]
-    records_sorted = sorted(records, key=lambda record: record.get("created_at") or "", reverse=True)
+    records_sorted = sorted(
+        records,
+        key=lambda record: str(record.get("reading_date") or ""),
+        reverse=True,
+    )
 
     return {
         "success": response.get("success", False),

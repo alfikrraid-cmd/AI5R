@@ -22,7 +22,6 @@ import { WorkflowStatusBadge } from "./WorkflowStatusBadge";
 const FILTERS = [
   { key: "ALL", label: "All" },
   { key: "PM", label: "PM" },
-  { key: "CMON", label: "CMON" },
   { key: "CM", label: "CM" },
   { key: "WO", label: "WO" },
   { key: "INSTALLATION", label: "Installation" },
@@ -100,8 +99,8 @@ function buildRows({ pmOccurrences, conditionMonitoringReadings, workOrders, cmH
   }
   for (const reading of conditionMonitoringReadings ?? []) {
     rows.push({
-      key: `CMON:${reading.id}`,
-      type: "CMON",
+      key: `CM:${reading.id}`,
+      type: "CM",
       date: dayOf(reading.readingDate),
       sortKey: reading.readingDate ?? null,
       record: reading,
@@ -117,18 +116,8 @@ function buildRows({ pmOccurrences, conditionMonitoringReadings, workOrders, cmH
       record: workOrder,
     });
   }
-  // cmHistory/breakdownHistory arrive as the existing lossy {id,name,meta}
-  // shape (mapRefItem), where `meta` is the RAW backend created_at/
-  // performed_at value (full timestamp, not day-only) -- cm_report has 0
-  // rows in production today (this session's own verified DB count), so
-  // this category is real, honest, and currently-empty, not a placeholder.
-  // MWO-LTSA-ASSET360-COMPLETENESS-FIX-021B (item E) -- `date` (display,
-  // day-only) and `sortKey` (the untruncated `record.meta`) are now
-  // deliberately different: sorting no longer discards the real
-  // timestamp these two categories do carry.
-  for (const record of cmHistory ?? []) {
-    rows.push({ key: `CM:${record.id}`, type: "CM", date: dayOf(record.meta), sortKey: record.meta ?? null, record });
-  }
+  // Legacy cm_report (Corrective Maintenance) is retired from active LTSA UI;
+  // cmHistory is not added to timeline rows per LTSA PM/CM semantic cutover R1.
   for (const record of breakdownHistory ?? []) {
     rows.push({
       key: `BREAKDOWN:${record.id}`,
@@ -149,10 +138,10 @@ function buildRows({ pmOccurrences, conditionMonitoringReadings, workOrders, cmH
 
 function sameVisitDates(rows) {
   const pmDates = new Set(rows.filter((row) => row.type === "PM" && row.date).map((row) => row.date));
-  const cmonDates = new Set(rows.filter((row) => row.type === "CMON" && row.date).map((row) => row.date));
+  const cmDates = new Set(rows.filter((row) => row.type === "CM" && row.date).map((row) => row.date));
   const shared = new Set();
   for (const date of pmDates) {
-    if (cmonDates.has(date)) shared.add(date);
+    if (cmDates.has(date)) shared.add(date);
   }
   return shared;
 }
@@ -173,8 +162,7 @@ function cmonSummary(reading) {
 
 const TYPE_LABEL = {
   PM: "PM",
-  CMON: "CONDITION MONITORING",
-  CM: "CORRECTIVE MAINTENANCE",
+  CM: "CONDITION MONITORING",
   WO: "WORK ORDER",
   BREAKDOWN: "BREAKDOWN",
   INSTALLATION: "INSTALLATION",
@@ -185,13 +173,13 @@ function Row({ row, isSameVisit, expanded, onToggle, onOpenPump }) {
   const label = TYPE_LABEL[row.type] ?? row.type;
   let summary = "N/A";
   if (row.type === "PM") summary = pmSummary(row.record);
-  else if (row.type === "CMON") summary = cmonSummary(row.record);
+  else if (row.type === "CM") summary = cmonSummary(row.record);
   else if (row.record?.name) summary = row.record.name;
-  // MWO-LTSA-ASSET360-COMPLETENESS-FIX-021B (item C) -- PM/CMON records
+  // MWO-LTSA-ASSET360-COMPLETENESS-FIX-021B (item C) -- PM/CM records
   // must visibly expose workflow_status here too, not only in the
   // dedicated PM History/Condition Monitoring sections; never implies
   // DRAFT/SUBMITTED are verified.
-  const workflowStatus = row.type === "PM" || row.type === "CMON" ? row.record?.workflowStatus : undefined;
+  const workflowStatus = row.type === "PM" || row.type === "CM" ? row.record?.workflowStatus : undefined;
 
   return (
     <div style={{ borderBottom: `1px solid ${colors.border}`, padding: `${spacing.sm}px 0` }} data-testid={`history-row-${row.key}`}>
@@ -202,7 +190,7 @@ function Row({ row, isSameVisit, expanded, onToggle, onOpenPump }) {
           {workflowStatus !== undefined ? <WorkflowStatusBadge status={workflowStatus} /> : null}
           {isSameVisit ? <Badge variant="success"> Same Visit • PM + Condition Monitoring</Badge> : null}
         </div>
-        {(row.type === "PM" || row.type === "CMON") && (
+        {(row.type === "PM" || row.type === "CM") && (
           <Button onClick={onToggle}>{expanded ? "Hide Details" : "View Details"}</Button>
         )}
       </div>
@@ -213,7 +201,7 @@ function Row({ row, isSameVisit, expanded, onToggle, onOpenPump }) {
           <PMOccurrenceDetailPanel occurrence={row.record} onOpenPump={onOpenPump} />
         </div>
       )}
-      {expanded && row.type === "CMON" && (
+      {expanded && row.type === "CM" && (
         <div style={{ marginTop: spacing.sm }}>
           <ConditionMonitoringReadingDetailPanel reading={row.record} onViewAsset360={onOpenPump} />
         </div>
@@ -291,7 +279,7 @@ export default function KnowledgeUnifiedHistory({
             <Row
               key={row.key}
               row={row}
-              isSameVisit={Boolean(row.date && sameVisit.has(row.date) && (row.type === "PM" || row.type === "CMON"))}
+              isSameVisit={Boolean(row.date && sameVisit.has(row.date) && (row.type === "PM" || row.type === "CM"))}
               expanded={expandedKey === row.key}
               onToggle={() => setExpandedKey((current) => (current === row.key ? null : row.key))}
               onOpenPump={onOpenPump}

@@ -13,12 +13,12 @@ function overview(overrides = {}) {
 }
 
 describe("MaintenanceActivityPanel", () => {
-  it("renders PM Schedules, CM Reports, and Work Orders counts", () => {
+  it("renders PM Schedules, CM Readings, and Work Orders counts", () => {
     render(<MaintenanceActivityPanel overview={overview()} />);
 
     expect(screen.getByText("PM Schedules")).toBeTruthy();
     expect(screen.getAllByText("3").length).toBeGreaterThan(0);
-    expect(screen.getByText("CM Reports")).toBeTruthy();
+    expect(screen.getByText("CM Readings")).toBeTruthy();
     expect(screen.getAllByText("2").length).toBeGreaterThan(0);
     expect(screen.getByText("Work Orders")).toBeTruthy();
     expect(screen.getByText("5")).toBeTruthy();

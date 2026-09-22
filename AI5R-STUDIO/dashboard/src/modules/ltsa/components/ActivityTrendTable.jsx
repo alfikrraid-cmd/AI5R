@@ -1,18 +1,7 @@
-import { Badge, Card } from "../../../design-system";
+import { Card } from "../../../design-system";
 import colors from "../../../design-system/theme/colors";
 import spacing from "../../../design-system/theme/spacing";
 
-const DIRECTION_LABEL = {
-  UP: "▲ Rising",
-  DOWN: "▼ Falling",
-  FLAT: "▬ Stable",
-};
-
-const DIRECTION_VARIANT = {
-  UP: "danger",
-  DOWN: "success",
-  FLAT: "info",
-};
 
 const HEADERS = ["Week", "PM", "CM", "Work Orders", "Total"];
 
@@ -28,12 +17,6 @@ const tdStyle = { padding: spacing.xs, color: colors.text };
 export default function ActivityTrendTable({ trend }) {
   return (
     <Card title="Maintenance Activity Trend">
-      <div style={{ marginBottom: spacing.sm }}>
-        <div style={{ color: colors.textMuted, fontSize: 12 }}>Corrective Maintenance Trend</div>
-        <Badge variant={DIRECTION_VARIANT[trend.correctiveMaintenanceDirection]}>
-          {DIRECTION_LABEL[trend.correctiveMaintenanceDirection]}
-        </Badge>
-      </div>
 
       <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>

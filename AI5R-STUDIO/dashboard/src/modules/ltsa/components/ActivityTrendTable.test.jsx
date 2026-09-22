@@ -21,22 +21,5 @@ describe("ActivityTrendTable", () => {
     expect(screen.getByText("This Week")).toBeTruthy();
     expect(screen.getByText("8")).toBeTruthy();
   });
-
-  it("renders the corrective maintenance direction badge", () => {
-    render(<ActivityTrendTable trend={TREND} />);
-
-    expect(screen.getByText("▲ Rising")).toBeTruthy();
-  });
-
-  it("renders a falling badge when the direction is DOWN", () => {
-    render(<ActivityTrendTable trend={{ ...TREND, correctiveMaintenanceDirection: "DOWN" }} />);
-
-    expect(screen.getByText("▼ Falling")).toBeTruthy();
-  });
-
-  it("renders a stable badge when the direction is FLAT", () => {
-    render(<ActivityTrendTable trend={{ ...TREND, correctiveMaintenanceDirection: "FLAT" }} />);
-
-    expect(screen.getByText("▬ Stable")).toBeTruthy();
-  });
 });
+

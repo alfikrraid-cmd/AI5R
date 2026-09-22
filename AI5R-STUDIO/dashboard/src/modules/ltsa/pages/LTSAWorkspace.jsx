@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { EmptyState, PageHeader, Panel } from "../../../design-system";
 import AssetSelector from "../components/AssetSelector";
-import { getCMReports, getPumps } from "../../../api/ai5rClient";
+import { getPumps } from "../../../api/ai5rClient";
 import { mapPumpRecord } from "../utils/pumpMapping";
-import { mapCMReportRecord, withResolvedArea } from "../utils/cmMapping";
 import LTSASidebar from "../components/LTSASidebar";
 import { IconSun } from "../components/PumpWorkspaceIcons";
 import { IconBell } from "../components/LTSANavIcons";
@@ -14,7 +13,6 @@ import ExecutiveDashboard from "./ExecutiveDashboard";
 import Pump from "./Pump";
 import WorkOrder from "./WorkOrder";
 import PM from "./PM";
-import CM from "./CM";
 import ConditionMonitoring from "./ConditionMonitoring";
 import ConditionMonitoringWorkspace from "./ConditionMonitoringWorkspace";
 import MaintenanceHistory from "./MaintenanceHistory";
@@ -76,8 +74,7 @@ const TABS = [
   { key: "installation", label: "Installation" },
   { key: "workorder", label: "Work Order" },
   { key: "pm", label: "Preventive Maintenance" },
-  { key: "cm", label: "Corrective Maintenance" },
-  { key: "cmon", label: "Condition Monitoring" },
+  { key: "cm", label: "Condition Monitoring" },
   // UI/UX Redesign Phase B -- three new sidebar-only entries. Each is a
   // thin routing adapter over existing pages/data (see PAGES below and
   // the KnowledgeLanding/AIInsightRoute/FailureAnalysisRoute components
@@ -127,7 +124,7 @@ const PRIMARY_NAV_KEYS = [
   "seal",
   "workorder",
   "pm",
-  "cmon",
+  "cm",
   "failure",
   "knowledge",
   "ai-insight",
@@ -305,61 +302,14 @@ function AIInsightRoute() {
 // mapping utilities FailureAnalysisWorkspace already imports to offer a
 // picker in front of it, mirroring the AssetLauncher pattern above --
 // no new backend endpoint, no new business logic.
-function FailureAnalysisLauncher({ onSelect }) {
-  const [reports, setReports] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let active = true;
-
-    getCMReports()
-      .then((items) => Promise.all(items.map(mapCMReportRecord).map(withResolvedArea)))
-      .then((mapped) => {
-        if (active) {
-          setReports(mapped);
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setReports([]);
-        }
-      })
-      .finally(() => {
-        if (active) {
-          setLoading(false);
-        }
-      });
-
-    return () => {
-      active = false;
-    };
-  }, []);
-
+function FailureAnalysisLauncher() {
   return (
     <div className="ltsa-landing">
-      <PageHeader title="Failure Analysis" subtitle="Select a Corrective Maintenance report to open its failure analysis." />
-      {loading ? (
-        <Panel>
-          <p>Loading corrective maintenance reports...</p>
-        </Panel>
-      ) : reports.length === 0 ? (
-        <EmptyState
-          title="No corrective maintenance reports"
-          description="Failure analysis opens from an existing Corrective Maintenance report."
-        />
-      ) : (
-        <Panel>
-          <ul className="ltsa-failure-picker-list">
-            {reports.map((report) => (
-              <li key={report.id}>
-                <button type="button" onClick={() => onSelect(report)}>
-                  {report.equipmentTag ?? "N/A"} — {report.failureDescription ?? "Failure report"}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </Panel>
-      )}
+      <PageHeader title="Failure Analysis" subtitle="Equipment failure records and root cause analysis." />
+      <EmptyState
+        title="No failure records available"
+        description="Failure analysis opens from confirmed equipment failure records. Corrective Maintenance has been retired."
+      />
     </div>
   );
 }
@@ -370,11 +320,7 @@ function FailureAnalysisRoute({ navContext }) {
   );
 
   if (!selected) {
-    return (
-      <FailureAnalysisLauncher
-        onSelect={(report) => setSelected({ selectId: report.id, assetTag: report.equipmentTag })}
-      />
-    );
+    return <FailureAnalysisLauncher />;
   }
 
   return <FailureAnalysisWorkspace navContext={selected} />;
@@ -392,7 +338,7 @@ const PAGES = {
   import: ImportWorkspace,
   workorder: WorkOrder,
   pm: PM,
-  cm: CM,
+  cm: ConditionMonitoring,
   cmon: ConditionMonitoring,
   "cmon-workspace": ConditionMonitoringWorkspace,
   "failure-analysis-workspace": FailureAnalysisWorkspace,

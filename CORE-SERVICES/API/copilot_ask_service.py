@@ -161,7 +161,7 @@ def _detect_intent(question: str, *, tag: str | None = None) -> str | None:
     if re.search(r"^\s*pm\b", q):
         return "pm"
     if re.search(r"^\s*cm\b", q):
-        return "cm"
+        return "condition_monitoring"
 
     if has(r"\bseal\b", r"\bsegel\b") and is_current_or_latest and not is_install_or_replace_wording:
         return "current_seal"
@@ -182,7 +182,7 @@ def _detect_intent(question: str, *, tag: str | None = None) -> str | None:
     if has("bocor", r"\bleak") and tag is not None and is_diagnostic_question and not is_fleet_question:
         return "seal_leak_diagnostic"
     if has(
-        "bocor", r"\bleak", r"\bcmon\b", "condition monitoring", "temuan",
+        "bocor", r"\bleak", r"\bcm\b", r"\bcmon\b", "condition monitoring", "temuan",
         "temperature", "temperatur", "temp", "suhu", "vibration", "vibrasi", "getaran", "pressure", "tekanan",
     ):
         return "condition_monitoring"
@@ -204,8 +204,6 @@ def _detect_intent(question: str, *, tag: str | None = None) -> str | None:
         return "fleet_pm_overdue"
     if has(r"\bpm\b", "preventive"):
         return "pm"
-    if has(r"\bcm\b", "corrective", "breakdown", "kerusakan", r"\brusak"):
-        return "cm"
     if has("work order", "workorder", r"\bwo\b", "kerja"):
         return "work_orders"
     if has(
@@ -1162,8 +1160,16 @@ def _handle_condition_monitoring(
     LATEST (records[0]) and detailed (already-sorted, newest-first)
     paths. Only canonical columns are surfaced; a field this table has no
     value for is rendered N/A, never invented."""
+    condition_monitoring_reading_gateway = _.get("condition_monitoring_reading_gateway")
     try:
-        records = condition_monitoring_reading_repository.list_by_asset(tag)
+        if condition_monitoring_reading_repository is not None:
+            records = condition_monitoring_reading_repository.list_by_asset(tag)
+        elif condition_monitoring_reading_gateway is not None:
+            resp = condition_monitoring_reading_gateway.list_condition_monitoring_readings()
+            raw = [r for r in (resp.get("data") or []) if r.get("asset_code") == tag]
+            records = sorted(raw, key=lambda r: str(r.get("reading_date") or ""), reverse=True)
+        else:
+            records = []
         if not isinstance(records, list):
             if language == "id":
                 return CopilotAnswer(f"Data Condition Monitoring untuk {tag} sedang tidak tersedia.", DATA_GAP, ())
@@ -2600,7 +2606,7 @@ TOOL_HANDLERS = {
     "pump_history": _handle_pump_history,
     "work_orders": _handle_work_orders,
     "pm": _handle_pm,
-    "cm": _handle_cm,
+    "cm": _handle_condition_monitoring,
     "current_seal": _handle_current_seal,
     "seal_compat": _handle_seal_compat,
     "inventory": _handle_inventory,
