@@ -1241,6 +1241,7 @@ def test_current_state_canonical_fields_benchmark_945_p_7a():
     assert hasattr(cs, "last_seal_replacement")
     assert cs.last_seal_replacement is not None
     assert cs.last_seal_replacement.get("event_date") == "2026-05-29"
+    assert cs.last_seal_replacement.get("installation_outcome") == "UNKNOWN"
     assert cs.last_seal_replacement.get("installation_mode") == "UNKNOWN"
     assert "2648-2 Tandem Seal" in cs.last_seal_replacement.get("seal_identity", "")
     assert cs.last_seal_replacement.get("reference") == "INSTL-036-2026"
@@ -1251,4 +1252,119 @@ def test_current_state_canonical_fields_benchmark_945_p_7a():
 
     # 5. Next PM (none scheduled)
     assert cs.next_pm is None
+
+
+def test_authoritative_reuse_rule_cleaning_seal_fixture_140_p_26b():
+    # Deterministic unit-test fixture representing the documented domain rule:
+    # "Cleaning Seal" -> installation_outcome=REUSE_SEAL, independent of repair reason
+    # (e.g. Pump repair due to seal leakage does NOT override REUSE_SEAL).
+    tag = "140-P-26B"
+    installation = {
+        "installation_code": "INSTL-140-2021",
+        "report_no": "140/INSTL/2021",
+        "report_date": "2021-06-30",
+        "plant_equip_no": tag,
+        "seal_type": "T48MP",
+        "seal_size": '2-3/8"',
+        "raw_job_description": "Pump repair due to seal leakage",
+        "remarks": "Cleaning Seal",
+    }
+    k = _knowledge(tag_number=tag)
+    service = _service(knowledge=k, installations=[installation])
+    lifecycle = service.build_lifecycle(tag)
+    last_rep = lifecycle.current_state.last_seal_replacement
+    assert last_rep is not None
+    assert last_rep.get("event_date") == "2021-06-30"
+    assert last_rep.get("installation_outcome") == "REUSE_SEAL"
+
+
+def test_new_seal_rule_explicit_documentary_evidence():
+    tag = "101-P-10A"
+    installation = {
+        "installation_code": "INSTL-101-2026",
+        "report_no": "101/INSTL/2026",
+        "report_date": "2026-07-15",
+        "plant_equip_no": tag,
+        "seal_type": "T48MP",
+        "seal_size": "2.375",
+        "remarks": "Install New Seal on pump",
+    }
+    k = _knowledge(tag_number=tag)
+    service = _service(knowledge=k, installations=[installation])
+    lifecycle = service.build_lifecycle(tag)
+    last_rep = lifecycle.current_state.last_seal_replacement
+    assert last_rep is not None
+    assert last_rep.get("installation_outcome") == "NEW_SEAL"
+
+
+def test_systemic_matrix_case_a_pm_cmon_seal_history():
+    tag = "PUMP-A"
+    pm = [{"pm_occurrence_code": "PM-1", "asset_code": tag, "occurrence_date": "2026-05-01"}]
+    cmon = [{"condition_monitoring_reading_code": "CMON-1", "asset_code": tag, "reading_date": "2026-05-10"}]
+    inst = [{"installation_code": "INST-1", "report_date": "2026-05-12", "plant_equip_no": tag, "remarks": "Cleaning Seal"}]
+    k = _knowledge(tag_number=tag, pm_history=pm, condition_monitoring_readings=cmon)
+    service = _service(knowledge=k, installations=inst, pm_occurrences=pm)
+    lifecycle = service.build_lifecycle(tag)
+    cs = lifecycle.current_state
+    assert cs.last_pm.get("event_date") == "2026-05-01"
+    assert cs.last_condition_monitoring.get("event_date") == "2026-05-10"
+    assert cs.last_seal_replacement.get("event_date") == "2026-05-12"
+    assert cs.last_seal_replacement.get("installation_outcome") == "REUSE_SEAL"
+
+
+def test_systemic_matrix_case_b_pm_only():
+    tag = "PUMP-B"
+    pm = [{"pm_occurrence_code": "PM-1", "asset_code": tag, "occurrence_date": "2026-05-01"}]
+    k = _knowledge(tag_number=tag, pm_history=pm, condition_monitoring_readings=[])
+    service = _service(knowledge=k, installations=[], pm_occurrences=pm)
+    lifecycle = service.build_lifecycle(tag)
+    cs = lifecycle.current_state
+    assert cs.last_pm.get("event_date") == "2026-05-01"
+    assert cs.last_condition_monitoring is None
+    assert cs.last_seal_replacement is None
+
+
+def test_systemic_matrix_case_c_cmon_only():
+    tag = "PUMP-C"
+    cmon = [{"condition_monitoring_reading_code": "CMON-1", "asset_code": tag, "reading_date": "2026-05-10"}]
+    k = _knowledge(tag_number=tag, pm_history=[], condition_monitoring_readings=cmon)
+    service = _service(knowledge=k, installations=[], pm_occurrences=[])
+    lifecycle = service.build_lifecycle(tag)
+    cs = lifecycle.current_state
+    assert cs.last_pm is None
+    assert cs.last_condition_monitoring.get("event_date") == "2026-05-10"
+    assert cs.last_seal_replacement is None
+
+
+def test_systemic_matrix_case_g_no_history():
+    tag = "PUMP-G"
+    k = _knowledge(tag_number=tag, pm_history=[], condition_monitoring_readings=[], breakdown_history=[], pm_schedules=[])
+    service = _service(knowledge=k, installations=[], pm_occurrences=[])
+    lifecycle = service.build_lifecycle(tag)
+    cs = lifecycle.current_state
+    assert cs.last_pm is None
+    assert cs.next_pm is None
+    assert cs.last_condition_monitoring is None
+    assert cs.last_seal_replacement is None
+    assert cs.last_confirmed_seal_failure is None
+
+
+def test_systemic_matrix_case_h_legacy_cm_report_never_used_for_condition_monitoring():
+    # Case H: legacy cm_report present in knowledge.cm_history,
+    # but condition_monitoring_readings is empty.
+    # Last Condition Monitoring must be None (never fall back to legacy cm_report).
+    tag = "PUMP-H"
+    legacy_cm = [{"cm_report_code": "CM-OLD-1", "asset_code": tag, "event_date": "2026-01-01"}]
+    k = _knowledge(
+        tag_number=tag,
+        cm_history=legacy_cm,
+        condition_monitoring_readings=[],
+    )
+    service = _service(knowledge=k, installations=[])
+    lifecycle = service.build_lifecycle(tag)
+    cs = lifecycle.current_state
+    assert cs.last_condition_monitoring is None
+    # legacy last_cm can preserve legacy Corrective Maintenance
+    assert cs.last_cm is not None
+
 

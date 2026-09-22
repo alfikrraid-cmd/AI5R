@@ -125,48 +125,73 @@ import {
  */
 
 const NOT_AVAILABLE = "Not Available";
+const NOT_APPLICABLE = "N/A";
 
 function fmtOrNotAvailable(value) {
   return value == null || value === "" ? NOT_AVAILABLE : value;
 }
 
-// Last PM / Next PM / Last CM / Last Failure are each a raw, already-real
-// record from a different existing domain (pm_occurrence, pm_schedule,
-// cm_report, maintenance_history) -- EquipmentTimelineService passes them
-// through unchanged (MWO-LTSA-064A), so this reads only the field names
-// those domains' own records already use elsewhere in this codebase
-// (equipment_timeline_service.py's own event builders), never a guessed
-// or invented field.
-function describeRecord(record) {
+function fmtOrNA(value) {
+  return value == null || value === "" || value === NOT_AVAILABLE || value === NOT_APPLICABLE ? NOT_APPLICABLE : value;
+}
+
+function formatLtsaDate(rawDate) {
+  if (!rawDate) return null;
+  const str = String(rawDate).trim();
+  const match = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  let d;
+  if (match) {
+    const [, y, m, day] = match;
+    d = new Date(Date.UTC(parseInt(y, 10), parseInt(m, 10) - 1, parseInt(day, 10)));
+  } else {
+    d = new Date(str);
+  }
+  if (isNaN(d.getTime())) return str;
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(d);
+}
+
+// Current Status activity events (Last PM, Next PM, Last Condition Monitoring,
+// Last Confirmed Seal Failure) display formatted date or N/A when missing.
+function describeCurrentStatusEvent(record) {
   if (!record) return null;
   const inner = record.record ?? record;
-  const code =
-    record.event_code ?? record.eventCode ??
-    inner.pm_occurrence_code ?? inner.pm_schedule_code ?? inner.cm_report_code ??
-    inner.condition_monitoring_reading_code ??
-    inner.maintenance_record_code ?? inner.work_order_code ?? null;
   const date =
     record.event_date ?? record.eventDate ?? record.performed_at ??
     inner.occurrence_date ?? inner.next_due ?? inner.reading_date ??
     inner.created_at ?? inner.due_date ?? null;
-  return [code, date].filter(Boolean).join(" · ") || null;
+  if (!date) return null;
+  return formatLtsaDate(date);
 }
 
+// Last Seal Replacement displays date with explicit outcome (NEW_SEAL / REUSE_SEAL).
+// When UNKNOWN, displays date only -- never "Mode N/A", "Unknown", or "UNKNOWN".
 function describeSealReplacement(record) {
   if (!record) return null;
   const inner = record.record ?? record;
   const date =
     record.event_date ?? record.eventDate ?? record.report_date ?? record.reportDate ??
     inner.report_date ?? null;
-  const rawMode =
-    record.installation_mode ?? record.installationMode ?? record.mode ??
-    inner.installation_mode ?? inner.mode ?? null;
-  const modeLabel =
-    rawMode === "REPLACE" ? "Replace" :
-    rawMode === "REUSE" ? "Reuse" :
-    "Mode N/A";
   if (!date) return null;
-  return `${date} · ${modeLabel}`;
+  const formattedDate = formatLtsaDate(date);
+
+  const outcome =
+    record.installation_outcome ?? record.installationOutcome ??
+    record.installation_mode ?? record.installationMode ??
+    record.mode ?? inner.installation_outcome ?? inner.installation_mode ?? inner.mode ?? null;
+
+  if (outcome === "NEW_SEAL" || outcome === "REPLACE" || outcome === "NEW") {
+    return `${formattedDate} · New Seal`;
+  }
+  if (outcome === "REUSE_SEAL" || outcome === "REUSE") {
+    return `${formattedDate} · Reuse Seal`;
+  }
+  // UNKNOWN or unclassified: date only
+  return formattedDate;
 }
 
 const STATUS_META = {
@@ -646,11 +671,11 @@ export default function PumpOpenDesignView({
               null, never a computed/fabricated number. */}
           <Section id="current-status-section" title="Current Status">
             <div className="info-panel" style={{ marginTop: "var(--space-3)" }}>
-              <InfoRow label="Last PM" value={fmtOrNotAvailable(describeRecord(currentState?.lastPm))} />
-              <InfoRow label="Next PM" value={fmtOrNotAvailable(describeRecord(currentState?.nextPm))} />
-              <InfoRow label="Last Condition Monitoring" value={fmtOrNotAvailable(describeRecord(currentState?.lastConditionMonitoring ?? currentState?.lastCm))} />
-              <InfoRow label="Last Seal Replacement" value={fmtOrNotAvailable(describeSealReplacement(currentState?.lastSealReplacement))} />
-              <InfoRow label="Last Confirmed Seal Failure" value={fmtOrNotAvailable(describeRecord(currentState?.lastConfirmedSealFailure ?? currentState?.lastFailure))} />
+              <InfoRow label="Last PM" value={fmtOrNA(describeCurrentStatusEvent(currentState?.lastPm))} />
+              <InfoRow label="Next PM" value={fmtOrNA(describeCurrentStatusEvent(currentState?.nextPm))} />
+              <InfoRow label="Last Condition Monitoring" value={fmtOrNA(describeCurrentStatusEvent(currentState?.lastConditionMonitoring))} />
+              <InfoRow label="Last Seal Replacement" value={fmtOrNA(describeSealReplacement(currentState?.lastSealReplacement))} />
+              <InfoRow label="Last Confirmed Seal Failure" value={fmtOrNA(describeCurrentStatusEvent(currentState?.lastConfirmedSealFailure))} />
             </div>
           </Section>
 

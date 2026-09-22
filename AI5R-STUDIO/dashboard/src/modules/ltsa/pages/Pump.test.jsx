@@ -388,8 +388,7 @@ describe("Pump workspace page", () => {
     // Performance tab's "Current Status" section (Overview no longer
     // shows Current Status directly).
     fireEvent.click(screen.getByRole("tab", { name: "Performance" }));
-    expect(await screen.findByText(/MH-101/)).toBeTruthy();
-    expect(screen.getByText(/2026-06-02/)).toBeTruthy();
+    expect(await screen.findByText("02 Jun 2026")).toBeTruthy();
   });
 
   it("resolves Seal Stock Available from lifecycle Stock V1 inventory, lazily for the selected pump only", async () => {
@@ -460,7 +459,7 @@ describe("Pump workspace page", () => {
     // are still proven to come from the one lifecycle fetch.
     expect(screen.getAllByText("4 sets available").length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("tab", { name: "Performance" }));
-    expect(await screen.findByText(/MH-101/)).toBeTruthy();
+    expect(await screen.findByText("02 Jun 2026")).toBeTruthy();
   });
 });
 

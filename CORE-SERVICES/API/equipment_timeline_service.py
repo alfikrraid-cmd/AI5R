@@ -708,6 +708,52 @@ class EquipmentTimelineService:
             "record": latest,
         }
 
+    @staticmethod
+    def _classify_installation_outcome(record: dict[str, Any] | None) -> str:
+        if not record:
+            return "UNKNOWN"
+
+        explicit = (
+            record.get("installation_outcome")
+            or record.get("installation_mode")
+            or record.get("mode")
+        )
+        if explicit in ("NEW_SEAL", "REUSE_SEAL"):
+            return explicit
+        if explicit in ("REPLACE", "NEW"):
+            return "NEW_SEAL"
+        if explicit in ("REUSE",):
+            return "REUSE_SEAL"
+
+        text_fields = [
+            str(record.get("remarks") or ""),
+            str(record.get("remark") or ""),
+            str(record.get("raw_job_description") or ""),
+            str(record.get("description") or ""),
+            str(record.get("action_taken") or ""),
+            str(record.get("notes") or ""),
+        ]
+        combined = " ".join(text_fields).lower()
+
+        # Authoritative Reuse Rule (Chief confirmed): "Cleaning Seal" -> REUSE_SEAL
+        # (independent of repair reason like seal leakage)
+        if any(phrase in combined for phrase in ("cleaning seal", "clean seal", "reused seal", "reuse seal", "seal reuse")):
+            return "REUSE_SEAL"
+
+        # New Seal Rule: explicit documentary evidence
+        if any(phrase in combined for phrase in (
+            "install new seal",
+            "new mechanical seal",
+            "replacement seal",
+            "pasang seal baru",
+            "ganti seal baru",
+            "new seal installed",
+            "installed new seal",
+        )):
+            return "NEW_SEAL"
+
+        return "UNKNOWN"
+
     def _build_last_seal_replacement(
         self,
         current_installation_record: dict[str, Any] | None,
@@ -719,14 +765,7 @@ class EquipmentTimelineService:
         event_date = self._normalize_date_string(current_installation_record.get("report_date"))
         installation_code = current_installation_record.get("installation_code")
 
-        mode = (
-            current_installation_record.get("installation_mode")
-            or current_installation_record.get("mode")
-        )
-        if mode in ("REPLACE", "REUSE"):
-            installation_mode = mode
-        else:
-            installation_mode = "UNKNOWN"
+        installation_outcome = self._classify_installation_outcome(current_installation_record)
 
         seal_type = (
             current_installation_record.get("seal_type")
@@ -745,7 +784,8 @@ class EquipmentTimelineService:
             "event_code": installation_code,
             "reference": installation_code,
             "installation_code": installation_code,
-            "installation_mode": installation_mode,
+            "installation_outcome": installation_outcome,
+            "installation_mode": installation_outcome,
             "seal_identity": seal_identity,
             "record": current_installation_record,
         }
