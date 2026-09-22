@@ -23,7 +23,7 @@ describe("SealRegistryTable", () => {
   it("renders the required columns", () => {
     render(<SealRegistryTable seals={SEALS} selectedCode={null} onSelect={() => {}} />);
 
-    ["Seal Code", "Name", "Type", "Manufacturer", "Status"].forEach((header) => {
+    ["Mechanical Seal", "Size", "GPN / Drawing", "Compatible Pumps", "Available Stock", "Status", "Action"].forEach((header) => {
       expect(screen.getByRole("columnheader", { name: header })).toBeTruthy();
     });
   });
@@ -42,6 +42,43 @@ describe("SealRegistryTable", () => {
     fireEvent.click(screen.getByText("SC-002"));
 
     expect(onSelect).toHaveBeenCalledWith("SC-002");
+  });
+
+  it("calls onSelect exactly once with the clicked seal identity when Details button is clicked", () => {
+    const onSelect = vi.fn();
+    render(<SealRegistryTable seals={SEALS} selectedCode={null} onSelect={onSelect} />);
+
+    const detailsButtons = screen.getAllByRole("button", { name: "Details" });
+    expect(detailsButtons).toHaveLength(2);
+
+    expect(() => fireEvent.click(detailsButtons[1])).not.toThrow();
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect).toHaveBeenCalledWith("SC-002");
+  });
+
+  it("does not trigger duplicate selection via row bubbling when Details button is clicked", () => {
+    const onSelect = vi.fn();
+    render(<SealRegistryTable seals={SEALS} selectedCode={null} onSelect={onSelect} />);
+
+    const detailsButtons = screen.getAllByRole("button", { name: "Details" });
+    fireEvent.click(detailsButtons[0]);
+
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect).toHaveBeenCalledWith("SC-001");
+  });
+
+  it("resolves the same seal identity whether row or Details button is clicked", () => {
+    const onSelectRow = vi.fn();
+    const { unmount } = render(<SealRegistryTable seals={SEALS} selectedCode={null} onSelect={onSelectRow} />);
+    fireEvent.click(screen.getByText("SC-001"));
+    expect(onSelectRow).toHaveBeenCalledWith("SC-001");
+    unmount();
+
+    const onSelectButton = vi.fn();
+    render(<SealRegistryTable seals={SEALS} selectedCode={null} onSelect={onSelectButton} />);
+    const detailsButtons = screen.getAllByRole("button", { name: "Details" });
+    fireEvent.click(detailsButtons[0]);
+    expect(onSelectButton).toHaveBeenCalledWith("SC-001");
   });
 
   it("marks the selected row", () => {

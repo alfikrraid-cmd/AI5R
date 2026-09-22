@@ -5,6 +5,7 @@ import {
   getSeals,
   getSealCompatibility,
   getSealStock,
+  getMechanicalSealStock,
   postEngineeringAI,
   getPMSchedules,
   getCMReports,
@@ -44,6 +45,7 @@ vi.mock("../../../api/ai5rClient", () => ({
   getSeals: vi.fn(),
   getSealCompatibility: vi.fn(),
   getSealStock: vi.fn(),
+  getMechanicalSealStock: vi.fn(),
   postEngineeringAI: vi.fn(),
   getPMSchedules: vi.fn(),
   getCMReports: vi.fn(),
@@ -71,6 +73,7 @@ beforeEach(() => {
   // where the compatibility/stock content itself matters.
   getSealCompatibility.mockResolvedValue([]);
   getSealStock.mockResolvedValue([]);
+  getMechanicalSealStock.mockResolvedValue({ items: [], total: 0, total_quantity: null, limit: 100, offset: 0 });
   getPMSchedules.mockResolvedValue([]);
   getCMReports.mockResolvedValue([]);
   getWorkOrders.mockResolvedValue([]);
@@ -225,7 +228,7 @@ describe("Seal workspace -- Compatible Pumps resolved from getSealCompatibility 
     fireEvent.click(screen.getByText("SC-001"));
     fireEvent.click(screen.getByRole("tab", { name: "Compatible" }));
 
-    expect(screen.getByText("PMP-001")).toBeTruthy();
+    expect(screen.getAllByText("PMP-001").length).toBeGreaterThan(0);
   });
 });
 

@@ -8,16 +8,26 @@ export default function SealFilterBar({
   statusFilter,
   onStatusFilterChange,
   statusOptions,
+  stockFilter = "ALL",
+  onStockFilterChange = () => {},
 }) {
+  const stockOptions = [
+    { key: "ALL", label: "All Stock" },
+    { key: "IN_STOCK", label: "In Stock (>0)" },
+    { key: "OUT_OF_STOCK", label: "Out of Stock (0)" },
+    { key: "UNKNOWN", label: "Unknown / N/A" },
+  ];
+
   return (
-    <div style={{ display: "flex", gap: spacing.md, flexWrap: "wrap", marginBottom: spacing.md }}>
+    <div style={{ display: "flex", gap: spacing.md, flexWrap: "wrap", marginBottom: spacing.md, alignItems: "center" }}>
       <SearchBox
         value={searchValue}
         onChange={onSearchChange}
-        placeholder="Search by name, type, or manufacturer..."
+        placeholder="Search by code, type, size, pump tag, drawing, manufacturer..."
       />
 
       <select
+        aria-label="Filter by status"
         value={statusFilter}
         onChange={(event) => onStatusFilterChange(event.target.value)}
         style={{
@@ -36,6 +46,32 @@ export default function SealFilterBar({
           </option>
         ))}
       </select>
+
+      <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+        {stockOptions.map((opt) => {
+          const isSelected = stockFilter === opt.key;
+          return (
+            <button
+              key={opt.key}
+              type="button"
+              onClick={() => onStockFilterChange(opt.key)}
+              style={{
+                background: isSelected ? colors.primary : colors.panel,
+                color: isSelected ? "#ffffff" : colors.textMuted,
+                border: `1px solid ${isSelected ? colors.primary : colors.border}`,
+                borderRadius: spacing.xs,
+                padding: "4px 8px",
+                fontSize: "12px",
+                fontWeight: isSelected ? 600 : 400,
+                cursor: "pointer",
+              }}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
+

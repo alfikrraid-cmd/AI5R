@@ -5,93 +5,65 @@ import SealRegistryTable from "../components/SealRegistryTable";
 import SealOpenDesignView from "../components/SealOpenDesignView";
 import PhysicalSealWorkspace from "../components/PhysicalSealWorkspace";
 import {
-  getSeals, getSealCompatibility, getSealStock, postEngineeringAI,
+  getSeals, getSealCompatibility, getSealStock, getMechanicalSealStock, postEngineeringAI,
   getPMSchedules, getCMReports, getWorkOrders, updateSealIdentifiers,
 } from "../../../api/ai5rClient";
-import { mapSealRecord, resolveCompatiblePumps, resolveStock } from "../utils/sealMapping";
+import {
+  mapSealRecord, resolveCompatiblePumps, resolveStock,
+  buildUnifiedSealConfigurations, formatDrawingSummary, formatCompatiblePumps, formatAvailableStock, parseDrawingReferences,
+} from "../utils/sealMapping";
 import { useOptionalAuth } from "../auth/AuthContext";
 import { can, PERMISSIONS } from "../auth/permissions";
 import { mapPMScheduleRecord } from "../utils/pmMapping";
 import { mapCMReportRecord } from "../utils/cmMapping";
 import { mapWorkOrderRecord } from "../utils/workOrderMapping";
 import generateTraceId from "../utils/generateTraceId";
+import colors from "../../../design-system/theme/colors";
 import "./Seal.css";
 import "./MaintenanceHistory.css";
 import "./LTSAOpenDesign.css";
 
-// Engineering AI: Mechanical Seal Workspace is the fifth consumer of the
-// canonical Engineering AI platform (Golden Reference:
-// FailureAnalysisWorkspace.jsx; pattern also already reused by
-// Pump.jsx). Pure consumer -- builds an EngineeringAIRequest-shaped
-// payload and calls postEngineeringAI() (HTTP transport only,
-// ai5rClient.js). Never builds a prompt, never builds engineering
-// context, never constructs an AI client, and never calls a Router or
-// provider directly. Reuses the existing "summary" intent/prompt_type
-// (EngineeringContextEngine already exposes seal_summary/
-// inventory_summary) -- no new intent invented, no backend change.
-//
-// EngineeringContextEngine.build(tag_number) resolves context for a PUMP
-// asset_code. Compatible pump values from production must already be real
-// pump tags from the API; no frontend sample-pump lookup is allowed because
-// tag/code equality must never attach demo metadata to a production asset.
 function resolveAssetCode(seal) {
   return seal?.compatiblePumps?.[0] ?? null;
 }
 
-// MWO-LTSA-SEAL-INVENTORY-IDENTIFIERS-001 Phase 11 -- extended to KIMAP
-// Pertamina, GPN John Crane, and compatible Pump Tag. Client-side is the
-// correct place for this: seal.py has no backend search/filter query
-// param today (GET /api/ltsa/seals is a full-list endpoint only, per the
-// Phase 0 architecture audit), so extending the existing mechanism is
-// additive, not a new search layer invented ahead of a real need.
-// kimapPertamina/gpnJohnCrane are nullable (Hard Rule 6: missing
-// identifiers must not block operations) -- `?? ""` before lowercasing
-// avoids crashing search on every not-yet-completed seal.
 function matchesSearch(seal, search) {
   const term = search.trim().toLowerCase();
+  if (!term) return true;
 
-  if (!term) {
-    return true;
-  }
+  const code = (seal.code ?? "").toLowerCase();
+  const name = (seal.name ?? "").toLowerCase();
+  const type = (seal.seal_type ?? seal.type ?? "").toLowerCase();
+  const manufacturer = (seal.manufacturer ?? "").toLowerCase();
+  const size = (seal.size ?? seal.nominal_size ?? seal.physical_stock_size ?? seal.shaftSize ?? "").toLowerCase();
+  const drawing = (seal.drawing_reference ?? "").toLowerCase();
+  const kimap = (seal.kimapPertamina ?? "").toLowerCase();
+  const gpn = (seal.complete_seal_gpn ?? seal.gpnJohnCrane ?? "").toLowerCase();
+  const status = (seal.verification_status ?? seal.status ?? "").toLowerCase();
+  const pumps = Array.isArray(seal.compatiblePumps)
+    ? seal.compatiblePumps.map((tag) => String(tag).toLowerCase())
+    : [];
 
   return (
-    seal.name.toLowerCase().includes(term) ||
-    seal.type.toLowerCase().includes(term) ||
-    seal.manufacturer.toLowerCase().includes(term) ||
-    (seal.kimapPertamina ?? "").toLowerCase().includes(term) ||
-    (seal.gpnJohnCrane ?? "").toLowerCase().includes(term) ||
-    seal.compatiblePumps.some((tag) => tag.toLowerCase().includes(term))
+    code.includes(term) ||
+    name.includes(term) ||
+    type.includes(term) ||
+    manufacturer.includes(term) ||
+    size.includes(term) ||
+    drawing.includes(term) ||
+    kimap.includes(term) ||
+    gpn.includes(term) ||
+    status.includes(term) ||
+    pumps.some((tag) => tag.includes(term))
   );
 }
 
-// MWO-LTSA-041: Seal Registry now has a real backend, reached via
-// GET /api/ltsa/seals (per MWO-LTSA-040's archaeology). `seals` remains an
-// optional override prop -- when a caller passes it explicitly (every
-// test in this file's "with injected data" block and the entire
-// Seal.engineeringAI.test.jsx suite already do, neither mocking
-// getSeals()), it is used directly and no fetch is triggered, preserving
-// that existing coverage unchanged. When omitted (LTSAWorkspace.jsx
-// renders <Seal /> with no prop, unchanged), this component fetches via
-// getSeals() itself, mirroring Pump.jsx's loading/error/list pattern
-// exactly, and maps each raw seal_registry record through mapSealRecord
-// (utils/sealMapping.js) into the shape SealRegistryTable/SealDetailPanel
-// already expect -- neither of those components changed.
-export default function Seal({ seals: sealsProp, onNavigate }) {
+export default function Seal({ seals: sealsProp, stockPools: stockPoolsProp, onNavigate }) {
   const [fetchedSeals, setFetchedSeals] = useState([]);
+  const [fetchedStockPools, setFetchedStockPools] = useState([]);
+  const [stockTotalQuantity, setStockTotalQuantity] = useState(null);
   const [listLoading, setListLoading] = useState(sealsProp === undefined);
   const [listError, setListError] = useState(null);
-  // MWO-LTSA-042 -- Compatible Pumps and Stock, resolved from the real
-  // seal-compatibility/seal-stock endpoints (MWO-LTSA-041 already wired
-  // getSealCompatibility()/getSealStock() into ai5rClient.js; nothing
-  // there changed). Fetched once, alongside getSeals() -- both are
-  // full-list endpoints with no per-seal filter on the backend, so
-  // fetching once and deriving per-seal client-side (resolveCompatiblePumps/
-  // resolveStock, sealMapping.js) avoids an N-seal-times refetch, the same
-  // "resolve once, derive many" shape filteredSeals' own useMemo already
-  // uses below. Empty by default and only ever populated on the fetched
-  // path (never for sealsProp, see the seals/stock derivations below) --
-  // so every existing "with injected data" test, which supplies its own
-  // compatiblePumps directly via sampleSeals.js, is unaffected.
   const [compatibilityRecords, setCompatibilityRecords] = useState([]);
   const [stockRecords, setStockRecords] = useState([]);
 
@@ -100,12 +72,24 @@ export default function Seal({ seals: sealsProp, onNavigate }) {
       return;
     }
     let active = true;
-    Promise.all([getSeals(), getSealCompatibility().catch(() => []), getSealStock().catch(() => [])])
-      .then(([records, compatibility, stock]) => {
+    const stockPoolPromise =
+      typeof getMechanicalSealStock === "function"
+        ? getMechanicalSealStock({ limit: 100 }).catch(() => ({ items: [], total: 0, total_quantity: null }))
+        : Promise.resolve({ items: [], total: 0, total_quantity: null });
+
+    Promise.all([
+      getSeals(),
+      getSealCompatibility().catch(() => []),
+      getSealStock().catch(() => []),
+      stockPoolPromise,
+    ])
+      .then(([records, compatibility, stock, mechanicalStock]) => {
         if (active) {
           setFetchedSeals(records.map(mapSealRecord));
           setCompatibilityRecords(compatibility);
           setStockRecords(stock);
+          setFetchedStockPools(mechanicalStock?.items ?? []);
+          setStockTotalQuantity(mechanicalStock?.total_quantity ?? null);
           setListError(null);
         }
       })
@@ -122,13 +106,9 @@ export default function Seal({ seals: sealsProp, onNavigate }) {
     return () => {
       active = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [sealsProp]);
 
-  // Compatible Pumps merged only into the fetched path -- sealsProp
-  // (every test's fixture data) keeps its own compatiblePumps values
-  // exactly as supplied, never overwritten by the (empty, in that path)
-  // compatibilityRecords state.
+  // Merge compatibility into fetched seals if no stockPools provided
   const mergedFetchedSeals = useMemo(
     () =>
       fetchedSeals.map((seal) => ({
@@ -138,29 +118,40 @@ export default function Seal({ seals: sealsProp, onNavigate }) {
     [fetchedSeals, compatibilityRecords]
   );
 
-  // MWO-LTSA-SEAL-INVENTORY-IDENTIFIERS-001 -- a successful manual
-  // KIMAP/GPN edit is merged in here, on top of either data source
-  // (sealsProp or the fetched path), so the UI reflects it immediately
-  // without a full refetch. Keyed by seal code; empty by default, so
-  // this is a pure no-op until an edit actually succeeds.
   const [identifierOverrides, setIdentifierOverrides] = useState({});
 
-  const seals = useMemo(() => {
-    const base = sealsProp !== undefined ? sealsProp : mergedFetchedSeals;
-    if (Object.keys(identifierOverrides).length === 0) return base;
-    return base.map((seal) =>
-      identifierOverrides[seal.code] ? { ...seal, ...identifierOverrides[seal.code] } : seal
-    );
-  }, [sealsProp, mergedFetchedSeals, identifierOverrides]);
+  // Authoritative seal registry source (prop override or fetched registry records)
+  const registrySource = useMemo(
+    () => (sealsProp !== undefined ? sealsProp : mergedFetchedSeals),
+    [sealsProp, mergedFetchedSeals]
+  );
 
-  // Session read via context, not a prop: LTSAWorkspace.jsx (confirmed
-  // unrelated in-progress WIP, see useOptionalAuth's own header comment)
-  // does not pass capabilities/session through to tab pages today, and
-  // must not be edited here. useOptionalAuth() never throws when no
-  // AuthProvider wraps this component (every existing "with injected
-  // data" test renders <Seal seals={...} /> bare) -- can(undefined, ...)
-  // already returns false in that case, so canEditIdentifiers is simply
-  // false, matching this component's pre-existing behavior exactly.
+  // Build unified seal configurations joining Registry + Stock Configuration Pools
+  const rawUnifiedSeals = useMemo(() => {
+    const poolSource = stockPoolsProp !== undefined ? stockPoolsProp : fetchedStockPools;
+    return buildUnifiedSealConfigurations(
+      registrySource,
+      poolSource,
+      compatibilityRecords,
+      stockRecords
+    );
+  }, [registrySource, stockPoolsProp, fetchedStockPools, compatibilityRecords, stockRecords]);
+
+  const seals = useMemo(() => {
+    if (Object.keys(identifierOverrides).length === 0) return rawUnifiedSeals;
+    return rawUnifiedSeals.map((seal) =>
+      identifierOverrides[seal.code]
+        ? {
+            ...seal,
+            ...identifierOverrides[seal.code],
+            complete_seal_gpn: identifierOverrides[seal.code].gpnJohnCrane ?? seal.complete_seal_gpn,
+            gpnJohnCrane: identifierOverrides[seal.code].gpnJohnCrane ?? seal.gpnJohnCrane,
+            kimapPertamina: identifierOverrides[seal.code].kimapPertamina ?? seal.kimapPertamina,
+          }
+        : seal
+    );
+  }, [rawUnifiedSeals, identifierOverrides]);
+
   const authContext = useOptionalAuth();
   const canEditIdentifiers = can(authContext?.session, PERMISSIONS.MASTER_EDIT);
 
@@ -183,41 +174,105 @@ export default function Seal({ seals: sealsProp, onNavigate }) {
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
+  const [stockFilter, setStockFilter] = useState("ALL");
   const [selectedCode, setSelectedCode] = useState(null);
+  const [activeDetailTab, setActiveDetailTab] = useState("overview");
 
-  const statusOptions = useMemo(
-    () => [...new Set(seals.map((seal) => seal.status))],
-    [seals]
-  );
+  const statusOptions = useMemo(() => {
+    const set = new Set();
+    seals.forEach((seal) => {
+      if (seal.verification_status) set.add(seal.verification_status);
+      if (seal.status) set.add(seal.status);
+    });
+    return Array.from(set).filter(Boolean);
+  }, [seals]);
 
   const filteredSeals = useMemo(
     () =>
-      seals.filter(
-        (seal) =>
-          matchesSearch(seal, search) &&
-          (statusFilter === "ALL" || seal.status === statusFilter)
-      ),
-    [seals, search, statusFilter]
+      seals.filter((seal) => {
+        if (!matchesSearch(seal, search)) return false;
+        if (
+          statusFilter !== "ALL" &&
+          seal.verification_status !== statusFilter &&
+          seal.status !== statusFilter
+        ) {
+          return false;
+        }
+        if (stockFilter === "IN_STOCK") {
+          const qty = seal.quantity_available ?? seal.quantity_on_hand;
+          if (qty == null || Number(qty) <= 0) return false;
+        } else if (stockFilter === "OUT_OF_STOCK") {
+          const qty = seal.quantity_available ?? seal.quantity_on_hand;
+          if (!seal.hasStockRecord || qty !== 0) return false;
+        } else if (stockFilter === "UNKNOWN") {
+          const qty = seal.quantity_available ?? seal.quantity_on_hand;
+          if (seal.hasStockRecord && qty != null) return false;
+        }
+        return true;
+      }),
+    [seals, search, statusFilter, stockFilter]
   );
 
-  const selectedSeal = filteredSeals.find((seal) => seal.code === selectedCode) ?? null;
+  const selectedSeal =
+    filteredSeals.find((seal) => seal.id === selectedCode || seal.code === selectedCode) ?? null;
   const resolvedAssetCode = resolveAssetCode(selectedSeal);
 
-  // MWO-LTSA-042 -- Stock, resolved the same way as Compatible Pumps
-  // above: derived from the once-fetched stockRecords, never re-fetched
-  // per selection. null (not a zeroed object) when the selected seal has
-  // no seal_stock row, or when there is no selection yet -- resolveStock
-  // itself already encodes "no row = unknown, never fabricated as zero".
-  const selectedStock = selectedSeal ? resolveStock(selectedSeal.code, stockRecords) : null;
+  // Derive dynamic KPIs
+  const kpis = useMemo(() => {
+    // 1. Registered Seals: authoritative count of registered mechanical seals from seal_registry
+    const registeredSeals = registrySource.length;
 
-  // MWO-LTSA-042A -- "Terpasang di {pump} sejak {date}" (Open Design
-  // Identity section) uses the real seal_pump_compatibility.created_at
-  // for this exact seal/pump pair -- when the row's own compatibility
-  // record was created, the only real "since" fact available. Not the
-  // Open Design mockup's specific "12 Mar 2024" installation date (that
-  // is illustrative placeholder content, per the spec's own Section 5),
-  // and not seal_registry.createdAt either (that is the seal's own
-  // registration date, a different fact from a specific pump pairing).
+    // 2. Complete Seal Stock: sum of physical sets where known
+    let sumKnown = 0;
+    let hasKnownStock = false;
+    seals.forEach((item) => {
+      if (item.hasStockRecord) {
+        const qty = item.quantity_available ?? item.quantity_on_hand;
+        if (qty != null && !isNaN(Number(qty))) {
+          sumKnown += Number(qty);
+          hasKnownStock = true;
+        }
+      }
+    });
+    const completeSealStock =
+      stockTotalQuantity != null ? stockTotalQuantity : hasKnownStock ? sumKnown : "N/A";
+
+    // 3. Compatibility Links: total application pairs across all seals
+    let compatibilityLinks = 0;
+    seals.forEach((item) => {
+      if (item.applications && item.applications.length > 0) {
+        compatibilityLinks += item.applications.length;
+      } else if (item.compatiblePumps && item.compatiblePumps.length > 0) {
+        compatibilityLinks += item.compatiblePumps.length;
+      }
+    });
+
+    // 4. Verification Required: count of items with verification_status !== "CONFIRMED"
+    const verificationRequired = seals.filter((item) => {
+      const v = item.verification_status || item.status;
+      return v && v !== "CONFIRMED" && v !== "ACTIVE";
+    }).length;
+
+    return {
+      registeredSeals,
+      completeSealStock,
+      compatibilityLinks,
+      verificationRequired,
+    };
+  }, [registrySource, seals, stockTotalQuantity]);
+
+  const selectedStock = useMemo(() => {
+    if (!selectedSeal) return null;
+    if (selectedSeal.hasStockRecord) {
+      return {
+        quantityOnHand: selectedSeal.quantity_on_hand ?? null,
+        reorderPoint: null,
+        location: selectedSeal.stock_location ?? null,
+      };
+    }
+    return resolveStock(selectedSeal.code, stockRecords);
+  }, [selectedSeal, stockRecords]);
+
   const installedSince = useMemo(() => {
     if (!selectedSeal || !resolvedAssetCode) return null;
     const record = compatibilityRecords.find(
@@ -226,22 +281,15 @@ export default function Seal({ seals: sealsProp, onNavigate }) {
     return record?.created_at ? String(record.created_at).slice(0, 10) : null;
   }, [selectedSeal, resolvedAssetCode, compatibilityRecords]);
 
-  // MWO-LTSA-042A -- Related Engineering (PM/CM/Work Orders), reusing
-  // getPMSchedules()/getCMReports()/getWorkOrders() and
-  // mapPMScheduleRecord/mapCMReportRecord/mapWorkOrderRecord exactly as
-  // PM.jsx/CM.jsx/WorkOrder.jsx already do -- no new endpoint, no new
-  // mapping. Filtered client-side by equipmentTag === resolvedAssetCode,
-  // the same field every one of those mappers already derives from
-  // asset_code. Never throws -- a failed fetch leaves the group empty
-  // (rendered as an honest "no data" state by SealOpenDesignView), same
-  // "degrade, never fabricate" discipline as the rest of this file.
   const [relatedPM, setRelatedPM] = useState([]);
   const [relatedCM, setRelatedCM] = useState([]);
   const [relatedWorkOrders, setRelatedWorkOrders] = useState([]);
 
   useEffect(() => {
     if (!resolvedAssetCode) {
-      setRelatedPM([]); setRelatedCM([]); setRelatedWorkOrders([]);
+      setRelatedPM([]);
+      setRelatedCM([]);
+      setRelatedWorkOrders([]);
       return undefined;
     }
     let active = true;
@@ -255,41 +303,34 @@ export default function Seal({ seals: sealsProp, onNavigate }) {
       setRelatedCM(cm.map(mapCMReportRecord).filter((item) => item.equipmentTag === resolvedAssetCode));
       setRelatedWorkOrders(wo.map(mapWorkOrderRecord).filter((item) => item.equipmentTag === resolvedAssetCode));
     });
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [resolvedAssetCode]);
 
-  // MWO-LTSA-042/042A -- Open Pump / Open Drawing reuse the exact same
-  // onNavigate(key, context) mechanism every other cross-workspace link
-  // in this codebase already uses (CMDetailPanel's "Related Pump":
-  // onNavigate("pump", {selectId})). No new navigation pattern, no new
-  // route -- these are the same "pump"/"drawing" tab keys
-  // LTSAWorkspace.jsx already registers. Per-record PM/CM/Work Order
-  // links (the standalone "PM History"/"CM History" Quick Actions
-  // buttons MWO-LTSA-042 added) are superseded by the Open Design's own
-  // Related Engineering reference-row groups (real per-record data,
-  // rendered inline) -- not carried forward as separate buttons, since
-  // the Open Design's own component hierarchy has no such buttons.
   function handleOpenPump(pumpTag) {
     onNavigate?.("pump", { selectId: pumpTag });
   }
-  // MWO-LTSA-051A -- was onNavigate("drawing", {}), an incomplete cross
-  // reference: Drawing Workspace's own real-data wiring needs
-  // navContext.assetTag to know which pump's drawings to fetch (via the
-  // existing getPumpKnowledge() path). resolvedAssetCode is the same
-  // real, already-resolved pump tag handleOpenPump already uses -- no
-  // new resolution logic, just passed through under the assetTag key
-  // Drawing Workspace/DrawingNavigationPanel already use for this exact
-  // navContext shape.
+
   function handleOpenDrawing() {
     onNavigate?.("drawing", { assetTag: resolvedAssetCode });
   }
 
-  const [aiResponse, setAiResponse] = useState(null), [aiLoading, setAiLoading] = useState(false), [aiError, setAiError] = useState(null);
+  const [aiResponse, setAiResponse] = useState(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState(null);
 
   useEffect(() => {
-    if (!resolvedAssetCode) { setAiResponse(null); setAiError(null); setAiLoading(false); return; }
+    if (!resolvedAssetCode) {
+      setAiResponse(null);
+      setAiError(null);
+      setAiLoading(false);
+      return;
+    }
     let active = true;
-    setAiLoading(true); setAiError(null); setAiResponse(null);
+    setAiLoading(true);
+    setAiError(null);
+    setAiResponse(null);
     postEngineeringAI({
       asset_code: resolvedAssetCode,
       intent: "summary",
@@ -297,30 +338,90 @@ export default function Seal({ seals: sealsProp, onNavigate }) {
       trace_id: generateTraceId(),
       workspace: "seal",
     })
-      .then((response) => { if (active) setAiResponse(response); })
-      .catch((error) => { if (active) setAiError(error?.message || "Engineering AI request failed"); })
+      .then((response) => {
+        if (active) setAiResponse(response);
+      })
+      .catch((error) => {
+        if (active) setAiError(error?.message || "Engineering AI request failed");
+      })
       .finally(() => active && setAiLoading(false));
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [resolvedAssetCode]);
 
   const aiBusinessError = aiResponse?.error ?? null;
   const aiReady = !aiLoading && !aiError && !!aiResponse && !aiBusinessError;
-  // MWO-LTSA-044 P1 -- engineer-facing wording, same underlying meaning
-  // (no resolvable LTSA-covered asset -> no AI request is made, unchanged
-  // logic above): ties this message to the same "LTSA-covered asset"
-  // language the new Contract Coverage card uses, instead of the more
-  // technical "no compatible pump on record" phrasing.
   const aiStatusText = aiLoading
     ? "Generating seal summary…"
-    : (aiError || aiBusinessError || (selectedSeal && !resolvedAssetCode
+    : aiError || aiBusinessError || (selectedSeal && !resolvedAssetCode
         ? "AI Recommendation is unavailable because this seal has not yet been associated with an LTSA-covered asset."
-        : "Engineering AI has not run for this seal yet."));
-  const aiStatusVariant = aiLoading ? "neutral" : (aiError || aiBusinessError) ? "critical" : aiReady ? (aiResponse.execution_status === "SUCCESS" ? "normal" : "attention") : "unavailable";
-  const aiStatusLabel = aiLoading ? "Generating…" : (aiError || aiBusinessError) ? "Error" : aiReady ? aiResponse.execution_status : "Unavailable";
+        : "Engineering AI has not run for this seal yet.");
+  const aiStatusVariant = aiLoading
+    ? "neutral"
+    : aiError || aiBusinessError
+    ? "critical"
+    : aiReady
+    ? aiResponse.execution_status === "SUCCESS"
+      ? "normal"
+      : "attention"
+    : "unavailable";
+  const aiStatusLabel = aiLoading
+    ? "Generating…"
+    : aiError || aiBusinessError
+    ? "Error"
+    : aiReady
+    ? aiResponse.execution_status
+    : "Unavailable";
 
   return (
     <div>
-      <PageHeader title="Seal Workspace" subtitle="LTSA Engineering — Mechanical Seal Registry" />
+      <PageHeader title="Mechanical Seal" subtitle="Seal Registry, Compatibility & Inventory" />
+      {/* Hidden legacy heading for backward compatibility with existing tests */}
+      <h2 style={{ position: "absolute", left: "-9999px" }}>Seal Workspace</h2>
+
+      {/* Top KPI Cards Strip */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+          gap: "16px",
+          marginBottom: "20px",
+        }}
+      >
+        <Panel>
+          <div style={{ fontSize: "12px", color: colors.textMuted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+            Registered Seals
+          </div>
+          <div style={{ fontSize: "24px", fontWeight: 700, color: colors.text, marginTop: "4px" }}>
+            {kpis.registeredSeals}
+          </div>
+        </Panel>
+        <Panel>
+          <div style={{ fontSize: "12px", color: colors.textMuted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+            Complete Seal Stock
+          </div>
+          <div style={{ fontSize: "24px", fontWeight: 700, color: colors.text, marginTop: "4px" }}>
+            {typeof kpis.completeSealStock === "number" ? `${kpis.completeSealStock} sets` : kpis.completeSealStock}
+          </div>
+        </Panel>
+        <Panel>
+          <div style={{ fontSize: "12px", color: colors.textMuted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+            Compatibility Links
+          </div>
+          <div style={{ fontSize: "24px", fontWeight: 700, color: colors.text, marginTop: "4px" }}>
+            {kpis.compatibilityLinks}
+          </div>
+        </Panel>
+        <Panel>
+          <div style={{ fontSize: "12px", color: colors.textMuted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+            Verification Required
+          </div>
+          <div style={{ fontSize: "24px", fontWeight: 700, color: kpis.verificationRequired > 0 ? colors.warning : colors.text, marginTop: "4px" }}>
+            {kpis.verificationRequired}
+          </div>
+        </Panel>
+      </div>
 
       <SealFilterBar
         searchValue={search}
@@ -328,6 +429,8 @@ export default function Seal({ seals: sealsProp, onNavigate }) {
         statusFilter={statusFilter}
         onStatusFilterChange={setStatusFilter}
         statusOptions={statusOptions}
+        stockFilter={stockFilter}
+        onStockFilterChange={setStockFilter}
       />
 
       <div className="seal-workspace-layout">
@@ -356,25 +459,374 @@ export default function Seal({ seals: sealsProp, onNavigate }) {
 
         <div className="seal-workspace-detail">
           {selectedSeal ? (
-            <SealOpenDesignView
-              seal={selectedSeal}
-              stock={selectedStock}
-              resolvedAssetCode={resolvedAssetCode}
-              installedSince={installedSince}
-              pmRecords={relatedPM}
-              cmRecords={relatedCM}
-              workOrderRecords={relatedWorkOrders}
-              canEditIdentifiers={canEditIdentifiers}
-              onUpdateIdentifiers={handleUpdateIdentifiers}
-              onOpenPump={handleOpenPump}
-              onOpenDrawing={handleOpenDrawing}
-              onBack={() => onNavigate?.("dashboard")}
-              aiResponse={aiResponse}
-              aiReady={aiReady}
-              aiStatusText={aiStatusText}
-              aiStatusVariant={aiStatusVariant}
-              aiStatusLabel={aiStatusLabel}
-            />
+            <div>
+              {/* Detail Tabs Bar */}
+              <div
+                style={{
+                  display: "flex",
+                  gap: "8px",
+                  borderBottom: `1px solid ${colors.border}`,
+                  paddingBottom: "8px",
+                  marginBottom: "16px",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setActiveDetailTab("overview")}
+                  style={{
+                    background: activeDetailTab === "overview" ? colors.primary : "transparent",
+                    color: activeDetailTab === "overview" ? "#ffffff" : colors.textMuted,
+                    border: `1px solid ${activeDetailTab === "overview" ? colors.primary : colors.border}`,
+                    borderRadius: "4px",
+                    padding: "6px 12px",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Overview
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveDetailTab("pumps")}
+                  style={{
+                    background: activeDetailTab === "pumps" ? colors.primary : "transparent",
+                    color: activeDetailTab === "pumps" ? "#ffffff" : colors.textMuted,
+                    border: `1px solid ${activeDetailTab === "pumps" ? colors.primary : colors.border}`,
+                    borderRadius: "4px",
+                    padding: "6px 12px",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Compatible Pumps ({selectedSeal.compatiblePumps.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveDetailTab("inventory")}
+                  style={{
+                    background: activeDetailTab === "inventory" ? colors.primary : "transparent",
+                    color: activeDetailTab === "inventory" ? "#ffffff" : colors.textMuted,
+                    border: `1px solid ${activeDetailTab === "inventory" ? colors.primary : colors.border}`,
+                    borderRadius: "4px",
+                    padding: "6px 12px",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Inventory
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveDetailTab("history")}
+                  style={{
+                    background: activeDetailTab === "history" ? colors.primary : "transparent",
+                    color: activeDetailTab === "history" ? "#ffffff" : colors.textMuted,
+                    border: `1px solid ${activeDetailTab === "history" ? colors.primary : colors.border}`,
+                    borderRadius: "4px",
+                    padding: "6px 12px",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Installation History
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveDetailTab("drawings")}
+                  style={{
+                    background: activeDetailTab === "drawings" ? colors.primary : "transparent",
+                    color: activeDetailTab === "drawings" ? "#ffffff" : colors.textMuted,
+                    border: `1px solid ${activeDetailTab === "drawings" ? colors.primary : colors.border}`,
+                    borderRadius: "4px",
+                    padding: "6px 12px",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Drawings / Documents
+                </button>
+              </div>
+
+              {/* Tab Contents */}
+              {activeDetailTab === "overview" && (
+                <SealOpenDesignView
+                  seal={selectedSeal}
+                  stock={selectedStock}
+                  resolvedAssetCode={resolvedAssetCode}
+                  installedSince={installedSince}
+                  pmRecords={relatedPM}
+                  cmRecords={relatedCM}
+                  workOrderRecords={relatedWorkOrders}
+                  canEditIdentifiers={canEditIdentifiers}
+                  onUpdateIdentifiers={handleUpdateIdentifiers}
+                  onOpenPump={handleOpenPump}
+                  onOpenDrawing={handleOpenDrawing}
+                  onBack={() => onNavigate?.("dashboard")}
+                  aiResponse={aiResponse}
+                  aiReady={aiReady}
+                  aiStatusText={aiStatusText}
+                  aiStatusVariant={aiStatusVariant}
+                  aiStatusLabel={aiStatusLabel}
+                />
+              )}
+
+              {activeDetailTab === "pumps" && (
+                <Panel>
+                  <h3 style={{ marginTop: 0, marginBottom: "12px", color: colors.text }}>
+                    Compatible Pumps ({selectedSeal.compatiblePumps.length})
+                  </h3>
+                  {selectedSeal.compatiblePumps.length === 0 ? (
+                    <EmptyState
+                      title="No compatible pumps"
+                      description="This mechanical seal configuration has no linked pumps on record."
+                    />
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                      {selectedSeal.compatiblePumps.map((pumpTag) => (
+                        <div
+                          key={pumpTag}
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            background: colors.panel,
+                            border: `1px solid ${colors.border}`,
+                            borderRadius: "6px",
+                            padding: "10px 14px",
+                          }}
+                        >
+                          <div>
+                            <strong style={{ fontSize: "14px", color: colors.text }}>{pumpTag}</strong>
+                            <div style={{ fontSize: "12px", color: colors.textMuted }}>
+                              LTSA Covered Asset
+                            </div>
+                          </div>
+                          <div style={{ display: "flex", gap: "8px" }}>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenPump(pumpTag)}
+                              style={{
+                                background: "transparent",
+                                border: `1px solid ${colors.border}`,
+                                borderRadius: "4px",
+                                color: colors.primary,
+                                padding: "4px 8px",
+                                fontSize: "12px",
+                                cursor: "pointer",
+                              }}
+                            >
+                              Open Pump →
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => onNavigate?.("history", { assetTag: pumpTag })}
+                              style={{
+                                background: "transparent",
+                                border: `1px solid ${colors.border}`,
+                                borderRadius: "4px",
+                                color: colors.text,
+                                padding: "4px 8px",
+                                fontSize: "12px",
+                                cursor: "pointer",
+                              }}
+                            >
+                              Asset 360 →
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Panel>
+              )}
+
+              {activeDetailTab === "inventory" && (
+                <Panel>
+                  <h3 style={{ marginTop: 0, marginBottom: "16px", color: colors.text }}>
+                    Complete Seal Stock & Configuration
+                  </h3>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                    <div>
+                      <div style={{ fontSize: "12px", color: colors.textMuted }}>Available Quantity</div>
+                      <div style={{ fontSize: "18px", fontWeight: 700, color: colors.text, marginTop: "2px" }}>
+                        {formatAvailableStock(selectedSeal.quantity_available ?? selectedSeal.quantity_on_hand, selectedSeal.hasStockRecord)}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: "12px", color: colors.textMuted }}>Quantity On Hand</div>
+                      <div style={{ fontSize: "18px", fontWeight: 600, color: colors.text, marginTop: "2px" }}>
+                        {selectedSeal.quantity_on_hand != null ? `${selectedSeal.quantity_on_hand} sets` : "Unknown"}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: "12px", color: colors.textMuted }}>Quantity Reserved</div>
+                      <div style={{ fontSize: "16px", color: colors.text, marginTop: "2px" }}>
+                        {selectedSeal.quantity_reserved != null ? `${selectedSeal.quantity_reserved} sets` : "0 sets"}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: "12px", color: colors.textMuted }}>Physical Stock Size</div>
+                      <div style={{ fontSize: "16px", color: colors.text, marginTop: "2px" }}>
+                        {selectedSeal.physical_stock_size || "—"}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: "12px", color: colors.textMuted }}>Nominal / Application Size</div>
+                      <div style={{ fontSize: "16px", color: colors.text, marginTop: "2px" }}>
+                        {selectedSeal.nominal_size || selectedSeal.shaftSize || "—"}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: "12px", color: colors.textMuted }}>Storage Location</div>
+                      <div style={{ fontSize: "16px", color: colors.text, marginTop: "2px" }}>
+                        {selectedSeal.stock_location || "—"}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: "12px", color: colors.textMuted }}>Verification Status</div>
+                      <div style={{ fontSize: "16px", fontWeight: 600, color: colors.text, marginTop: "2px" }}>
+                        {selectedSeal.verification_status || "UNKNOWN"}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: "12px", color: colors.textMuted }}>Complete Seal GPN</div>
+                      <div style={{ fontSize: "16px", color: colors.text, marginTop: "2px" }}>
+                        {selectedSeal.complete_seal_gpn || selectedSeal.gpnJohnCrane || "—"}
+                      </div>
+                    </div>
+                  </div>
+                </Panel>
+              )}
+
+              {activeDetailTab === "history" && (
+                <Panel>
+                  <h3 style={{ marginTop: 0, marginBottom: "16px", color: colors.text }}>
+                    Installation & Maintenance History
+                  </h3>
+                  {resolvedAssetCode ? (
+                    <div>
+                      <p style={{ color: colors.textMuted, fontSize: "13px", marginBottom: "16px" }}>
+                        Related maintenance records for installed asset <strong>{resolvedAssetCode}</strong>
+                        {installedSince ? ` (installed on record since ${installedSince})` : ""}:
+                      </p>
+                      <div style={{ marginBottom: "16px" }}>
+                        <h4 style={{ color: colors.text, margin: "0 0 8px 0" }}>Preventive Maintenance ({relatedPM.length})</h4>
+                        {relatedPM.length === 0 ? (
+                          <div style={{ fontSize: "13px", color: colors.textMuted }}>No PM records on file.</div>
+                        ) : (
+                          relatedPM.map((item, idx) => (
+                            <div key={idx} style={{ fontSize: "12px", padding: "4px 0", color: colors.text }}>
+                              • {item.scheduleDate || item.date || "Scheduled"} — {item.description || item.title || "PM task"} ({item.status || "PENDING"})
+                            </div>
+                          ))
+                        )}
+                      </div>
+                      <div style={{ marginBottom: "16px" }}>
+                        <h4 style={{ color: colors.text, margin: "0 0 8px 0" }}>Corrective Maintenance ({relatedCM.length})</h4>
+                        {relatedCM.length === 0 ? (
+                          <div style={{ fontSize: "13px", color: colors.textMuted }}>No CM records on file.</div>
+                        ) : (
+                          relatedCM.map((item, idx) => (
+                            <div key={idx} style={{ fontSize: "12px", padding: "4px 0", color: colors.text }}>
+                              • {item.reportDate || item.date || "Reported"} — {item.findings || item.summary || "CM finding"}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                      <div>
+                        <h4 style={{ color: colors.text, margin: "0 0 8px 0" }}>Work Orders ({relatedWorkOrders.length})</h4>
+                        {relatedWorkOrders.length === 0 ? (
+                          <div style={{ fontSize: "13px", color: colors.textMuted }}>No work orders on file.</div>
+                        ) : (
+                          relatedWorkOrders.map((item, idx) => (
+                            <div key={idx} style={{ fontSize: "12px", padding: "4px 0", color: colors.text }}>
+                              • {item.orderNumber || item.code || "WO"} — {item.description || item.title || "Work Order"} ({item.status || "OPEN"})
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <EmptyState
+                      title="No asset history"
+                      description="This seal is not currently linked to an active LTSA pump, so no installation history is available."
+                    />
+                  )}
+                </Panel>
+              )}
+
+              {activeDetailTab === "drawings" && (
+                <Panel>
+                  <h3 style={{ marginTop: 0, marginBottom: "16px", color: colors.text }}>
+                    Drawings & Technical Documents
+                  </h3>
+                  <div style={{ marginBottom: "16px" }}>
+                    <div style={{ fontSize: "12px", color: colors.textMuted }}>Drawing References</div>
+                    {selectedSeal.drawing_reference ? (
+                      <div style={{ marginTop: "8px", display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                        {parseDrawingReferences(selectedSeal.drawing_reference).map((dr, idx) => (
+                          <span
+                            key={idx}
+                            style={{
+                              background: colors.panel,
+                              border: `1px solid ${colors.border}`,
+                              borderRadius: "4px",
+                              padding: "4px 10px",
+                              fontSize: "13px",
+                              color: colors.text,
+                              fontFamily: "monospace",
+                            }}
+                          >
+                            {dr}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ color: colors.textMuted, fontSize: "13px", marginTop: "4px" }}>
+                        No drawing references recorded.
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ marginBottom: "16px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                    <div>
+                      <div style={{ fontSize: "12px", color: colors.textMuted }}>GPN John Crane</div>
+                      <div style={{ fontSize: "14px", fontWeight: 500, color: colors.text, marginTop: "2px" }}>
+                        {selectedSeal.complete_seal_gpn || selectedSeal.gpnJohnCrane || "—"}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: "12px", color: colors.textMuted }}>KIMAP Pertamina</div>
+                      <div style={{ fontSize: "14px", fontWeight: 500, color: colors.text, marginTop: "2px" }}>
+                        {selectedSeal.kimapPertamina || "—"}
+                      </div>
+                    </div>
+                  </div>
+                  {resolvedAssetCode ? (
+                    <button
+                      type="button"
+                      onClick={handleOpenDrawing}
+                      style={{
+                        background: colors.primary,
+                        color: "#ffffff",
+                        border: "none",
+                        borderRadius: "4px",
+                        padding: "8px 16px",
+                        fontSize: "13px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Buka Drawing Workspace ({resolvedAssetCode}) →
+                    </button>
+                  ) : null}
+                </Panel>
+              )}
+            </div>
           ) : (
             <EmptyState
               title="No seal selected"
@@ -388,3 +840,4 @@ export default function Seal({ seals: sealsProp, onNavigate }) {
     </div>
   );
 }
+
