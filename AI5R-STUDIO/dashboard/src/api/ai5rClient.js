@@ -28,6 +28,16 @@ export function startWorkforcePilotRun(idempotencyKey) {
   return workforcePilotRequest("", { idempotency_key: idempotencyKey });
 }
 
+export function startNexaReportRun({ startDate, endDate, area, idempotencyKey }) {
+  return workforcePilotRequest("/nexa-report", {
+    mission_type: "LTSA_OPERATIONAL_REPORT_DRAFT",
+    start_date: startDate,
+    end_date: endDate,
+    ...(area ? { area } : {}),
+    idempotency_key: idempotencyKey,
+  });
+}
+
 export function getWorkforcePilotRun(runId) {
   return workforcePilotRequest(`/${encodeURIComponent(runId)}`);
 }

@@ -88,7 +88,8 @@ class WorkforceRunRepository:
             ))
             return run, True
 
-    def finish_execution(self, run_id, *, result, elapsed_ms):
+    def finish_execution(self, run_id, *, result, elapsed_ms, evidence=None):
+        import hashlib
         with self._transaction() as connection:
             run = self._load(connection, run_id)
             if run["status"] != "RUNNING":
@@ -98,12 +99,22 @@ class WorkforceRunRepository:
             if result is None:
                 run.update(status="FAILED", outcome="FAILED", safe_error="Pilot AI execution failed")
             else:
+                draft_sha256 = getattr(result, "draft_sha256", None) or hashlib.sha256(result.content.encode("utf-8")).hexdigest()
                 run.update(status="AWAITING_REVIEW", actual_provider=result.actual_provider,
                            actual_model=result.actual_model, finish_reason=result.finish_reason,
                            fallback_used=result.fallback_used, outcome=result.outcome,
-                           draft_version=1, review_status="PENDING")
+                           draft_version=1, draft_sha256=draft_sha256, review_status="PENDING")
                 run["draft"] = dict(draft_id=str(uuid4()), run_id=run_id, version=1,
-                                    content=result.content, created_at=utc_now())
+                                    content=result.content, sha256=draft_sha256, created_at=utc_now())
+                ev = evidence or getattr(result, "evidence", None)
+                if ev:
+                    run["evidence_sha256"] = ev.get("evidence_sha256")
+                    run["evidence_source_domains"] = ev.get("source_domains")
+                    run["evidence_row_counts"] = ev.get("source_row_counts")
+                    run["evidence_truncated"] = ev.get("evidence_truncated", False)
+                    run["period_start"] = ev.get("period_start")
+                    run["period_end"] = ev.get("period_end")
+                    run["evidence"] = ev
             self._save(connection, run)
             return run
 

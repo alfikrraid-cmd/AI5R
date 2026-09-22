@@ -262,4 +262,57 @@ describe("Workforce bounded pilot", () => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
     } finally { vi.useRealTimers(); }
   });
+  it("renders NEXA employee card with period inputs and Generate Draft CTA", async () => {
+    const { container } = renderPilot();
+    fireEvent.click(screen.getByRole("tab", { name: "NEXA (LTSA Report Analyst)" }));
+    expect(await screen.findByRole("heading", { name: "NEXA" })).toBeVisible();
+    expect(screen.getByText("Role: LTSA Report Analyst")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Generate Draft" })).toBeEnabled();
+    expect(screen.getByLabelText("From")).toHaveValue("2026-01-01");
+    expect(screen.getByLabelText("To")).toHaveValue("2026-01-31");
+    // Ensure no unauthorized publish / send / external action buttons exist
+    expect(screen.queryByRole("button", { name: /Send|Publish|WhatsApp|Email/i })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Generate Draft" }));
+    await waitFor(() => expect(posts().length).toBeGreaterThan(0));
+    const lastPost = posts()[posts().length - 1];
+    expect(lastPost[0]).toMatch(/runs\/nexa-report$/);
+    const body = JSON.parse(lastPost[1].body);
+    expect(body.mission_type).toBe("LTSA_OPERATIONAL_REPORT_DRAFT");
+    expect(body.start_date).toBe("2026-01-01");
+    expect(body.end_date).toBe("2026-01-31");
+  });
+  it("renders NEXA operational report with evidence domains, provenance, and mandatory disclaimer", async () => {
+    const nexaRun = {
+      run_id: "run-nexa-test",
+      mission_type: "LTSA_OPERATIONAL_REPORT_DRAFT",
+      status: "AWAITING_REVIEW",
+      requested_policy: "DAHONO_PRIMARY",
+      actual_provider: "DAHONO",
+      actual_model: "dahono/gpt-6-astra",
+      fallback_used: false,
+      elapsed_ms: 3500,
+      draft_version: 1,
+      period_start: "2026-01-01",
+      period_end: "2026-01-31",
+      evidence_sha256: "abc1234567890def1234567890abcdef1234567890abcdef1234567890abcdef",
+      evidence_source_domains: ["condition_monitoring_reading", "pm_occurrence"],
+      evidence_row_counts: { condition_monitoring_reading: 5, pm_occurrence: 2 },
+      draft: {
+        version: 1,
+        content: "# LTSA OPERATIONAL REPORT\n## 1. Reporting Period\n## 2. Executive Summary\n## 3. Asset / Coverage Context\n## 4. Condition Monitoring Activity\n## 5. Preventive Maintenance Activity\n## 6. Installation Activity\n## 7. Mechanical Seal / Service Activity\n## 8. Data Gaps / Limitations\n## 9. Items Requiring Human Attention\n## 10. Evidence Summary",
+      },
+      review: null,
+    };
+    await loadRun(nexaRun);
+    expect(screen.getByRole("heading", { name: "NEXA" })).toBeVisible();
+    expect(screen.getByText(/2026-01-01 to 2026-01-31/)).toBeVisible();
+    expect(screen.getByText(/condition_monitoring_reading, pm_occurrence/)).toBeVisible();
+    expect(screen.getByText(/Approval confirms the report draft only. It does not publish, send, or modify LTSA operational data./)).toBeVisible();
+    // Verify review buttons exist
+    expect(screen.getByRole("button", { name: "Approve Draft" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Reject" })).toBeEnabled();
+    // Zero external action buttons
+    expect(screen.queryByRole("button", { name: /Send|Publish|WhatsApp|Email/i })).toBeNull();
+  });
 });

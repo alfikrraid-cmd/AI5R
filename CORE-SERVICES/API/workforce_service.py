@@ -44,6 +44,7 @@ POSITION_TITLES: dict[str, str] = {
     "DEVOPS_ENGINEER": "AI DevOps Engineer",
     "SECURITY_ENGINEER": "AI Security Engineer",
     "DOCUMENTATION_ENGINEER": "AI Documentation Engineer",
+    "LTSA_REPORT_ANALYST": "LTSA Report Analyst",
 }
 
 
@@ -59,6 +60,24 @@ class WorkforceService:
         manufactured = ITDepartmentPack().manufacture(self.organization)
         self.department = manufactured["department"]
         self.employees: list[DigitalEmployee] = manufactured["employees"]
+
+        # Canonical NEXA operational report analyst employee
+        self._nexa_employee = DigitalEmployee(
+            employee_name="NEXA",
+            organization_id=self.organization.organization_id,
+            identity_id="ID-LTSA_REPORT_ANALYST",
+            position_id="LTSA_REPORT_ANALYST",
+            kernel_id="KERNEL-AI5R",
+            capability_ids=["LTSA_OPERATIONAL_REPORT_DRAFT"],
+            status="ACTIVE",
+            employee_id="NEXA_LTSA_REPORT_ANALYST",
+            metadata={
+                "role": "LTSA Report Analyst",
+                "department_id": self.department.department_id,
+                "department_name": self.department.department_name,
+            },
+        )
+
         self._employee_by_id: dict[str, DigitalEmployee] = {
             e.employee_id: e for e in self.employees
         }
@@ -80,12 +99,14 @@ class WorkforceService:
         self.live_stream_api = live_stream_api or LiveStreamAPI()
 
     def find_employee(self, employee_id_or_pos: str) -> DigitalEmployee | None:
+        norm = employee_id_or_pos.upper().strip()
+        if norm in ("NEXA_LTSA_REPORT_ANALYST", "LTSA_REPORT_ANALYST", "NEXA"):
+            return self._nexa_employee
         if employee_id_or_pos in self._employee_by_id:
             return self._employee_by_id[employee_id_or_pos]
         if employee_id_or_pos in self._employee_by_pos:
             return self._employee_by_pos[employee_id_or_pos]
         # Match case-insensitively
-        norm = employee_id_or_pos.upper()
         if norm in self._employee_by_pos:
             return self._employee_by_pos[norm]
         for e in self.employees:
@@ -120,6 +141,61 @@ class WorkforceService:
             result = None
         return repository.finish_execution(
             run["run_id"], result=result, elapsed_ms=round((perf_counter() - started) * 1000),
+        )
+
+    def start_nexa_mission(
+        self,
+        *,
+        actor,
+        repository,
+        executor,
+        mission_type,
+        start_date,
+        end_date,
+        area=None,
+        idempotency_key,
+    ):
+        from time import perf_counter
+        from API.workforce_nexa_executor import REQUESTED_POLICY
+
+        executor.validate(mission_type, start_date, end_date, area)
+        if not isinstance(idempotency_key, str) or not 1 <= len(idempotency_key) <= 128:
+            raise ValueError("Invalid idempotency key")
+        employee = self.find_employee("NEXA_LTSA_REPORT_ANALYST")
+        if employee is None:
+            raise ValueError("NEXA employee unavailable")
+        run, created = repository.claim(
+            organization_id=actor.organization_id,
+            requester_id=actor.user_id,
+            idempotency_key=idempotency_key,
+            mission_type=mission_type,
+            requested_policy=REQUESTED_POLICY,
+            employee={
+                "employee_id": employee.employee_id,
+                "identity_id": employee.identity_id,
+                "position_id": employee.position_id,
+                "employee_name": employee.employee_name,
+            },
+        )
+        if not created:
+            return run
+        started = perf_counter()
+        try:
+            result = executor.execute(
+                mission_type=mission_type,
+                start_date=start_date,
+                end_date=end_date,
+                area=area,
+                mission_id=run["run_id"],
+            )
+        except Exception:
+            # Never store raw exception strings: providers may leak credentials or sensitive tokens.
+            result = None
+        return repository.finish_execution(
+            run["run_id"],
+            result=result,
+            elapsed_ms=round((perf_counter() - started) * 1000),
+            evidence=getattr(result, "evidence", None),
         )
 
     def get_pilot(self, *, actor, repository, run_id):

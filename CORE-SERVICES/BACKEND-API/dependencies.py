@@ -679,6 +679,19 @@ def get_workforce_pilot_ai_client():
     return _build_copilot_ai_client(routing_policy_name="DAHONO_PRIMARY")
 
 
+def get_ltsa_evidence_collector():
+    from API.workforce_nexa_evidence_collector import LTSAEvidenceCollector
+    return LTSAEvidenceCollector(runner=_import_database_runner)
+
+
+def get_workforce_nexa_executor(
+    ai_client=Depends(get_workforce_pilot_ai_client),
+    collector=Depends(get_ltsa_evidence_collector),
+):
+    from API.workforce_nexa_executor import WorkforceNexaExecutor
+    return WorkforceNexaExecutor(client=ai_client, collector=collector)
+
+
 def get_workforce_run_repository():
     from API.workforce_run_repository import WorkforceRunRepository
 

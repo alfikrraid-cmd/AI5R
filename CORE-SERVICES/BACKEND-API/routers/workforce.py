@@ -12,6 +12,7 @@ from API.workforce_service import WorkforceService
 from API.auth_service import AuthenticatedIdentity
 from API.workforce_run_repository import RunConflict
 from API.workforce_text_executor import MISSION_TYPE, SYNTHETIC_TEXT, WorkforceTextExecutor
+from API.workforce_nexa_executor import MISSION_TYPE as MISSION_TYPE_NEXA, WorkforceNexaExecutor
 from dependencies import (
     get_copilot_ai_client,
     get_live_stream_api,
@@ -20,6 +21,7 @@ from dependencies import (
     get_current_user,
     get_workforce_pilot_ai_client,
     get_workforce_run_repository,
+    get_workforce_nexa_executor,
 )
 from WORKFORCE.approval_chain_runtime import (
     ChiefApprovalRecord,
@@ -47,6 +49,15 @@ class PilotStartRequest(BaseModel):
     idempotency_key: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
 
 
+class NexaReportStartRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    mission_type: Literal["LTSA_OPERATIONAL_REPORT_DRAFT"] = MISSION_TYPE_NEXA
+    start_date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    end_date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    area: str | None = Field(default=None, max_length=100)
+    idempotency_key: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
+
+
 class PilotReviewRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     decision: Literal["APPROVE", "REJECT"]
@@ -68,15 +79,42 @@ def _pilot_http_error(error):
 
 @router.post("/api/workforce/pilot/runs")
 def start_pilot_run(
-    payload: PilotStartRequest,
+    payload: PilotStartRequest | NexaReportStartRequest,
     actor=Depends(require_pilot_execute),
     repository=Depends(get_workforce_run_repository),
     client=Depends(get_workforce_pilot_ai_client),
+    nexa_executor=Depends(get_workforce_nexa_executor),
     service: WorkforceService = Depends(get_workforce_service),
 ):
     try:
+        if isinstance(payload, NexaReportStartRequest):
+            return service.start_nexa_mission(
+                actor=actor,
+                repository=repository,
+                executor=nexa_executor,
+                **payload.model_dump(),
+            )
         return service.start_pilot(actor=actor, repository=repository,
                                    executor=WorkforceTextExecutor(client), **payload.model_dump())
+    except (KeyError, ValueError) as error:
+        raise _pilot_http_error(error) from error
+
+
+@router.post("/api/workforce/pilot/runs/nexa-report")
+def start_nexa_report_run(
+    payload: NexaReportStartRequest,
+    actor=Depends(require_pilot_execute),
+    repository=Depends(get_workforce_run_repository),
+    executor=Depends(get_workforce_nexa_executor),
+    service: WorkforceService = Depends(get_workforce_service),
+):
+    try:
+        return service.start_nexa_mission(
+            actor=actor,
+            repository=repository,
+            executor=executor,
+            **payload.model_dump(),
+        )
     except (KeyError, ValueError) as error:
         raise _pilot_http_error(error) from error
 
