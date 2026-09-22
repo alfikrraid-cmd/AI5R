@@ -240,6 +240,7 @@ class EquipmentTimelineService:
             maintenance_history_gateway=self._maintenance_history_gateway,
             work_order_gateway=self._work_order_gateway,
             pm_occurrence_gateway=self._pm_occurrence_gateway,
+            pm_occurrences=knowledge.pm_history,
         ).get("last_pm")
         last_cm = get_pump_last_cm(
             tag_number,
@@ -252,6 +253,10 @@ class EquipmentTimelineService:
         next_pm = self._select_next_pm(knowledge.pm_schedules)
         last_failure = self._select_latest_failure(knowledge.breakdown_history)
 
+        last_condition_monitoring = self._select_last_condition_monitoring(knowledge.condition_monitoring_readings)
+        last_seal_replacement = self._build_last_seal_replacement(current_installation_record, current_seal)
+        last_confirmed_seal_failure = None
+
         current_state = PumpLifecycleCurrentState(
             current_installation=current_installation,
             current_seal=current_seal,
@@ -262,6 +267,9 @@ class EquipmentTimelineService:
             last_cm=last_cm,
             last_failure=last_failure,
             open_work_orders=open_work_orders,
+            last_condition_monitoring=last_condition_monitoring,
+            last_seal_replacement=last_seal_replacement,
+            last_confirmed_seal_failure=last_confirmed_seal_failure,
         )
         analytics = PumpLifecycleAnalytics(
             elapsed_service_days=elapsed_service_days,
@@ -674,6 +682,74 @@ class EquipmentTimelineService:
             key=lambda record: self._sort_key(record.get("performed_at")),
             reverse=True,
         )[0]
+
+    def _select_last_condition_monitoring(
+        self, readings: list[dict[str, Any]]
+    ) -> dict[str, Any] | None:
+        dated = [
+            r for r in readings
+            if self._normalize_date_string(r.get("reading_date")) is not None
+        ]
+        if not dated:
+            return None
+        latest = sorted(
+            dated,
+            key=lambda r: self._sort_key(r.get("reading_date")),
+            reverse=True,
+        )[0]
+        event_date = self._normalize_date_string(latest.get("reading_date"))
+        event_code = latest.get("condition_monitoring_reading_code")
+        return {
+            "source": "CONDITION_MONITORING_READING",
+            "event_date": event_date,
+            "event_code": event_code,
+            "condition_monitoring_reading_code": event_code,
+            "reading_date": event_date,
+            "record": latest,
+        }
+
+    def _build_last_seal_replacement(
+        self,
+        current_installation_record: dict[str, Any] | None,
+        current_seal: PumpLifecycleCurrentSeal | None,
+    ) -> dict[str, Any] | None:
+        if current_installation_record is None:
+            return None
+
+        event_date = self._normalize_date_string(current_installation_record.get("report_date"))
+        installation_code = current_installation_record.get("installation_code")
+
+        mode = (
+            current_installation_record.get("installation_mode")
+            or current_installation_record.get("mode")
+        )
+        if mode in ("REPLACE", "REUSE"):
+            installation_mode = mode
+        else:
+            installation_mode = "UNKNOWN"
+
+        seal_type = (
+            current_installation_record.get("seal_type")
+            or (current_seal.model if current_seal else None)
+        )
+        seal_size = (
+            current_installation_record.get("seal_size")
+            or (current_seal.shaft_size if current_seal else None)
+        )
+        parts = [p for p in (seal_type, seal_size) if p]
+        seal_identity = " ".join(parts) if parts else (current_installation_record.get("seal_code") or "Unknown Seal")
+
+        return {
+            "source": "INSTALLATION_REPORT",
+            "event_date": event_date,
+            "event_code": installation_code,
+            "reference": installation_code,
+            "installation_code": installation_code,
+            "installation_mode": installation_mode,
+            "seal_identity": seal_identity,
+            "record": current_installation_record,
+        }
+
 
     def _calculate_elapsed_service_days(self, current_installation: dict[str, Any] | None, *, today: date) -> int | None:
         if current_installation is None:

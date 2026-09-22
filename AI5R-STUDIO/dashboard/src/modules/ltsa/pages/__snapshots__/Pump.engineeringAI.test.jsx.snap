@@ -188,7 +188,7 @@ exports[`Snapshot > matches the PumpOpenDesignView Engineering AI section snapsh
             <span
               class="k"
             >
-              Last CM
+              Last Condition Monitoring
             </span>
             <span
               class="v"
@@ -202,7 +202,21 @@ exports[`Snapshot > matches the PumpOpenDesignView Engineering AI section snapsh
             <span
               class="k"
             >
-              Last Failure
+              Last Seal Replacement
+            </span>
+            <span
+              class="v"
+            >
+              Not Available
+            </span>
+          </div>
+          <div
+            class="info-row"
+          >
+            <span
+              class="k"
+            >
+              Last Confirmed Seal Failure
             </span>
             <span
               class="v"

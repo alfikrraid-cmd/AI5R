@@ -1186,3 +1186,69 @@ def test_current_seal_and_replacement_both_receive_the_real_repository_backed_in
     assert len(replacements) == 1
     assert replacements[0].payload["replaced_installation_code"] == "INSTL-001-2026"
     assert replacements[0].payload["replacement_installation_code"] == "INSTL-042-2026"
+
+
+def test_current_state_canonical_fields_benchmark_945_p_7a():
+    benchmark_tag = "945-P-7A"
+    pm_records = [
+        {"pm_occurrence_code": "PMOCC-0730E69FB540", "asset_code": benchmark_tag, "occurrence_date": "2026-06-03"},
+        {"pm_occurrence_code": "PMOCC-OLDER", "asset_code": benchmark_tag, "occurrence_date": "2026-03-01"},
+    ]
+    cmon_records = [
+        {"condition_monitoring_reading_code": "CMONR-F7A3F442C323", "asset_code": benchmark_tag, "reading_date": "2026-04-20"},
+        {"condition_monitoring_reading_code": "CMONR-OLDER", "asset_code": benchmark_tag, "reading_date": "2026-02-15"},
+    ]
+    installation = {
+        "installation_code": "INSTL-036-2026",
+        "report_no": "036/INSTL/2026",
+        "report_date": "2026-05-29",
+        "plant_equip_no": benchmark_tag,
+        "seal_code": "SEAL-036",
+        "seal_type": "2648-2 Tandem Seal",
+        "seal_size": "55 MM",
+        "seal_manufacture": "John Crane",
+    }
+    k = _knowledge(
+        tag_number=benchmark_tag,
+        pm_history=pm_records,
+        condition_monitoring_readings=cmon_records,
+        breakdown_history=[],
+        pm_schedules=[],
+    )
+    service = _service(
+        knowledge=k,
+        installations=[installation],
+        pm_occurrences=pm_records,
+    )
+
+    lifecycle = service.build_lifecycle(benchmark_tag)
+    cs = lifecycle.current_state
+
+    # 1. Last PM
+    assert cs.last_pm is not None
+    assert cs.last_pm.get("event_date") == "2026-06-03"
+    assert cs.last_pm.get("event_code") == "PMOCC-0730E69FB540"
+    assert cs.last_pm.get("source") in ("pm_occurrence", "PM_OCCURRENCE")
+
+    # 2. Last Condition Monitoring (must read from condition_monitoring_reading, NOT cm_report)
+    assert hasattr(cs, "last_condition_monitoring")
+    assert cs.last_condition_monitoring is not None
+    assert cs.last_condition_monitoring.get("event_date") == "2026-04-20"
+    assert cs.last_condition_monitoring.get("event_code") == "CMONR-F7A3F442C323"
+    assert cs.last_condition_monitoring.get("source") == "CONDITION_MONITORING_READING"
+
+    # 3. Last Seal Replacement (derived from installation report / replacement event)
+    assert hasattr(cs, "last_seal_replacement")
+    assert cs.last_seal_replacement is not None
+    assert cs.last_seal_replacement.get("event_date") == "2026-05-29"
+    assert cs.last_seal_replacement.get("installation_mode") == "UNKNOWN"
+    assert "2648-2 Tandem Seal" in cs.last_seal_replacement.get("seal_identity", "")
+    assert cs.last_seal_replacement.get("reference") == "INSTL-036-2026"
+
+    # 4. Last Confirmed Seal Failure (none proven for 945-P-7A)
+    assert hasattr(cs, "last_confirmed_seal_failure")
+    assert cs.last_confirmed_seal_failure is None
+
+    # 5. Next PM (none scheduled)
+    assert cs.next_pm is None
+

@@ -139,13 +139,34 @@ function fmtOrNotAvailable(value) {
 // or invented field.
 function describeRecord(record) {
   if (!record) return null;
+  const inner = record.record ?? record;
   const code =
-    record.pm_occurrence_code ?? record.pm_schedule_code ?? record.cm_report_code ??
-    record.maintenance_record_code ?? record.work_order_code ?? null;
+    record.event_code ?? record.eventCode ??
+    inner.pm_occurrence_code ?? inner.pm_schedule_code ?? inner.cm_report_code ??
+    inner.condition_monitoring_reading_code ??
+    inner.maintenance_record_code ?? inner.work_order_code ?? null;
   const date =
-    record.performed_at ?? record.occurrence_date ?? record.next_due ??
-    record.created_at ?? record.due_date ?? null;
+    record.event_date ?? record.eventDate ?? record.performed_at ??
+    inner.occurrence_date ?? inner.next_due ?? inner.reading_date ??
+    inner.created_at ?? inner.due_date ?? null;
   return [code, date].filter(Boolean).join(" · ") || null;
+}
+
+function describeSealReplacement(record) {
+  if (!record) return null;
+  const inner = record.record ?? record;
+  const date =
+    record.event_date ?? record.eventDate ?? record.report_date ?? record.reportDate ??
+    inner.report_date ?? null;
+  const rawMode =
+    record.installation_mode ?? record.installationMode ?? record.mode ??
+    inner.installation_mode ?? inner.mode ?? null;
+  const modeLabel =
+    rawMode === "REPLACE" ? "Replace" :
+    rawMode === "REUSE" ? "Reuse" :
+    "Mode N/A";
+  if (!date) return null;
+  return `${date} · ${modeLabel}`;
 }
 
 const STATUS_META = {
@@ -627,8 +648,9 @@ export default function PumpOpenDesignView({
             <div className="info-panel" style={{ marginTop: "var(--space-3)" }}>
               <InfoRow label="Last PM" value={fmtOrNotAvailable(describeRecord(currentState?.lastPm))} />
               <InfoRow label="Next PM" value={fmtOrNotAvailable(describeRecord(currentState?.nextPm))} />
-              <InfoRow label="Last CM" value={fmtOrNotAvailable(describeRecord(currentState?.lastCm))} />
-              <InfoRow label="Last Failure" value={fmtOrNotAvailable(describeRecord(currentState?.lastFailure))} />
+              <InfoRow label="Last Condition Monitoring" value={fmtOrNotAvailable(describeRecord(currentState?.lastConditionMonitoring ?? currentState?.lastCm))} />
+              <InfoRow label="Last Seal Replacement" value={fmtOrNotAvailable(describeSealReplacement(currentState?.lastSealReplacement))} />
+              <InfoRow label="Last Confirmed Seal Failure" value={fmtOrNotAvailable(describeRecord(currentState?.lastConfirmedSealFailure ?? currentState?.lastFailure))} />
             </div>
           </Section>
 

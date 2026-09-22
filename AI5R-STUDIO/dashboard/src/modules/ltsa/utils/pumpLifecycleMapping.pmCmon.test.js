@@ -49,4 +49,65 @@ describe("mapPumpLifecycleRecord PM/CMON timeline", () => {
     expect(lifecycle.timeline[1].payload.suction_pressure).toBe(0);
     expect(lifecycle.timeline[1].payload.mechanical_seal_leak_de).toBe(false);
   });
-});
+
+  it("maps canonical Current Status fields (Last PM, Condition Monitoring, Seal Replacement)", () => {
+    const lifecycle = mapPumpLifecycleRecord({
+      success: true,
+      data: {
+        tag_number: "945-P-7A",
+        current_state: {
+          current_installation: null,
+          current_seal: null,
+          elapsed_service_days: 10,
+          running_hours_derived: null,
+          last_pm: {
+            event_date: "2026-06-03",
+            event_code: "PMOCC-0730E69FB540",
+            source: "PM_OCCURRENCE",
+          },
+          next_pm: null,
+          last_condition_monitoring: {
+            event_date: "2026-04-20",
+            event_code: "CMONR-F7A3F442C323",
+            source: "CONDITION_MONITORING_READING",
+          },
+          last_seal_replacement: {
+            event_date: "2026-05-29",
+            event_code: "INSTL-036-2026",
+            installation_mode: "UNKNOWN",
+            seal_identity: "2648-2 Tandem Seal 55 MM",
+            reference: "INSTL-036-2026",
+          },
+          last_confirmed_seal_failure: null,
+          last_cm: null,
+          last_failure: null,
+          open_work_orders: [],
+        },
+        timeline: [],
+        analytics: null,
+        related_engineering: null,
+      },
+    });
+
+    const cs = lifecycle.currentState;
+    expect(cs.lastPm).toEqual({
+      event_date: "2026-06-03",
+      event_code: "PMOCC-0730E69FB540",
+      source: "PM_OCCURRENCE",
+    });
+    expect(cs.lastConditionMonitoring).toEqual({
+      event_date: "2026-04-20",
+      event_code: "CMONR-F7A3F442C323",
+      source: "CONDITION_MONITORING_READING",
+    });
+    expect(cs.lastSealReplacement).toEqual({
+      event_date: "2026-05-29",
+      event_code: "INSTL-036-2026",
+      installation_mode: "UNKNOWN",
+      seal_identity: "2648-2 Tandem Seal 55 MM",
+      reference: "INSTL-036-2026",
+    });
+    expect(cs.lastConfirmedSealFailure).toBeNull();
+    expect(cs.nextPm).toBeNull();
+  });
+});

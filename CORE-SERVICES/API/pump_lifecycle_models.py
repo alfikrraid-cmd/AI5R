@@ -75,6 +75,9 @@ class PumpLifecycleCurrentState:
     last_cm: dict[str, Any] | None
     last_failure: dict[str, Any] | None
     open_work_orders: list[dict[str, Any]]
+    last_condition_monitoring: dict[str, Any] | None = None
+    last_seal_replacement: dict[str, Any] | None = None
+    last_confirmed_seal_failure: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)

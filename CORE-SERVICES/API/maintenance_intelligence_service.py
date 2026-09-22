@@ -66,6 +66,7 @@ def get_pump_last_pm(
     maintenance_history_gateway: MaintenanceHistoryGateway | None = None,
     work_order_gateway: WorkOrderGateway | None = None,
     pm_occurrence_gateway: PMOccurrenceGateway | None = None,
+    pm_occurrences: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Show Last PM: the most recent PM activity for this pump, per
     ADR-PM-OCCURRENCE-001 (MWO-MAINTINT-001) -- updated from
@@ -108,13 +109,21 @@ def get_pump_last_pm(
     wo_pm_sorted = sorted(wo_pm_records, key=lambda record: record.get("performed_at") or "", reverse=True)
     wo_latest = wo_pm_sorted[0] if wo_pm_sorted else None
 
-    pm_occurrence_gateway = pm_occurrence_gateway or PMOccurrenceGateway()
-    occurrences_response = pm_occurrence_gateway.list_pm_occurrences()
-    occurrences = [
-        occurrence
-        for occurrence in (occurrences_response.get("data") or [])
-        if occurrence.get("asset_code") == tag_number
-    ]
+    if pm_occurrences is not None:
+        occurrences = [
+            occurrence
+            for occurrence in pm_occurrences
+            if occurrence.get("asset_code") == tag_number
+        ]
+        occurrences_response = {"success": True, "data": occurrences}
+    else:
+        pm_occurrence_gateway = pm_occurrence_gateway or PMOccurrenceGateway()
+        occurrences_response = pm_occurrence_gateway.list_pm_occurrences()
+        occurrences = [
+            occurrence
+            for occurrence in (occurrences_response.get("data") or [])
+            if occurrence.get("asset_code") == tag_number
+        ]
     occurrences_sorted = sorted(
         occurrences, key=lambda occurrence: occurrence.get("occurrence_date") or "", reverse=True
     )
@@ -123,13 +132,24 @@ def get_pump_last_pm(
     candidates = []
     if wo_latest is not None:
         candidates.append(
-            {"source": "work_order", "performed_at": wo_latest.get("performed_at"), "record": wo_latest}
+            {
+                "source": "work_order",
+                "performed_at": wo_latest.get("performed_at"),
+                "event_date": wo_latest.get("performed_at"),
+                "event_code": wo_latest.get("work_order_code"),
+                "work_order_code": wo_latest.get("work_order_code"),
+                "record": wo_latest,
+            }
         )
     if occurrence_latest is not None:
         candidates.append(
             {
                 "source": "pm_occurrence",
                 "performed_at": occurrence_latest.get("occurrence_date"),
+                "event_date": occurrence_latest.get("occurrence_date"),
+                "event_code": occurrence_latest.get("pm_occurrence_code"),
+                "pm_occurrence_code": occurrence_latest.get("pm_occurrence_code"),
+                "occurrence_date": occurrence_latest.get("occurrence_date"),
                 "record": occurrence_latest,
             }
         )
