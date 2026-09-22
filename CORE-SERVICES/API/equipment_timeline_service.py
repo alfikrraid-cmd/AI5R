@@ -552,7 +552,8 @@ class EquipmentTimelineService:
             response = self._installation_gateway.list_installations()
 
         filtered = [
-            record for record in (response.get("data") or []) if record.get("plant_equip_no") == tag_number
+            record for record in (response.get("data") or [])
+            if (record.get("pump_tag_number") or record.get("plant_equip_no")) == tag_number
         ]
         return sorted(filtered, key=lambda record: self._sort_key(record.get("report_date")))
 
