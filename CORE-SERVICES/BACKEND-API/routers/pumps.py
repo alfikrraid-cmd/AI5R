@@ -19,6 +19,7 @@ from dependencies import (
     get_cm_report_gateway,
     get_condition_monitoring_reading_gateway,
     get_current_user,
+    get_asset_registry_repository,
     get_engineering_context_engine,
     get_equipment_timeline_service,
     get_ltsa_knowledge_service,
@@ -111,12 +112,14 @@ def get_ltsa_pump(
 # get_pump() already performs applies directly, no asset_code indirection
 # needed. Same safe not-found semantics: an out-of-scope tag's
 # sub-resource 404s exactly like a request for a tag that does not exist.
-def _guard_tag_in_scope(tag: str, pump_gateway, current_user: AuthenticatedIdentity) -> None:
+def _guard_tag_in_scope(tag: str, pump_gateway, current_user: AuthenticatedIdentity, asset_registry_repository=None) -> None:
     scope = resolve_area_scope(current_user)
     if scope is None:
         return
     response = pump_gateway.get_pump(tag)
     data = response.get("data") if isinstance(response, dict) else None
+    if not isinstance(data, dict) and asset_registry_repository is not None:
+        data = asset_registry_repository.get_asset(tag)
     if not isinstance(data, dict) or not is_area_in_scope(data.get("area"), scope):
         raise HTTPException(status_code=404, detail="Pump not found")
 
@@ -249,9 +252,10 @@ def get_ltsa_pump_knowledge(
     equipment_timeline_service=Depends(get_equipment_timeline_service),
     engineering_context_engine=Depends(get_engineering_context_engine),
     pump_gateway=Depends(get_pump_gateway),
+    asset_registry_repository=Depends(get_asset_registry_repository),
     current_user: AuthenticatedIdentity = Depends(get_current_user),
 ) -> Payload:
-    _guard_tag_in_scope(tag, pump_gateway, current_user)
+    _guard_tag_in_scope(tag, pump_gateway, current_user, asset_registry_repository)
     knowledge = ltsa_knowledge_service.build(tag)
     build_with_knowledge = getattr(equipment_timeline_service, "build_with_knowledge", None)
     timeline = (

@@ -35,6 +35,7 @@ from API.mechanical_seal_stock_repository import MechanicalSealStockRepository
 from API.installation_gateway import InstallationGateway
 from API.ltsa_analytics_service import LTSAAnalyticsService
 from API.ltsa_knowledge_service import LTSAKnowledgeService
+from API.asset_registry_repository import AssetRegistryRepository
 from API.recommendation_engine import RecommendationEngine
 from API.maintenance_history_gateway import MaintenanceHistoryGateway
 from API.pm_cm_evidence_repository import PMCMEvidenceRepository
@@ -142,6 +143,7 @@ def _resolve_import_database_config() -> DatabaseConfig:
 # dependency to any test that never exercises POST .../execute.
 _import_database_runner = DatabaseRunner(_resolve_import_database_config())
 _mechanical_seal_stock_repository = MechanicalSealStockRepository(_import_database_runner)
+_asset_registry_repository = AssetRegistryRepository(_import_database_runner)
 
 # MWO-LTSA-AI-COPILOT-NATURAL-LANGUAGE-ROUTING-017A -- same singleton
 # DatabaseRunner as above, not a second connection. Copilot's fleet-wide
@@ -254,6 +256,7 @@ _ltsa_knowledge_service = LTSAKnowledgeService(
     cm_report_repository=_cm_report_repository,
     condition_monitoring_schedule_repository=_condition_monitoring_schedule_repository,
     mechanical_seal_stock_repository=_mechanical_seal_stock_repository,
+    asset_registry_repository=_asset_registry_repository,
 )
 
 # MWO-LTSA-ENGINEERING-AI-CMON-REASONING-020B -- a SEPARATE
@@ -452,6 +455,10 @@ def get_import_database_runner() -> DatabaseRunner:
 
 def get_ltsa_knowledge_service() -> LTSAKnowledgeService:
     return _ltsa_knowledge_service
+
+
+def get_asset_registry_repository() -> AssetRegistryRepository:
+    return _asset_registry_repository
 
 
 def get_equipment_timeline_service() -> EquipmentTimelineService:

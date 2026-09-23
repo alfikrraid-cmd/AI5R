@@ -66,6 +66,7 @@ from . import maintenance_intelligence_service as mis
 from .cm_report_gateway import CMReportGateway
 from .condition_monitoring_reading_gateway import ConditionMonitoringReadingGateway
 from .condition_monitoring_schedule_gateway import ConditionMonitoringScheduleGateway
+from .asset_registry_repository import AssetRegistryRepository
 from .maintenance_history_gateway import MaintenanceHistoryGateway
 from .pm_occurrence_gateway import PMOccurrenceGateway
 from .pm_schedule_gateway import PMScheduleGateway
@@ -131,6 +132,7 @@ class LTSAKnowledgeService:
         cm_report_repository: Any | None = None,
         condition_monitoring_schedule_repository: Any | None = None,
         mechanical_seal_stock_repository: Any | None = None,
+        asset_registry_repository: AssetRegistryRepository | None = None,
     ) -> None:
         self.pump_gateway = pump_gateway or PumpGateway()
         self.maintenance_history_gateway = maintenance_history_gateway or MaintenanceHistoryGateway()
@@ -159,6 +161,7 @@ class LTSAKnowledgeService:
         self.cm_report_repository = cm_report_repository
         self.condition_monitoring_schedule_repository = condition_monitoring_schedule_repository
         self.mechanical_seal_stock_repository = mechanical_seal_stock_repository
+        self.asset_registry_repository = asset_registry_repository
 
     def build(self, tag_number: str) -> LTSAKnowledge:
         compatible_seals = self._build_compatible_seals(tag_number)
@@ -191,7 +194,20 @@ class LTSAKnowledgeService:
 
     def _build_pump(self, tag_number: str) -> dict[str, Any] | None:
         response = mis.get_pump_status(tag_number, pump_gateway=self.pump_gateway)
-        return response.get("data") if response.get("success") else None
+        if response.get("success") and isinstance(response.get("data"), dict):
+            return response["data"]
+        if self.asset_registry_repository is None:
+            return None
+        asset = self.asset_registry_repository.get_asset(tag_number)
+        if asset is None or asset.get("asset_type") != "PUMP":
+            return None
+        return {
+            "tag_number": asset.get("asset_code"),
+            "name": asset.get("asset_name"),
+            "area": asset.get("area"),
+            "location": asset.get("location"),
+            "asset_type": asset.get("asset_type"),
+        }
 
     def _build_compatible_seals(self, tag_number: str) -> list[dict[str, Any]]:
         compatibility = self.seal_pump_compatibility_gateway.list_seal_pump_compatibilities()
