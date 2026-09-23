@@ -2,7 +2,8 @@
 
 Status: FINAL CHECKPOINT (overnight run 2026-09-23 → 2026-09-24, worker RYZEN)
 Phase gate reached: `LTSA_HISTORICAL_CM_RYZEN_FINAL_CHECKPOINT_R1`: parser generalization complete, branch pushed, **read-only** production reconciliation complete. No production write of any kind.
-Next gate: `LTSA_HISTORICAL_CM_CONTROLLED_PRODUCTION_IMPORT` (laptop), after the decisions in §6.
+Addendum 2026-09-24: `LTSA_HISTORICAL_CM_SAFE_IMPORT_SET_R1` fixed a hash-pinned Batch A import set of 2,907 rows (§8).
+Next gate: `LTSA_HISTORICAL_CM_BATCH_A_IMPORT_EXECUTOR_R1` (§8.6). Batch A excludes every unresolved population, so it does not wait on the §6 decisions.
 
 ## 1. Checkpoint fields
 
@@ -183,13 +184,8 @@ Also not yet explained: 41 other April 2026 HISTORICAL_IMPORT production rows th
    - (e) `140-P-3B` (3 rows);
    - (f) release of the AREA_SOURCE_CONFLICT (279) and DATE_CONTEXT_CONFLICT (14) rows;
    - (g) the 10 POTENTIAL_DUPLICATE rows.
-2. `LTSA_HISTORICAL_CM_CONTROLLED_PRODUCTION_IMPORT` for the 2,907 SAFE_NEW rows only:
-   - verified backup first;
-   - re-run the read-only reconciliation immediately before writing, since production may have changed;
-   - transactional batches with no overwrite;
-   - post-import invariants and a final idempotency dry run, which must show 0 SAFE_NEW.
-   Reuse the existing `condition_monitoring_reading_repository` insert path with `provenance=HISTORICAL_IMPORT` and a deterministic `source_reference` per source row (document SHA-256 + page + row), so re-runs are idempotent.
-3. Investigate the 41 unexplained April 2026 HISTORICAL_IMPORT production rows.
+2. Batch A import (2,907 rows): implement `LTSA_HISTORICAL_CM_BATCH_A_IMPORT_EXECUTOR_R1` to the §8.6 requirements, then run it under its own approval. Batch A needs none of the item 1 decisions.
+3. Investigate the 41 unexplained April 2026 HISTORICAL_IMPORT production rows (§8.4).
 4. Optionally run the Docker-backed migration tests where Docker is running.
 
 ## 7. EXACT_RESUME_INSTRUCTION
@@ -203,4 +199,130 @@ python -m pytest PRODUCTS/LTSA-BRAIN/INGESTION/TEST/test_historical_cm_pdf_parse
 # the reference regression skips unless LTSA_PM_CM_HISTORY_ROOT points at the source archive
 ```
 
-Do not repeat parser generalization or the read-only reconciliation analysis. Start at `LTSA_HISTORICAL_CM_CONTROLLED_PRODUCTION_IMPORT` once the §6 item 1 decisions are made. The candidate-level files exist only in RYZEN `TEMP/`. Either run the import gate on RYZEN, or regenerate them on the laptop: run the §5 dry-run command, refresh both production snapshots read-only, then run `ltsa_cm_reconcile_readonly.py`.
+Do not repeat parser generalization, reconciliation or Batch A planning. The next gate is `LTSA_HISTORICAL_CM_BATCH_A_IMPORT_EXECUTOR_R1` (§8.6). It needs the Batch A manifest with SHA-256 `80542d3c94e129dc7ee82d19127a30b0c01d22f8a1c85f284231280d3e647af0`: either copy it from RYZEN and verify the hash, or regenerate it (§8.5, which needs the two planning scripts; see its blocker).
+
+## 8. Batch A Production Import Plan
+
+Planned in `LTSA_HISTORICAL_CM_SAFE_IMPORT_SET_R1` (2026-09-24, read-only). Nothing was inserted.
+
+### 8.1 Plan figures
+
+| Field | Value |
+|---|---|
+| PRODUCTION_CM_BASELINE | 2,092 (read-only recheck at planning; unchanged since 05:00; last production write 2026-09-21 09:08) |
+| SAFE_NEW_BATCH_A | 2,907 |
+| EXPECTED_CM_AFTER_BATCH_A | 4,999 (= 2,092 + 2,907; insert only, no UPDATE/DELETE) |
+| BATCH_A_2025 | 997 (PDF FORMAT_A only; no 2025 XLSX exists) |
+| BATCH_A_2026 | 1,910 (PDF FORMAT_A, each row identical to its XLSX row; XLSX file + row recorded per row) |
+| BATCH_A_HCC | 1,117 |
+| BATCH_A_HOC | 924 |
+| BATCH_A_OM_UTL | 866 |
+| BATCH_A_OTHER | 0 |
+| MONTHS | 2025-10=297 · 2025-11=443 · 2025-12=257 · 2026-01=205 · 2026-02=751 · 2026-03=685 · 2026-06=269 |
+| ALREADY_PRESENT_NOW (at recheck) | 0 |
+| MANIFEST | `TEMP/ltsa_historical_cm_batch_a_import_manifest.json` (untracked, RYZEN) |
+| MANIFEST_SHA256 | `80542d3c94e129dc7ee82d19127a30b0c01d22f8a1c85f284231280d3e647af0` |
+
+Batch A entry criteria (none weakened) — a row qualifies only if all of these hold:
+- extraction validation passed;
+- FORMAT_A structure;
+- exact PUMP match in `asset_registry` with registry code equal to the source tag;
+- not already in production;
+- unique asset+date across all parsed sources;
+- no HSC & SPK, area-conflict or date-conflict relation (date conflict checked against the printed date and the plausible report-year date);
+- tag not in {DMI-P-201A/B, 701-MM-51, 702-MM-51, 140-P-3B};
+- tag reported in only one area;
+- for 2026, API PLAN identical in PDF and XLSX.
+
+The recheck excluded nothing further.
+
+Each manifest row carries:
+- `source_hash`, `source_document`, `relative_path`, `source_page`, `source_report_page`, `source_row`;
+- `source_date`, `source_tag`, `tag`, `asset_code`, `reading_date`, `year`/`month`/`area`, `api_plan_snapshot`;
+- canonical `measurements` (20 FORMAT_A fields + `pump_operating_state`, NULL for all rows);
+- `measurement_fingerprint` (SHA-256 of the canonical measurements);
+- `source_format`, `xlsx_corroboration`, and a unique `proposed_source_reference` (`ltsa_hist_cm_pdf:<hash16>:p<page>:r<row>`).
+
+### 8.2 701 metrics (read-only, 2026-09-24)
+
+| Metric | Definition | Value |
+|---|---|---|
+| P701_P1A_CM_COUNT | production CM rows with `asset_code = '701-P-1A'` (live) | 9 |
+| AREA_701_PUMP_CM_COUNT | production CM rows with `asset_code LIKE '701-P-%'` (live) | 81 |
+| AREA_701_INCLUDING_MM_COUNT | the previous row + `701-MM-51` (7 rows) | 88 |
+
+### 8.3 Unresolved populations — NOT in Batch A (listed separately, none counted as coverage)
+
+| Population | Rows | Status |
+|---|---|---|
+| HSC & SPK semantic quarantine (source) | 749 | SEMANTIC_MAPPING_REQUIRED — sub-value meaning undefined |
+| Existing production rows column-shifted (HSC & SPK Apr + Jul 2026) | 244 | REPAIR_REQUIRED — audit `TEMP/ltsa_hsc_spk_column_shift_repair_candidates.json` (source row identified for all 244; not repaired; not historical coverage) |
+| AREA_SOURCE_CONFLICT (HCC Dec 2025 under HOC) | 279 | quarantined |
+| DATE_CONTEXT_CONFLICT (HOC Jan 2026, `06-Jan-25`) | 14 | quarantined |
+| Asset identity: DMI-P-201A/B (alias not applied) | 27 | NOT_FOUND |
+| Asset identity: 701-MM-51 / 702-MM-51 (empty asset_type) | 12 | EXACT_NON_PUMP |
+| Asset identity: 140-P-3B (near-miss to 140-P-3A) | 3 | AMBIGUOUS |
+| Same tag twice on one date within a report | 10 | POTENTIAL_DUPLICATE |
+| Unexplained existing April 2026 HISTORICAL_IMPORT rows | 41 | 8 SOURCE_IDENTIFIED (P-201A/B-DMI, identical to OM & UTL April rows via the DMI alias; evidence only) · 33 SOURCE_NOT_IDENTIFIED (no April report row at that tag/date; all `document_field_extraction`) — audit `TEMP/ltsa_cm_unexplained_april_rows_audit.json` |
+
+### 8.4 Artifacts (RYZEN `TEMP/`, untracked, never committed)
+
+- `ltsa_historical_cm_batch_a_import_manifest.json` (+ `.sha256`)
+- `ltsa_historical_cm_batch_a_plan.json` (breakdowns + per-row exclusion log)
+- `ltsa_hsc_spk_column_shift_repair_candidates.json`, `ltsa_cm_unexplained_april_rows_audit.json`
+- `ltsa_cm_reconciliation.json`, `ltsa_cm_reconciliation_candidates.jsonl`, production snapshots `prod_asset_registry_snapshot.csv` / `prod_cm_reading_snapshot.csv`
+- `recon_20260924_0500/` (the 05:00 reconciliation, preserved)
+- Planning scripts (read-only, no DB access):
+
+| Script | SHA-256 |
+|---|---|
+| `ltsa_cm_reconcile_readonly.py` | `256c533e0723db2f4ed08e53ecdf2fdca774035e92d8dee7792a81c798bad2ef` |
+| `ltsa_cm_batch_a_plan_readonly.py` | `0e6d4c0a9afd559a57f127d893188869de4251161d0135505f73b586fb6b7c76` |
+
+### 8.5 Regenerating the manifest
+
+**Determinism proven on RYZEN.** The full chain was rebuilt from scratch into an empty directory (archive dry run → reconciliation → Batch A planner, using the saved production snapshots). It reproduced SHA-256 `80542d3c…47af0` byte for byte. Environment: Python 3.14.6, pdfplumber 0.11.10, openpyxl 3.1.5.
+
+Commands (from the repo root; `<OUT>` = an empty directory):
+
+```
+cd PRODUCTS/LTSA-BRAIN/INGESTION
+python historical_cm_pdf_archive_dry_run.py --root "D:\PROJECT\Source-documents\LTSA\PM_CM_HISTORY" --years 2025 2026 --out "<OUT>"
+# place read-only production snapshots in <OUT> (same SELECTs as used on RYZEN):
+#   prod_asset_registry_snapshot.csv : select asset_code, asset_name, asset_type, area, status from asset_registry order by asset_code;
+#   prod_cm_reading_snapshot.csv     : select condition_monitoring_reading_code, asset_code, asset_type, reading_date::date as reading_date,
+#       <20 FORMAT_A measurement columns>, pump_operating_state, provenance, workflow_status, source_reference,
+#       source_workbook_name, source_sheet_name, source_row_number, api_plan_snapshot, deleted_at
+#       from condition_monitoring_reading order by asset_code, reading_date;   (psql --csv, read-only session)
+# set T = Path(r"<OUT>") in both planning scripts, then:
+python <OUT>/ltsa_cm_reconcile_readonly.py
+python <OUT>/ltsa_cm_batch_a_plan_readonly.py
+sha256sum <OUT>/ltsa_historical_cm_batch_a_import_manifest.json   # must equal 80542d3c…47af0
+```
+
+Conditions for an identical hash:
+- the same source archive (document SHA-256s are in §3);
+- the same parser commit `3af4a464`;
+- the two planning scripts with the SHA-256s above;
+- unchanged production (`condition_monitoring_reading` = 2,092 rows as snapshotted, and `asset_registry` = 257 rows). The manifest embeds `production_total_cm_at_planning`, and its row set depends on production. If production changes, the new hash is *expected* to differ and the plan must be reviewed again.
+
+**BLOCKER — laptop regeneration.** The two planning scripts exist only in RYZEN `TEMP/`. This addendum commits documentation only, so a laptop cannot regenerate the manifest from git alone. Options:
+- (a) copy the manifest (verify its SHA-256) or the two scripts (verify the SHA-256s above) from RYZEN to the laptop;
+- (b) approve committing the two read-only planning scripts as tools in a follow-up;
+- (c) run the executor gate on RYZEN.
+
+### 8.6 Next gate: `LTSA_HISTORICAL_CM_BATCH_A_IMPORT_EXECUTOR_R1` (requirements only — NOT implemented)
+
+The executor must:
+1. accept an explicit manifest path;
+2. require the expected SHA-256 as an argument, and refuse to run on a mismatch;
+3. be insert-only into `condition_monitoring_reading`: no UPDATE, no DELETE, no `asset_registry` / `ltsa_pumps` mutation (`ltsa_pumps.api_plan` is never touched; the source plan goes to `api_plan_snapshot`);
+4. use `proposed_source_reference` as the idempotency key (a row whose `source_reference` already exists is skipped, never updated);
+5. run a preflight read-only recheck of every manifest row: asset still EXACT PUMP, and no live production row for asset+date or for the same `source_reference`. Any change aborts the run for review;
+6. require a production backup taken immediately before the write, **and verified** (restorable / checksum), recording the backup path;
+7. do a dry run first, which must propose exactly 2,907 inserts;
+8. check the baseline: the expected count goes 2,092 → 4,999 only if the baseline is still 2,092 at write time; abort if it has changed unexpectedly;
+9. write in transactional batches, rolling back any failed batch as a whole; there are no partial rows;
+10. verify post-import invariants: total = baseline + inserted; no pre-existing row changed (compare the `updated_at` / fingerprint of the snapshotted rows); every manifest row present exactly once with an identical measurement fingerprint;
+11. run a second dry run after the import, which must propose **0** inserts;
+12. write `provenance=HISTORICAL_IMPORT` and populate source provenance (`source_reference`, and document/page/row where columns exist), reusing the existing repository insert path rather than a new SQL path.
