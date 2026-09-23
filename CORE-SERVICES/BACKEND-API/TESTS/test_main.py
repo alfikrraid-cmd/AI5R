@@ -100,7 +100,7 @@ class FakeAssetRegistryRepository:
         return list(self.rows)
 
     def get_asset(self, asset_code):
-        return next((row for row in self.rows if row.get("tag_number") == asset_code), None)
+        return next((row for row in self.rows if (row.get("asset_code") or row.get("tag_number")) == asset_code), None)
 
 
 class FakeWorkOrderGateway:
@@ -368,7 +368,7 @@ def test_list_pumps_delegates_to_pump_gateway():
 
     assert response.status_code == 200
     assert response.json()["success"] is True
-    assert response.json()["data"] == [{"tag_number": "P-101", "name": None}]
+    assert response.json()["data"] == [{"tag_number": "P-101", "tag": "P-101", "name": None}]
 
 
 def test_list_pumps_registry_fallback_preserves_selector_contract_and_optional_names():
@@ -387,10 +387,12 @@ def test_list_pumps_registry_fallback_preserves_selector_contract_and_optional_n
     assert response.status_code == 200
     data = response.json()["data"]
     assert [row["tag_number"] for row in data] == ["701-P-1A", "211-P-25A", "211-P-25B"]
+    assert [row["tag"] for row in data] == ["701-P-1A", "211-P-25A", "211-P-25B"]
     assert data[0]["name"] == "Main Pump"
     assert data[2]["name"] is None
     assert all(row["tag_number"] for row in data)
     assert len({row["tag_number"] for row in data}) == len(data)
+    assert all(row["tag"] != "—" for row in data)
 
 
 def test_get_pump_delegates_to_pump_gateway():
@@ -408,6 +410,50 @@ def test_get_pump_delegates_to_pump_gateway():
     assert fake_pump_gateway.tag_number == "P-101"
 
 
+def test_get_pump_registry_fallback_preserves_canonical_identity_and_optional_enrichment():
+    fake_pump_gateway = FakePumpGateway(detail_response={"success": False, "data": None})
+    rows = [{
+        "asset_code": "211-P-25A",
+        "asset_name": "Asset360 Pump",
+        "asset_type": "PUMP",
+        "area": "HCC",
+        "pump_type": None,
+        "api_plan": None,
+        "seal_type": None,
+    }]
+    app.dependency_overrides[get_pump_gateway] = lambda: fake_pump_gateway
+    app.dependency_overrides[get_asset_registry_repository] = lambda: FakeAssetRegistryRepository(rows)
+    try:
+        response = client.get("/pumps/211-P-25A")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["success"] is True
+    assert body["tag_number"] == "211-P-25A"
+    assert body["data"]["tag"] == "211-P-25A"
+    assert body["data"]["name"] == "Asset360 Pump"
+    assert body["data"]["pump_type"] is None
+    assert body["data"]["api_plan"] is None
+
+
+def test_get_pump_registry_fallback_handles_gateway_unavailable_and_unknown_asset():
+    class UnavailableGateway(FakePumpGateway):
+        def get_pump(self, tag_number):
+            raise RuntimeError("detail webhook unavailable")
+
+    app.dependency_overrides[get_pump_gateway] = lambda: UnavailableGateway()
+    app.dependency_overrides[get_asset_registry_repository] = lambda: FakeAssetRegistryRepository([])
+    try:
+        response = client.get("/pumps/UNKNOWN")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["success"] is False
+
+
 def test_list_ltsa_pumps_delegates_to_pump_gateway():
     list_response = {"success": True, "message": "ok", "count": 1, "data": [{"tag_number": "P-101"}]}
     fake_pump_gateway = FakePumpGateway(list_response=list_response)
@@ -420,7 +466,7 @@ def test_list_ltsa_pumps_delegates_to_pump_gateway():
 
     assert response.status_code == 200
     assert response.json()["success"] is True
-    assert response.json()["data"] == [{"tag_number": "P-101", "name": None}]
+    assert response.json()["data"] == [{"tag_number": "P-101", "tag": "P-101", "name": None}]
 
 
 def test_get_ltsa_pump_delegates_to_pump_gateway():

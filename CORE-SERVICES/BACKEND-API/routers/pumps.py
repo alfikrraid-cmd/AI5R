@@ -49,13 +49,19 @@ def _normalize_pump_list_response(response: dict) -> dict:
     for record in records:
         if not isinstance(record, dict):
             continue
-        identifier = record.get("tag_number") or record.get("asset_code")
+        # asset_registry.asset_code is the canonical registry identity;
+        # tag_number remains the established PumpGateway compatibility key.
+        identifier = record.get("asset_code") or record.get("tag_number")
         if not isinstance(identifier, str) or not identifier.strip():
             continue
+        name = record.get("name")
+        if name is None:
+            name = record.get("asset_name")
         normalized.append({
             **record,
             "tag_number": identifier,
-            "name": record.get("name") if record.get("name") is not None else record.get("asset_name"),
+            "tag": identifier,
+            "name": name,
         })
     return {**response, "data": normalized, "items": normalized, "count": len(normalized)}
 
@@ -91,7 +97,28 @@ def get_pump(
     asset_registry_repository=Depends(get_asset_registry_repository),
     current_user: AuthenticatedIdentity = Depends(get_current_user),
 ) -> Payload:
-    response = pump_gateway.get_pump(tag)
+    try:
+        response = pump_gateway.get_pump(tag)
+    except Exception:
+        response = None
+    if (
+        not isinstance(response, dict)
+        or not response.get("success")
+        or not isinstance(response.get("data"), dict)
+    ):
+        asset = asset_registry_repository.get_asset(tag)
+        if asset is not None:
+            identifier = asset.get("asset_code") or asset.get("tag_number")
+            if isinstance(identifier, str) and identifier.strip():
+                data = {
+                    **asset,
+                    "tag": identifier,
+                    "tag_number": identifier,
+                    "name": asset.get("name") if asset.get("name") is not None else asset.get("asset_name"),
+                }
+                response = {"success": True, "tag_number": identifier, "data": data}
+        if not isinstance(response, dict) or not response.get("success"):
+            response = {"success": False, "message": "Pump not found", "data": None}
     scope = resolve_area_scope(current_user)
     if scope is not None and isinstance(response, dict):
         # Safe not-found semantics: a genuinely missing tag and an
