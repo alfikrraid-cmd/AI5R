@@ -207,6 +207,11 @@ class LTSAKnowledgeService:
             "area": asset.get("area"),
             "location": asset.get("location"),
             "asset_type": asset.get("asset_type"),
+            "name": asset.get("name"),
+            "pump_type": asset.get("pump_type"),
+            "status": asset.get("status"),
+            "seal_type": asset.get("seal_type"),
+            "api_plan": asset.get("api_plan"),
         }
 
     def _build_compatible_seals(self, tag_number: str) -> list[dict[str, Any]]:

@@ -15,6 +15,7 @@ from dependencies import (
     get_condition_monitoring_reading_gateway,
     get_condition_monitoring_schedule_gateway,
     get_current_user,
+    get_asset_registry_repository,
     get_engineering_context_engine,
     get_equipment_timeline_service,
     get_ltsa_knowledge_service,
@@ -54,8 +55,10 @@ _SUPERUSER_IDENTITY = AuthenticatedIdentity(
 @pytest.fixture(autouse=True)
 def _bypass_authorization_for_delegation_tests():
     app.dependency_overrides[get_current_user] = lambda: _SUPERUSER_IDENTITY
+    app.dependency_overrides[get_asset_registry_repository] = lambda: FakeAssetRegistryRepository([])
     yield
     app.dependency_overrides.pop(get_current_user, None)
+    app.dependency_overrides.pop(get_asset_registry_repository, None)
 
 
 class FakePumpGateway:
@@ -69,6 +72,17 @@ class FakePumpGateway:
     def get_pump(self, tag_number):
         self.tag_number = tag_number
         return self.detail_response
+
+
+class FakeAssetRegistryRepository:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def list_assets(self):
+        return list(self.rows)
+
+    def get_asset(self, asset_code):
+        return next((row for row in self.rows if row.get("tag_number") == asset_code), None)
 
 
 class FakeWorkOrderGateway:
@@ -327,7 +341,30 @@ def test_list_pumps_delegates_to_pump_gateway():
         app.dependency_overrides.clear()
 
     assert response.status_code == 200
-    assert response.json() == list_response
+    assert response.json()["success"] is True
+    assert response.json()["data"] == [{"tag_number": "P-101", "name": None}]
+
+
+def test_list_pumps_registry_fallback_preserves_selector_contract_and_optional_names():
+    rows = [
+        {"asset_code": "701-P-1A", "asset_name": "Main Pump", "asset_type": "PUMP", "seal_type": "T8B1", "api_plan": "23/61"},
+        {"asset_code": "211-P-25A", "asset_name": "Asset360 Pump", "asset_type": "PUMP", "api_plan": None},
+        {"asset_code": "211-P-25B", "asset_name": None, "asset_type": "PUMP"},
+    ]
+    app.dependency_overrides[get_pump_gateway] = lambda: FakePumpGateway(list_response={"success": False})
+    app.dependency_overrides[get_asset_registry_repository] = lambda: FakeAssetRegistryRepository(rows)
+    try:
+        response = client.get("/pumps")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert [row["tag_number"] for row in data] == ["701-P-1A", "211-P-25A", "211-P-25B"]
+    assert data[0]["name"] == "Main Pump"
+    assert data[2]["name"] is None
+    assert all(row["tag_number"] for row in data)
+    assert len({row["tag_number"] for row in data}) == len(data)
 
 
 def test_get_pump_delegates_to_pump_gateway():
@@ -356,7 +393,8 @@ def test_list_ltsa_pumps_delegates_to_pump_gateway():
         app.dependency_overrides.clear()
 
     assert response.status_code == 200
-    assert response.json() == list_response
+    assert response.json()["success"] is True
+    assert response.json()["data"] == [{"tag_number": "P-101", "name": None}]
 
 
 def test_get_ltsa_pump_delegates_to_pump_gateway():

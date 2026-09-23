@@ -40,6 +40,26 @@ from models.responses import Payload
 router = APIRouter(dependencies=[Depends(require_permission("pump.read"))])
 
 
+def _normalize_pump_list_response(response: dict) -> dict:
+    """Expose the established pump-list contract to every frontend caller."""
+    records = response.get("data")
+    if not isinstance(records, list):
+        return response
+    normalized = []
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        identifier = record.get("tag_number") or record.get("asset_code")
+        if not isinstance(identifier, str) or not identifier.strip():
+            continue
+        normalized.append({
+            **record,
+            "tag_number": identifier,
+            "name": record.get("name") if record.get("name") is not None else record.get("asset_name"),
+        })
+    return {**response, "data": normalized, "items": normalized, "count": len(normalized)}
+
+
 # MWO-LTSA-AUTH-DATA-SCOPE-CLOSURE-001 -- backend-enforced Area/MA data
 # scope (never frontend-only filtering). scope=None means unrestricted
 # (SUPERUSER/TAP_ADMIN/TAP_ENGINEER/JOHN_CRANE_ENGINEER, always); a
@@ -49,9 +69,14 @@ router = APIRouter(dependencies=[Depends(require_permission("pump.read"))])
 @router.get("/pumps")
 def list_pumps(
     pump_gateway=Depends(get_pump_gateway),
+    asset_registry_repository=Depends(get_asset_registry_repository),
     current_user: AuthenticatedIdentity = Depends(get_current_user),
 ) -> Payload:
     response = pump_gateway.list_pumps()
+    if not isinstance(response, dict) or not response.get("success") or not isinstance(response.get("data"), list):
+        rows = asset_registry_repository.list_assets()
+        response = {"success": True, "data": rows, "items": rows, "count": len(rows)}
+    response = _normalize_pump_list_response(response)
     scope = resolve_area_scope(current_user)
     if scope is not None and isinstance(response, dict) and isinstance(response.get("data"), list):
         response = {**response, "data": filter_records_by_scope(response["data"], scope)}
@@ -63,6 +88,7 @@ def list_pumps(
 def get_pump(
     tag: str,
     pump_gateway=Depends(get_pump_gateway),
+    asset_registry_repository=Depends(get_asset_registry_repository),
     current_user: AuthenticatedIdentity = Depends(get_current_user),
 ) -> Payload:
     response = pump_gateway.get_pump(tag)
@@ -91,18 +117,20 @@ def get_pump(
 @router.get("/api/ltsa/pumps")
 def list_ltsa_pumps(
     pump_gateway=Depends(get_pump_gateway),
+    asset_registry_repository=Depends(get_asset_registry_repository),
     current_user: AuthenticatedIdentity = Depends(get_current_user),
 ) -> Payload:
-    return list_pumps(pump_gateway=pump_gateway, current_user=current_user)
+    return list_pumps(pump_gateway=pump_gateway, asset_registry_repository=asset_registry_repository, current_user=current_user)
 
 
 @router.get("/api/ltsa/pumps/{tag}")
 def get_ltsa_pump(
     tag: str,
     pump_gateway=Depends(get_pump_gateway),
+    asset_registry_repository=Depends(get_asset_registry_repository),
     current_user: AuthenticatedIdentity = Depends(get_current_user),
 ) -> Payload:
-    return get_pump(tag, pump_gateway=pump_gateway, current_user=current_user)
+    return get_pump(tag, pump_gateway=pump_gateway, asset_registry_repository=asset_registry_repository, current_user=current_user)
 
 
 # MWO-LTSA-AUTH-DATA-SCOPE-ROUTE-CLOSURE-001 -- every /pumps/{tag}/...
@@ -117,6 +145,9 @@ def _guard_tag_in_scope(tag: str, pump_gateway, current_user: AuthenticatedIdent
     if scope is None:
         return
     response = pump_gateway.get_pump(tag)
+    if not isinstance(response, dict) or not response.get("success") or not isinstance(response.get("data"), dict):
+        asset = asset_registry_repository.get_asset(tag)
+        response = {"success": asset is not None, "data": asset}
     data = response.get("data") if isinstance(response, dict) else None
     if not isinstance(data, dict) and asset_registry_repository is not None:
         data = asset_registry_repository.get_asset(tag)

@@ -111,7 +111,7 @@ export default function AssetSelector({
 
         {filteredAssets.map((asset) => (
           <option key={asset.tag} value={asset.tag}>
-            {asset.tag} — {asset.name}
+            {asset.name ? `${asset.tag} — ${asset.name}` : asset.tag}
           </option>
         ))}
       </select>
