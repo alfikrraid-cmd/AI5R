@@ -96,6 +96,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import warnings
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
@@ -360,9 +361,22 @@ class CMONReadingCandidate:
 
 
 def extract_cm_measuring_candidates(pdf_path: str | Path, page_range: tuple[int, int]) -> list[CMONReadingCandidate]:
-    """page_range is 1-indexed, inclusive, e.g. (42, 48). Returns one
+    """DEPRECATED (LTSA_PDF_CM_PARSER_GENERALIZATION_R1) -- legacy PDF CM
+    path, kept unmodified for reference only; it has no callers. Use
+    historical_cm_pdf_parser.parse_cm_pdf(), the canonical PDF CM parser:
+    it detects CM pages itself, derives column identity from each page's own
+    header, and guards against layouts this function would silently mis-map
+    (e.g. the HSC & SPK 2026 body sub-columns). Proven equivalent on the OM &
+    UTL October 2025 reference report (123 rows, 0 value differences).
+
+    page_range is 1-indexed, inclusive, e.g. (42, 48). Returns one
     candidate per real data row (rows whose first cell is a row-number
     integer -- header/title rows are skipped)."""
+    warnings.warn(
+        "extract_cm_measuring_candidates is deprecated; use historical_cm_pdf_parser.parse_cm_pdf",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     start, end = page_range
     candidates: list[CMONReadingCandidate] = []
     with pdfplumber.open(str(pdf_path)) as pdf:
