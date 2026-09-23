@@ -12,8 +12,11 @@ from fastapi.testclient import TestClient
 from main import app
 from dependencies import (
     get_cm_report_gateway,
+    get_cm_report_repository,
     get_condition_monitoring_reading_gateway,
+    get_condition_monitoring_reading_repository,
     get_condition_monitoring_schedule_gateway,
+    get_condition_monitoring_schedule_repository,
     get_current_user,
     get_asset_registry_repository,
     get_engineering_context_engine,
@@ -22,6 +25,7 @@ from dependencies import (
     get_maintenance_history_gateway,
     get_pm_occurrence_gateway,
     get_pm_schedule_gateway,
+    get_pm_schedule_repository,
     get_pump_gateway,
     get_seal_gateway,
     get_seal_pump_compatibility_gateway,
@@ -52,10 +56,24 @@ _SUPERUSER_IDENTITY = AuthenticatedIdentity(
 )
 
 
+class _TestDependencyOverrides(dict):
+    """Keep autouse safety overrides when legacy tests call clear()."""
+
+    def __init__(self, preserved):
+        super().__init__(preserved)
+        self._preserved = dict(preserved)
+
+    def clear(self):
+        super().clear()
+        super().update(self._preserved)
+
+
 @pytest.fixture(autouse=True)
 def _bypass_authorization_for_delegation_tests():
-    app.dependency_overrides[get_current_user] = lambda: _SUPERUSER_IDENTITY
-    app.dependency_overrides[get_asset_registry_repository] = lambda: FakeAssetRegistryRepository([])
+    app.dependency_overrides = _TestDependencyOverrides({
+        get_current_user: lambda: _SUPERUSER_IDENTITY,
+        get_asset_registry_repository: lambda: FakeAssetRegistryRepository([]),
+    })
     yield
     app.dependency_overrides.pop(get_current_user, None)
     app.dependency_overrides.pop(get_asset_registry_repository, None)
@@ -126,10 +144,10 @@ class FakePMScheduleGateway:
         self.list_response = list_response
         self.detail_response = detail_response
 
-    def list_pm_schedules(self):
+    def list_pm_schedules(self, **_kwargs):
         return self.list_response
 
-    def get_pm_schedule(self, pm_schedule_code):
+    def get_pm_schedule(self, pm_schedule_code, **_kwargs):
         self.pm_schedule_code = pm_schedule_code
         return self.detail_response
 
@@ -139,10 +157,10 @@ class FakeCMReportGateway:
         self.list_response = list_response
         self.detail_response = detail_response
 
-    def list_cm_reports(self):
+    def list_cm_reports(self, **_kwargs):
         return self.list_response
 
-    def get_cm_report(self, cm_report_code):
+    def get_cm_report(self, cm_report_code, **_kwargs):
         self.cm_report_code = cm_report_code
         return self.detail_response
 
@@ -152,10 +170,10 @@ class FakeConditionMonitoringScheduleGateway:
         self.list_response = list_response
         self.detail_response = detail_response
 
-    def list_condition_monitoring_schedules(self):
+    def list_condition_monitoring_schedules(self, **_kwargs):
         return self.list_response
 
-    def get_condition_monitoring_schedule(self, condition_monitoring_schedule_code):
+    def get_condition_monitoring_schedule(self, condition_monitoring_schedule_code, **_kwargs):
         self.condition_monitoring_schedule_code = condition_monitoring_schedule_code
         return self.detail_response
 
@@ -165,12 +183,20 @@ class FakeConditionMonitoringReadingGateway:
         self.list_response = list_response
         self.detail_response = detail_response
 
-    def list_condition_monitoring_readings(self):
+    def list_condition_monitoring_readings(self, **_kwargs):
         return self.list_response
 
-    def get_condition_monitoring_reading(self, condition_monitoring_reading_code):
+    def list_all(self, **_kwargs):
+        return self.list_response
+
+    def get_condition_monitoring_reading(self, condition_monitoring_reading_code, **_kwargs):
         self.condition_monitoring_reading_code = condition_monitoring_reading_code
         return self.detail_response
+
+    def find_by_code(self, condition_monitoring_reading_code):
+        self.condition_monitoring_reading_code = condition_monitoring_reading_code
+        response = self.detail_response or {}
+        return response.get("data") if isinstance(response, dict) else None
 
 
 class FakePMOccurrenceGateway:
@@ -870,7 +896,7 @@ def test_list_ltsa_pm_schedules_delegates_to_pm_schedule_gateway():
         "data": [{"pm_schedule_code": "PM-101"}],
     }
     fake_pm_schedule_gateway = FakePMScheduleGateway(list_response=list_response)
-    app.dependency_overrides[get_pm_schedule_gateway] = lambda: fake_pm_schedule_gateway
+    app.dependency_overrides[get_pm_schedule_repository] = lambda: fake_pm_schedule_gateway
 
     try:
         response = client.get("/api/ltsa/pm-schedules")
@@ -884,7 +910,7 @@ def test_list_ltsa_pm_schedules_delegates_to_pm_schedule_gateway():
 def test_get_ltsa_pm_schedule_delegates_to_pm_schedule_gateway():
     detail_response = {"success": True, "message": "found", "data": {"pm_schedule_code": "PM-101"}}
     fake_pm_schedule_gateway = FakePMScheduleGateway(detail_response=detail_response)
-    app.dependency_overrides[get_pm_schedule_gateway] = lambda: fake_pm_schedule_gateway
+    app.dependency_overrides[get_pm_schedule_repository] = lambda: fake_pm_schedule_gateway
 
     try:
         response = client.get("/api/ltsa/pm-schedules/PM-101")
@@ -899,16 +925,15 @@ def test_get_ltsa_pm_schedule_delegates_to_pm_schedule_gateway():
 def test_get_ltsa_pm_schedule_propagates_not_found_unchanged():
     not_found = {"success": False, "message": "PM schedule not found", "data": None}
     fake_pm_schedule_gateway = FakePMScheduleGateway(detail_response=not_found)
-    app.dependency_overrides[get_pm_schedule_gateway] = lambda: fake_pm_schedule_gateway
+    app.dependency_overrides[get_pm_schedule_repository] = lambda: fake_pm_schedule_gateway
 
     try:
         response = client.get("/api/ltsa/pm-schedules/UNKNOWN")
     finally:
         app.dependency_overrides.clear()
 
-    assert response.status_code == 200
-    assert response.json() == not_found
-    assert fake_pm_schedule_gateway.pm_schedule_code == "UNKNOWN"
+    assert response.status_code == 404
+    assert response.json()["detail"] == "PM schedule not found"
 
 
 def test_list_ltsa_pm_occurrences_delegates_to_pm_occurrence_gateway():
@@ -968,7 +993,7 @@ def test_list_ltsa_cm_reports_delegates_to_cm_report_gateway():
         "data": [{"cm_report_code": "CM-101"}],
     }
     fake_cm_report_gateway = FakeCMReportGateway(list_response=list_response)
-    app.dependency_overrides[get_cm_report_gateway] = lambda: fake_cm_report_gateway
+    app.dependency_overrides[get_cm_report_repository] = lambda: fake_cm_report_gateway
 
     try:
         response = client.get("/api/ltsa/cm-reports")
@@ -982,7 +1007,7 @@ def test_list_ltsa_cm_reports_delegates_to_cm_report_gateway():
 def test_get_ltsa_cm_report_delegates_to_cm_report_gateway():
     detail_response = {"success": True, "message": "found", "data": {"cm_report_code": "CM-101"}}
     fake_cm_report_gateway = FakeCMReportGateway(detail_response=detail_response)
-    app.dependency_overrides[get_cm_report_gateway] = lambda: fake_cm_report_gateway
+    app.dependency_overrides[get_cm_report_repository] = lambda: fake_cm_report_gateway
 
     try:
         response = client.get("/api/ltsa/cm-reports/CM-101")
@@ -997,16 +1022,15 @@ def test_get_ltsa_cm_report_delegates_to_cm_report_gateway():
 def test_get_ltsa_cm_report_propagates_not_found_unchanged():
     not_found = {"success": False, "message": "CM report not found", "data": None}
     fake_cm_report_gateway = FakeCMReportGateway(detail_response=not_found)
-    app.dependency_overrides[get_cm_report_gateway] = lambda: fake_cm_report_gateway
+    app.dependency_overrides[get_cm_report_repository] = lambda: fake_cm_report_gateway
 
     try:
         response = client.get("/api/ltsa/cm-reports/UNKNOWN")
     finally:
         app.dependency_overrides.clear()
 
-    assert response.status_code == 200
-    assert response.json() == not_found
-    assert fake_cm_report_gateway.cm_report_code == "UNKNOWN"
+    assert response.status_code == 404
+    assert response.json()["detail"] == "CM report not found"
 
 
 def test_list_ltsa_condition_monitoring_schedules_delegates_to_condition_monitoring_schedule_gateway():
@@ -1017,7 +1041,7 @@ def test_list_ltsa_condition_monitoring_schedules_delegates_to_condition_monitor
         "data": [{"condition_monitoring_schedule_code": "CMON-SCHED-101"}],
     }
     fake_gateway = FakeConditionMonitoringScheduleGateway(list_response=list_response)
-    app.dependency_overrides[get_condition_monitoring_schedule_gateway] = lambda: fake_gateway
+    app.dependency_overrides[get_condition_monitoring_schedule_repository] = lambda: fake_gateway
 
     try:
         response = client.get("/api/ltsa/condition-monitoring-schedules")
@@ -1035,7 +1059,7 @@ def test_get_ltsa_condition_monitoring_schedule_delegates_to_condition_monitorin
         "data": {"condition_monitoring_schedule_code": "CMON-SCHED-101"},
     }
     fake_gateway = FakeConditionMonitoringScheduleGateway(detail_response=detail_response)
-    app.dependency_overrides[get_condition_monitoring_schedule_gateway] = lambda: fake_gateway
+    app.dependency_overrides[get_condition_monitoring_schedule_repository] = lambda: fake_gateway
 
     try:
         response = client.get("/api/ltsa/condition-monitoring-schedules/CMON-SCHED-101")
@@ -1050,16 +1074,15 @@ def test_get_ltsa_condition_monitoring_schedule_delegates_to_condition_monitorin
 def test_get_ltsa_condition_monitoring_schedule_propagates_not_found_unchanged():
     not_found = {"success": False, "message": "Condition Monitoring schedule not found", "data": None}
     fake_gateway = FakeConditionMonitoringScheduleGateway(detail_response=not_found)
-    app.dependency_overrides[get_condition_monitoring_schedule_gateway] = lambda: fake_gateway
+    app.dependency_overrides[get_condition_monitoring_schedule_repository] = lambda: fake_gateway
 
     try:
         response = client.get("/api/ltsa/condition-monitoring-schedules/UNKNOWN")
     finally:
         app.dependency_overrides.clear()
 
-    assert response.status_code == 200
-    assert response.json() == not_found
-    assert fake_gateway.condition_monitoring_schedule_code == "UNKNOWN"
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Condition Monitoring schedule not found"
 
 
 def test_list_ltsa_condition_monitoring_readings_delegates_to_condition_monitoring_reading_gateway():
@@ -1070,7 +1093,7 @@ def test_list_ltsa_condition_monitoring_readings_delegates_to_condition_monitori
         "data": [{"condition_monitoring_reading_code": "CMON-READ-101"}],
     }
     fake_gateway = FakeConditionMonitoringReadingGateway(list_response=list_response)
-    app.dependency_overrides[get_condition_monitoring_reading_gateway] = lambda: fake_gateway
+    app.dependency_overrides[get_condition_monitoring_reading_repository] = lambda: fake_gateway
 
     try:
         response = client.get("/api/ltsa/condition-monitoring-readings")
@@ -1088,7 +1111,7 @@ def test_get_ltsa_condition_monitoring_reading_delegates_to_condition_monitoring
         "data": {"condition_monitoring_reading_code": "CMON-READ-101"},
     }
     fake_gateway = FakeConditionMonitoringReadingGateway(detail_response=detail_response)
-    app.dependency_overrides[get_condition_monitoring_reading_gateway] = lambda: fake_gateway
+    app.dependency_overrides[get_condition_monitoring_reading_repository] = lambda: fake_gateway
 
     try:
         response = client.get("/api/ltsa/condition-monitoring-readings/CMON-READ-101")
@@ -1103,16 +1126,15 @@ def test_get_ltsa_condition_monitoring_reading_delegates_to_condition_monitoring
 def test_get_ltsa_condition_monitoring_reading_propagates_not_found_unchanged():
     not_found = {"success": False, "message": "Condition Monitoring reading not found", "data": None}
     fake_gateway = FakeConditionMonitoringReadingGateway(detail_response=not_found)
-    app.dependency_overrides[get_condition_monitoring_reading_gateway] = lambda: fake_gateway
+    app.dependency_overrides[get_condition_monitoring_reading_repository] = lambda: fake_gateway
 
     try:
         response = client.get("/api/ltsa/condition-monitoring-readings/UNKNOWN")
     finally:
         app.dependency_overrides.clear()
 
-    assert response.status_code == 200
-    assert response.json() == not_found
-    assert fake_gateway.condition_monitoring_reading_code == "UNKNOWN"
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Condition Monitoring reading not found"
 
 
 def test_create_work_order_delegates_to_work_order_gateway():
