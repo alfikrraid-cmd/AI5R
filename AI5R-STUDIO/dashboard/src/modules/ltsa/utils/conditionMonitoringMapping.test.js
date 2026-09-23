@@ -80,6 +80,11 @@ describe("mapConditionMonitoringReadingRecord", () => {
     expect(mapped.leakDe).toBeNull();
     expect(mapped.leakNde).toBeUndefined();
   });
+
+  it("preserves historical snapshots and does not use a master-plan fallback", () => {
+    expect(mapConditionMonitoringReadingRecord({ api_plan_snapshot: "23/61" }).apiPlanSnapshot).toBe("23/61");
+    expect(mapConditionMonitoringReadingRecord({ api_plan_snapshot: null, api_plan: "23/61" }).apiPlanSnapshot).toBeNull();
+  });
 });
 
 describe("withResolvedArea", () => {

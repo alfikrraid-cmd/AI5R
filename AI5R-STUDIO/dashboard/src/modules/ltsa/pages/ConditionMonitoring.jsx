@@ -6,6 +6,7 @@ import ConditionMonitoringReadingFilterBar from "../components/ConditionMonitori
 import ConditionMonitoringReadingTable from "../components/ConditionMonitoringReadingTable";
 import ConditionMonitoringReadingDetailPanel from "../components/ConditionMonitoringReadingDetailPanel";
 import ConditionMonitoringOpenDesignView from "../components/ConditionMonitoringOpenDesignView";
+import ConditionMonitoringReportMeasuring from "../components/ConditionMonitoringReportMeasuring";
 import CreateConditionMonitoringReadingModal from "../components/CreateConditionMonitoringReadingModal";
 import CreateAdHocConditionMonitoringReadingModal from "../components/CreateAdHocConditionMonitoringReadingModal";
 import BulkCMONReadingEditor from "../components/BulkCMONReadingEditor";
@@ -118,6 +119,7 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
   const [readingLeakFilter, setReadingLeakFilter] = useState("ALL");
   const [readingAreaFilter, setReadingAreaFilter] = useState("ALL");
   const [selectedReadingId, setSelectedReadingId] = useState(null);
+  const [reportReading, setReportReading] = useState(null);
   // UI-D2C -- auto-collapse the mobile registry once a reading is
   // selected (CSS-gated to the mobile breakpoint only, ConditionMonitoring.css;
   // no effect on desktop, which always shows the full dense table) -- same
@@ -662,7 +664,11 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
                       onOpenAsset360={handleViewAsset360}
                       onViewSchedule={handleViewSchedule}
                       onBack={() => onNavigate?.("dashboard")}
+                      onReportMeasuring={() => setReportReading(selectedReading)}
                     />
+                    {reportReading?.id === selectedReading.id && (
+                      <ConditionMonitoringReportMeasuring reading={reportReading} onClose={() => setReportReading(null)} />
+                    )}
 
                     {/* Full measurement set + review workflow + Evidence --
                         ConditionMonitoringReadingDetailPanel.jsx itself is

@@ -171,6 +171,7 @@ export function mapConditionMonitoringReadingRecord(record) {
     updatedBy: record.updated_by,
     createdAt: record.created_at,
     updatedAt: record.updated_at,
+    apiPlanSnapshot: record.api_plan_snapshot,
     // MWO-LTSA-ASSET360-PM-CMON-TRACEABILITY-001 -- historical-import
     // provenance, same convention as pmMapping.js's own mapPMOccurrenceRecord.
     sourceWorkbookName: record.source_workbook_name,

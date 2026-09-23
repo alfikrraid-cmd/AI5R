@@ -1,3 +1,4 @@
+import { useState } from "react";
 import KnowledgeSection from "../components/KnowledgeSection";
 import KnowledgeCard, { EmptySection } from "../components/KnowledgeCard";
 import ActivePlansPanel from "../components/ActivePlansPanel";
@@ -10,7 +11,7 @@ import KnowledgeDrawingSection from "../components/KnowledgeDrawingSection";
 import KnowledgeRecommendation from "../components/KnowledgeRecommendation";
 import AssetHeaderKpis from "../components/AssetHeaderKpis";
 import AssetSectionNav from "../components/AssetSectionNav";
-import KnowledgeConditionMonitoringSection from "../components/KnowledgeConditionMonitoringSection";
+import ConditionMonitoringReportMeasuring from "../components/ConditionMonitoringReportMeasuring";
 import KnowledgeUnifiedHistory from "../components/KnowledgeUnifiedHistory";
 import KnowledgePmHistorySection from "../components/KnowledgePmHistorySection";
 import KnowledgeWorkOrdersSection from "../components/KnowledgeWorkOrdersSection";
@@ -58,6 +59,52 @@ function RefRows({ items, emptyTitle }) {
       <div className="part-meta">{item.meta}</div>
     </div>
   ));
+}
+
+function displayValue(value) {
+  return value == null ? "—" : String(value);
+}
+
+function displayLeak(value) {
+  if (value === true) return "Y";
+  if (value === false) return "N";
+  return "—";
+}
+
+export function ConditionMonitoringHistory({ readings }) {
+  const [selectedReading, setSelectedReading] = useState(null);
+
+  if (!readings.length) {
+    return <EmptySection title="Belum ada riwayat CM" />;
+  }
+
+  return (
+    <div data-testid="condition-monitoring-history">
+      {readings.map((reading) => (
+        <article className="part-item" key={reading.id} data-testid={`cm-history-${reading.id}`}>
+          <div className="part-row">
+            <span className="part-name">{displayValue(reading.readingDate)}</span>
+            <span>{displayValue(reading.pumpOperatingState)}</span>
+          </div>
+          <div className="part-meta">
+            Workflow: {displayValue(reading.workflowStatus)}
+          </div>
+          <div className="part-meta">
+            Mechseal Temp: DE {displayValue(reading.mechsealTempDe)} / NDE {displayValue(reading.mechsealTempNde)} ·
+            Seal Leak: DE {displayLeak(reading.leakDe)} / NDE {displayLeak(reading.leakNde)} ·
+            Flushing: DE {displayValue(reading.flushingTempDe)} / NDE {displayValue(reading.flushingTempNde)}
+          </div>
+          <div className="part-meta">Finding: {displayValue(reading.finding)}</div>
+          <button type="button" className="btn-link" onClick={() => setSelectedReading(reading)}>
+            View Report Measuring
+          </button>
+        </article>
+      ))}
+      {selectedReading ? (
+        <ConditionMonitoringReportMeasuring reading={selectedReading} onClose={() => setSelectedReading(null)} />
+      ) : null}
+    </div>
+  );
 }
 
 function LoadingSkeleton() {
@@ -195,18 +242,6 @@ export default function KnowledgeWorkspace({ tag }) {
                 <KnowledgeTimeline items={data.timeline} />
               </KnowledgeSection>
 
-              {/* Section C -- Condition Monitoring: latest snapshot, ALL
-                  temperature points (DE/NDE), trend chart (3M/6M/1Y/3Y/4Y/
-                  All), and browsable reading history without leaving
-                  Asset 360. */}
-              <KnowledgeSection
-                id="condition"
-                title="Condition Monitoring"
-                badge={String(data.conditionMonitoringReadings.length)}
-              >
-                <KnowledgeConditionMonitoringSection readings={data.conditionMonitoringReadings} />
-              </KnowledgeSection>
-
               {/* Section D -- Unified Maintenance History: one chronological
                   DISPLAY combining PM/CMON/CM/WO/Breakdown, "Same Visit"
                   presentation logic only when a real PM and real CMON share
@@ -230,9 +265,9 @@ export default function KnowledgeWorkspace({ tag }) {
                 <KnowledgePmHistorySection pmOccurrences={data.pmOccurrences} />
               </KnowledgeSection>
 
-              <KnowledgeSection id="cm-history" title="CM History" badge={String(data.cmHistory.length)}>
+              <KnowledgeSection id="cm-history" title="CM History" badge={String(data.conditionMonitoringReadings.length)}>
                 <KnowledgeCard variant="row-list">
-                  <RefRows items={data.cmHistory} emptyTitle="Belum ada riwayat CM" />
+                  <ConditionMonitoringHistory readings={data.conditionMonitoringReadings} />
                 </KnowledgeCard>
               </KnowledgeSection>
 

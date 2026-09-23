@@ -1,0 +1,15 @@
+.cmon-report-measuring { margin-top: var(--space-4); padding: var(--space-4); border: 1px solid var(--border-subtle); background: var(--surface-raised); }
+.cmon-report-measuring-header { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-3); }
+.cmon-report-measuring-header h2 { margin: 0; }
+.cmon-report-measuring-identity { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); margin: var(--space-4) 0; }
+.cmon-report-measuring-identity div { border-bottom: 1px solid var(--border-subtle); padding-bottom: var(--space-2); }
+.cmon-report-measuring-identity dt { color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase; }
+.cmon-report-measuring-identity dd { margin: 0.25rem 0 0; font-weight: 600; }
+.cmon-report-measuring-table { width: 100%; border-collapse: collapse; }
+.cmon-report-measuring-table th, .cmon-report-measuring-table td { border: 1px solid var(--border-subtle); padding: var(--space-2); text-align: left; }
+.cmon-report-measuring-table thead th, .cmon-report-measuring-table tfoot th { background: var(--surface-sunken); }
+.cmon-report-measuring-table td { font-variant-numeric: tabular-nums; }
+.cmon-report-measuring-finding { margin-top: var(--space-4); }
+.cmon-report-measuring-finding h3 { margin-bottom: var(--space-1); }
+.cmon-report-measuring-finding p { white-space: pre-wrap; margin: 0; }
+@media (max-width: 720px) { .cmon-report-measuring-identity { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

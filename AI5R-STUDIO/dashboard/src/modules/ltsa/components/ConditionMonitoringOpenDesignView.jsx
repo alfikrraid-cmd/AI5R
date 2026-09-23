@@ -64,6 +64,7 @@ export default function ConditionMonitoringOpenDesignView({
   onOpenAsset360,
   onViewSchedule,
   onBack,
+  onReportMeasuring,
 }) {
   const [activeTab, setActiveTab] = useState("overview");
 
@@ -153,6 +154,14 @@ export default function ConditionMonitoringOpenDesignView({
                 onClick={() => setActiveTab("trends")}
               >
                 View Trends →
+              </button>
+              <button
+                type="button"
+                className="workspace-quick-action-btn"
+                onClick={onReportMeasuring}
+                data-testid="open-report-measuring"
+              >
+                Report Measuring →
               </button>
               <button
                 type="button"
