@@ -36,6 +36,7 @@ from typing import Any
 from . import maintenance_intelligence_service as mis
 from .ltsa_knowledge_service import LTSAKnowledge
 from .recommendation_engine import RecommendationEngine
+from .cm_condition_evaluator import evaluate_current_condition, select_latest_valid_cm
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,6 +72,7 @@ class Equipment360:
     cmon_latest_attachments: tuple[dict[str, Any], ...]
     recommendation: tuple[Any, ...]
     data_gaps: tuple[str, ...]
+    current_condition: dict[str, Any] | None = None
 
 
 def get_equipment_360(
@@ -148,7 +150,7 @@ def get_equipment_360(
         records = condition_monitoring_reading_repository.list_by_asset(tag)
         if isinstance(records, list):
             cmon_history = tuple(records)
-            cmon_latest = records[0] if records else None
+            cmon_latest = select_latest_valid_cm(records)
         else:
             gaps.append("cmon")
     except Exception:
@@ -249,6 +251,7 @@ def get_equipment_360(
         cm_latest=cm_latest,
         cm_history=cm_history,
         cmon_latest=cmon_latest,
+        current_condition=evaluate_current_condition(cmon_latest),
         cmon_history=cmon_history,
         current_seal=current_seal,
         compatible_seals=compatible_seals,

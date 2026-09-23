@@ -163,10 +163,10 @@ def apply_plan(plan: dict[str, Any], runner: DatabaseRunner) -> dict[str, Any]:
             "cooling_water_in_temp_de", "cooling_water_in_temp_nde", "cooling_water_out_temp_de", "cooling_water_out_temp_nde",
             "mechseal_temp_de", "mechseal_temp_nde", "mechanical_seal_leak_de", "mechanical_seal_leak_nde",
             "water_jacket_temp_de", "water_jacket_temp_nde", "suction_temp", "discharge_temp", "pump_operating_state",
-            "source_workbook_name", "source_sheet_name", "source_row_number",
+            "source_workbook_name", "source_sheet_name", "source_row_number", "api_plan_snapshot",
         ]
         values = ", ".join(
-            _sql_date(reading["reading_date"]) if column == "reading_date" else _sql(reading[column])
+            _sql_date(reading["reading_date"]) if column == "reading_date" else _sql(reading.get(column, reading.get("api_plan")) if column == "api_plan_snapshot" else reading[column])
             for column in columns
         )
         finding_text = attachments.get(reading["condition_monitoring_reading_code"])
