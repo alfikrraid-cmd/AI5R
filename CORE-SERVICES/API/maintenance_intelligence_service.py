@@ -220,7 +220,14 @@ def leak_flag_from_readings(
     window_days: int = DEFAULT_CONDITION_MONITORING_WINDOW_DAYS,
     today: date | None = None,
 ) -> dict[str, Any]:
-    """Pure windowing/flag logic extracted from get_pump_condition_monitoring_
+    """RECENT_LEAK_OBSERVED (LTSA_CM_UI_REMEDIATION_R1A): answers "was a leak
+    observed within the last `window_days`?" -- legitimate recent-evidence
+    analytics, NOT Current Condition / active leak. Current Condition is
+    cm_condition_evaluator.current_leak_condition() (latest SUBMITTED/
+    FINALIZED valid occurrence); consumers that present this flag as the
+    current state move to it in R1B. Rule unchanged:
+
+    Pure windowing/flag logic extracted from get_pump_condition_monitoring_
     flag() (MWO-LTSA-FLEET-ATTENTION-001) -- identical rule, zero I/O of its
     own. Exists so a caller that already has an already-fetched, already-
     tag-filtered readings list (e.g. LTSAKnowledge.condition_monitoring_
