@@ -3,7 +3,8 @@
 Status: FINAL CHECKPOINT (overnight run 2026-09-23 → 2026-09-24, worker RYZEN)
 Phase gate reached: `LTSA_HISTORICAL_CM_RYZEN_FINAL_CHECKPOINT_R1`: parser generalization complete, branch pushed, **read-only** production reconciliation complete. No production write of any kind.
 Addendum 2026-09-24: `LTSA_HISTORICAL_CM_SAFE_IMPORT_SET_R1` fixed a hash-pinned Batch A import set of 2,907 rows (§8).
-Next gate: `LTSA_HISTORICAL_CM_BATCH_A_IMPORT_EXECUTOR_R1` (§8.6). Batch A excludes every unresolved population, so it does not wait on the §6 decisions.
+Addendum 2026-09-24 (laptop): `LTSA_HISTORICAL_CM_BATCH_A_IMPORT_EXECUTOR_R1` implemented and tested; nothing imported (§9).
+Next gate: `LTSA_HISTORICAL_CM_BATCH_A_PRODUCTION_DRY_RUN_R1` (§9.5). Batch A excludes every unresolved population, so it does not wait on the §6 decisions.
 
 ## 1. Checkpoint fields
 
@@ -326,3 +327,74 @@ The executor must:
 10. verify post-import invariants: total = baseline + inserted; no pre-existing row changed (compare the `updated_at` / fingerprint of the snapshotted rows); every manifest row present exactly once with an identical measurement fingerprint;
 11. run a second dry run after the import, which must propose **0** inserts;
 12. write `provenance=HISTORICAL_IMPORT` and populate source provenance (`source_reference`, and document/page/row where columns exist), reusing the existing repository insert path rather than a new SQL path.
+
+## 9. Batch A import executor (`LTSA_HISTORICAL_CM_BATCH_A_IMPORT_EXECUTOR_R1`)
+
+Implemented on the laptop, 2026-09-24. **No import, no production access, no database write** in this phase. The only database used was a disposable local test container.
+
+### 9.1 Files
+
+All under `PRODUCTS/LTSA-BRAIN/INGESTION/`:
+
+- `historical_cm_batch_a_import_executor.py`: the executor.
+- `TEST/test_historical_cm_batch_a_import_executor.py`: 80 tests. They use a synthetic 2,907-row manifest with the frozen header contract and an in-memory transactional store.
+- `TEST/test_historical_cm_batch_a_import_executor_real_db.py`: 5 tests. They run the real generated SQL against a disposable `postgres:16-alpine` container (canonical schema + migrations + the migration 038 column), and are skipped when Docker is down.
+
+### 9.2 How it runs (each step aborts the run on failure)
+
+1. **Hash.** SHA-256 of the manifest's raw bytes is checked against `--expected-sha256` *before* parsing. The manifest is only read, never rewritten.
+2. **Manifest validation.**
+   - Header: `manifest=LTSA_HISTORICAL_CM_BATCH_A`, `row_count=2907` (= `len(rows)`), `production_total_cm_at_planning=2092`, `expected_total_cm_after=4999`, `insert_only=true`.
+   - Rows: `proposed_source_reference` well-formed and unique; `asset_code+reading_date` unique; `asset_code == tag`; no excluded tag (DMI-P-201A/B, 701/702-MM-51, 140-P-3B) and no HSC_SPK area.
+   - `reading_date` is an ISO calendar date, not in the future, and inside the row's `year`/`month`.
+   - `measurements`: exactly the 20 FORMAT_A keys + `pump_operating_state`. Numbers are finite or null. Leak values are strictly `true`/`false`/`null`. A numeric `pump_operating_state` is rejected (the §4 column-shift signature).
+   - `api_plan_snapshot` key present (text or null).
+3. **Read-only preflight.** Every read runs in `BEGIN TRANSACTION READ ONLY`. It checks:
+   - `api_plan_snapshot` column present;
+   - baseline = current total − manifest rows already present, must be 2,092, else ABORT / REPLAN;
+   - no foreign `source_reference` or reading-code collision;
+   - no live row at a manifest asset+date;
+   - exactly one `asset_registry` row per asset, with `asset_type = 'PUMP'`;
+   - no rows with the `ltsa_hist_cm_pdf:` prefix other than this manifest's own;
+   - a partial import is refused unless `--allow-resume`.
+   Output: `PROPOSED_INSERTS` / `ALREADY_IMPORTED` / `UPDATES=0` / `DELETES=0`.
+4. **Apply (`--mode apply` only).** Refused unless all of these hold: the manifest hash equals the frozen `80542d3c…47af0`; `--confirm-production-write LTSA_HISTORICAL_CM_BATCH_A` is given; `--backup-file` exists and matches `--backup-sha256`; and `--expected-inserts` equals the proposal.
+   - Each batch (default 250 rows) is one script: `BEGIN` → `LOCK` → DO-block precheck (total, references, codes, occurrences, assets) → one multi-row `INSERT` → DO-block postcheck → `COMMIT`.
+   - A failed batch rolls back as a whole, and the run stops with `BATCH_FAILED`, committed batch/row counts and a rollback check. No later batch runs.
+5. **Post-import verification.**
+   - total = baseline + 2,907;
+   - every row not carrying the `ltsa_hist_cm_pdf:` prefix is unchanged (per-row md5 fingerprint);
+   - every manifest row is present exactly once, field-identical;
+   - a second dry run must propose **0**.
+
+Written values: `condition_monitoring_reading_code = LTSA-CMONR-HISTPDF-<sha1(ref)[:16]>`, `condition_monitoring_schedule_code = UNSCHEDULED::<source_document>` (the existing `build_unscheduled_reference`), `asset_type='PUMP'`, `provenance='HISTORICAL_IMPORT'`, `workflow_status='FINALIZED'` (same as the existing historical XLSX importer), `source_reference`, `source_workbook_name=<source PDF>`, `source_row_number`, and `api_plan_snapshot` from the manifest row only. `created_by`/`finding` are left NULL, and no `record_change_history` row is written. The existing historical XLSX importer does the same.
+
+**Insert-only by construction.**
+- Every write script passes `_assert_insert_only`, which refuses UPDATE…SET, DELETE, ON CONFLICT, MERGE, TRUNCATE, DDL, and INSERT into any other table.
+- There is exactly one write call site.
+- `asset_registry` and `ltsa_pumps` are only ever read.
+- The existing repository `create_*` methods were deliberately **not** reused: on the dashboard branch (2afdfe9) they fill `api_plan_snapshot` from `ltsa_pumps.api_plan`, which is the master-plan fallback this batch forbids. The transport (`DatabaseRunner`, docker-compose psql or direct connect) is reused unchanged.
+
+### 9.3 Manifest schema assumption (verify at the production dry run)
+
+The real manifest is on RYZEN only (§8.5 blocker) and was **not available on the laptop**. So its SHA-256 was not verified here, and the executor was never run against it.
+- Key names follow §8.1: top-level `rows`; per row `source_row`, `source_page`, `source_document`, `tag`, `asset_code`, `year`, `month`, `area`, `api_plan_snapshot`, `measurements`, `proposed_source_reference`.
+- If the real file uses different key names, the executor aborts with `MANIFEST_SCHEMA_INVALID` / `MANIFEST_ROWS_INVALID`. It fails closed and never guesses.
+- `measurement_fingerprint` is carried but not recomputed, because its serialization lives in the uncommitted RYZEN planning script. Instead, identity is proven by a field-level comparison with the stored row.
+
+### 9.4 Leak alert contract (downstream UI, not implemented here)
+
+Historical measurement values are never changed.
+- `mechanical_seal_leak_de = true` OR `mechanical_seal_leak_nde = true` → **LEAK_DETECTED**.
+- `false` → NO_LEAK. `null` → N/A (unknown, never shown as "no leak").
+- Historical occurrence: an occurrence keeps its leak alert permanently.
+- Current Condition: alert only when the **latest valid** CM occurrence has leak = true. An older leak does not raise the current alert.
+- UI implementation is out of scope for the executor.
+
+### 9.5 Production write gate
+
+Next: `LTSA_HISTORICAL_CM_BATCH_A_PRODUCTION_DRY_RUN_R1`, a separate mission.
+- Bring the manifest to the machine that runs the executor and verify `80542d3c…47af0`.
+- Then run `python historical_cm_batch_a_import_executor.py --manifest <path> --expected-sha256 80542d3c94e129dc7ee82d19127a30b0c01d22f8a1c85f284231280d3e647af0 --mode dry-run --env-file … --compose-file … --report <out>`. It must report `PROPOSED_INSERTS=2907`, `UPDATES=0`, `DELETES=0`.
+
+Production import only after all of these: executor review PASS, tests PASS, manifest SHA PASS, production baseline recheck PASS (2,092), fresh production backup, backup verification PASS, production dry run proposes exactly 2,907, and explicit write approval.
