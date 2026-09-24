@@ -1,4 +1,5 @@
 import "./ConditionMonitoringReportMeasuring.css";
+import MechanicalSealLeakAlert from "./MechanicalSealLeakAlert";
 
 const dash = "—";
 
@@ -34,6 +35,9 @@ export default function ConditionMonitoringReportMeasuring({ reading, onClose })
         </div>
         <button type="button" className="workspace-quick-action-btn" onClick={onClose}>Close</button>
       </div>
+
+      {/* LTSA_CM_UI_REMEDIATION_R1D -- supplemental to the Y / N / — table below. */}
+      <MechanicalSealLeakAlert leakDe={reading.leakDe} leakNde={reading.leakNde} context={`Reading ${reading.readingDate ?? reading.id ?? ""}`.trim()} />
 
       <dl className="cmon-report-measuring-identity">
         <div><dt>Date</dt><dd>{reading.readingDate ?? dash}</dd></div>

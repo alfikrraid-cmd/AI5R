@@ -13,6 +13,7 @@ import {
 } from "../utils/conditionMonitoringMeasurementFields";
 import { isUnscheduledPlaceholder } from "../utils/conditionMonitoringMapping";
 import { leakBadgeVariant, leakPresentationFor } from "../utils/leakSemantics";
+import MechanicalSealLeakAlert from "./MechanicalSealLeakAlert";
 
 function Field({ label, value }) {
   return (
@@ -301,6 +302,9 @@ export default function ConditionMonitoringReadingDetailPanel({
           </p>
         </Card>
       )}
+
+      {/* LTSA_CM_UI_REMEDIATION_R1D -- this occurrence only, not the asset's current state. */}
+      <MechanicalSealLeakAlert leakDe={reading.leakDe} leakNde={reading.leakNde} context={`Reading ${reading.readingDate ?? reading.id}`} />
 
       <Card title="Reading Summary">
         <Field

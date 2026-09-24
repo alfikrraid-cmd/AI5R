@@ -8,6 +8,11 @@ const VARIANT_COLOR = {
   warning: colors.warning,
   danger: colors.danger,
   purple: colors.purple,
+  // LTSA_CM_UI_REMEDIATION_R1D -- muted, readable with `colors.text` in both
+  // themes (light: #e2e8f0 with dark text; dark fallback: #1F2937 with white).
+  // Before R1D "neutral" was unknown and fell back to purple; only the CM leak
+  // presentation (UNKNOWN / partial) passes it.
+  neutral: colors.border,
 };
 
 export default function Badge({ children, variant = "purple" }) {

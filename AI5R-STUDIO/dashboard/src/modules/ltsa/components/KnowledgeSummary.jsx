@@ -1,4 +1,5 @@
 import { EmptySection } from "./KnowledgeCard";
+import MechanicalSealLeakAlert from "./MechanicalSealLeakAlert";
 
 // MWO-LTSA-032A -- KnowledgeSummary: Equipment Summary body (KnowledgeCard
 // variant="grid"). Every field that isn't available from the real
@@ -32,7 +33,18 @@ export default function KnowledgeSummary({ equipment }) {
     return <EmptySection title="Belum ada data peralatan" />;
   }
 
+  // LTSA_CM_UI_REMEDIATION_R1D -- Current Condition leak alert from the
+  // backend's canonical current reading (R1B equipment.currentCondition);
+  // never derived from the readings history here.
+  const current = equipment.currentCondition;
+  const currentLeakState = current?.activeLeak ? current.leakState : null;
+
   return (
+    <>
+    <MechanicalSealLeakAlert
+      state={currentLeakState}
+      context={`Current Condition${current?.readingDate ? ` · ${String(current.readingDate).slice(0, 10)}` : ""}`}
+    />
     <div className="eng-summary-grid" data-testid="knowledge-summary">
       <Field label="Tag" value={equipment.tag} />
       <Field label="Name" value={equipment.name} />
@@ -44,5 +56,6 @@ export default function KnowledgeSummary({ equipment }) {
       <Field label="Generated At" value={equipment.lastUpdated} />
       {equipment.aiSummary ? <p className="eng-summary-ai">{equipment.aiSummary}</p> : null}
     </div>
+    </>
   );
 }

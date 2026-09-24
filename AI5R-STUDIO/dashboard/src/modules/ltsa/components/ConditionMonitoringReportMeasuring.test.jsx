@@ -41,7 +41,7 @@ test.each([
   [null, false, "—", "N"],
 ])("keeps the Y / N / — leak cells for DE=%s NDE=%s (R1C non-regression)", (leakDe, leakNde, de, nde) => {
   render(<ConditionMonitoringReportMeasuring reading={{ ...reading, leakDe, leakNde }} />);
-  const cells = screen.getByText("Mechanical Seal Leak", { exact: false }).closest("tr").querySelectorAll("td");
+  const cells = screen.getByText("Mechanical Seal Leak", { selector: "th" }).closest("tr").querySelectorAll("td");
   expect([cells[0].textContent, cells[1].textContent]).toEqual([de, nde]);
 });
 
