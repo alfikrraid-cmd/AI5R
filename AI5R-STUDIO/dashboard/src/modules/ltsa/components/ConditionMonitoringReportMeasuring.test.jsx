@@ -33,6 +33,18 @@ test("shows a missing snapshot as a dash without using the master API Plan", () 
   expect(screen.queryByText("23/61")).toBeNull();
 });
 
+test.each([
+  [true, false, "Y", "N"],
+  [false, true, "N", "Y"],
+  [null, null, "—", "—"],
+  [true, null, "Y", "—"],
+  [null, false, "—", "N"],
+])("keeps the Y / N / — leak cells for DE=%s NDE=%s (R1C non-regression)", (leakDe, leakNde, de, nde) => {
+  render(<ConditionMonitoringReportMeasuring reading={{ ...reading, leakDe, leakNde }} />);
+  const cells = screen.getByText("Mechanical Seal Leak", { exact: false }).closest("tr").querySelectorAll("td");
+  expect([cells[0].textContent, cells[1].textContent]).toEqual([de, nde]);
+});
+
 test("closes the occurrence report", async () => {
   const onClose = vi.fn();
   render(<ConditionMonitoringReportMeasuring reading={reading} onClose={onClose} />);

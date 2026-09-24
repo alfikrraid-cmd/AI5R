@@ -16,6 +16,7 @@ import {
   EngineeringAIRecommendation,
   EngineeringAISourceReferences,
 } from "./engineering-ai";
+import { leakPresentationFor } from "../utils/leakSemantics";
 
 /**
  * MWO-LTSA-050 -- Pump Workspace, migrated to the same Open Design
@@ -191,15 +192,8 @@ function summarizeCmonLeak(payload) {
   if (payload?.finding) {
     return payload.finding;
   }
-  const leakDe = payload?.mechanical_seal_leak_de;
-  const leakNde = payload?.mechanical_seal_leak_nde;
-  if (leakDe === true || leakNde === true) {
-    return "Leak detected";
-  }
-  if (leakDe === false || leakNde === false) {
-    return "No leak";
-  }
-  return "Leak status not recorded";
+  // LTSA_CM_UI_REMEDIATION_R1C -- canonical state: a one-sided "no leak" is partial.
+  return leakPresentationFor(payload?.mechanical_seal_leak_de, payload?.mechanical_seal_leak_nde).label;
 }
 
 function summarizeCmonEvent(payload) {

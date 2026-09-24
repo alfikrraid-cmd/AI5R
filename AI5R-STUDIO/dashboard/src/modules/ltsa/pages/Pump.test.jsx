@@ -803,7 +803,7 @@ describe("Engineering Navigation (MWO-LTSA-070)", () => {
 
     const cmonRow = (await screen.findByText("Condition Monitoring CMONR-2")).closest(".part-item");
     expect(cmonRow.textContent).toContain("Standby");
-    expect(cmonRow.textContent).toContain("No leak");
+    expect(cmonRow.textContent).toContain("No Leak"); // R1C canonical label (DE=false, NDE=false)
   });
 
   it("same visit: a PM occurrence and an INSPECTION reading sharing the same date are both flagged Same Visit", async () => {

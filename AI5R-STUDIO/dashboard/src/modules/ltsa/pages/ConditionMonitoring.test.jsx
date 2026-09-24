@@ -224,6 +224,36 @@ describe("Condition Monitoring workspace page", () => {
     expect(screen.queryByText("CMON-READ-102")).toBeNull();
   });
 
+  it("keeps unrecorded and one-sided readings out of the No Leak bucket (R1C)", async () => {
+    loadDefaults();
+    getConditionMonitoringReadings.mockResolvedValue([
+      ...READINGS,
+      { ...READINGS[1], condition_monitoring_reading_code: "CMON-READ-NULL", mechanical_seal_leak_de: null, mechanical_seal_leak_nde: null },
+      { ...READINGS[1], condition_monitoring_reading_code: "CMON-READ-DEONLY", mechanical_seal_leak_de: false, mechanical_seal_leak_nde: null },
+      { ...READINGS[1], condition_monitoring_reading_code: "CMON-READ-NDEONLY", mechanical_seal_leak_de: null, mechanical_seal_leak_nde: false },
+    ]);
+    render(<ConditionMonitoring />);
+    const table = await cmonTable();
+    await within(table).findByText("CMON-READ-NULL");
+    const filter = screen.getByRole("combobox", { name: /leak status/i });
+    const visible = () =>
+      ["CMON-READ-101", "CMON-READ-102", "CMON-READ-NULL", "CMON-READ-DEONLY", "CMON-READ-NDEONLY"].filter(
+        (id) => within(table).queryByText(id) !== null
+      );
+
+    fireEvent.change(filter, { target: { value: "NORMAL" } });
+    expect(visible()).toEqual(["CMON-READ-102"]);
+
+    fireEvent.change(filter, { target: { value: "PARTIAL" } });
+    expect(visible()).toEqual(["CMON-READ-DEONLY", "CMON-READ-NDEONLY"]);
+
+    fireEvent.change(filter, { target: { value: "UNKNOWN" } });
+    expect(visible()).toEqual(["CMON-READ-NULL"]);
+
+    fireEvent.change(filter, { target: { value: "LEAK" } });
+    expect(visible()).toEqual(["CMON-READ-101"]);
+  });
+
   it("shows reading detail when a reading row is clicked", async () => {
     loadDefaults();
     render(<ConditionMonitoring />);
@@ -231,8 +261,11 @@ describe("Condition Monitoring workspace page", () => {
     await within(table).findByText("CMON-READ-101");
     fireEvent.click(within(table).getByText("CMON-READ-101"));
 
-    expect(await screen.findByRole("heading", { name: "Reading Summary" })).toBeTruthy();
-    expect(screen.getByText("Leak detected")).toBeTruthy();
+    const summaryHeading = await screen.findByRole("heading", { name: "Reading Summary" });
+    expect(summaryHeading).toBeTruthy();
+    // R1C canonical label for DE=true / NDE=false (the table row shows it too).
+    const summaryCard = summaryHeading.closest("section, article, div[class]") ?? document.body;
+    expect(within(summaryCard).getByText("Leak Detected — DE")).toBeTruthy();
   });
 
   it("opens the Create Reading modal when the header action is clicked", async () => {

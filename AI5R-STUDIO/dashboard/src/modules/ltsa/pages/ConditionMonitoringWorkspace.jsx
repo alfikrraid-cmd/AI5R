@@ -33,6 +33,11 @@ import { useWorkspaceTheme } from "../workspace/WorkspaceTheme";
 import { useWorkspaceShortcuts } from "../workspace/WorkspaceShortcuts";
 import { useWorkspaceDrawer } from "../workspace/WorkspaceDrawer";
 import { WORKSPACE_KEYS } from "../workspace/WorkspaceRegistry";
+import { isActiveLeak, leakBucket, leakState } from "../utils/leakSemantics";
+
+// LTSA_CM_UI_REMEDIATION_R1C -- timeline tier per occurrence state: only a
+// confirmed no-leak reading is "normal"; unrecorded/partial readings are not.
+const LEAK_TIMELINE_TIER = { LEAK: "attention", NORMAL: "normal", PARTIAL: "unrecorded", UNKNOWN: "unrecorded" };
 
 const unavailable = (label) => <PumpWorkspaceComingSoon label={label} />;
 const fmt = (value, suffix = "") => value == null || value === "" ? "Unavailable" : `${value}${suffix}`;
@@ -152,7 +157,7 @@ export default function ConditionMonitoringWorkspace({ navContext, onNavigate })
   const pumpReadings = useMemo(() => readings.filter((item) => item.equipmentTag === selectedTag).sort((a, b) => String(b.readingDate).localeCompare(String(a.readingDate))), [readings, selectedTag]);
   const latest = pumpReadings[0] ?? null;
   const schedule = schedules.find((item) => item.equipmentTag === selectedTag) ?? null;
-  const abnormalReadings = useMemo(() => pumpReadings.filter((item) => item.leakDe || item.leakNde), [pumpReadings]);
+  const abnormalReadings = useMemo(() => pumpReadings.filter((item) => isActiveLeak(leakState(item.leakDe, item.leakNde))), [pumpReadings]);
   const relatedPM = useMemo(() => pmSchedules.filter((item) => item.equipmentTag === selectedTag), [pmSchedules, selectedTag]);
   const relatedFailureAnalysis = useMemo(() => failureAnalysisReports.filter((item) => item.equipmentTag === selectedTag), [failureAnalysisReports, selectedTag]);
 
@@ -198,7 +203,7 @@ export default function ConditionMonitoringWorkspace({ navContext, onNavigate })
   const aiStatusText = aiLoading ? "Generating condition review…" : (aiError || aiBusinessError || "Engineering AI has not run for this pump yet.");
   const aiStatusVariant = aiLoading ? "neutral" : (aiError || aiBusinessError) ? "critical" : aiReady ? (aiResponse.execution_status === "SUCCESS" ? "normal" : "attention") : "unavailable";
   const aiStatusLabel = aiLoading ? "Generating…" : (aiError || aiBusinessError) ? "Error" : aiReady ? aiResponse.execution_status : "Unavailable";
-  const timeline = useMemo(() => pumpReadings.map((item) => ({ id: item.id, tier: item.leakDe || item.leakNde ? "attention" : "normal", tag: "Reading", title: `Condition monitoring reading ${item.id}`, date: item.readingDate })), [pumpReadings]);
+  const timeline = useMemo(() => pumpReadings.map((item) => ({ id: item.id, tier: LEAK_TIMELINE_TIER[leakBucket(leakState(item.leakDe, item.leakNde))], tag: "Reading", title: `Condition monitoring reading ${item.id}`, date: item.readingDate })), [pumpReadings]);
   const showDrawer = useCallback((label) => setDrawer(label), []);
   const scrollTo = useCallback((id) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth" }), []);
   // MWO-LTSA-061 -- "thresholds"/"recommendation" now scroll to real,

@@ -4,6 +4,23 @@ import {
   statusBadgeVariant as woStatusBadgeVariant,
   statusLabel as woStatusLabel,
 } from "./workOrderStatus";
+import { isActiveLeak, leakBucket, leakPresentation, leakState } from "./leakSemantics";
+
+// LTSA_CM_UI_REMEDIATION_R1C -- CMON event status per canonical bucket. Only a
+// confirmed no-leak reading is NORMAL (green); unrecorded/partial are neutral.
+const CMON_BUCKET_STATUS = { LEAK: "LEAK_DETECTED", NORMAL: "NORMAL", PARTIAL: "LEAK_PARTIALLY_RECORDED", UNKNOWN: "LEAK_NOT_RECORDED" };
+const CMON_STATUS_BADGE = { LEAK_DETECTED: "danger", NORMAL: "success", LEAK_PARTIALLY_RECORDED: "neutral", LEAK_NOT_RECORDED: "neutral" };
+const CMON_STATUS_LABEL = { LEAK_DETECTED: "Leak Detected", NORMAL: "No Leak", LEAK_PARTIALLY_RECORDED: "Leak Partially Recorded", LEAK_NOT_RECORDED: "Leak Not Recorded" };
+const CMON_STATUS_TITLE = {
+  LEAK_DETECTED: "Seal leak detected during inspection",
+  NORMAL: "Routine inspection - no leak",
+  LEAK_PARTIALLY_RECORDED: "Routine inspection - leak status partially recorded",
+  LEAK_NOT_RECORDED: "Routine inspection - leak status not recorded",
+};
+
+function triState(value) {
+  return value === true || value === false ? value : null;
+}
 
 const EVENT_TYPE_VARIANT = {
   PM: "info",
@@ -120,7 +137,7 @@ export function assetEventStatusBadgeVariant(event) {
   if (event.type === "WO") return woStatusBadgeVariant(event.status);
   if (event.type === "CM") return cmStatusBadgeVariant(event.status);
   if (event.type === "PM") return event.status === "DONE" ? "success" : "purple";
-  if (event.type === "CMON") return event.status === "LEAK_DETECTED" ? "danger" : "success";
+  if (event.type === "CMON") return CMON_STATUS_BADGE[event.status] ?? "neutral";
   return "success";
 }
 
@@ -128,7 +145,7 @@ export function assetEventStatusLabel(event) {
   if (event.type === "WO") return woStatusLabel(event.status);
   if (event.type === "CM") return cmStatusLabel(event.status);
   if (event.type === "PM") return event.status === "DONE" ? "Done" : (event.status ?? "Unknown");
-  if (event.type === "CMON") return event.status === "LEAK_DETECTED" ? "Leak Detected" : "Normal";
+  if (event.type === "CMON") return event.raw?.leakState ? leakPresentation(event.raw.leakState).label : (CMON_STATUS_LABEL[event.status] ?? event.status);
   return "Logged";
 }
 
@@ -140,8 +157,7 @@ export function assetFilterStatusLabel(status) {
   if (cmLabel !== status) return cmLabel;
 
   if (status === "LOGGED") return "Logged";
-  if (status === "LEAK_DETECTED") return "Leak Detected";
-  if (status === "NORMAL") return "Normal";
+  if (CMON_STATUS_LABEL[status]) return CMON_STATUS_LABEL[status];
   if (status === "DONE") return "Done";
 
   return status;
@@ -225,14 +241,19 @@ export function mapPMOccurrenceToEvent(record) {
 }
 
 export function mapConditionMonitoringReadingToEvent(record) {
-  const leakDetected = record.mechanical_seal_leak_de === true || record.mechanical_seal_leak_nde === true;
+  // LTSA_CM_UI_REMEDIATION_R1C -- raw DE/NDE stay tri-state (true/false/null);
+  // status/title come from this occurrence's canonical leak state.
+  const leakDe = triState(record.mechanical_seal_leak_de);
+  const leakNde = triState(record.mechanical_seal_leak_nde);
+  const state = leakState(leakDe, leakNde);
+  const status = CMON_BUCKET_STATUS[leakBucket(state)];
 
   return {
     id: record.condition_monitoring_reading_code,
     type: "CMON",
     date: formatDateOnly(record.reading_date),
-    title: leakDetected ? "Seal leak detected during inspection" : "Routine inspection - normal",
-    status: leakDetected ? "LEAK_DETECTED" : "NORMAL",
+    title: CMON_STATUS_TITLE[status],
+    status,
     assignedTechnician: null,
     equipmentTag: record.asset_code,
     raw: {
@@ -242,8 +263,10 @@ export function mapConditionMonitoringReadingToEvent(record) {
       suctionTemp: record.suction_temp,
       dischargeTemp: record.discharge_temp,
       pumpOperatingState: record.pump_operating_state,
-      leakDe: record.mechanical_seal_leak_de === true,
-      leakNde: record.mechanical_seal_leak_nde === true,
+      leakDe,
+      leakNde,
+      leakState: state,
+      activeLeak: isActiveLeak(state),
     },
   };
 }

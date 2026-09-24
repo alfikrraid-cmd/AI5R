@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isActiveLeak, LEAK_STATES, leakPresentation, leakPresentationFor, leakState } from "./leakSemantics";
+import { isActiveLeak, LEAK_STATES, leakBadgeVariant, leakBucket, leakPresentation, leakPresentationFor, leakState } from "./leakSemantics";
 
 const TRUTH_TABLE = [
   [true, true, "LEAK_DE_AND_NDE"],
@@ -91,5 +91,26 @@ describe("leakPresentation", () => {
 
   it("falls back to UNKNOWN for an unrecognised state", () => {
     expect(leakPresentation("SOMETHING_ELSE")).toMatchObject({ state: "UNKNOWN", label: "Not Recorded", tone: "neutral" });
+  });
+});
+
+describe("leakBadgeVariant / leakBucket (R1C)", () => {
+  it.each([
+    [true, null, "danger", "LEAK"],
+    [null, true, "danger", "LEAK"],
+    [true, true, "danger", "LEAK"],
+    [false, false, "success", "NORMAL"],
+    [false, null, "neutral", "PARTIAL"],
+    [null, false, "neutral", "PARTIAL"],
+    [null, null, "neutral", "UNKNOWN"],
+  ])("DE=%s NDE=%s -> badge %s, bucket %s", (de, nde, variant, bucket) => {
+    const p = leakPresentationFor(de, nde);
+    expect(leakBadgeVariant(p.tone)).toBe(variant);
+    expect(leakBucket(p.state)).toBe(bucket);
+  });
+
+  it("never maps an unknown tone to success", () => {
+    expect(leakBadgeVariant(undefined)).toBe("neutral");
+    expect(leakBadgeVariant("whatever")).toBe("neutral");
   });
 });

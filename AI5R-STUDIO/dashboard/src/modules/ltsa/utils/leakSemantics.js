@@ -67,3 +67,25 @@ export function leakPresentationFor(de, nde) {
   const recorded = (value) => value === true || value === false;
   return { ...leakPresentation(state), isComplete: recorded(de) && recorded(nde) };
 }
+
+// LTSA_CM_UI_REMEDIATION_R1C -- presentation helpers shared by occurrence views.
+
+const BADGE_VARIANT = Object.freeze({ critical: "danger", normal: "success", neutral: "neutral" });
+
+/** design-system Badge variant for a presentation tone; unknown tones are neutral. */
+export function leakBadgeVariant(tone) {
+  return BADGE_VARIANT[tone] ?? "neutral";
+}
+
+export const LEAK_BUCKETS = Object.freeze({ LEAK: "LEAK", NORMAL: "NORMAL", PARTIAL: "PARTIAL", UNKNOWN: "UNKNOWN" });
+
+/**
+ * Filter/classification bucket for an occurrence state: only a confirmed
+ * NO_LEAK is NORMAL; one-sided records are PARTIAL; nothing recorded is UNKNOWN.
+ */
+export function leakBucket(state) {
+  if (isActiveLeak(state)) return LEAK_BUCKETS.LEAK;
+  if (state === LEAK_STATES.NO_LEAK) return LEAK_BUCKETS.NORMAL;
+  if (state === LEAK_STATES.NO_LEAK_DE_ONLY || state === LEAK_STATES.NO_LEAK_NDE_ONLY) return LEAK_BUCKETS.PARTIAL;
+  return LEAK_BUCKETS.UNKNOWN;
+}

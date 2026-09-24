@@ -12,6 +12,7 @@ import { mapConditionMonitoringReadingRecord } from "../utils/conditionMonitorin
 import { classifyPMOccurrence, classifyConditionMonitoringReading } from "../utils/historicalBatchReviewClassification";
 import { useOptionalAuth } from "../auth/AuthContext";
 import { can, PERMISSIONS } from "../auth/permissions";
+import { leakPresentationFor } from "../utils/leakSemantics";
 
 // MWO-LTSA-PM-CMON-HISTORICAL-BATCH-REVIEW-019 -- a review QUEUE over the
 // July 2026 historical-import backlog MWO-018 identified (provenance=
@@ -270,7 +271,7 @@ export default function HistoricalBatchReview({ onNavigate }) {
                           ? `Mechseal ${record.mechsealTempDe ?? "—"}/${record.mechsealTempNde ?? "—"} °C`
                           : "No measurement"}
                     </td>
-                    <td>{domain === "PM" ? (record.finding || "—") : (record.leakDe || record.leakNde ? "Leak" : "No leak recorded")}</td>
+                    <td>{domain === "PM" ? (record.finding || "—") : leakPresentationFor(record.leakDe, record.leakNde).label}</td>
                     <td>{record.sourceReference ?? record.provenance}</td>
                     <td>{record.workflowStatus}</td>
                     <td>{evidence ? <Badge variant={evidenceBadgeVariant(evidence)}>{evidence === "READY_FOR_REVIEW" ? "Ready" : "Needs Attention"}</Badge> : "—"}</td>

@@ -5,6 +5,7 @@ import spacing from "../../../design-system/theme/spacing";
 import PMOccurrenceDetailPanel from "./PMOccurrenceDetailPanel";
 import ConditionMonitoringReadingDetailPanel from "./ConditionMonitoringReadingDetailPanel";
 import { WorkflowStatusBadge } from "./WorkflowStatusBadge";
+import { leakPresentationFor } from "../utils/leakSemantics";
 
 // MWO-LTSA-ASSET360-CONSOLIDATION-001 -- Section D, "Unified Maintenance
 // History". This is DISPLAY-ONLY merging: each row still points at its own
@@ -167,8 +168,8 @@ function pmSummary(occurrence) {
 function cmonSummary(reading) {
   const state = reading.pumpOperatingState ?? "N/A";
   if (reading.finding) return `${state} — ${reading.finding}`;
-  if (reading.leakDe || reading.leakNde) return `${state} — Leak detected`;
-  return `${state} — No leak recorded`;
+  // LTSA_CM_UI_REMEDIATION_R1C -- this occurrence's own canonical leak state.
+  return `${state} — ${leakPresentationFor(reading.leakDe, reading.leakNde).label}`;
 }
 
 const TYPE_LABEL = {

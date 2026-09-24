@@ -6,6 +6,7 @@ import { InfoRow, RefGroup } from "./open-design";
 import { WorkflowStatusBadge, TechnicalOutcomeBadge } from "./WorkflowStatusBadge";
 import { isUnscheduledPlaceholder } from "../utils/conditionMonitoringMapping";
 import TemperatureTrendChart from "./TemperatureTrendChart";
+import { leakPresentationFor } from "../utils/leakSemantics";
 
 /**
  * UI-D3.2 -- Condition Monitoring Open Design View (APP-CMON-001)
@@ -68,12 +69,10 @@ export default function ConditionMonitoringOpenDesignView({
 }) {
   const [activeTab, setActiveTab] = useState("overview");
 
-  const leakDetected = Boolean(reading.leakDe || reading.leakNde);
-  const hasLeakInfo =
-    (reading.leakDe !== null && reading.leakDe !== undefined) ||
-    (reading.leakNde !== null && reading.leakNde !== undefined);
-  const leakDisplay = leakDetected ? "Detected" : hasLeakInfo ? "Not Detected" : "N/A";
-  const leakTone = leakDetected ? "critical" : hasLeakInfo ? "normal" : "neutral";
+  // LTSA_CM_UI_REMEDIATION_R1C -- canonical tri-state (a one-sided record is partial, not "Not Detected").
+  const leakSummary = leakPresentationFor(reading.leakDe, reading.leakNde);
+  const leakDisplay = leakSummary.label;
+  const leakTone = leakSummary.tone;
 
   const hasSchedule = reading.scheduleCode && !isUnscheduledPlaceholder(reading.scheduleCode);
   const assetTypeLabel = reading.assetType ? reading.assetType : "Equipment";

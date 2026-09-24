@@ -69,6 +69,8 @@ export default function ConditionMonitoringReadingFilterBar({
         <option value="ALL">All Seal Leak Status</option>
         <option value="LEAK">Leak Detected</option>
         <option value="NORMAL">No Leak</option>
+        <option value="PARTIAL">Partially Recorded</option>
+        <option value="UNKNOWN">Not Recorded</option>
       </select>
 
       {onAreaFilterChange && (

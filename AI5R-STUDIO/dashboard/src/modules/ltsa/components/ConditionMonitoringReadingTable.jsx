@@ -1,5 +1,6 @@
 import { Badge } from "../../../design-system";
 import { WorkflowStatusBadge } from "./WorkflowStatusBadge";
+import { leakBadgeVariant, leakPresentationFor } from "../utils/leakSemantics";
 
 /**
  * UI-D3.2 -- Condition Monitoring Reading registry table
@@ -76,11 +77,7 @@ export default function ConditionMonitoringReadingTable({
           <tbody>
             {readings.map((reading) => {
               const isSelected = reading.id === selectedId;
-              const leakDetected = Boolean(reading.leakDe || reading.leakNde);
-              const hasLeakInfo =
-                (reading.leakDe !== null && reading.leakDe !== undefined) ||
-                (reading.leakNde !== null && reading.leakNde !== undefined);
-              const leakLabel = leakDetected ? "Leak Detected" : hasLeakInfo ? "No Leak" : "Not Recorded";
+              const leakSummary = leakPresentationFor(reading.leakDe, reading.leakNde);
 
               return (
                 <tr
@@ -102,9 +99,7 @@ export default function ConditionMonitoringReadingTable({
                     <WorkflowStatusBadge status={reading.workflowStatus} />
                   </td>
                   <td>
-                    <Badge variant={leakDetected ? "danger" : hasLeakInfo ? "success" : "neutral"}>
-                      {leakLabel}
-                    </Badge>
+                    <Badge variant={leakBadgeVariant(leakSummary.tone)}>{leakSummary.label}</Badge>
                   </td>
                   <td>{tempPair(reading)}</td>
                   <td>{truncate(reading.finding)}</td>
@@ -119,11 +114,7 @@ export default function ConditionMonitoringReadingTable({
       <div className="cmon-card-list">
         {readings.map((reading) => {
           const isSelected = reading.id === selectedId;
-          const leakDetected = Boolean(reading.leakDe || reading.leakNde);
-          const hasLeakInfo =
-            (reading.leakDe !== null && reading.leakDe !== undefined) ||
-            (reading.leakNde !== null && reading.leakNde !== undefined);
-          const leakLabel = leakDetected ? "Leak Detected" : hasLeakInfo ? "No Leak" : "Not Recorded";
+          const leakSummary = leakPresentationFor(reading.leakDe, reading.leakNde);
 
           return (
             <div
@@ -147,9 +138,7 @@ export default function ConditionMonitoringReadingTable({
                   <strong>{reading.equipmentTag ?? "N/A"}</strong>
                   {reading.area ? ` · ${reading.area}` : ""}
                 </span>
-                <Badge variant={leakDetected ? "danger" : hasLeakInfo ? "success" : "neutral"}>
-                  {leakLabel}
-                </Badge>
+                <Badge variant={leakBadgeVariant(leakSummary.tone)}>{leakSummary.label}</Badge>
               </div>
               <div className="cmon-card-meta">
                 <span>Mechseal: {tempPair(reading)}</span>

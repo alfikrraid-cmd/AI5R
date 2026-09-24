@@ -34,6 +34,7 @@ import { useOptionalAuth } from "../auth/AuthContext";
 import { can, PERMISSIONS } from "../auth/permissions";
 import "./ConditionMonitoring.css";
 import "./LTSAOpenDesign.css";
+import { isActiveLeak, leakBucket, leakState } from "../utils/leakSemantics";
 
 const VIEWS = [
   { key: "readings", label: "Readings" },
@@ -249,11 +250,9 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
           return false;
         }
 
-        const leakDetected = reading.leakDe || reading.leakNde;
-        if (readingLeakFilter === "LEAK" && !leakDetected) {
-          return false;
-        }
-        if (readingLeakFilter === "NORMAL" && leakDetected) {
+        // LTSA_CM_UI_REMEDIATION_R1C -- LEAK / NORMAL (confirmed no leak only) /
+        // PARTIAL / UNKNOWN; unrecorded or one-sided readings are never NORMAL.
+        if (readingLeakFilter !== "ALL" && leakBucket(leakState(reading.leakDe, reading.leakNde)) !== readingLeakFilter) {
           return false;
         }
 
@@ -289,7 +288,7 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
     [readings]
   );
   const leakDetectedCount = useMemo(
-    () => readings.filter((r) => r.leakDe || r.leakNde).length,
+    () => readings.filter((r) => isActiveLeak(leakState(r.leakDe, r.leakNde))).length,
     [readings]
   );
   const inReviewCount = useMemo(

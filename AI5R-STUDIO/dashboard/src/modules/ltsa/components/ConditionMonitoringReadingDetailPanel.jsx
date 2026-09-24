@@ -12,6 +12,7 @@ import {
   measurementFormValuesFromReading,
 } from "../utils/conditionMonitoringMeasurementFields";
 import { isUnscheduledPlaceholder } from "../utils/conditionMonitoringMapping";
+import { leakBadgeVariant, leakPresentationFor } from "../utils/leakSemantics";
 
 function Field({ label, value }) {
   return (
@@ -193,7 +194,8 @@ export default function ConditionMonitoringReadingDetailPanel({
     );
   }
 
-  const leakDetected = reading.leakDe || reading.leakNde;
+  // LTSA_CM_UI_REMEDIATION_R1C -- canonical tri-state; NULL/NULL is Not Recorded, never "No leak".
+  const leakSummary = leakPresentationFor(reading.leakDe, reading.leakNde);
   const editable = Boolean(canWrite) && EDITABLE_STATUSES.has(reading.workflowStatus);
   const reviewable = reading.workflowStatus === "SUBMITTED";
 
@@ -330,9 +332,7 @@ export default function ConditionMonitoringReadingDetailPanel({
 
         <div style={{ marginBottom: spacing.sm }}>
           <div style={{ color: colors.textMuted, fontSize: 12 }}>Seal Leak</div>
-          <Badge variant={leakDetected ? "danger" : "success"}>
-            {leakDetected ? "Leak detected" : "No leak"}
-          </Badge>
+          <Badge variant={leakBadgeVariant(leakSummary.tone)}>{leakSummary.label}</Badge>
         </div>
       </Card>
 
