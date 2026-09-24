@@ -223,8 +223,8 @@ def leak_flag_from_readings(
     """RECENT_LEAK_OBSERVED (LTSA_CM_UI_REMEDIATION_R1A): answers "was a leak
     observed within the last `window_days`?" -- legitimate recent-evidence
     analytics, NOT Current Condition / active leak. Current Condition is
-    cm_condition_evaluator.current_leak_condition() (latest SUBMITTED/
-    FINALIZED valid occurrence); consumers that present this flag as the
+    cm_condition_evaluator.current_leak_condition() (latest valid DRAFT/
+    SUBMITTED/FINALIZED occurrence); consumers that present this flag as the
     current state move to it in R1B. Rule unchanged:
 
     Pure windowing/flag logic extracted from get_pump_condition_monitoring_

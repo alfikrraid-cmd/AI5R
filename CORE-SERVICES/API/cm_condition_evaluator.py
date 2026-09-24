@@ -12,9 +12,16 @@ null is never coerced to false):
     UNKNOWN                              -- neither side recorded
 
 Current Condition = the leak state of the LATEST VALID occurrence, where
-valid means workflow SUBMITTED/FINALIZED (CURRENT_CONDITION_STATUSES), live,
-dated, asset-bound and carrying at least one observation. No fallback to an
-older occurrence, and provenance never influences selection.
+valid means workflow DRAFT/SUBMITTED/FINALIZED (CURRENT_CONDITION_STATUSES),
+live, dated, asset-bound and carrying at least one observation. No fallback to
+an older occurrence, and provenance never influences eligibility or order.
+
+DRAFT is current-eligible on purpose (R1A1): production still holds 1,598
+HISTORICAL_IMPORT rows left in DRAFT by a legacy workflow-state defect
+(remediation deferred to LTSA_HISTORICAL_CM_WORKFLOW_STATUS_REMEDIATION), and
+excluding DRAFT would fall back to older history for most of the fleet. DRAFT
+is not FINALIZED: current_leak_condition() returns the selected reading's
+workflow_status so consumers can show that distinction.
 
 The recent-window rule (maintenance_intelligence_service.
 leak_flag_from_readings) answers a different question -- RECENT_LEAK_OBSERVED,
@@ -35,8 +42,10 @@ from typing import Any, Iterable
 
 # Legacy latest-reading eligibility (equipment_360_service.cmon_latest).
 ELIGIBLE_STATUSES = frozenset({"DRAFT", "SUBMITTED", "FINALIZED"})
-# Authoritative Current Condition eligibility: DRAFT is work in progress.
-CURRENT_CONDITION_STATUSES = frozenset({"SUBMITTED", "FINALIZED"})
+# Authoritative Current Condition eligibility (R1A1): DRAFT included, see the
+# module docstring. Same set as the legacy one; kept as its own name because
+# it is the Current Condition contract, not the legacy selector's default.
+CURRENT_CONDITION_STATUSES = frozenset({"DRAFT", "SUBMITTED", "FINALIZED"})
 
 LEAK_DE_AND_NDE = "LEAK_DE_AND_NDE"
 LEAK_DE = "LEAK_DE"
@@ -181,8 +190,9 @@ def evaluate_leak(de: bool | None, nde: bool | None) -> dict[str, Any]:
 
 def current_leak_condition(readings: list[dict[str, Any]]) -> dict[str, Any]:
     """Authoritative Current Condition leak for one asset's readings: the
-    latest SUBMITTED/FINALIZED valid occurrence decides. With none, the state
-    is UNKNOWN and not active -- never an older leaking occurrence."""
+    latest valid DRAFT/SUBMITTED/FINALIZED occurrence decides, and its
+    workflow_status is returned. With none, the state is UNKNOWN and not
+    active -- never an older leaking occurrence."""
     latest = select_current_condition_cm(readings)
     if latest is None:
         return {

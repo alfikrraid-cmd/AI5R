@@ -129,7 +129,7 @@ def test_history_still_shows_the_older_leak():
 
 
 def test_no_valid_occurrence_is_unknown_and_inactive():
-    readings = [_reading("A", "2026-01-10", de=True, status="DRAFT")]
+    readings = [_reading("A", "2026-01-10", de=True, status="RETURNED_FOR_CORRECTION")]
     current = current_leak_condition(readings)
     assert current == {
         "reading_code": None, "reading_date": None, "workflow_status": None,
@@ -142,17 +142,38 @@ def test_no_valid_occurrence_is_unknown_and_inactive():
 # -- Current Condition eligibility ---------------------------------------------
 
 
-def test_current_condition_statuses_exclude_draft():
-    assert CURRENT_CONDITION_STATUSES == frozenset({"SUBMITTED", "FINALIZED"})
-    assert "DRAFT" in ELIGIBLE_STATUSES  # legacy set unchanged until R1B
+def test_current_condition_statuses_include_draft_r1a1():
+    assert CURRENT_CONDITION_STATUSES == frozenset({"DRAFT", "SUBMITTED", "FINALIZED"})
+    assert ELIGIBLE_STATUSES == CURRENT_CONDITION_STATUSES
 
 
-def test_newer_draft_does_not_displace_finalized():
+def test_newer_draft_leak_is_current_and_reports_draft():
     readings = [_reading("FIN", "2026-01-10", de=False, nde=False), _reading("DRAFT", "2026-02-10", de=True, status="DRAFT")]
-    assert select_current_condition_cm(readings)["condition_monitoring_reading_code"] == "FIN"
-    assert current_leak_condition(readings)["active"] is False
-    # Intentional domain change: the legacy selector still picks the DRAFT.
-    assert select_latest_valid_cm(readings)["condition_monitoring_reading_code"] == "DRAFT"
+    current = current_leak_condition(readings)
+    assert current["reading_code"] == "DRAFT" and current["workflow_status"] == "DRAFT"
+    assert current["state"] == "LEAK_DE" and current["active"] is True
+    assert select_latest_valid_cm(readings)["condition_monitoring_reading_code"] == "DRAFT"  # legacy agrees
+
+
+def test_newer_draft_no_leak_clears_older_finalized_leak():
+    readings = [_reading("FIN", "2026-01-10", de=True, nde=True), _reading("DRAFT", "2026-02-10", de=False, nde=False, status="DRAFT")]
+    current = current_leak_condition(readings)
+    assert current["reading_code"] == "DRAFT" and current["workflow_status"] == "DRAFT"
+    assert current["state"] == "NO_LEAK" and current["active"] is False
+
+
+def test_newer_draft_unknown_leak_never_falls_back_to_older_leak():
+    readings = [_reading("FIN", "2026-01-10", de=True), _reading("DRAFT", "2026-02-10", de=None, nde=None, status="DRAFT")]
+    current = current_leak_condition(readings)
+    assert current["reading_code"] == "DRAFT"  # valid: it carries suction_temp
+    assert current["state"] == "UNKNOWN" and current["active"] is False
+
+
+@pytest.mark.parametrize("status", ["DRAFT", "SUBMITTED", "FINALIZED"])
+def test_selected_workflow_status_is_exposed(status):
+    readings = [_reading("OLD", "2026-01-10", de=False, nde=False), _reading("NEW", "2026-02-10", de=True, status=status)]
+    current = current_leak_condition(readings)
+    assert current["reading_code"] == "NEW" and current["workflow_status"] == status
 
 
 def test_newer_submitted_is_current():
@@ -161,9 +182,26 @@ def test_newer_submitted_is_current():
     assert current_leak_condition(readings)["state"] == "LEAK_DE"
 
 
-@pytest.mark.parametrize("status", ["RETURNED_FOR_CORRECTION", "DRAFT", None, ""])
+@pytest.mark.parametrize("status", ["RETURNED_FOR_CORRECTION", None, "", "draft"])
 def test_other_workflow_statuses_are_not_current(status):
     assert is_current_condition_candidate(_reading("X", "2026-02-10", de=True, status=status)) is False
+
+
+@pytest.mark.parametrize(
+    "draft_extra",
+    [
+        {"deleted_at": "2026-02-11T00:00:00"},  # deleted DRAFT
+        {"suction_temp": None},  # DRAFT without any observation (leak also NULL)
+        {"reading_date": "2026-02-31"},  # DRAFT with an invalid date
+        {"reading_date": "not-a-date"},
+    ],
+)
+def test_unusable_draft_is_excluded(draft_extra):
+    draft = _reading("DRAFT", "2026-02-10", status="DRAFT")
+    draft.update(draft_extra)
+    readings = [_reading("FIN", "2026-01-10", de=True), draft]
+    current = current_leak_condition(readings)
+    assert current["reading_code"] == "FIN" and current["workflow_status"] == "FINALIZED"
 
 
 def test_deleted_newer_row_is_excluded():
