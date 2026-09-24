@@ -856,3 +856,83 @@ def test_main_reports_abort_with_nonzero_exit(tmp_path, capsys):
     exit_code = executor.main(["--manifest", str(path), "--expected-sha256", "0" * 64])
     output = json.loads(capsys.readouterr().out)
     assert exit_code == 2 and output["STATUS"] == "ABORTED" and output["ABORT_CODE"] == "MANIFEST_HASH_MISMATCH"
+
+
+# ---------------------------------------------------------------------------
+# Read-result parsing across transports (DOCKER_EXEC_READ_FIX_R1)
+# ---------------------------------------------------------------------------
+
+
+class _CannedRunner:
+    """Returns one canned stdout (or raises) for every query_scalar call."""
+
+    def __init__(self, output: str | None = None, error: Exception | None = None) -> None:
+        self.output, self.error, self.sql = output, error, []
+
+    def query_scalar(self, sql: str) -> str:
+        self.sql.append(sql)
+        if self.error is not None:
+            raise self.error
+        return self.output
+
+    def execute_script(self, sql: str) -> None:  # pragma: no cover - never reached by reads
+        raise AssertionError("reads must not call execute_script")
+
+
+def _store(output: str | None = None, error: Exception | None = None):
+    runner = _CannedRunner(output, error)
+    return executor.PostgresCmImportStore(runner), runner
+
+
+def test_read_nonzero_transport_failure_still_raises():
+    import subprocess
+
+    store, _ = _store(error=subprocess.CalledProcessError(1, ["docker", "compose", "exec"], stderr="boom"))
+    with pytest.raises(subprocess.CalledProcessError):
+        store.count_total()
+
+
+@pytest.mark.parametrize("raw", ["", "\n", "BEGIN", "BEGIN\n", " BEGIN \n\n"])
+def test_read_empty_result_fails(raw):
+    store, _ = _store(raw)
+    with pytest.raises(ExecutorAbort) as excinfo:
+        store.count_total()
+    assert _abort_code(excinfo) == "READ_RESULT_EMPTY"
+
+
+@pytest.mark.parametrize("raw", ["BEGIN\nabc", "BEGIN\nBEGIN\n2092", "BEGIN\n2092\n1", "ROLLBACK\n2092"])
+def test_read_malformed_numeric_result_fails(raw):
+    store, _ = _store(raw)
+    with pytest.raises(ValueError):
+        store.count_total()
+
+
+@pytest.mark.parametrize("raw", ['BEGIN\n[{"asset_code": "A"', "BEGIN\nnot json", 'BEGIN\n[]\n[{"x": 1}]'])
+def test_read_malformed_json_result_fails(raw):
+    store, _ = _store(raw)
+    with pytest.raises(json.JSONDecodeError):
+        store.registry_assets(["A"])
+
+
+def test_read_transaction_status_plus_scalar_passes():
+    store, runner = _store("BEGIN\n2092")
+    assert store.count_total() == 2092
+    assert runner.sql[0].startswith("BEGIN TRANSACTION READ ONLY; ")  # read-only wrapper unchanged
+
+
+def test_read_transaction_status_plus_json_passes():
+    payload = [{"asset_code": "100-P-1A", "asset_type": "PUMP"}, {"asset_code": "100-P-2A", "asset_type": "PUMP"}]
+    store, _ = _store("BEGIN\n" + json.dumps(payload))
+    assert store.registry_assets(["100-P-1A", "100-P-2A"]) == payload
+    multi_line = "BEGIN\n" + json.dumps(payload, indent=1)  # a multi-line result is kept whole
+    store, _ = _store(multi_line)
+    assert store.registry_assets(["100-P-1A", "100-P-2A"]) == payload
+
+
+def test_read_direct_connect_single_line_result_passes():
+    store, _ = _store("2092")
+    assert store.count_total() == 2092
+    store, _ = _store('[{"asset_code": "100-P-1A", "asset_type": "PUMP"}]')
+    assert store.registry_assets(["100-P-1A"]) == [{"asset_code": "100-P-1A", "asset_type": "PUMP"}]
+    store, _ = _store("2092:0123abcd")
+    assert store.preexisting_fingerprint(executor.SOURCE_REFERENCE_PREFIX) == "2092:0123abcd"

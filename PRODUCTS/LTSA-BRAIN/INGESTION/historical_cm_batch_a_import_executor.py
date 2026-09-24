@@ -509,6 +509,26 @@ _READBACK_COLUMNS = (
 )
 
 
+_TRANSACTION_STATUS_LINE = "BEGIN"
+
+
+def _query_result(raw: str) -> str:
+    """The SELECT result of one _read() call, whatever the transport.
+
+    Direct connect returns only the result. docker-exec (`psql -tAc`) prints
+    the command tag of every statement, so the same call returns
+    "BEGIN\\n<result>". Exactly one leading "BEGIN" line is dropped; the rest
+    is returned unchanged, so numeric/JSON parsing still validates it.
+    Transport failures raise inside the runner before this is reached."""
+    lines = raw.splitlines()
+    if lines and lines[0].strip() == _TRANSACTION_STATUS_LINE:
+        lines = lines[1:]
+    result = "\n".join(lines).strip()
+    if not result:
+        raise ExecutorAbort("READ_RESULT_EMPTY", f"read returned no result: {raw!r}")
+    return result
+
+
 class PostgresCmImportStore:
     """Reads run as SET TRANSACTION READ ONLY; the only write is
     insert_batch(), which sends build_batch_sql() through execute_script()."""
@@ -520,7 +540,7 @@ class PostgresCmImportStore:
         # Explicit read-only transaction, never committed: the runner closes
         # its connection / psql process after the call, which rolls it back.
         # Any write attempted inside it fails with SQLSTATE 25006.
-        return self._runner.query_scalar(f"BEGIN TRANSACTION READ ONLY; {sql}")
+        return _query_result(self._runner.query_scalar(f"BEGIN TRANSACTION READ ONLY; {sql}"))
 
     def _read_json(self, sql: str) -> list[dict[str, Any]]:
         raw = self._read(f"SELECT COALESCE(json_agg(row_to_json(t))::text, '[]') FROM ({sql}) t;")

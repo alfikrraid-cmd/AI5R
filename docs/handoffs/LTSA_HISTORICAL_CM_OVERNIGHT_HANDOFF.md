@@ -431,3 +431,21 @@ Next: `LTSA_HISTORICAL_CM_BATCH_A_R2_PRODUCTION_DRY_RUN_R1`, a separate mission.
 - Then run `python historical_cm_batch_a_import_executor.py --manifest <path to R2> --expected-sha256 54668aca38b285d85b204e0ebf6b45eaef4a8b94b660823c9cc8d2ef052581d8 --mode dry-run --env-file … --compose-file … --report <out>`. It must report `PROPOSED_INSERTS=2907`, `UPDATES=0`, `DELETES=0`.
 
 Production import only after all of these: executor review PASS, tests PASS, manifest SHA PASS, production baseline recheck PASS (2,092), fresh production backup, backup verification PASS, production dry run proposes exactly 2,907, and explicit write approval.
+
+### 9.6 docker-exec read compatibility fix (`LTSA_HISTORICAL_CM_BATCH_A_R2_DOCKER_EXEC_READ_FIX_R1`)
+
+The problem: on the production host, the executor connects in `DatabaseRunner`'s docker-exec mode (`docker compose … exec -T postgres psql -tAc`). psql prints the command tag of every statement in the call, so the executor's read-only reads (`BEGIN TRANSACTION READ ONLY; SELECT …`) return `BEGIN\n<result>`. Commit `547a9c4` parsed that as the result itself, so its first preflight read failed (`int('BEGIN\n2092')`). It failed closed, before any write.
+
+The fix: `PostgresCmImportStore._read` now passes the output through `_query_result`.
+- It drops exactly one leading `BEGIN` line and returns the rest unchanged.
+- Empty or status-only output aborts with `READ_RESULT_EMPTY`.
+- Anything else malformed (a second status line, extra lines, bad numbers or JSON) still fails in the existing `int()` / `json.loads` parsing.
+- Transport failures still raise in the runner.
+- The shared `DatabaseRunner`, the write path, the insert-only guard and every apply gate are unchanged.
+
+Evidence:
+- `TEST/test_historical_cm_batch_a_import_executor_docker_exec_real_db.py` runs a disposable compose project. It reproduces the failure on `547a9c4`, then runs the full dry run, apply, verification and idempotency through the docker-exec transport.
+- 16 fake-runner unit tests cover the failure and pass cases.
+- A read-only production probe through the real compose transport returned `BEGIN\n2092`, which parses to 2,092.
+
+**Operational note for host execution:** `DatabaseRunner.query_scalar` does not redirect stdin, and `docker compose exec` reads it. Run the executor with stdin from `/dev/null`, never as part of a script piped to `bash -s`.
