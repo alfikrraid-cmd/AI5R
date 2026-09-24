@@ -334,3 +334,23 @@ describe("cm (Corrective Maintenance) remains unaffected", () => {
     expect(source).toMatch(/from ["']\.\.\/utils\/cmMapping["']/);
   });
 });
+
+describe("Latest loaded reading is labelled as such (R1E)", () => {
+  it("names the newest loaded reading honestly and makes no Current Condition claim", async () => {
+    await renderAndSelect();
+    // Loaded page is deliberately out of step with any canonical current state:
+    // its newest row (CMON-READ-101, 2026-07-12) is a DE leak.
+    const card = screen.getByTestId("latest-loaded-reading-card");
+    expect(card.textContent).toContain("Latest loaded reading");
+    expect(card.textContent).toContain("2026-07-12");
+    expect(card.textContent).toContain("not the canonical Current Condition");
+    expect(screen.getByRole("heading", { name: "Latest loaded reading" })).toBeTruthy();
+    expect(screen.getByText("Reading CMON-READ-101 · 2026-07-12")).toBeTruthy();
+    expect(screen.getByText(/latest loaded capture: 2026-07-12/)).toBeTruthy();
+    // No "Current status"/"Latest readings" label backed by array[0] remains,
+    // and no prominent current-leak alert is raised from the loaded page.
+    expect(screen.queryByText("Current status")).toBeNull();
+    expect(screen.queryByText("Latest readings")).toBeNull();
+    expect(screen.queryByTestId("mechanical-seal-leak-alert")).toBeNull();
+  });
+});
