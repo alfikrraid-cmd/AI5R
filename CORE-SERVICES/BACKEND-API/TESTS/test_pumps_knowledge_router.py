@@ -89,9 +89,12 @@ class FakeContextEngine:
     def __init__(self, summary):
         self.summary = summary
         self.calls = []
+        self.readings_seen = []
 
-    def build(self, tag_number):
+    def build(self, tag_number, *, condition_monitoring_readings=None):
+        # LTSA_CM_UI_REMEDIATION_R1B -- the route passes knowledge's readings.
         self.calls.append(tag_number)
+        self.readings_seen.append(condition_monitoring_readings)
         return self.summary
 
 
@@ -783,3 +786,15 @@ def test_get_knowledge_pump_field_does_not_trigger_a_second_gateway_call():
     client.get(f"/api/ltsa/pumps/{TAG}/knowledge")
 
     assert knowledge_fake.calls == [TAG]
+
+
+def test_get_knowledge_passes_knowledge_readings_to_context_engine():
+    # LTSA_CM_UI_REMEDIATION_R1B -- Current Condition is computed from the same
+    # repository readings `knowledge` carries, never a second gateway fetch.
+    readings = [{"condition_monitoring_reading_code": "CMONR-1", "asset_code": TAG, "reading_date": "2026-09-01",
+                 "workflow_status": "FINALIZED", "mechanical_seal_leak_de": True}]
+    _, _, summary_fake = _override(knowledge=_knowledge(condition_monitoring_readings=readings))
+
+    assert client.get(f"/api/ltsa/pumps/{TAG}/knowledge").status_code == 200
+    assert summary_fake.calls == [TAG]
+    assert summary_fake.readings_seen == [readings]

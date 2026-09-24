@@ -97,6 +97,8 @@ def _cmon_reading(tag, reading_date, leak=True, code=None):
         "reading_date": reading_date,
         "mechanical_seal_leak_de": leak,
         "mechanical_seal_leak_nde": False,
+        # Production-shaped (R1B): repository rows always carry workflow_status.
+        "workflow_status": "FINALIZED",
     }
 
 
@@ -153,7 +155,8 @@ def test_current_leak_outranks_historical_only_leak_critical_test():
     fixture = _Fixture(
         pumps=[_pump("PUMP-A"), _pump("PUMP-B")],
         cmon_readings={
-            "PUMP-A": [_cmon_reading("PUMP-A", OLD)],
+            # Historical-only = a newer valid reading records no leak (R1B).
+            "PUMP-A": [_cmon_reading("PUMP-A", OLD), _cmon_reading("PUMP-A", RECENT, leak=False, code="CMON-PUMP-A-NEW")],
             "PUMP-B": [_cmon_reading("PUMP-B", RECENT)],
         },
     )
@@ -215,7 +218,8 @@ def test_current_leak_is_included_and_ranked_via_ask_copilot():
 def test_historical_only_leak_still_appears_but_at_lower_priority():
     fixture = _Fixture(
         pumps=[_pump("PUMP-A")],
-        cmon_readings={"PUMP-A": [_cmon_reading("PUMP-A", OLD)]},
+        # Historical-only = a newer valid reading records no leak (R1B).
+        cmon_readings={"PUMP-A": [_cmon_reading("PUMP-A", OLD), _cmon_reading("PUMP-A", RECENT, leak=False, code="CMON-PUMP-A-NEW")]},
     )
     summary = fixture.summary_service.build()
     risk = next(r for r in summary.top_risk_pumps if r.tag_number == "PUMP-A")

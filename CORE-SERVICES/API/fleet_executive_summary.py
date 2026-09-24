@@ -203,17 +203,10 @@ def _build_minimal_summary(knowledge: LTSAKnowledge) -> dict[str, Any]:
     EngineeringContextEngine._build_cm_summary itself calls), not a
     reinvented one. pm_summary.status reuses EngineeringContextEngine's own
     static _compute_pm_status, not a reinvented OVERDUE/DUE_SOON rule."""
-    leak = mis.leak_flag_from_readings(knowledge.condition_monitoring_readings)
-    latest_abnormal_values = None
-    if leak["flagged"] and leak["latest_flagged_reading"]:
-        reading = leak["latest_flagged_reading"]
-        latest_abnormal_values = {
-            "reading_code": reading.get("condition_monitoring_reading_code"),
-            "reading_date": reading.get("reading_date"),
-            "mechanical_seal_leak_de": reading.get("mechanical_seal_leak_de"),
-            "mechanical_seal_leak_nde": reading.get("mechanical_seal_leak_nde"),
-        }
-    cm_summary = {"leak_flag": leak["flagged"], "latest_abnormal_values": latest_abnormal_values}
+    # LTSA_CM_UI_REMEDIATION_R1B -- the canonical cm_summary leak block:
+    # leak_flag = CURRENT_ACTIVE_LEAK (latest valid occurrence), the 30-day
+    # window only as recent_leak_observed.
+    cm_summary = mis.build_cm_leak_summary(knowledge.condition_monitoring_readings or [])
 
     schedules_sorted = sorted(knowledge.pm_schedules or [], key=lambda record: record.get("next_due") or "")
     schedule = schedules_sorted[0] if schedules_sorted else None

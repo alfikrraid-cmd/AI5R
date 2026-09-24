@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Any
 
+from . import cm_condition_evaluator as cce
 from . import maintenance_intelligence_service as mis
 from .condition_monitoring_measurement_fields import fields_matching_search_term, parameter_values
 from .recommendation_engine import DEFAULT_REPEATED_BREAKDOWN_THRESHOLD
@@ -105,26 +106,33 @@ def _is_leak_flagged(record: dict[str, Any]) -> bool:
 
 
 def _collect_leak_evidence(readings: list[dict[str, Any]], *, today: date) -> tuple[dict[str, Any], bool, int]:
-    current = mis.leak_flag_from_readings(list(readings), today=today)
+    # LTSA_CM_UI_REMEDIATION_R1B -- current_leak_flag is CURRENT_ACTIVE_LEAK
+    # (latest valid occurrence); historical_leak_count keeps its own evidence
+    # rule (leaks dated before the recent window) and recent_leak_observed
+    # reports the window itself. None substitutes for another.
+    current = cce.current_leak_condition(list(readings))
+    recent = mis.leak_flag_from_readings(list(readings), today=today)
     cutoff = today - timedelta(days=mis.DEFAULT_CONDITION_MONITORING_WINDOW_DAYS)
     historical = [
         r for r in readings
         if _is_leak_flagged(r) and (lambda d: d is not None and d < cutoff)(_parse_date(r.get("reading_date")))
     ]
     evidence = {
-        "current_leak_flag": current["flagged"],
+        "current_leak_flag": current["active"],
+        "current_leak_state": current["state"],
+        "recent_leak_observed": recent["flagged"],
         "latest_leak_finding": None,
         "historical_leak_count": len(historical),
     }
-    if current["flagged"] and current.get("latest_flagged_reading"):
-        rec = current["latest_flagged_reading"]
+    if current["active"]:
+        rec = cce.select_current_condition_cm(list(readings))
         evidence["latest_leak_finding"] = {
             "reading_date": rec.get("reading_date"),
             "finding": rec.get("finding"),
             "workflow_status": rec.get("workflow_status"),
             "source": rec.get("condition_monitoring_reading_code"),
         }
-    return evidence, bool(current["flagged"]), len(historical)
+    return evidence, bool(current["active"]), len(historical)
 
 
 # -- COLLECT: temperature / vibration / operating state -----------------------

@@ -17,8 +17,10 @@ of already-assembled data -- no gateway, no SQL, no LLM added anywhere:
    pm_summary.status, per that module's own _build_cm_summary/
    _build_pm_summary) is now an optional second argument to recommend()
    and every rule -- reused verbatim, never re-derived. New
-   _check_active_leak reads cm_summary.leak_flag (already windowed,
-   already evidence-cited) at priority 95, between REC_CRITICAL_CM (100)
+   _check_active_leak reads cm_summary.leak_flag (CURRENT_ACTIVE_LEAK --
+   the latest valid CM occurrence, maintenance_intelligence_service.
+   build_cm_leak_summary, LTSA_CM_UI_REMEDIATION_R1B; before R1B the
+   30-day window) at priority 95, between REC_CRITICAL_CM (100)
    and the existing HIGH tier (90) -- an active leak now outranks a
    generic PM recommendation.
 
@@ -35,7 +37,7 @@ of already-assembled data -- no gateway, no SQL, no LLM added anywhere:
    knowledge.condition_monitoring_readings, no time window -- the full,
    already-fetched list, no new query) is surfaced by a new,
    low-priority, purely informational _check_historical_leak_evidence
-   rule whenever the CURRENT window (cm_summary.leak_flag) is False --
+   rule whenever the current leak (cm_summary.leak_flag) is False --
    so a pump with real past leak evidence is never represented as if no
    leak history exists, while a current/active leak is never confused
    with a merely historical one (the two rules are mutually exclusive by

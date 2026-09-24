@@ -355,7 +355,12 @@ def test_equipment_360_recommendation_facts_reflect_active_leak():
 
 
 def test_equipment_360_recommendation_facts_reflect_historical_leak():
-    records = {TAG_A: [_reading(TAG_A, "C1", OLD, leak_de=True, finding="mechanical seal leak")]}
+    # Historical-only = a newer valid reading records no leak (R1B: the latest
+    # valid occurrence decides Current Condition, with no time window).
+    records = {TAG_A: [
+        _reading(TAG_A, "C1", OLD, leak_de=True, finding="mechanical seal leak"),
+        _reading(TAG_A, "C-NEW", RECENT, leak_de=False, leak_nde=False, finding="normal"),
+    ]}
     e360 = _equipment_360(TAG_A, records)
     rule_codes = [r.rule_code for r in e360.recommendation]
     assert "REC_HISTORICAL_LEAK" in rule_codes
@@ -388,6 +393,8 @@ def test_equipment_360_cmon_history_and_recommendation_agree_on_leak_count():
     # prior CMON-detailed-history mission.
     records = {
         TAG_A: [
+            # Newer no-leak reading keeps the older leaks historical-only (R1B).
+            _reading(TAG_A, "C-NEW", RECENT, leak_de=False, leak_nde=False, finding="normal"),
             _reading(TAG_A, "C-OLD1", OLD, leak_de=True, finding="mechanical seal leak"),
             _reading(TAG_A, "C-OLD2", (TODAY - timedelta(days=420)).isoformat(), leak_nde=True, finding="mechanical seal leak"),
         ]
@@ -412,11 +419,14 @@ def test_equipment_360_cmon_history_and_recommendation_agree_on_leak_count():
 
     # Source 3: direct CMON history query, requesting a range wide enough
     # (2 years) to cover both dates (400/420 days back) regardless of
-    # calendar-year boundaries -- must retrieve exactly 2 events.
+    # calendar-year boundaries -- retrieves all 3 events (R1B: the 2 old leaks
+    # plus the newer no-leak reading that keeps them historical-only), of
+    # which exactly 2 are leak-flagged.
     answer = _ask("Data CMON 110p12b 2 tahun terakhir", TAG_A, records)
     cmon_event_count_evidence = next(e for e in answer.evidence if e["field"] == "cmon_event_count")
-    assert int(cmon_event_count_evidence["value"]) == 2
+    assert int(cmon_event_count_evidence["value"]) == 3
+    assert "Mechanical seal leak: 2" in answer.answer
 
     # All three sources agree: 2 leak-flagged historical events, same
     # canonical rows, same count -- no silent disagreement.
-    assert len(historical.evidence) == len(e360_historical.evidence) == 2 == int(cmon_event_count_evidence["value"])
+    assert len(historical.evidence) == len(e360_historical.evidence) == 2

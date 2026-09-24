@@ -36,7 +36,7 @@ from typing import Any
 from . import maintenance_intelligence_service as mis
 from .ltsa_knowledge_service import LTSAKnowledge
 from .recommendation_engine import RecommendationEngine
-from .cm_condition_evaluator import evaluate_current_condition, select_latest_valid_cm
+from .cm_condition_evaluator import evaluate_current_condition, select_current_condition_cm
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,7 +150,8 @@ def get_equipment_360(
         records = condition_monitoring_reading_repository.list_by_asset(tag)
         if isinstance(records, list):
             cmon_history = tuple(records)
-            cmon_latest = select_latest_valid_cm(records)
+            # LTSA_CM_UI_REMEDIATION_R1B -- the canonical Current Condition reading.
+            cmon_latest = select_current_condition_cm(records)
         else:
             gaps.append("cmon")
     except Exception:
@@ -217,11 +218,9 @@ def get_equipment_360(
 
     # Recommendation facts (Phase 3/9) -- RecommendationEngine over the
     # SAME already-fetched cm_history/condition_monitoring_readings/
-    # seal_stock this aggregate already carries. cm_summary.leak_flag
-    # reuses maintenance_intelligence_service's own canonical windowing
-    # rule (leak_flag_from_readings) so active-vs-historical leak
-    # evidence agrees with the direct CMON handler's own fleet-attention
-    # ranking logic -- one canonical determination, not a third one.
+    # seal_stock this aggregate already carries. cm_summary comes from
+    # maintenance_intelligence_service.build_cm_leak_summary -- the one
+    # canonical Current Condition leak block (LTSA_CM_UI_REMEDIATION_R1B).
     recommendation: tuple[Any, ...] = ()
     try:
         knowledge = LTSAKnowledge(
@@ -230,9 +229,10 @@ def get_equipment_360(
             drawings=list(drawings), recommendation=(), pm_schedules=[],
             condition_monitoring_schedules=[], condition_monitoring_readings=list(cmon_history),
         )
-        leak = mis.leak_flag_from_readings(list(cmon_history))
+        # LTSA_CM_UI_REMEDIATION_R1B -- leak_flag is CURRENT_ACTIVE_LEAK (latest
+        # valid occurrence); the 30-day window is recent_leak_observed.
         summary = {
-            "cm_summary": {"leak_flag": leak["flagged"], "latest_abnormal_values": None},
+            "cm_summary": mis.build_cm_leak_summary(list(cmon_history)),
             "pm_summary": {"status": None},
             "evidence": [],
         }

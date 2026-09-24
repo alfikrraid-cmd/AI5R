@@ -135,7 +135,11 @@ def post_engineering_ai(
     started = time.monotonic()
     try:
         knowledge = ltsa_knowledge_service.build(tag)
-        summary = engineering_context_engine.build(tag)
+        # LTSA_CM_UI_REMEDIATION_R1B -- Current Condition from the same repository
+        # readings `knowledge` already carries (no second gateway fetch).
+        summary = engineering_context_engine.build(
+            tag, condition_monitoring_readings=knowledge.condition_monitoring_readings
+        )
     except Exception as error:  # noqa: BLE001 -- a downstream failure must produce an honest error response, never an unhandled 500 or a fabricated SUCCESS.
         latency = time.monotonic() - started
         response = _data_gap_response(payload.trace_id, latency, "Engineering AI data is currently unavailable.")

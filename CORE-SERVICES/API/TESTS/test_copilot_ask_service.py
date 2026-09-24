@@ -988,6 +988,7 @@ class _DiagnosticKnowledgeService:
                     "condition_monitoring_reading_code": "CMONR-1",
                     "asset_code": tag,
                     "reading_date": reading_date,
+                    "workflow_status": "FINALIZED",  # production-shaped (R1B)
                     "mechanical_seal_leak_de": True,
                     "temperature": None,
                     "vibration": None,
@@ -995,7 +996,7 @@ class _DiagnosticKnowledgeService:
                 }
             ]
         else:
-            readings = [{"condition_monitoring_reading_code": "CMONR-2", "asset_code": tag, "reading_date": reading_date}]
+            readings = [{"condition_monitoring_reading_code": "CMONR-2", "asset_code": tag, "reading_date": reading_date, "workflow_status": "FINALIZED"}]
         return LTSAKnowledge(
             tag_number=tag,
             pump={"tag_number": tag, "status": "RUNNING"},

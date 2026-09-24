@@ -4,6 +4,7 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
+from .cm_condition_evaluator import current_leak_condition
 from .cm_report_gateway import CMReportGateway
 from .condition_monitoring_reading_gateway import ConditionMonitoringReadingGateway
 from .maintenance_command_center import get_maintenance_command_center
@@ -205,13 +206,61 @@ def get_pump_condition_monitoring_flag(
         if reading.get("asset_code") == tag_number
     ]
 
+    # LTSA_CM_UI_REMEDIATION_R1B -- this endpoint stays RECENT_LEAK_OBSERVED
+    # (a leak observed within the window), NOT Current Condition. `flagged`
+    # is kept for compatibility and equals `recent_leak_observed`.
     flag = leak_flag_from_readings(readings, window_days=window_days, today=today)
     return {
         "success": response.get("success", False),
         "tag_number": tag_number,
+        "semantic": "RECENT_LEAK_OBSERVED",
         "flagged": flag["flagged"],
+        "recent_leak_observed": flag["flagged"],
         "window_days": window_days,
         "latest_flagged_reading": flag["latest_flagged_reading"],
+    }
+
+
+def build_cm_leak_summary(
+    readings: list[dict[str, Any]],
+    *,
+    window_days: int = DEFAULT_CONDITION_MONITORING_WINDOW_DAYS,
+    today: date | None = None,
+) -> dict[str, Any]:
+    """LTSA_CM_UI_REMEDIATION_R1B -- the one cm_summary leak block every
+    Current Condition producer uses (EngineeringContextEngine, Equipment360,
+    fleet executive summary). Two separate meanings, never substituted:
+
+      current_active_leak / current_leak_state / current_leak_condition --
+          CURRENT_ACTIVE_LEAK: the latest valid occurrence
+          (cm_condition_evaluator.current_leak_condition), no time window,
+          no fallback to an older leak.
+      recent_leak_observed --
+          RECENT_LEAK_OBSERVED: a leak observed within `window_days`
+          (leak_flag_from_readings).
+
+    `leak_flag` (read by RecommendationEngine's REC_ACTIVE_LEAK) now means
+    CURRENT_ACTIVE_LEAK; before R1B it was the recent-window flag.
+    `latest_abnormal_values` cites the current reading when it is an active
+    leak, else None."""
+    current = current_leak_condition(readings)
+    recent = leak_flag_from_readings(readings, window_days=window_days, today=today)
+    latest_abnormal_values = None
+    if current["active"]:
+        latest_abnormal_values = {
+            "reading_code": current["reading_code"],
+            "reading_date": current["reading_date"],
+            "mechanical_seal_leak_de": current["de"],
+            "mechanical_seal_leak_nde": current["nde"],
+        }
+    return {
+        "leak_flag": current["active"],
+        "current_active_leak": current["active"],
+        "current_leak_state": current["state"],
+        "current_leak_condition": current,
+        "recent_leak_observed": recent["flagged"],
+        "recent_leak_window_days": window_days,
+        "latest_abnormal_values": latest_abnormal_values,
     }
 
 

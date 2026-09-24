@@ -289,7 +289,7 @@ class FakeEngineeringContextEngine:
     def __init__(self, summary=None):
         self._summary = summary if summary is not None else {}
 
-    def build(self, tag_number):
+    def build(self, tag_number, *, condition_monitoring_readings=None):
         return self._summary
 
 

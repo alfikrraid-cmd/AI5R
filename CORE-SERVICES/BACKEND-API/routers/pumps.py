@@ -321,7 +321,11 @@ def get_ltsa_pump_knowledge(
         if build_with_knowledge is not None
         else equipment_timeline_service.build(tag)
     )
-    summary = engineering_context_engine.build(tag)
+    # LTSA_CM_UI_REMEDIATION_R1B -- Current Condition from the same repository
+    # readings `knowledge` already carries (no second gateway fetch).
+    summary = engineering_context_engine.build(
+        tag, condition_monitoring_readings=knowledge.condition_monitoring_readings
+    )
     ai_insight = build_engineering_insight(knowledge.recommendation or (), summary)
     executive_metrics = compute_executive_metrics(knowledge)
     # MWO-LTSA-ASSET360-MECHANICAL-SEAL-WIRING-001 -- reuses

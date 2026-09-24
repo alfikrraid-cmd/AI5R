@@ -66,13 +66,16 @@ class FakeLTSAKnowledgeService:
 class FakeEngineeringContextEngine:
     def __init__(self, summary=None):
         self._summary = summary or {"cm_summary": {"overall_condition": "ABNORMAL"}}
+        self.readings_seen = []
 
-    def build(self, tag_number):
+    def build(self, tag_number, *, condition_monitoring_readings=None):
+        # LTSA_CM_UI_REMEDIATION_R1B -- the route passes knowledge's readings.
+        self.readings_seen.append(condition_monitoring_readings)
         return self._summary
 
 
 class RaisingService:
-    def build(self, tag_number):
+    def build(self, tag_number, **_kwargs):
         raise ConnectionError("n8n unreachable")
 
 

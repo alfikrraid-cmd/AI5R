@@ -3,6 +3,7 @@ import { createKnowledgeWorkspaceController } from "../controllers/KnowledgeWork
 import { mapPMScheduleRecord, mapPMOccurrenceRecord } from "../utils/pmMapping";
 import { mapConditionMonitoringReadingRecord } from "../utils/conditionMonitoringMapping";
 import { mapWorkOrderRecord } from "../utils/workOrderMapping";
+import { mapCurrentCondition } from "../utils/currentConditionMapping";
 
 // MWO-LTSA-032A -- useKnowledgeWorkspace: maps the Knowledge API's raw
 // response into the EquipmentKnowledge shape the approved Open Design
@@ -111,6 +112,9 @@ function mapEquipment(knowledgeData) {
     assetStatus: pump?.status ?? undefined,
     healthScore: undefined,
     condition,
+    // LTSA_CM_UI_REMEDIATION_R1B -- the backend's canonical Current Condition
+    // (latest valid occurrence); never re-derived from the readings list here.
+    currentCondition: mapCurrentCondition(knowledgeData?.summary?.cm_summary?.current_leak_condition),
     criticality: undefined,
     confidence: undefined,
     aiSummary: undefined,

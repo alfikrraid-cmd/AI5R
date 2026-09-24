@@ -1726,11 +1726,10 @@ def _handle_fleet_parameter_ranking(
 
 
 def _handle_fleet_current_leak(batch: "fas.FleetDataBatch", *, language: str = "en") -> CopilotAnswer:
-    """Phase 7 -- CURRENT/ACTIVE/LATEST leak evidence only, reusing the
-    SAME 30-day active-monitoring window RecommendationEngine's own
-    REC_ACTIVE_LEAK rule already uses (fas.current_leak_pumps) -- never a
-    second, conflicting definition of "current", and never historical
-    frequency."""
+    """Phase 7 -- CURRENT/ACTIVE leak only: fas.current_leak_pumps, i.e. the
+    latest valid CM occurrence records a leak (LTSA_CM_UI_REMEDIATION_R1B),
+    the same determination RecommendationEngine's REC_ACTIVE_LEAK reads.
+    Never a time-window "recent leak" and never historical frequency."""
     rows = fas.current_leak_pumps(batch)
     if not rows:
         if language == "id":

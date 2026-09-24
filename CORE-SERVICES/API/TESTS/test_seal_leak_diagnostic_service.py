@@ -45,7 +45,9 @@ def _knowledge(tag="TEST-PUMP", **overrides):
 
 
 def _cmon(reading_date, **fields):
-    row = {"reading_date": reading_date, "condition_monitoring_reading_code": f"CMONR-{reading_date}"}
+    # Production-shaped (LTSA_CM_UI_REMEDIATION_R1B): repository rows always carry
+    # workflow_status; the canonical Current Condition selector requires it.
+    row = {"reading_date": reading_date, "condition_monitoring_reading_code": f"CMONR-{reading_date}", "asset_code": "PUMP-TEST", "workflow_status": "FINALIZED"}
     row.update(fields)
     return row
 
@@ -91,7 +93,9 @@ def test_current_leak_evidence_detected():
 
 # B. historical/repeated leak evidence
 def test_historical_leak_evidence_without_current():
-    k = _knowledge(condition_monitoring_readings=[_cmon(OLD, mechanical_seal_leak_de=True), _cmon(OLD, mechanical_seal_leak_de=True)])
+    # Historical-only = a newer valid reading records no leak (R1B).
+    newer_clear = _cmon(RECENT, mechanical_seal_leak_de=False, mechanical_seal_leak_nde=False)
+    k = _knowledge(condition_monitoring_readings=[_cmon(OLD, mechanical_seal_leak_de=True), _cmon(OLD, mechanical_seal_leak_de=True), newer_clear])
     d = _diagnose(k)
     assert d.diagnostic_status == STATUS_LEAK_HISTORICAL
     assert d.leak_evidence["historical_leak_count"] == 2
@@ -355,6 +359,7 @@ def test_diagnose_through_ltsa_knowledge_service_with_production_shaped_reposito
                     "condition_monitoring_reading_code": "CMONR-PROD",
                     "asset_code": asset_code,
                     "reading_date": RECENT,
+                    "workflow_status": "DRAFT",  # production-shaped (R1B)
                     "mechanical_seal_leak_de": True,
                     "finding": "Mechanical seal leak DE",
                 }

@@ -106,7 +106,9 @@ def _pump(tag, area="FRAKSINASI"):
 
 
 def _cmon(tag, reading_date, **fields):
-    row = {"asset_code": tag, "reading_date": reading_date, "condition_monitoring_reading_code": f"CMONR-{tag}-{reading_date}"}
+    # Production-shaped (LTSA_CM_UI_REMEDIATION_R1B): repository rows always carry
+    # workflow_status; the canonical Current Condition selector requires it.
+    row = {"asset_code": tag, "reading_date": reading_date, "condition_monitoring_reading_code": f"CMONR-{tag}-{reading_date}", "workflow_status": "FINALIZED"}
     row.update(fields)
     return row
 
@@ -249,6 +251,9 @@ def test_plain_bocor_query_uses_current_leak_not_historical_frequency():
         cmon_rows=[
             _cmon("PUMP-OLD", OUTSIDE_WINDOW, mechanical_seal_leak_de=True),
             _cmon("PUMP-OLD", OUTSIDE_WINDOW, mechanical_seal_leak_de=True),
+            # Historical-only means a NEWER valid reading records no leak (R1B: the latest
+            # valid occurrence decides Current Condition, with no time window).
+            _cmon("PUMP-OLD", RECENT, mechanical_seal_leak_de=False, mechanical_seal_leak_nde=False),
             _cmon("PUMP-CURRENT", RECENT, mechanical_seal_leak_de=True, finding="Active leak"),
         ],
     )
@@ -287,6 +292,9 @@ def test_many_old_leaks_never_outrank_a_current_leak_for_bocor_sekarang_query():
             _cmon("PUMP-OLD", OUTSIDE_WINDOW, mechanical_seal_leak_de=True),
             _cmon("PUMP-OLD", OUTSIDE_WINDOW, mechanical_seal_leak_de=True),
             _cmon("PUMP-OLD", OUTSIDE_WINDOW, mechanical_seal_leak_de=True),
+            # Historical-only means a NEWER valid reading records no leak (R1B: the latest
+            # valid occurrence decides Current Condition, with no time window).
+            _cmon("PUMP-OLD", RECENT, mechanical_seal_leak_de=False, mechanical_seal_leak_nde=False),
             _cmon("PUMP-CURRENT", RECENT, mechanical_seal_leak_de=True, finding="Active leak"),
         ],
     )

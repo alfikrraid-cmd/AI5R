@@ -108,13 +108,19 @@ class EngineeringContextEngine:
         self.work_order_gateway = work_order_gateway or WorkOrderGateway()
         self.mechanical_seal_stock_repository = mechanical_seal_stock_repository
 
-    def build(self, tag_number: str, today: date | None = None) -> dict[str, Any]:
+    def build(
+        self,
+        tag_number: str,
+        today: date | None = None,
+        *,
+        condition_monitoring_readings: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         today = today or date.today()
 
         asset = self._build_asset(tag_number)
         maintenance_summary = self._build_maintenance_summary(tag_number)
         pm_summary, pm_evidence = self._build_pm_summary(tag_number, today)
-        cm_summary, cm_evidence = self._build_cm_summary(tag_number)
+        cm_summary, cm_evidence = self._build_cm_summary(tag_number, condition_monitoring_readings)
         seal_summary, spare_parts = self._build_seal_summary(tag_number)
         inventory_summary = self._build_inventory_summary(spare_parts)
         workorder_summary = self._build_workorder_summary(tag_number)
@@ -256,21 +262,26 @@ class EngineeringContextEngine:
 
     # -- CM ------------------------------------------------------------------
 
-    def _build_cm_summary(self, tag_number: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-        flag_result = mis.get_pump_condition_monitoring_flag(
-            tag_number, condition_monitoring_reading_gateway=self.condition_monitoring_reading_gateway
-        )
-        leak_flag = bool(flag_result.get("flagged"))
-        latest_flagged_reading = flag_result.get("latest_flagged_reading")
+    def _cm_readings(self, tag_number: str) -> list[dict[str, Any]]:
+        response = self.condition_monitoring_reading_gateway.list_condition_monitoring_readings()
+        return [reading for reading in (response.get("data") or []) if reading.get("asset_code") == tag_number]
 
-        latest_abnormal_values = None
-        if leak_flag and latest_flagged_reading:
-            latest_abnormal_values = {
-                "reading_code": latest_flagged_reading.get("condition_monitoring_reading_code"),
-                "reading_date": latest_flagged_reading.get("reading_date"),
-                "mechanical_seal_leak_de": latest_flagged_reading.get("mechanical_seal_leak_de"),
-                "mechanical_seal_leak_nde": latest_flagged_reading.get("mechanical_seal_leak_nde"),
-            }
+    def _build_cm_summary(
+        self, tag_number: str, condition_monitoring_readings: list[dict[str, Any]] | None = None
+    ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        # LTSA_CM_UI_REMEDIATION_R1B -- leak_flag / overall_condition are
+        # CURRENT_ACTIVE_LEAK (latest valid occurrence), no longer the 30-day
+        # window; recent_leak_observed carries the window separately. Callers
+        # that already hold the repository readings (the Knowledge and
+        # Engineering AI routes) pass them; otherwise the gateway list is used.
+        readings = (
+            list(condition_monitoring_readings)
+            if condition_monitoring_readings is not None
+            else self._cm_readings(tag_number)
+        )
+        leak_summary = mis.build_cm_leak_summary(readings)
+        leak_flag = leak_summary["current_active_leak"]
+        latest_abnormal_values = leak_summary["latest_abnormal_values"]
 
         reports_response = self.cm_report_gateway.list_cm_reports()
         reports = [
@@ -295,16 +306,21 @@ class EngineeringContextEngine:
             "latest_abnormal_values": latest_abnormal_values,
             "overall_condition": overall_condition,
             "leak_flag": leak_flag,
+            "current_active_leak": leak_summary["current_active_leak"],
+            "current_leak_state": leak_summary["current_leak_state"],
+            "current_leak_condition": leak_summary["current_leak_condition"],
+            "recent_leak_observed": leak_summary["recent_leak_observed"],
+            "recent_leak_window_days": leak_summary["recent_leak_window_days"],
         }
 
         evidence: list[dict[str, Any]] = []
         if overall_condition in {"ABNORMAL", "CRITICAL"}:
-            if leak_flag and latest_flagged_reading:
+            if leak_flag and latest_abnormal_values:
                 evidence.append(
                     {
                         "flag": "CM_ABNORMAL",
                         "source": "ConditionMonitoringReading",
-                        "reference": latest_flagged_reading.get("condition_monitoring_reading_code"),
+                        "reference": latest_abnormal_values.get("reading_code"),
                     }
                 )
             elif open_report is not None:

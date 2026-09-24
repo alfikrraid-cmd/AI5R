@@ -38,6 +38,7 @@ from datetime import date
 from typing import Any
 
 from . import maintenance_intelligence_service as mis
+from .cm_condition_evaluator import current_leak_condition, select_current_condition_cm
 from .condition_monitoring_measurement_fields import fields_matching_search_term, parameter_values
 from .pump_area_scope import is_area_in_scope
 
@@ -269,20 +270,23 @@ class CurrentLeakRow:
 
 
 def current_leak_pumps(batch: FleetDataBatch, *, today: date | None = None) -> tuple[CurrentLeakRow, ...]:
-    """Reuses maintenance_intelligence_service.leak_flag_from_readings --
-    the SAME canonical 30-day active-monitoring window RecommendationEngine's
-    own REC_ACTIVE_LEAK rule and copilot_ask_service's fleet-priority path
-    already use. Never a second, conflicting definition of "current"."""
+    """CURRENT_ACTIVE_LEAK pumps (LTSA_CM_UI_REMEDIATION_R1B): a pump is
+    listed when its latest valid CM occurrence
+    (cm_condition_evaluator.current_leak_condition) records a leak -- the
+    same determination RecommendationEngine's REC_ACTIVE_LEAK now reads.
+    No time window and no older leak: a leak observed within the last N days
+    is RECENT_LEAK_OBSERVED (mis.leak_flag_from_readings), a different
+    question. `today` is kept for call compatibility and not used."""
     rows: list[CurrentLeakRow] = []
     for pump in batch.pumps:
         tag = pump.get("tag_number")
         if not tag:
             continue
-        readings = batch.cmon_by_tag.get(tag, ())
-        flag = mis.leak_flag_from_readings(list(readings), today=today)
-        if flag["flagged"] and flag["latest_flagged_reading"]:
-            record = flag["latest_flagged_reading"]
-            rows.append(CurrentLeakRow(tag, record.get("reading_date"), record.get("finding"), record.get("workflow_status")))
+        readings = list(batch.cmon_by_tag.get(tag, ()))
+        if not current_leak_condition(readings)["active"]:
+            continue
+        record = select_current_condition_cm(readings)
+        rows.append(CurrentLeakRow(tag, record.get("reading_date"), record.get("finding"), record.get("workflow_status")))
     return tuple(rows)
 
 
