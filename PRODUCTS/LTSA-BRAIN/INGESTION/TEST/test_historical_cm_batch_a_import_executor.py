@@ -17,6 +17,7 @@ import argparse
 import copy
 import hashlib
 import json
+import os
 import re
 import sys
 from datetime import date, timedelta
@@ -702,13 +703,120 @@ def test_apply_refuses_a_manifest_that_is_not_the_frozen_hash(tmp_path, base_doc
     assert _abort_code(excinfo) == "NOT_FROZEN_MANIFEST"
 
 
+R1_SUPERSEDED_SHA256 = "80542d3c94e129dc7ee82d19127a30b0c01d22f8a1c85f284231280d3e647af0"
+R2_FROZEN_SHA256 = "54668aca38b285d85b204e0ebf6b45eaef4a8b94b660823c9cc8d2ef052581d8"
+
+
+def _present_bytes_as(monkeypatch, reported_sha: str) -> None:
+    """The synthetic file cannot have the R2 hash. Its bytes are still
+    hash-verified against their own real SHA-256 first; only the hash the
+    executor then compares with the frozen constant is replaced, so the
+    frozen-manifest gate runs against the unpatched BATCH_A_MANIFEST_SHA256."""
+    original = executor.read_manifest_bytes_verified
+
+    def verified_then_reported(path, expected_sha256):
+        data, _ = original(path, hashlib.sha256(path.read_bytes()).hexdigest())
+        return data, reported_sha
+
+    monkeypatch.setattr(executor, "read_manifest_bytes_verified", verified_then_reported)
+
+
 @pytest.fixture
 def frozen_synthetic(tmp_path, base_document, monkeypatch):
     path, sha = _write(tmp_path, base_document)
-    monkeypatch.setattr(executor, "BATCH_A_MANIFEST_SHA256", sha)
+    _present_bytes_as(monkeypatch, R2_FROZEN_SHA256)
     backup = tmp_path / "ltsa_brain_pre_batch_a.dump"
     backup.write_bytes(b"PGDMP synthetic backup")
     return path, sha, backup, hashlib.sha256(backup.read_bytes()).hexdigest()
+
+
+def test_frozen_constant_is_r2_and_not_r1():
+    assert executor.BATCH_A_MANIFEST_SHA256 == R2_FROZEN_SHA256
+    source = Path(executor.__file__).read_text(encoding="utf-8")
+    assert R1_SUPERSEDED_SHA256 not in source
+
+
+@pytest.mark.parametrize(
+    "reported_sha, expected_code",
+    [
+        (R2_FROZEN_SHA256, "WRITE_NOT_CONFIRMED"),  # hash gate passed; next gate stops it
+        (R1_SUPERSEDED_SHA256, "NOT_FROZEN_MANIFEST"),
+        ("ab" * 32, "NOT_FROZEN_MANIFEST"),
+    ],
+)
+def test_real_apply_frozen_manifest_gate(tmp_path, base_document, monkeypatch, reported_sha, expected_code):
+    path, _ = _write(tmp_path, base_document)
+    _present_bytes_as(monkeypatch, reported_sha)
+    store = FakeStore()
+    with pytest.raises(ExecutorAbort) as excinfo:
+        executor.run(_args(path, reported_sha, mode="apply"), store=store)
+    assert _abort_code(excinfo) == expected_code
+    assert len(store.rows) == 2092 and store.batches_attempted == 0
+
+
+def test_r1_is_rejected_even_with_every_other_gate_satisfied(tmp_path, base_document, monkeypatch):
+    path, _ = _write(tmp_path, base_document)
+    _present_bytes_as(monkeypatch, R1_SUPERSEDED_SHA256)
+    backup = tmp_path / "backup.dump"
+    backup.write_bytes(b"PGDMP synthetic backup")
+    store = FakeStore()
+    with pytest.raises(ExecutorAbort) as excinfo:
+        executor.run(
+            _args(path, R1_SUPERSEDED_SHA256, mode="apply", confirm_production_write="LTSA_HISTORICAL_CM_BATCH_A",
+                  backup_file=backup, backup_sha256=hashlib.sha256(backup.read_bytes()).hexdigest(),
+                  expected_inserts=2907),
+            store=store,
+        )
+    assert _abort_code(excinfo) == "NOT_FROZEN_MANIFEST" and len(store.rows) == 2092
+
+
+# ---------------------------------------------------------------------------
+# Real R2 manifest (untracked TEMP file; skipped where it is absent)
+# ---------------------------------------------------------------------------
+
+_R2_PATH = Path(
+    os.environ.get(
+        "LTSA_BATCH_A_R2_MANIFEST",
+        Path(__file__).resolve().parents[4] / "TEMP" / "ltsa_historical_cm_batch_a_import_manifest_r2_api_plan.json",
+    )
+)
+_needs_r2 = pytest.mark.skipif(not _R2_PATH.is_file(), reason=f"R2 manifest not present: {_R2_PATH}")
+
+
+@pytest.fixture(scope="module")
+def real_r2():
+    before = hashlib.sha256(_R2_PATH.read_bytes()).hexdigest()
+    data, actual = read_manifest_bytes_verified(_R2_PATH, R2_FROZEN_SHA256)
+    yield parse_manifest(data, actual)
+    assert hashlib.sha256(_R2_PATH.read_bytes()).hexdigest() == before == R2_FROZEN_SHA256  # never modified
+
+
+@_needs_r2
+def test_real_r2_parses_with_null_api_plans(real_r2):
+    assert len(real_r2.rows) == 2907
+    nulls = [row for row in real_r2.rows if row.api_plan_snapshot is None]
+    assert len(nulls) == 9 and {row.asset_code for row in nulls} == {"211-P-30"}
+    snapshots = {row.api_plan_snapshot for row in real_r2.rows}
+    assert '"23/61' not in snapshots and "-" not in snapshots
+
+
+@_needs_r2
+def test_real_r2_null_api_plan_renders_sql_null_without_master_fallback(real_r2):
+    for row in real_r2.rows:
+        rendered = executor._values_row(row).strip("()").rsplit(", ", 1)[-1]
+        assert rendered == ("NULL" if row.api_plan_snapshot is None else executor._sql(row.api_plan_snapshot))
+    for start in range(0, len(real_r2.rows), 250):
+        sql = build_batch_sql(list(real_r2.rows[start:start + 250]), 2092)
+        assert "ltsa_pumps" not in sql and "api_plan FROM" not in sql
+
+
+@_needs_r2
+def test_real_r2_passes_the_real_apply_hash_gate_without_a_database():
+    store = FakeStore()
+    with pytest.raises(ExecutorAbort) as excinfo:
+        executor.run(_args(_R2_PATH, R2_FROZEN_SHA256, mode="apply"), store=store)
+    assert _abort_code(excinfo) == "WRITE_NOT_CONFIRMED"  # the frozen-hash gate accepted R2
+    assert store.batches_attempted == 0
 
 
 def test_apply_requires_confirmation_and_verified_backup(frozen_synthetic):

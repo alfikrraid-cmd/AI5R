@@ -4,7 +4,8 @@ Status: FINAL CHECKPOINT (overnight run 2026-09-23 → 2026-09-24, worker RYZEN)
 Phase gate reached: `LTSA_HISTORICAL_CM_RYZEN_FINAL_CHECKPOINT_R1`: parser generalization complete, branch pushed, **read-only** production reconciliation complete. No production write of any kind.
 Addendum 2026-09-24: `LTSA_HISTORICAL_CM_SAFE_IMPORT_SET_R1` fixed a hash-pinned Batch A import set of 2,907 rows (§8).
 Addendum 2026-09-24 (laptop): `LTSA_HISTORICAL_CM_BATCH_A_IMPORT_EXECUTOR_R1` implemented and tested; nothing imported (§9).
-Next gate: `LTSA_HISTORICAL_CM_BATCH_A_PRODUCTION_DRY_RUN_R1` (§9.5). Batch A excludes every unresolved population, so it does not wait on the §6 decisions.
+Addendum 2026-09-24 (laptop): `LTSA_HISTORICAL_CM_BATCH_A_R2_FREEZE_AND_EXECUTOR_ALIGNMENT_R1`: the R1 manifest is **SUPERSEDED** by the API-Plan-corrected **R2** manifest (SHA-256 `54668aca38b285d85b204e0ebf6b45eaef4a8b94b660823c9cc8d2ef052581d8`), now the only manifest a real apply accepts (§8.7).
+Next gate: `LTSA_HISTORICAL_CM_BATCH_A_R2_PRODUCTION_DRY_RUN_R1` (§9.5). Batch A excludes every unresolved population, so it does not wait on the §6 decisions.
 
 ## 1. Checkpoint fields
 
@@ -200,7 +201,7 @@ python -m pytest PRODUCTS/LTSA-BRAIN/INGESTION/TEST/test_historical_cm_pdf_parse
 # the reference regression skips unless LTSA_PM_CM_HISTORY_ROOT points at the source archive
 ```
 
-Do not repeat parser generalization, reconciliation or Batch A planning. The next gate is `LTSA_HISTORICAL_CM_BATCH_A_IMPORT_EXECUTOR_R1` (§8.6). It needs the Batch A manifest with SHA-256 `80542d3c94e129dc7ee82d19127a30b0c01d22f8a1c85f284231280d3e647af0`: either copy it from RYZEN and verify the hash, or regenerate it (§8.5, which needs the two planning scripts; see its blocker).
+Do not repeat parser generalization, reconciliation or Batch A planning. The next gate is `LTSA_HISTORICAL_CM_BATCH_A_IMPORT_EXECUTOR_R1` (§8.6). It needed the Batch A R1 manifest with SHA-256 `80542d3c94e129dc7ee82d19127a30b0c01d22f8a1c85f284231280d3e647af0` (**SUPERSEDED**, historical reference only). The executor is now implemented (§9), and the production candidate is the **R2** manifest `54668aca38b285d85b204e0ebf6b45eaef4a8b94b660823c9cc8d2ef052581d8` (§8.7).
 
 ## 8. Batch A Production Import Plan
 
@@ -221,8 +222,10 @@ Planned in `LTSA_HISTORICAL_CM_SAFE_IMPORT_SET_R1` (2026-09-24, read-only). Noth
 | BATCH_A_OTHER | 0 |
 | MONTHS | 2025-10=297 · 2025-11=443 · 2025-12=257 · 2026-01=205 · 2026-02=751 · 2026-03=685 · 2026-06=269 |
 | ALREADY_PRESENT_NOW (at recheck) | 0 |
-| MANIFEST | `TEMP/ltsa_historical_cm_batch_a_import_manifest.json` (untracked, RYZEN) |
-| MANIFEST_SHA256 | `80542d3c94e129dc7ee82d19127a30b0c01d22f8a1c85f284231280d3e647af0` |
+| MANIFEST (R1, **SUPERSEDED**) | `TEMP/ltsa_historical_cm_batch_a_import_manifest.json` (untracked) |
+| MANIFEST_SHA256 (R1, **SUPERSEDED**, historical reference only) | `80542d3c94e129dc7ee82d19127a30b0c01d22f8a1c85f284231280d3e647af0` |
+| MANIFEST (R2, **FROZEN_PRODUCTION_CANDIDATE**) | `TEMP/ltsa_historical_cm_batch_a_import_manifest_r2_api_plan.json` (untracked) — see §8.7 |
+| MANIFEST_SHA256 (R2, **FROZEN_PRODUCTION_CANDIDATE**) | `54668aca38b285d85b204e0ebf6b45eaef4a8b94b660823c9cc8d2ef052581d8` |
 
 Batch A entry criteria (none weakened) — a row qualifies only if all of these hold:
 - extraction validation passed;
@@ -268,7 +271,8 @@ Each manifest row carries:
 
 ### 8.4 Artifacts (RYZEN `TEMP/`, untracked, never committed)
 
-- `ltsa_historical_cm_batch_a_import_manifest.json` (+ `.sha256`)
+- `ltsa_historical_cm_batch_a_import_manifest.json` (+ `.sha256`): R1, **SUPERSEDED** by R2 (§8.7); keep it unchanged as the correction's base
+- `ltsa_historical_cm_batch_a_import_manifest_r2_api_plan.json` (+ `.sha256`): R2, **FROZEN_PRODUCTION_CANDIDATE** (laptop `TEMP/`)
 - `ltsa_historical_cm_batch_a_plan.json` (breakdowns + per-row exclusion log)
 - `ltsa_hsc_spk_column_shift_repair_candidates.json`, `ltsa_cm_unexplained_april_rows_audit.json`
 - `ltsa_cm_reconciliation.json`, `ltsa_cm_reconciliation_candidates.jsonl`, production snapshots `prod_asset_registry_snapshot.csv` / `prod_cm_reading_snapshot.csv`
@@ -281,6 +285,8 @@ Each manifest row carries:
 | `ltsa_cm_batch_a_plan_readonly.py` | `0e6d4c0a9afd559a57f127d893188869de4251161d0135505f73b586fb6b7c76` |
 
 ### 8.5 Regenerating the manifest
+
+This section regenerates **R1** (**SUPERSEDED**, historical reference). R2 is then derived from R1 by the §8.7 correction only; regeneration alone does not produce the production candidate.
 
 **Determinism proven on RYZEN.** The full chain was rebuilt from scratch into an empty directory (archive dry run → reconciliation → Batch A planner, using the saved production snapshots). It reproduced SHA-256 `80542d3c…47af0` byte for byte. Environment: Python 3.14.6, pdfplumber 0.11.10, openpyxl 3.1.5.
 
@@ -298,7 +304,7 @@ python historical_cm_pdf_archive_dry_run.py --root "D:\PROJECT\Source-documents\
 # set T = Path(r"<OUT>") in both planning scripts, then:
 python <OUT>/ltsa_cm_reconcile_readonly.py
 python <OUT>/ltsa_cm_batch_a_plan_readonly.py
-sha256sum <OUT>/ltsa_historical_cm_batch_a_import_manifest.json   # must equal 80542d3c…47af0
+sha256sum <OUT>/ltsa_historical_cm_batch_a_import_manifest.json   # R1 (SUPERSEDED): must equal 80542d3c…47af0
 ```
 
 Conditions for an identical hash:
@@ -328,6 +334,31 @@ The executor must:
 11. run a second dry run after the import, which must propose **0** inserts;
 12. write `provenance=HISTORICAL_IMPORT` and populate source provenance (`source_reference`, and document/page/row where columns exist), reusing the existing repository insert path rather than a new SQL path.
 
+### 8.7 R2 manifest freeze (`LTSA_HISTORICAL_CM_BATCH_A_R2_FREEZE_AND_EXECUTOR_ALIGNMENT_R1`, 2026-09-24)
+
+| Field | Value |
+|---|---|
+| R1_MANIFEST_STATUS | **SUPERSEDED** |
+| R1_FILENAME | `ltsa_historical_cm_batch_a_import_manifest.json` |
+| R1_SHA256 | `80542d3c94e129dc7ee82d19127a30b0c01d22f8a1c85f284231280d3e647af0` |
+| R2_MANIFEST_STATUS | **FROZEN_PRODUCTION_CANDIDATE** |
+| R2_FILENAME | `ltsa_historical_cm_batch_a_import_manifest_r2_api_plan.json` |
+| R2_SHA256 | `54668aca38b285d85b204e0ebf6b45eaef4a8b94b660823c9cc8d2ef052581d8` |
+| ROWS / BASELINE / EXPECTED_INSERTS / EXPECTED_TOTAL_AFTER | 2,907 / 2,092 / 2,907 / 4,999 (unchanged from R1) |
+| API_PLAN_SNAPSHOT non-NULL / NULL | 2,898 / 9 |
+
+R2 was made from R1 by `LTSA_HISTORICAL_CM_BATCH_A_API_PLAN_CORRECTION_R1`. It applies exactly two user-confirmed interpretation rules to `api_plan_snapshot` and nothing else:
+- 9 rows: `"23/61` → `23/61`. This is a source typo (a stray quote). All 9 are `110-P-12A`, HOC October and November 2025.
+- 9 rows: `-` → **NULL**. All 9 are `211-P-30`, HCC February, March and June 2026.
+
+**NULL means the API Plan is unknown / not yet known.** The UI shows it as N/A / Belum diketahui. A NULL snapshot is never filled from the master `ltsa_pumps.api_plan`, and `-` is not an API Plan value.
+
+Everything else is unchanged from R1: row order, `proposed_source_reference`, `measurement_fingerprint`, measurements, leak true/false/null, asset/date/area, and all source evidence (`source_hash`, `source_document`, page, row, tag, date).
+
+The raw source values stay traceable. R2's header adds `revision=R2_API_PLAN_CORRECTION`, `revision_phase`, `supersedes_manifest_sha256` (= R1) and `api_plan_correction_rules`. It also adds `api_plan_corrections`: for each of the 18 rows, the reference, asset, date, area, document, page and row, with the original and canonical value. R2 uses the same serialization as R1 (sorted keys, `indent=1`, CRLF), so a text diff of R1 → R2 removes only the 18 `api_plan_snapshot` lines.
+
+The executor's `BATCH_A_MANIFEST_SHA256` is the R2 hash. A real apply accepts only R2. R1 and any other hash are rejected with `NOT_FROZEN_MANIFEST`, even when every other gate is satisfied. Dry runs still require `--expected-sha256` to match the file.
+
 ## 9. Batch A import executor (`LTSA_HISTORICAL_CM_BATCH_A_IMPORT_EXECUTOR_R1`)
 
 Implemented on the laptop, 2026-09-24. **No import, no production access, no database write** in this phase. The only database used was a disposable local test container.
@@ -337,7 +368,7 @@ Implemented on the laptop, 2026-09-24. **No import, no production access, no dat
 All under `PRODUCTS/LTSA-BRAIN/INGESTION/`:
 
 - `historical_cm_batch_a_import_executor.py`: the executor.
-- `TEST/test_historical_cm_batch_a_import_executor.py`: 80 tests. They use a synthetic 2,907-row manifest with the frozen header contract and an in-memory transactional store.
+- `TEST/test_historical_cm_batch_a_import_executor.py`: 88 tests (80 + 8 added by the R2 alignment; 3 of them read the real R2 file and skip where it is absent). They use a synthetic 2,907-row manifest with the frozen header contract and an in-memory transactional store.
 - `TEST/test_historical_cm_batch_a_import_executor_real_db.py`: 5 tests. They run the real generated SQL against a disposable `postgres:16-alpine` container (canonical schema + migrations + the migration 038 column), and are skipped when Docker is down.
 
 ### 9.2 How it runs (each step aborts the run on failure)
@@ -358,7 +389,7 @@ All under `PRODUCTS/LTSA-BRAIN/INGESTION/`:
    - no rows with the `ltsa_hist_cm_pdf:` prefix other than this manifest's own;
    - a partial import is refused unless `--allow-resume`.
    Output: `PROPOSED_INSERTS` / `ALREADY_IMPORTED` / `UPDATES=0` / `DELETES=0`.
-4. **Apply (`--mode apply` only).** Refused unless all of these hold: the manifest hash equals the frozen `80542d3c…47af0`; `--confirm-production-write LTSA_HISTORICAL_CM_BATCH_A` is given; `--backup-file` exists and matches `--backup-sha256`; and `--expected-inserts` equals the proposal.
+4. **Apply (`--mode apply` only).** Refused unless all of these hold: the manifest hash equals the frozen **R2** `54668aca38b285d85b204e0ebf6b45eaef4a8b94b660823c9cc8d2ef052581d8` (`BATCH_A_MANIFEST_SHA256`; R1 `80542d3c…47af0` is SUPERSEDED and rejected with `NOT_FROZEN_MANIFEST`); `--confirm-production-write LTSA_HISTORICAL_CM_BATCH_A` is given; `--backup-file` exists and matches `--backup-sha256`; and `--expected-inserts` equals the proposal.
    - Each batch (default 250 rows) is one script: `BEGIN` → `LOCK` → DO-block precheck (total, references, codes, occurrences, assets) → one multi-row `INSERT` → DO-block postcheck → `COMMIT`.
    - A failed batch rolls back as a whole, and the run stops with `BATCH_FAILED`, committed batch/row counts and a rollback check. No later batch runs.
 5. **Post-import verification.**
@@ -377,6 +408,8 @@ Written values: `condition_monitoring_reading_code = LTSA-CMONR-HISTPDF-<sha1(re
 
 ### 9.3 Manifest schema assumption (verify at the production dry run)
 
+**Resolved:** `LTSA_HISTORICAL_CM_BATCH_A_REAL_MANIFEST_ACCEPTANCE_R1` ran the executor's hash gate and parser, with no database, against the real R1 file (`80542d3c…47af0`, now SUPERSEDED): 2,907 rows accepted, schema as assumed below. R2 was accepted the same way (§8.7). The original note follows.
+
 The real manifest is on RYZEN only (§8.5 blocker) and was **not available on the laptop**. So its SHA-256 was not verified here, and the executor was never run against it.
 - Key names follow §8.1: top-level `rows`; per row `source_row`, `source_page`, `source_document`, `tag`, `asset_code`, `year`, `month`, `area`, `api_plan_snapshot`, `measurements`, `proposed_source_reference`.
 - If the real file uses different key names, the executor aborts with `MANIFEST_SCHEMA_INVALID` / `MANIFEST_ROWS_INVALID`. It fails closed and never guesses.
@@ -393,8 +426,8 @@ Historical measurement values are never changed.
 
 ### 9.5 Production write gate
 
-Next: `LTSA_HISTORICAL_CM_BATCH_A_PRODUCTION_DRY_RUN_R1`, a separate mission.
-- Bring the manifest to the machine that runs the executor and verify `80542d3c…47af0`.
-- Then run `python historical_cm_batch_a_import_executor.py --manifest <path> --expected-sha256 80542d3c94e129dc7ee82d19127a30b0c01d22f8a1c85f284231280d3e647af0 --mode dry-run --env-file … --compose-file … --report <out>`. It must report `PROPOSED_INSERTS=2907`, `UPDATES=0`, `DELETES=0`.
+Next: `LTSA_HISTORICAL_CM_BATCH_A_R2_PRODUCTION_DRY_RUN_R1`, a separate mission.
+- Bring the **R2** manifest `ltsa_historical_cm_batch_a_import_manifest_r2_api_plan.json` to the machine that runs the executor and verify `54668aca38b285d85b204e0ebf6b45eaef4a8b94b660823c9cc8d2ef052581d8`. Do not use R1.
+- Then run `python historical_cm_batch_a_import_executor.py --manifest <path to R2> --expected-sha256 54668aca38b285d85b204e0ebf6b45eaef4a8b94b660823c9cc8d2ef052581d8 --mode dry-run --env-file … --compose-file … --report <out>`. It must report `PROPOSED_INSERTS=2907`, `UPDATES=0`, `DELETES=0`.
 
 Production import only after all of these: executor review PASS, tests PASS, manifest SHA PASS, production baseline recheck PASS (2,092), fresh production backup, backup verification PASS, production dry run proposes exactly 2,907, and explicit write approval.

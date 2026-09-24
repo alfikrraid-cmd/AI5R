@@ -66,7 +66,9 @@ EXECUTOR_VERSION = "1.0.0"
 # ---------------------------------------------------------------------------
 
 BATCH_A_MANIFEST_NAME = "LTSA_HISTORICAL_CM_BATCH_A"
-BATCH_A_MANIFEST_SHA256 = "80542d3c94e129dc7ee82d19127a30b0c01d22f8a1c85f284231280d3e647af0"
+# R2 (ltsa_historical_cm_batch_a_import_manifest_r2_api_plan.json) is the only
+# manifest a real apply accepts; R1 is SUPERSEDED (handoff §8.7).
+BATCH_A_MANIFEST_SHA256 = "54668aca38b285d85b204e0ebf6b45eaef4a8b94b660823c9cc8d2ef052581d8"
 BATCH_A_ROW_COUNT = 2907
 BATCH_A_PRODUCTION_BASELINE = 2092
 BATCH_A_EXPECTED_TOTAL_AFTER = 4999
