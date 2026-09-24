@@ -5,7 +5,8 @@ Phase gate reached: `LTSA_HISTORICAL_CM_RYZEN_FINAL_CHECKPOINT_R1`: parser gener
 Addendum 2026-09-24: `LTSA_HISTORICAL_CM_SAFE_IMPORT_SET_R1` fixed a hash-pinned Batch A import set of 2,907 rows (§8).
 Addendum 2026-09-24 (laptop): `LTSA_HISTORICAL_CM_BATCH_A_IMPORT_EXECUTOR_R1` implemented and tested; nothing imported (§9).
 Addendum 2026-09-24 (laptop): `LTSA_HISTORICAL_CM_BATCH_A_R2_FREEZE_AND_EXECUTOR_ALIGNMENT_R1`: the R1 manifest is **SUPERSEDED** by the API-Plan-corrected **R2** manifest (SHA-256 `54668aca38b285d85b204e0ebf6b45eaef4a8b94b660823c9cc8d2ef052581d8`), now the only manifest a real apply accepts (§8.7).
-Next gate: `LTSA_HISTORICAL_CM_BATCH_A_R2_PRODUCTION_DRY_RUN_R1` (§9.5). Batch A excludes every unresolved population, so it does not wait on the §6 decisions.
+Addendum 2026-09-24: **Batch A R2 imported into production** (2,092 → 4,999; 2,907 inserted). **DATA IMPORT = PASS**, **APPLICATION UAT = PASS_WITH_UI_FINDINGS**. The Batch A data workstream is **CLOSED** (§10).
+Next gate: `LTSA_CM_UI_REMEDIATION_R1` (§10.6). Historical: `LTSA_HISTORICAL_CM_BATCH_A_R2_PRODUCTION_DRY_RUN_R1` (§9.5). Batch A excludes every unresolved population, so it does not wait on the §6 decisions.
 
 ## 1. Checkpoint fields
 
@@ -449,3 +450,78 @@ Evidence:
 - A read-only production probe through the real compose transport returned `BEGIN\n2092`, which parses to 2,092.
 
 **Operational note for host execution:** `DatabaseRunner.query_scalar` does not redirect stdin, and `docker compose exec` reads it. Run the executor with stdin from `/dev/null`, never as part of a script piped to `bash -s`.
+
+## 10. Batch A R2 closure (`LTSA_HISTORICAL_CM_BATCH_A_R2_CLOSURE_R1`, 2026-09-24)
+
+**DATA IMPORT = PASS · APPLICATION UAT = PASS_WITH_UI_FINDINGS.** The UI findings (§10.6) do not invalidate the imported data.
+
+### 10.1 Import identity
+
+| Field | Value |
+|---|---|
+| Manifest (R2, frozen) | `ltsa_historical_cm_batch_a_import_manifest_r2_api_plan.json`, SHA-256 `54668aca38b285d85b204e0ebf6b45eaef4a8b94b660823c9cc8d2ef052581d8` (R1 `80542d3c…47af0` SUPERSEDED) |
+| Executor commit | `fd18fc903ad9a1093e266cd17c09a8c7d6cc504c`, staged on the production host as a `git archive` (commit id verified; 40 files byte-identical to git blobs) |
+| Transport | production-host execution: `DatabaseRunner` docker-exec (`docker compose … exec -T postgres psql`), compose project `ai5ros-prod`, database `ltsa_brain`, stdin `/dev/null` |
+| Pre-import backup | `/home/unikom666/AI5R-PROD-BACKUPS/ltsa_brain_pre_histcm_batch_a_r2_20260924T134054Z.dump`: `pg_dump -Fc` of `ltsa_brain`, 667,668 bytes, SHA-256 `b6286e82368459571ec42d51e8594a4b769bd00222d07cdfd9f10493a07356dd`. `pg_restore --list` PASS. A disposable restore reproduced 2,092 / 257 / 252 with identical table fingerprints. |
+| Apply | one run of `--mode apply --expected-inserts 2907 --confirm-production-write LTSA_HISTORICAL_CM_BATCH_A`: exit 0, 12/12 batches committed, no retry, no `--allow-resume` |
+
+### 10.2 Result (verified read-only after import, and again at closure)
+
+| Field | Value |
+|---|---|
+| BASELINE_CM / BATCH_A_INSERTED / FINAL_CM | 2,092 / 2,907 / 4,999 |
+| Membership | 2,907 matched and field-identical to the manifest; 0 missing; 0 unexpected; 0 duplicate source references |
+| Provenance / workflow | HISTORICAL_IMPORT 2,907 / FINALIZED 2,907 |
+| Year | 2025 = 997 · 2026 = 1,910 |
+| Area (source report) | HCC 1,117 · HOC 924 · OM_UTL 866 |
+| Month | 2025-10 297 · 2025-11 443 · 2025-12 257 · 2026-01 205 · 2026-02 751 · 2026-03 685 · 2026-06 269 |
+| API plan snapshot | non-NULL 2,898 · NULL 9 (all `211-P-30`) · `23/61` 217 · `"23/61` 0 · `-` 0 |
+| Leak DE | true 215 · false 2,669 · NULL 23 |
+| Leak NDE | true 52 · false 673 · NULL 2,182 |
+| Any / both leak true | 235 / 32 |
+| 701-P-1A | 9 before + 13 Batch A = 22 |
+| Pre-existing rows | unchanged (fingerprint of the 2,092 non-Batch-A rows identical before and after the import) |
+| asset_registry / ltsa_pumps | 257 / 252; fingerprints unchanged (`257:a0589f3b…a570`, `252:ced14b95…736d`) |
+| Idempotency (dry run after import) | ALREADY_IMPORTED 2,907 · PROPOSED_INSERTS 0 · UPDATES 0 · DELETES 0 · issues 0 |
+
+### 10.3 Confirmed correct behaviour (not defects)
+
+- Historical API Plan comes from `api_plan_snapshot`. A NULL snapshot never falls back to `ltsa_pumps.api_plan`.
+- The 9 unknown `211-P-30` API Plans are NULL (master plan `11/62` not used). The Actual Measuring Report shows an unknown plan as "—".
+- DE and NDE are stored and rendered independently. A NULL leak stays NULL in the stored data.
+- Batch A changed the latest valid CM of **zero** assets (0 of 253), so it added history without changing any Current Condition.
+- Rows from before migration 038 carry `api_plan_snapshot` NULL. That is the expected historical-unknown state, not a Batch A defect.
+
+### 10.4 UAT limitations
+
+- **AUTHENTICATED_UI_CLICKTHROUGH = NOT_VERIFIED_LIVE.** No authenticated LTSA browser session was available, and production authentication was not bypassed. What UAT did cover:
+  - live, read-only: health, auth-gated routes returning 401, logs (0 API errors, 0 nginx 5xx since the import);
+  - database reconciliation of every sampled occurrence;
+  - the deployed code (below).
+- **DEPLOYED_API_IDENTITY = VERIFIED** against `7bd3236` for `cm_condition_evaluator.py`, `equipment_360_service.py` and `condition_monitoring_reading_repository.py` (byte-identical in the API container).
+- **DEPLOYED_FRONTEND_IDENTITY = NOT_FULLY_VERIFIED.**
+  - The served bundle is `index-BogGFLFT.js`; the local release build is `index-BKL53JLI.js`.
+  - The served bundle does contain the expected strings (for example "API Plan Recorded in Source").
+  - This does not by itself mean a wrong deployment. Authenticated visual verification is still required.
+  - Suggested click-through: `701-P-1A`; `211-P-30` 2026-02-02; `840-P-4B` 2025-10-09.
+
+### 10.5 Retained recovery artifacts
+
+No cleanup is authorized. Keep:
+- the backup above;
+- the staging directory `/home/unikom666/AI5R-HISTCM-BATCH-A-R2` (read-only; the frozen executor, manifest and `STAGING_INVENTORY.txt`).
+
+Both are retained until UI remediation and the authenticated live verification close.
+
+### 10.6 Follow-up workstream `LTSA_CM_UI_REMEDIATION_R1` (open; not implemented here)
+
+1. **NULL/NULL leak summarized as a green "No leak".**
+   - Where: `ConditionMonitoringReadingDetailPanel` (`leakDetected = leakDe || leakNde`). Its DE/NDE rows correctly say "Not Recorded".
+   - Required: true → leak · false → no leak · null → unknown / not recorded.
+   - Seen at UAT: 321 live rows (23 Batch A).
+2. **Active-leak semantics.**
+   - Now: several consumers (maintenance history flag, Equipment 360, fleet analytics, seal diagnostic) use "any leak in the last 30 days".
+   - Contract: the **latest valid CM occurrence** determines Current Condition. A historical leak stays visible in History, but it must not create a current active leak when a newer valid occurrence says no leak.
+   - The evaluator's `current_condition` is computed but no UI consumes it.
+   - UAT snapshot (not constants): latest-valid leak assets 16, currently flagged 1, mismatches 15.
+3. **Leak alert visibility.** There is no explicit critical presentation. Desired: **LEAK DETECTED — DE**, **— NDE**, **— DE & NDE**, shown in red.
