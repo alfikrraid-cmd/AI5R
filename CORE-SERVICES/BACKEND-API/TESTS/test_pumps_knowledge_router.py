@@ -16,6 +16,7 @@ from dependencies import (
     get_ltsa_knowledge_service,
 )
 from API.auth_service import ROLE_PERMISSIONS, AuthenticatedIdentity
+from API.current_installation_contract import InstallationResolution, NOT_RECORDED
 from API.equipment_timeline_service import EquipmentTimeline, TimelineEvent
 from API.ltsa_knowledge_service import LTSAKnowledge
 from API.pump_lifecycle_models import PumpLifecycleCurrentSeal
@@ -60,9 +61,10 @@ class FakeLifecycle:
 
 
 class FakeTimelineService:
-    def __init__(self, timeline, current_seal=None, lifecycle=None):
+    def __init__(self, timeline, current_seal=None, lifecycle=None, installation=None):
         self.timeline = timeline
         self.current_seal = current_seal
+        self.installation = installation or InstallationResolution(current=NOT_RECORDED)
         self.lifecycle = lifecycle or FakeLifecycle()
         self.calls = []
         self.current_seal_calls = []
@@ -75,6 +77,11 @@ class FakeTimelineService:
     def build_current_seal(self, tag_number):
         self.current_seal_calls.append(tag_number)
         return self.current_seal
+
+    # LTSA_ASSET360_CURRENT_INSTALLATION_AND_SERVICE_AGE_R1 -- GET .../knowledge
+    # also calls build_current_installation(tag); defaults to NOT_RECORDED.
+    def build_current_installation(self, tag_number, *, now=None):
+        return self.installation
 
     # MWO-LTSA-ASSET360-COMPLETENESS-FIX-021B -- GET .../knowledge now also
     # calls build_lifecycle(tag, knowledge=knowledge); defaults to an empty
@@ -798,3 +805,50 @@ def test_get_knowledge_passes_knowledge_readings_to_context_engine():
     assert client.get(f"/api/ltsa/pumps/{TAG}/knowledge").status_code == 200
     assert summary_fake.calls == [TAG]
     assert summary_fake.readings_seen == [readings]
+
+
+# LTSA_ASSET360_CURRENT_INSTALLATION_AND_SERVICE_AGE_R1 -- the canonical
+# Current Installation, its calendar service age and valid history ride on
+# the same /knowledge response, separate from current_seal/configured_seal.
+def test_get_knowledge_current_installation_defaults_to_not_recorded():
+    _override()
+
+    data = client.get(f"/api/ltsa/pumps/{TAG}/knowledge").json()["data"]
+
+    assert data["current_installation"]["installation_status"] == "NOT_RECORDED"
+    assert data["current_installation"]["installed_seal_type"] is None
+    assert data["current_installation"]["time_since_installation_days"] is None
+    assert data["current_installation"]["actual_operating_hours"] is None
+    assert data["current_installations"] == []
+    assert data["installation_history"] == []
+
+
+def test_get_knowledge_current_installation_serializes_the_resolution():
+    from datetime import datetime, timezone
+
+    from API.current_installation_contract import resolve_current_installation
+
+    rows = [{
+        "installation_code": "INSTL-033-2026", "report_no": "033/INSTL/TAP/05-2026", "report_date": "2026-05-22",
+        "pump_tag_number": TAG, "plant_equip_no": TAG, "seal_type": "T8B1-RS", "seal_code": None,
+        "seal_unit_id": None, "seal_location": None, "source_document_name": "SCAN 033.pdf",
+    }]
+    resolution = resolve_current_installation(rows, TAG, now=datetime(2026, 9, 25, 3, tzinfo=timezone.utc))
+    _, timeline_fake, _ = _override()
+    timeline_fake.installation = resolution
+
+    data = client.get(f"/api/ltsa/pumps/{TAG}/knowledge").json()["data"]
+
+    current = data["current_installation"]
+    assert current["installation_status"] == "INSTALLED"
+    assert current["installed_seal_type"] == "T8B1-RS"
+    assert current["installed_seal_unit"] is None
+    assert current["installation_date"] == "2026-05-22"
+    assert current["source_installation_code"] == "INSTL-033-2026"
+    assert current["source_document"] == "SCAN 033.pdf"
+    assert current["time_since_installation_days"] == 126
+    assert current["time_since_installation_hours"] == 3024
+    assert current["time_basis"] == "CALENDAR_TIME"
+    assert current["time_precision"] == "DATE_ONLY"
+    assert len(data["current_installations"]) == 1
+    assert [e["installation_code"] for e in data["installation_history"]] == ["INSTL-033-2026"]

@@ -103,6 +103,24 @@ class InstallationReportRepository:
             "count": len(rows),
         }
 
+    def list_by_pump_tag(self, pump_tag_number: str) -> list[dict[str, Any]]:
+        # LTSA_ASSET360_CURRENT_INSTALLATION_AND_SERVICE_AGE_R1 -- one pump's
+        # reports, attributed ONLY through the governed pump_tag_number
+        # (never plant_equip_no, whose free text named a sibling pump on
+        # INSTL-025/038/041) and only when that tag is a registered PUMP.
+        # seal_location carries explicit DE/NDE position evidence and
+        # seal_unit_id the physical unit link. Ordered here for a stable
+        # response; json_agg does not guarantee subquery order, so
+        # current_installation_contract re-sorts on the same key.
+        return _json_query(
+            f"SELECT {_SELECT_COLUMNS}, seal_location, seal_unit_id FROM installation_report ir "
+            f"WHERE ir.pump_tag_number = {_sql(pump_tag_number)} "
+            "AND EXISTS (SELECT 1 FROM asset_registry ar "
+            "WHERE ar.asset_code = ir.pump_tag_number AND ar.asset_type = 'PUMP') "
+            "ORDER BY ir.report_date DESC NULLS LAST, ir.installation_code DESC",
+            self._runner,
+        )
+
     def find_by_installation_code(self, installation_code: str) -> dict[str, Any] | None:
         # MWO-INSTALLATION-DETAIL-DIRECT-DB-R1 -- widened from its original
         # 3-column selection (installation_code, pump_tag_number,

@@ -329,7 +329,7 @@ describe("Responsive layout", () => {
     expect(screen.getByTestId("knowledge-workspace-success")).toHaveClass("workspace-grid");
   });
 
-  it("keeps Mechanical Seal, Compatible Seals, Inventory, and Drawings in the sidebar rail; everything else in the main column", async () => {
+  it("keeps only Inventory, Drawings and Documents in the sidebar rail; Mechanical Seal (with Compatible Seals) and everything else in the main column", async () => {
     getPumpKnowledge.mockResolvedValue(backendResponse());
 
     const { container } = render(<KnowledgeWorkspace tag={TAG} />);
@@ -338,12 +338,17 @@ describe("Responsive layout", () => {
     const inspectorRail = container.querySelector(".inspector-rail");
     const objectColumn = container.querySelector(".object-column");
 
-    ["seal", "compat-seals", "inventory", "drawings", "documents"].forEach((id) => {
+    ["inventory", "drawings", "documents"].forEach((id) => {
       expect(inspectorRail.querySelector(`[data-testid="knowledge-section-${id}"]`)).toBeInTheDocument();
     });
+    // LTSA_ASSET360_CURRENT_INSTALLATION_AND_SERVICE_AGE_R1 -- no seal content left in the rail.
+    expect(inspectorRail.querySelector('[data-testid="knowledge-section-seal"]')).toBeNull();
+    expect(inspectorRail.querySelector('[data-testid="knowledge-seal"]')).toBeNull();
+    expect(screen.queryByTestId("knowledge-section-compat-seals")).toBeNull();
     [
       "summary",
       "active-plans",
+      "seal",
       "timeline",
       "condition",
       "maintenance",
@@ -458,7 +463,7 @@ describe("Refresh -- MWO-LTSA-032A-R1", () => {
     await waitFor(() => expect(getPumpKnowledge).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());
 
-    expect(screen.getAllByTestId("knowledge-card")).toHaveLength(10);
+    expect(screen.getAllByTestId("knowledge-card")).toHaveLength(9);
   });
 
   it("exposes Refresh as an accessible, named button (role + accessible name)", async () => {
@@ -600,8 +605,9 @@ describe("Reuse verification", () => {
     // PMOccurrenceDetailPanel) rather than a single KnowledgeCard-wrapped
     // RefRows list. MWO-LTSA-ASSET360-COMPLETENESS-FIX-021B -- a new
     // "documents" section (item B, distinct from drawings) brings this
-    // back up to 10.
-    expect(screen.getAllByTestId("knowledge-card")).toHaveLength(10);
+    // back up to 10. LTSA_ASSET360_CURRENT_INSTALLATION_AND_SERVICE_AGE_R1 --
+    // Compatible Seals moved inside the Mechanical Seal card: 9.
+    expect(screen.getAllByTestId("knowledge-card")).toHaveLength(9);
   });
 
   // MWO-LTSA-ASSET360-CONSOLIDATION-001 -- 4 new sections added: condition
@@ -609,7 +615,7 @@ describe("Reuse verification", () => {
   // MWO-LTSA-ASSET360-COMPLETENESS-FIX-021B -- 1 more added: documents
   // (item B, distinct from drawings, fixing the previously-mislabeled
   // Documents nav entry that pointed at the Drawings section).
-  it("renders exactly 17 KnowledgeSection instances (no duplicated sections)", async () => {
+  it("renders exactly 16 KnowledgeSection instances (no duplicated sections)", async () => {
     getPumpKnowledge.mockResolvedValue(backendResponse());
 
     render(<KnowledgeWorkspace tag={TAG} />);
@@ -622,7 +628,6 @@ describe("Reuse verification", () => {
       "condition",
       "maintenance",
       "seal",
-      "compat-seals",
       "inventory",
       "pm-history",
       "cm-history",
@@ -755,120 +760,205 @@ describe("Active Plans Integration (MWO-LTSA-036F) -- pm_schedules / condition_m
   });
 });
 
-describe("Mechanical Seal (MWO-LTSA-ASSET360-MECHANICAL-SEAL-WIRING-001) -- current_seal, additive key on the one Knowledge API response", () => {
-  it("renders the authoritative current seal (T48MP) from the single aggregate response", async () => {
-    getPumpKnowledge.mockResolvedValue(
-      backendResponse({
-        data: {
-          ...backendResponse().data,
-          current_seal: {
-            seal_code: "T48MP",
-            seal_name: null,
-            manufacturer: "John Crane",
-            model: null,
-            shaft_size: null,
-            material: "1K1K",
-            temperature_limit: null,
-            pressure_limit: null,
-            status: "INSTALLED",
-            installation_code: "INSTL-001-2026",
-            installed_at: "2026-01-06",
-            source: "seal_registry",
-          },
-        },
-      })
-    );
+describe("Mechanical Seal -- Current Installation (LTSA_ASSET360_CURRENT_INSTALLATION_AND_SERVICE_AGE_R1)", () => {
+  const NOT_RECORDED_INSTALLATION = {
+    installation_status: "NOT_RECORDED",
+    installed_seal_type: null,
+    installed_seal_unit: null,
+    seal_code: null,
+    installation_date: null,
+    installation_position: null,
+    source_document: null,
+    source_installation_code: null,
+    removed_at: null,
+    time_since_installation_days: null,
+    time_since_installation_hours: null,
+    time_basis: "CALENDAR_TIME",
+    time_precision: null,
+    actual_operating_hours: null,
+  };
 
-    render(<KnowledgeWorkspace tag={TAG} />);
+  function installed(overrides = {}) {
+    return {
+      ...NOT_RECORDED_INSTALLATION,
+      installation_status: "INSTALLED",
+      installed_seal_type: "T8B1-RS",
+      installation_date: "2026-05-22",
+      source_document: "SCAN 033 INSTALLATION REPORT 211-P-1A.pdf",
+      source_installation_code: "INSTL-033-2026",
+      time_since_installation_days: 126,
+      time_since_installation_hours: 3024,
+      time_precision: "DATE_ONLY",
+      ...overrides,
+    };
+  }
 
+  function withSeal(tag, dataOverrides) {
+    return backendResponse({
+      tag_number: tag,
+      data: {
+        ...backendResponse().data,
+        summary: { ...backendResponse().data.summary, asset: { tag_number: tag, pump_name: "Pump" } },
+        ...dataOverrides,
+      },
+    });
+  }
+
+  function rowValue(group, label) {
+    const row = within(group)
+      .getAllByText(label)
+      .map((element) => element.closest(".info-row"))
+      .find(Boolean);
+    return row.querySelector(".v").textContent;
+  }
+
+  async function renderSeal(tag, dataOverrides) {
+    getPumpKnowledge.mockResolvedValue(withSeal(tag, dataOverrides));
+    render(<KnowledgeWorkspace tag={tag} />);
     await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());
-    const sealSection = screen.getByTestId("knowledge-section-seal");
-    const currentGroup = within(sealSection).getByTestId("knowledge-seal-current");
-    expect(within(currentGroup).getByText("T48MP")).toBeInTheDocument();
-    expect(within(currentGroup).getByText("John Crane")).toBeInTheDocument();
-    expect(within(currentGroup).getByText("1K1K")).toBeInTheDocument();
-    // "INSTALLED" legitimately renders twice: the section header's own
-    // badge (badge={data.mechanicalSeal?.status}) AND the seal body's
-    // status-signal line.
-    expect(within(sealSection).getAllByText("INSTALLED").length).toBeGreaterThan(0);
+    return screen.getByTestId("knowledge-section-seal");
+  }
+
+  it("701-P-1A: no installation evidence renders NOT RECORDED and never falls back to the configured seal or catalog status", async () => {
+    const sealSection = await renderSeal("701-P-1A", {
+      configured_seal: { seal_type: "T8B1", api_plan: "23/61" },
+      // Decoy: a seal_registry catalog status must never read as installation status.
+      current_seal: { seal_code: "T8B1", status: "INSTALLED" },
+      current_installation: NOT_RECORDED_INSTALLATION,
+      current_installations: [],
+      installation_history: [],
+    });
+
+    const configured = within(sealSection).getByTestId("knowledge-seal-configured");
+    expect(rowValue(configured, "Configured Seal")).toBe("T8B1");
+    expect(rowValue(configured, "API Plan")).toBe("23/61");
+
+    const current = within(sealSection).getByTestId("knowledge-seal-current");
+    expect(rowValue(current, "Installation Status")).toBe("NOT RECORDED");
+    expect(rowValue(current, "Installed Seal Type")).toBe("Not Recorded");
+    expect(rowValue(current, "Installed Seal Unit")).toBe("Not Recorded");
+    expect(rowValue(current, "Installation Date")).toBe("Not Recorded");
+    expect(within(current).queryByText("T8B1")).toBeNull();
+    expect(within(sealSection).queryByText("INSTALLED")).toBeNull();
+
+    const time = within(sealSection).getByTestId("knowledge-seal-time");
+    expect(rowValue(time, "Days Since Installation")).toBe("N/A");
+    expect(rowValue(time, "Hours Since Installation")).toBe("N/A");
+    expect(rowValue(within(sealSection).getByTestId("knowledge-seal-operating-hours"), "Actual Operating Hours")).toBe("N/A");
+    expect(within(sealSection).getByText("No installation history recorded")).toBeInTheDocument();
+
+    const kpis = screen.getByTestId("asset-header-kpis");
+    expect(within(kpis).getByTestId("kpi-configured-seal")).toHaveTextContent("T8B1");
+    expect(within(kpis).getByTestId("kpi-installed-seal")).toHaveTextContent("Not Recorded");
+    expect(within(kpis).getByTestId("kpi-installed-seal")).toHaveTextContent("Installation Status: NOT RECORDED");
+    expect(within(kpis).queryByText("Current Seal / Seal Status")).toBeNull();
   });
 
-  it("leaves current-installation fields with no authoritative source as an honest 'Unavailable', never fabricated", async () => {
-    getPumpKnowledge.mockResolvedValue(
-      backendResponse({
-        data: {
-          ...backendResponse().data,
-          current_seal: {
-            seal_code: "T48MP",
-            seal_name: null,
-            manufacturer: "John Crane",
-            model: null,
-            shaft_size: null,
-            material: "1K1K",
-            temperature_limit: null,
-            pressure_limit: null,
-            status: null,
-            installation_code: "INSTL-001-2026",
-            installed_at: "2026-01-06",
-            source: "seal_registry",
-          },
+  it("211-P-1A: installed seal type differs from the configured seal and shows calendar-time service age", async () => {
+    const sealSection = await renderSeal("211-P-1A", {
+      configured_seal: { seal_type: "T8B1", api_plan: "23/61" },
+      current_installation: installed(),
+      current_installations: [installed()],
+      installation_history: [
+        {
+          installation_code: "INSTL-033-2026",
+          pump_tag_number: "211-P-1A",
+          installation_date: "2026-05-22",
+          time_precision: "DATE_ONLY",
+          installation_position: null,
+          installed_seal_type: "T8B1-RS",
+          installed_seal_unit: null,
+          seal_code: null,
+          report_no: "033/INSTL/TAP/05-2026",
+          source_document: "SCAN 033 INSTALLATION REPORT 211-P-1A.pdf",
         },
-      })
-    );
+      ],
+    });
 
-    render(<KnowledgeWorkspace tag={TAG} />);
+    expect(rowValue(within(sealSection).getByTestId("knowledge-seal-configured"), "Configured Seal")).toBe("T8B1");
+    const current = within(sealSection).getByTestId("knowledge-seal-current");
+    expect(rowValue(current, "Installation Status")).toBe("INSTALLED");
+    expect(rowValue(current, "Installed Seal Type")).toBe("T8B1-RS");
+    expect(rowValue(current, "Installed Seal Unit")).toBe("Not Recorded");
+    expect(rowValue(current, "Position")).toBe("Not Recorded");
+    expect(rowValue(current, "Installation Date")).toBe("2026-05-22");
+    expect(rowValue(current, "Source")).toBe("SCAN 033 INSTALLATION REPORT 211-P-1A.pdf");
 
-    await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());
-    const sealSection = screen.getByTestId("knowledge-section-seal");
-    const currentGroup = within(sealSection).getByTestId("knowledge-seal-current");
-    // Name/Model have no authoritative source in this fixture (seal_name/
-    // model: null) -- each renders "Not recorded", never a guessed value.
-    expect(within(currentGroup).getAllByText("Not recorded").length).toBeGreaterThanOrEqual(2);
+    const time = within(sealSection).getByTestId("knowledge-seal-time");
+    expect(rowValue(time, "Days Since Installation")).toBe("126 days");
+    expect(rowValue(time, "Hours Since Installation")).toBe("3,024 hours");
+    expect(rowValue(time, "Basis")).toBe("Calendar Time");
+    expect(rowValue(time, "Precision")).toBe("Date only");
+    expect(within(sealSection).queryByText(/running hours|operating hours since/i)).toBeNull();
+
+    const history = within(sealSection).getByTestId("installation-history-INSTL-033-2026");
+    expect(history).toHaveTextContent("2026-05-22");
+    expect(history).toHaveTextContent("T8B1-RS");
+
+    const kpi = within(screen.getByTestId("asset-header-kpis")).getByTestId("kpi-installed-seal");
+    expect(kpi).toHaveTextContent("T8B1-RS");
+    expect(kpi).toHaveTextContent("Installation Status: INSTALLED");
+    expect(kpi).toHaveTextContent("Seal type only — no tracked seal unit");
   });
 
-  it("current-installation fields fall back to 'Not recorded' (never inferred from configured seal type) when current_seal is null", async () => {
-    getPumpKnowledge.mockResolvedValue(
-      backendResponse({ data: { ...backendResponse().data, current_seal: null } })
-    );
+  it("renders one current installation per explicitly evidenced position", async () => {
+    const de = installed({ installation_position: "DE", installed_seal_type: "DE-TYPE", source_installation_code: "INSTL-1" });
+    const nde = installed({ installation_position: "NDE", installed_seal_type: "NDE-TYPE", source_installation_code: "INSTL-2" });
+    const sealSection = await renderSeal("940-P-2A", {
+      current_installation: de,
+      current_installations: [de, nde],
+      installation_history: [],
+    });
 
-    render(<KnowledgeWorkspace tag={TAG} />);
-
-    await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());
-    const sealSection = screen.getByTestId("knowledge-section-seal");
-    const currentGroup = within(sealSection).getByTestId("knowledge-seal-current");
-    expect(within(currentGroup).getAllByText("Not recorded").length).toBeGreaterThanOrEqual(6);
+    const entries = within(within(sealSection).getByTestId("knowledge-seal-current")).getAllByTestId("current-installation-entry");
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).toHaveTextContent("DE-TYPE");
+    expect(entries[1]).toHaveTextContent("NDE-TYPE");
+    expect(within(entries[1]).getByText("Position").closest(".info-row")).toHaveTextContent("NDE");
   });
 
-  it("does not introduce a second fetch -- still exactly one getPumpKnowledge call", async () => {
-    getPumpKnowledge.mockResolvedValue(
-      backendResponse({
-        data: {
-          ...backendResponse().data,
-          current_seal: { seal_code: "T48MP", manufacturer: "John Crane" },
-        },
-      })
-    );
+  it("a removed installation shows REMOVED and stops the counter", async () => {
+    const removed = { ...NOT_RECORDED_INSTALLATION, installation_status: "REMOVED", removed_at: "2026-08-01", source_installation_code: "INSTL-033-2026" };
+    const sealSection = await renderSeal("211-P-1A", {
+      current_installation: removed,
+      current_installations: [removed],
+      installation_history: [],
+    });
 
-    render(<KnowledgeWorkspace tag={TAG} />);
+    const current = within(sealSection).getByTestId("knowledge-seal-current");
+    expect(rowValue(current, "Installation Status")).toBe("REMOVED");
+    expect(rowValue(current, "Removed")).toBe("2026-08-01");
+    expect(rowValue(within(sealSection).getByTestId("knowledge-seal-time"), "Days Since Installation")).toBe("N/A");
+  });
 
+  it("places Mechanical Seal in the main column and leaves only Inventory, Drawings and Documents in the rail", async () => {
+    getPumpKnowledge.mockResolvedValue(backendResponse());
+    const { container } = render(<KnowledgeWorkspace tag={TAG} />);
     await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());
+
+    const rail = container.querySelector(".inspector-rail");
+    const main = container.querySelector(".object-column");
+    expect(main.querySelector('[data-testid="knowledge-section-seal"]')).toBeInTheDocument();
+    expect(rail.querySelector('[data-testid="knowledge-section-seal"]')).toBeNull();
+    expect(rail.querySelector('[data-testid="knowledge-seal"]')).toBeNull();
+    expect(screen.queryByTestId("knowledge-section-compat-seals")).toBeNull();
+    expect(Array.from(rail.querySelectorAll('[data-testid^="knowledge-section-"]')).map((el) => el.dataset.testid)).toEqual([
+      "knowledge-section-inventory",
+      "knowledge-section-drawings",
+      "knowledge-section-documents",
+    ]);
+  });
+
+  it("keeps Compatible Seals inside the Mechanical Seal section and makes exactly one Knowledge API call", async () => {
+    const sealSection = await renderSeal(TAG, {
+      current_installation: installed(),
+      current_installations: [installed()],
+      installation_history: [],
+    });
+
+    expect(within(sealSection).getByTestId("knowledge-seal-compatible")).toBeInTheDocument();
     expect(getPumpKnowledge).toHaveBeenCalledTimes(1);
-  });
-
-  it("does not change the KnowledgeCard/KnowledgeSection counts (additive field, no new section)", async () => {
-    getPumpKnowledge.mockResolvedValue(
-      backendResponse({
-        data: {
-          ...backendResponse().data,
-          current_seal: { seal_code: "T48MP", manufacturer: "John Crane" },
-        },
-      })
-    );
-
-    render(<KnowledgeWorkspace tag={TAG} />);
-
-    await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());
-    expect(screen.getAllByTestId("knowledge-card")).toHaveLength(10);
+    expect(screen.getAllByTestId("knowledge-card")).toHaveLength(9);
   });
 });
 
@@ -893,7 +983,7 @@ describe("Configured vs Current Seal (MWO-LTSA-ASSET360-SEAL-SEMANTICS-001) -- c
     expect(within(configuredGroup).getByText("11/62")).toBeInTheDocument();
   });
 
-  it("shows the current-installation section as 'Not recorded' even when a configured seal type is known -- never inferred from seal_type", async () => {
+  it("shows the current-installation section as 'Not Recorded' even when a configured seal type is known -- never inferred from seal_type", async () => {
     getPumpKnowledge.mockResolvedValue(
       backendResponse({
         data: {
@@ -909,7 +999,7 @@ describe("Configured vs Current Seal (MWO-LTSA-ASSET360-SEAL-SEMANTICS-001) -- c
     await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());
     const sealSection = screen.getByTestId("knowledge-section-seal");
     const currentGroup = within(sealSection).getByTestId("knowledge-seal-current");
-    expect(within(currentGroup).getAllByText("Not recorded").length).toBeGreaterThanOrEqual(1);
+    expect(within(currentGroup).getAllByText("Not Recorded").length).toBeGreaterThanOrEqual(1);
     // Never "T48MP" leaking into the current-installation group as if it
     // were installation evidence.
     expect(within(currentGroup).queryByText("T48MP")).not.toBeInTheDocument();
@@ -920,7 +1010,7 @@ describe("Configured vs Current Seal (MWO-LTSA-ASSET360-SEAL-SEMANTICS-001) -- c
     ["110-P-10", "T48MP", "11/62"],
     ["140-P-11", "T48MP", "11/61"],
   ])(
-    "%s: configured seal type/API plan render from configured_seal while current_seal stays 'Not recorded' (production evidence: installation_report has zero rows)",
+    "%s: configured seal type/API plan render from configured_seal while Current Installation stays 'Not Recorded' (no installation evidence)",
     async (tag, sealType, apiPlan) => {
       getPumpKnowledge.mockResolvedValue(
         backendResponse({
@@ -944,7 +1034,7 @@ describe("Configured vs Current Seal (MWO-LTSA-ASSET360-SEAL-SEMANTICS-001) -- c
         expect(within(configuredGroup).getByText(apiPlan)).toBeInTheDocument();
       }
       const currentGroup = within(sealSection).getByTestId("knowledge-seal-current");
-      expect(within(currentGroup).getAllByText("Not recorded").length).toBeGreaterThanOrEqual(1);
+      expect(within(currentGroup).getAllByText("Not Recorded").length).toBeGreaterThanOrEqual(1);
     }
   );
 
@@ -962,7 +1052,7 @@ describe("Configured vs Current Seal (MWO-LTSA-ASSET360-SEAL-SEMANTICS-001) -- c
 
     await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());
     expect(getPumpKnowledge).toHaveBeenCalledTimes(1);
-    expect(screen.getAllByTestId("knowledge-card")).toHaveLength(10);
+    expect(screen.getAllByTestId("knowledge-card")).toHaveLength(9);
   });
 });
 
@@ -1208,6 +1298,6 @@ describe("Application chrome via WorkspaceShell (MWO-LTSA-036I)", () => {
     render(<KnowledgeWorkspace tag={TAG} />);
 
     await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());
-    expect(screen.getAllByTestId("knowledge-card")).toHaveLength(10);
+    expect(screen.getAllByTestId("knowledge-card")).toHaveLength(9);
   });
 });

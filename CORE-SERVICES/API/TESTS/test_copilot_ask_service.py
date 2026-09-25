@@ -237,6 +237,10 @@ class _FakeInstallationReportRepository:
     def list_installations(self):
         return {"success": True, "data": self._records}
 
+    def list_by_pump_tag(self, pump_tag_number):
+        rows = [r for r in self._records if r.get("pump_tag_number") == pump_tag_number]
+        return sorted(rows, key=lambda r: (str(r.get("report_date") or ""), str(r.get("installation_code") or "")), reverse=True)
+
 
 class _FakeCMONGateway:
     def __init__(self, records):

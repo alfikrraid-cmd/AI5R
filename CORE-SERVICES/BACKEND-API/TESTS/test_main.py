@@ -33,6 +33,7 @@ from dependencies import (
     get_work_order_gateway,
 )
 from API.auth_service import ROLE_PERMISSIONS, AuthenticatedIdentity
+from API.current_installation_contract import InstallationResolution, NOT_RECORDED
 from API.ltsa_knowledge_service import LTSAKnowledge
 from API.recommendation_engine import Evidence, Recommendation
 
@@ -265,6 +266,7 @@ class FakeEquipmentTimelineService:
     def __init__(self, timeline=None, current_seal=None, lifecycle=None):
         self._timeline = timeline or FakeEquipmentTimeline()
         self._current_seal = current_seal
+        self._installation = InstallationResolution(current=NOT_RECORDED)
         self._lifecycle = lifecycle or FakeLifecycle()
 
     def build(self, tag_number):
@@ -276,6 +278,11 @@ class FakeEquipmentTimelineService:
     # configures one.
     def build_current_seal(self, tag_number):
         return self._current_seal
+
+    # LTSA_ASSET360_CURRENT_INSTALLATION_AND_SERVICE_AGE_R1 -- GET .../knowledge
+    # also calls build_current_installation(tag); defaults to NOT_RECORDED.
+    def build_current_installation(self, tag_number, *, now=None):
+        return self._installation
 
     # MWO-LTSA-ASSET360-COMPLETENESS-FIX-021B -- GET .../knowledge now also
     # calls build_lifecycle(tag, knowledge=knowledge); defaults to an empty

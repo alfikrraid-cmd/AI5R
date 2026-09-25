@@ -40,6 +40,13 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any
 
+from .current_installation_contract import (
+    STATUS_INSTALLED,
+    InstallationResolution,
+    installation_position,
+    plant_today,
+    resolve_current_installation,
+)
 from .installation_gateway import InstallationGateway
 from .ltsa_knowledge_service import LTSAKnowledgeService
 from .maintenance_history_gateway import MaintenanceHistoryGateway
@@ -164,8 +171,19 @@ class EquipmentTimelineService:
     # private helpers build_lifecycle() itself already calls.
     def build_current_seal(self, tag_number: str) -> PumpLifecycleCurrentSeal | None:
         installations = self._list_installations(tag_number)
-        current_installation_record = installations[-1] if installations else None
-        return self._build_current_seal(current_installation_record)
+        return self._build_current_seal(self._current_installation_record(tag_number, installations))
+
+    # LTSA_ASSET360_CURRENT_INSTALLATION_AND_SERVICE_AGE_R1 -- Current
+    # Installation + calendar service age + valid installation history,
+    # resolved by current_installation_contract (the one canonical rule).
+    # `now` is injectable so tests never depend on the wall clock.
+    def build_current_installation(self, tag_number: str, *, now: datetime | None = None) -> InstallationResolution:
+        return resolve_current_installation(
+            self._list_installations(tag_number),
+            tag_number,
+            removal_events=self._list_seal_lifecycle_events(tag_number),
+            now=now,
+        )
 
     def build_lifecycle(
         self,
@@ -177,7 +195,7 @@ class EquipmentTimelineService:
         knowledge = knowledge or self._knowledge_service.build(tag_number)
         installations = self._list_installations(tag_number)
         work_orders = self._list_work_orders(tag_number)
-        current_installation_record = installations[-1] if installations else None
+        current_installation_record = self._current_installation_record(tag_number, installations)
         current_installation = self._map_current_installation(current_installation_record)
         current_seal = self._build_current_seal(current_installation_record)
         replacement_events = self._build_replacement_events(installations)
@@ -233,7 +251,8 @@ class EquipmentTimelineService:
         # tests assume oldest-first, so it is left unchanged.
         timeline = tuple(sorted(lifecycle_events, key=lambda event: event.occurred_at or "", reverse=True))
 
-        today = today or date.today()
+        # Plant-local (Asia/Jakarta) calendar date, never the host's date.
+        today = today or plant_today()
         elapsed_service_days = self._calculate_elapsed_service_days(current_installation_record, today=today)
         last_pm = get_pump_last_pm(
             tag_number,
@@ -448,8 +467,15 @@ class EquipmentTimelineService:
         )
 
     def _build_replacement_events(self, records: list[dict[str, Any]]) -> tuple[TimelineEvent, ...]:
+        # A replacement only pairs installations on the same seal position
+        # (DE, NDE, or pump-level) -- a DE report never "replaces" an NDE one.
+        by_position: dict[str | None, list[dict[str, Any]]] = {}
+        for record in records:
+            by_position.setdefault(installation_position(record), []).append(record)
+        pairs = [pair for group in by_position.values() for pair in zip(group, group[1:])]
+
         events: list[TimelineEvent] = []
-        for previous, current in zip(records, records[1:]):
+        for previous, current in pairs:
             events.append(
                 TimelineEvent(
                     id=f"REPLACEMENT:{previous.get('installation_code')}->{current.get('installation_code')}",
@@ -463,7 +489,7 @@ class EquipmentTimelineService:
                     payload={
                         "replaced_installation_code": previous.get("installation_code"),
                         "replacement_installation_code": current.get("installation_code"),
-                        "pump_tag_number": current.get("plant_equip_no"),
+                        "pump_tag_number": current.get("pump_tag_number"),
                     },
                 )
             )
@@ -535,18 +561,57 @@ class EquipmentTimelineService:
         # behind a second, unrelated failure. When no repository is
         # injected at all (legacy construction path, tests that predate
         # this MWO), the gateway is used exactly as before -- unchanged.
+        #
+        # LTSA_ASSET360_CURRENT_INSTALLATION_AND_SERVICE_AGE_R1 -- attribution
+        # is the governed pump_tag_number on both paths, never plant_equip_no
+        # (free text that named a sibling pump on INSTL-025/038/041 and an
+        # annotated tag on INSTL-002/043). The repository path also requires
+        # the tag to be a registered PUMP. Oldest first, ties on
+        # installation_code, so records[-1] and replacement pairs are
+        # deterministic.
         if self._installation_report_repository is not None:
             try:
-                response = self._installation_report_repository.list_installations()
+                records = self._installation_report_repository.list_by_pump_tag(tag_number)
             except Exception:
                 return []
         else:
             response = self._installation_gateway.list_installations()
+            records = [
+                record for record in (response.get("data") or []) if record.get("pump_tag_number") == tag_number
+            ]
 
-        filtered = [
-            record for record in (response.get("data") or []) if record.get("plant_equip_no") == tag_number
-        ]
-        return sorted(filtered, key=lambda record: self._sort_key(record.get("report_date")))
+        return sorted(
+            (record for record in records if record.get("pump_tag_number") == tag_number),
+            key=lambda record: (self._sort_key(record.get("report_date")), str(record.get("installation_code") or "")),
+        )
+
+    def _list_seal_lifecycle_events(self, tag_number: str) -> list[dict[str, Any]]:
+        # Removal evidence for the current-installation contract; same
+        # per-section isolation as _list_installations above.
+        if self._seal_lifecycle_event_repository is None:
+            return []
+        try:
+            return list(self._seal_lifecycle_event_repository.list_by_pump(tag_number) or [])
+        except Exception:
+            return []
+
+    def _current_installation_record(
+        self, tag_number: str, installations: list[dict[str, Any]]
+    ) -> dict[str, Any] | None:
+        # The raw report behind the contract's current installation, so
+        # current_seal/current_installation/elapsed_service_days all follow
+        # the one rule (valid date, latest, installation_code tie-break,
+        # REMOVED means no current seal).
+        resolution = resolve_current_installation(
+            installations, tag_number, removal_events=self._list_seal_lifecycle_events(tag_number)
+        )
+        if resolution.current.installation_status != STATUS_INSTALLED:
+            return None
+        code = resolution.current.source_installation_code
+        return next(
+            (record for record in installations if str(record.get("installation_code") or "").strip() == code),
+            None,
+        )
 
     def _list_work_orders(self, tag_number: str) -> list[dict[str, Any]]:
         response = self._work_order_gateway.list_work_orders()

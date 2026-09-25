@@ -4,6 +4,11 @@ import { mapPMScheduleRecord, mapPMOccurrenceRecord } from "../utils/pmMapping";
 import { mapConditionMonitoringReadingRecord } from "../utils/conditionMonitoringMapping";
 import { mapWorkOrderRecord } from "../utils/workOrderMapping";
 import { mapCurrentCondition } from "../utils/currentConditionMapping";
+import {
+  mapCurrentInstallation,
+  mapCurrentInstallations,
+  mapInstallationHistory,
+} from "../utils/currentInstallationMapping";
 
 // MWO-LTSA-032A -- useKnowledgeWorkspace: maps the Knowledge API's raw
 // response into the EquipmentKnowledge shape the approved Open Design
@@ -43,20 +48,13 @@ import { mapCurrentCondition } from "../utils/currentConditionMapping";
 //    (EngineeringContextEngine's own narrower shape, which never carried
 //    these fields). A field pump doesn't have (e.g. location, frequently
 //    null in production) stays undefined, never fabricated.
-//  - mechanicalSeal: MWO-LTSA-ASSET360-MECHANICAL-SEAL-WIRING-001 --
-//    EngineeringContextEngine._build_seal_summary's "installed_seal always
-//    null" disclosure was about THAT summary field specifically, not the
-//    only seal-adjacent data this response carries. The Knowledge API's
-//    `current_seal` key (router-side, reusing
-//    EquipmentTimelineService.build_current_seal() -- the exact same
-//    authoritative Seal-Registry-then-Installation-fallback-then-null
-//    derivation GET .../lifecycle already relies on) is mapped here
-//    instead. No second fetch: current_seal arrives on this same single
-//    response. Every field-level fallback stays `?? undefined`, never a
-//    guessed value -- a field the backend has no authoritative source for
-//    (e.g. model/temperature/pressure limit when no seal_code resolves in
-//    the Seal Registry) is already `null` on the backend dataclass and
-//    stays undefined here, rendered as "Unavailable" by KnowledgeSeal.jsx.
+//  - currentInstallation/currentInstallations/installationHistory:
+//    LTSA_ASSET360_CURRENT_INSTALLATION_AND_SERVICE_AGE_R1 -- the Knowledge
+//    API's canonical Current Installation (installation evidence only,
+//    attributed by installation_report.pump_tag_number) with its calendar
+//    service age, mapped by utils/currentInstallationMapping.js. Replaces
+//    the former `mechanicalSeal` (current_seal) mapping, whose `status` was
+//    the seal_registry catalog status, never an installation status.
 //  - inventory[].level: the Open Design's InvItem type has no "unknown"
 //    case; a null quantity_on_hand is mapped to level="low" here (the
 //    least misleading of the three available choices) with qty text
@@ -126,44 +124,14 @@ function mapEquipment(knowledgeData) {
 // `configured_seal` (router-side: {seal_type, api_plan} read straight off
 // knowledge.pump, the same canonical pump record already fetched for this
 // response -- no second gateway call, no second fetch). Deliberately kept
-// as its own object, never merged into mapMechanicalSeal's currentSeal
-// shape: ltsa_pumps.seal_type is broad master data (production evidence:
+// as its own object, never merged into the Current Installation shape:
+// ltsa_pumps.seal_type is broad master data (production evidence:
 // 16 different seal_registry T48MP variants exist with different
 // shaft_size values), never proof of what is actually installed today.
 function mapConfiguredSeal(configuredSeal) {
   return {
     sealType: configuredSeal?.seal_type ?? undefined,
     apiPlan: configuredSeal?.api_plan ?? undefined,
-  };
-}
-
-// MWO-LTSA-ASSET360-MECHANICAL-SEAL-WIRING-001 -- maps the Knowledge API's
-// `current_seal` (dataclasses.asdict(PumpLifecycleCurrentSeal), router-side,
-// see useKnowledgeWorkspace.js's own header comment) into KnowledgeSeal.jsx's
-// existing prop vocabulary. `type`/`hours`/`mtbf` have no authoritative
-// source anywhere in PumpLifecycleCurrentSeal and are left unset rather
-// than guessed -- KnowledgeSeal.jsx already renders an unset field as
-// "Not recorded", an honest state, not a fabricated one. `apiPlan` moved
-// to mapConfiguredSeal above (MWO-LTSA-ASSET360-SEAL-SEMANTICS-001) --
-// api_plan is master/design data (ltsa_pumps.api_plan), not something
-// PumpLifecycleCurrentSeal ever carried or should carry.
-function mapMechanicalSeal(currentSeal) {
-  if (!currentSeal) return undefined;
-
-  return {
-    code: currentSeal.seal_code ?? undefined,
-    name: currentSeal.seal_name ?? undefined,
-    manufacturer: currentSeal.manufacturer ?? undefined,
-    model: currentSeal.model ?? undefined,
-    material: currentSeal.material ?? undefined,
-    status: currentSeal.status ?? undefined,
-    installedDate: currentSeal.installed_at ?? undefined,
-    // MWO-LTSA-ASSET360-COMPLETENESS-FIX-021B (item G) -- same field
-    // PumpLifecycleCurrentInstallation.source_document_name already
-    // carries for /lifecycle; now also on current_seal (see
-    // equipment_timeline_service.py's _build_current_seal()). Undefined,
-    // never fabricated, when the underlying installation record has none.
-    sourceDocumentName: currentSeal.source_document_name ?? undefined,
   };
 }
 
@@ -365,7 +333,9 @@ function mapEquipmentKnowledge(knowledgeData) {
     // `timeline` key above (same TimelineEvent shape), additive, does not
     // replace it.
     lifecycleTimeline: mapTimeline(knowledgeData?.lifecycle_timeline),
-    mechanicalSeal: mapMechanicalSeal(knowledgeData?.current_seal),
+    currentInstallation: mapCurrentInstallation(knowledgeData?.current_installation),
+    currentInstallations: mapCurrentInstallations(knowledgeData?.current_installations),
+    installationHistory: mapInstallationHistory(knowledgeData?.installation_history),
     configuredSeal: mapConfiguredSeal(knowledgeData?.configured_seal),
     compatibleSeals: mapCompatibleSeals(knowledgeData?.seal),
     inventory: mapInventory(knowledgeData?.inventory, knowledgeData?.seal),

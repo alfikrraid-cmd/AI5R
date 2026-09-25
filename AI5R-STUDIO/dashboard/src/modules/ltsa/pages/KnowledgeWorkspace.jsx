@@ -15,7 +15,6 @@ import ConditionMonitoringReportMeasuring from "../components/ConditionMonitorin
 import KnowledgeUnifiedHistory from "../components/KnowledgeUnifiedHistory";
 import KnowledgePmHistorySection from "../components/KnowledgePmHistorySection";
 import KnowledgeWorkOrdersSection from "../components/KnowledgeWorkOrdersSection";
-import KnowledgeCompatibleSeals from "../components/KnowledgeCompatibleSeals";
 import CopilotPanel from "../components/CopilotPanel";
 import { useKnowledgeWorkspace } from "../hooks/useKnowledgeWorkspace";
 import WorkspaceShell from "../workspace/WorkspaceShell";
@@ -218,7 +217,8 @@ export default function KnowledgeWorkspace({ tag }) {
                       entirely from data already fetched on this page. */}
                   <AssetHeaderKpis
                     equipment={data.equipment}
-                    mechanicalSeal={data.mechanicalSeal}
+                    configuredSeal={data.configuredSeal}
+                    currentInstallation={data.currentInstallation}
                     pmOccurrences={data.pmOccurrences}
                     conditionMonitoringReadings={data.conditionMonitoringReadings}
                     workOrders={data.workOrders}
@@ -236,6 +236,23 @@ export default function KnowledgeWorkspace({ tag }) {
                   pmSchedules={data.activePlans.pmSchedules}
                   conditionMonitoringSchedules={data.activePlans.conditionMonitoringSchedules}
                 />
+              </KnowledgeSection>
+
+              {/* LTSA_ASSET360_CURRENT_INSTALLATION_AND_SERVICE_AGE_R1 -- the
+                  per-asset Mechanical Seal destination: Configured / Design,
+                  Current Installation, Time Since Installation (calendar
+                  time), Actual Operating Hours, Compatible Seals and
+                  installation history in one place. */}
+              <KnowledgeSection id="seal" title="Mechanical Seal" badge={data.currentInstallation.statusLabel}>
+                <KnowledgeCard variant="kv">
+                  <KnowledgeSeal
+                    configuredSeal={data.configuredSeal}
+                    currentInstallation={data.currentInstallation}
+                    currentInstallations={data.currentInstallations}
+                    installationHistory={data.installationHistory}
+                    compatibleSeals={data.compatibleSeals}
+                  />
+                </KnowledgeCard>
               </KnowledgeSection>
 
               <KnowledgeSection id="timeline" title="Equipment Timeline" badge={`${data.timeline.length} peristiwa`}>
@@ -319,19 +336,11 @@ export default function KnowledgeWorkspace({ tag }) {
               </KnowledgeSection>
             </main>
 
+            {/* LTSA_ASSET360_CURRENT_INSTALLATION_AND_SERVICE_AGE_R1 -- the
+                rail keeps only content with no other home (Inventory,
+                Drawings, Documents); Mechanical Seal and Compatible Seals now
+                live in the main-column Mechanical Seal section. */}
             <aside className="inspector-rail">
-              <KnowledgeSection id="seal" title="Mechanical Seal" badge={data.mechanicalSeal?.status}>
-                <KnowledgeCard variant="kv">
-                  <KnowledgeSeal configuredSeal={data.configuredSeal} currentSeal={data.mechanicalSeal} />
-                </KnowledgeCard>
-              </KnowledgeSection>
-
-              <KnowledgeSection id="compat-seals" title="Compatible Seals" badge={String(data.compatibleSeals.length)}>
-                <KnowledgeCard variant="row-list">
-                  <KnowledgeCompatibleSeals items={data.compatibleSeals} emptyTitle="Belum ada seal kompatibel" />
-                </KnowledgeCard>
-              </KnowledgeSection>
-
               <KnowledgeSection
                 id="inventory"
                 title="Inventory"

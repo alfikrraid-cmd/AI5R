@@ -92,7 +92,7 @@ def test_build_lifecycle_returns_pump_lifecycle_with_current_state_and_analytics
                 "installation_code": "INSTL-001-2026",
                 "report_no": "001/INSTL/2026",
                 "report_date": "2026-01-06",
-                "plant_equip_no": TAG,
+                "plant_equip_no": TAG, "pump_tag_number": TAG,
                 "seal_code": None,
                 "seal_type": "T48MP",
                 "seal_manufacture": "John Crane",
@@ -180,8 +180,8 @@ def test_build_lifecycle_uses_stock_v1_application_link_for_inventory():
 def test_build_lifecycle_timeline_contains_installation_pm_cm_failure_work_order_and_replacement_events():
     service = _service(
         installations=[
-            {"installation_code": "INSTL-001", "report_no": "001", "report_date": "2026-01-01", "plant_equip_no": TAG},
-            {"installation_code": "INSTL-002", "report_no": "002", "report_date": "2026-08-01", "plant_equip_no": TAG},
+            {"installation_code": "INSTL-001", "report_no": "001", "report_date": "2026-01-01", "plant_equip_no": TAG, "pump_tag_number": TAG},
+            {"installation_code": "INSTL-002", "report_no": "002", "report_date": "2026-08-01", "plant_equip_no": TAG, "pump_tag_number": TAG},
         ],
         work_orders=[
             {"work_order_code": "WO-1", "asset_code": TAG, "created_at": "2026-07-16T00:00:00Z", "closed_at": None}
@@ -206,7 +206,7 @@ def test_build_lifecycle_uses_seal_registry_when_current_installation_has_seal_c
                 "installation_code": "INSTL-001-2026",
                 "report_no": "001/INSTL/2026",
                 "report_date": "2026-01-06",
-                "plant_equip_no": TAG,
+                "plant_equip_no": TAG, "pump_tag_number": TAG,
                 "seal_code": "SEAL-1",
                 "seal_type": "T48MP",
                 "seal_manufacture": "John Crane",
@@ -250,7 +250,7 @@ def test_build_current_seal_matches_build_lifecycle_current_state_current_seal()
                 "installation_code": "INSTL-001-2026",
                 "report_no": "001/INSTL/2026",
                 "report_date": "2026-01-06",
-                "plant_equip_no": TAG,
+                "plant_equip_no": TAG, "pump_tag_number": TAG,
                 "seal_code": "SEAL-1",
                 "seal_type": "T48MP",
                 "seal_manufacture": "John Crane",
@@ -303,7 +303,7 @@ def test_build_current_seal_leaves_unauthoritative_fields_none():
                 "installation_code": "INSTL-002-2026",
                 "report_no": "002/INSTL/2026",
                 "report_date": "2026-02-01",
-                "plant_equip_no": TAG,
+                "plant_equip_no": TAG, "pump_tag_number": TAG,
                 "seal_code": None,
                 "seal_manufacture": "Flowserve",
             }
@@ -330,7 +330,7 @@ def test_current_seal_never_overwrites_a_present_but_falsy_seal_registry_value()
                 "installation_code": "INSTL-001-2026",
                 "report_no": "001/INSTL/2026",
                 "report_date": "2026-01-06",
-                "plant_equip_no": TAG,
+                "plant_equip_no": TAG, "pump_tag_number": TAG,
                 "seal_code": "SEAL-1",
                 "seal_manufacture": "Installation-side manufacturer (must not win)",
                 "seal_size": "installation-size (must not win)",
@@ -432,7 +432,7 @@ def test_engineer_is_derived_from_the_signatory_whose_title_mentions_an_engineer
                 "installation_code": "INSTL-001-2026",
                 "report_no": "001/INSTL/2026",
                 "report_date": "2026-01-06",
-                "plant_equip_no": TAG,
+                "plant_equip_no": TAG, "pump_tag_number": TAG,
                 "signatures": [
                     {"id": 1, "company": "PT Tommy Adji Prasetyo", "name": "Rizky Trinoviandi", "title": "Service", "date": "7/01/2026"},
                     {"id": 2, "company": "PT Tommy Adji Prasetyo", "name": "Muh Taufik", "title": "Service Engineer", "date": "07/01/2026"},
@@ -454,7 +454,7 @@ def test_engineer_falls_back_to_title_when_the_matching_signatory_has_no_name():
                 "installation_code": "INSTL-001-2026",
                 "report_no": "001/INSTL/2026",
                 "report_date": "2026-01-06",
-                "plant_equip_no": TAG,
+                "plant_equip_no": TAG, "pump_tag_number": TAG,
                 "signatures": [
                     {"id": 1, "company": "PT KPI RU II Dumai", "name": None, "title": "Jr. Eng / RE Insp", "date": "07-01-2026"},
                 ],
@@ -476,7 +476,7 @@ def test_engineer_is_null_when_no_signatory_title_mentions_an_engineering_role()
                 "installation_code": "INSTL-001-2026",
                 "report_no": "001/INSTL/2026",
                 "report_date": "2026-01-06",
-                "plant_equip_no": TAG,
+                "plant_equip_no": TAG, "pump_tag_number": TAG,
                 "signatures": [
                     {"id": 1, "company": "PT Tommy Adji Prasetyo", "name": "Rizky Trinoviandi", "title": "Service", "date": "7/01/2026"},
                 ],
@@ -496,7 +496,7 @@ def test_engineer_is_null_when_the_installation_record_has_no_signatures_at_all(
                 "installation_code": "INSTL-001-2026",
                 "report_no": "001/INSTL/2026",
                 "report_date": "2026-01-06",
-                "plant_equip_no": TAG,
+                "plant_equip_no": TAG, "pump_tag_number": TAG,
             }
         ],
     )
@@ -516,7 +516,7 @@ def test_installation_event_payload_includes_the_required_fields_plus_derived_en
                 "installation_code": "INSTL-001-2026",
                 "report_no": "001/INSTL/2026",
                 "report_date": "2026-01-06",
-                "plant_equip_no": TAG,
+                "plant_equip_no": TAG, "pump_tag_number": TAG,
                 "drawing_no": "GA-230279",
                 "seal_code": "SEAL-1",
                 "signatures": [
@@ -588,8 +588,8 @@ def test_failure_event_payload_includes_the_full_breakdown_history_record():
 def test_replacement_event_is_derived_only_between_two_consecutive_installations():
     service = _service(
         installations=[
-            {"installation_code": "INSTL-001", "report_no": "001", "report_date": "2026-01-01", "plant_equip_no": TAG},
-            {"installation_code": "INSTL-002", "report_no": "002", "report_date": "2026-08-01", "plant_equip_no": TAG},
+            {"installation_code": "INSTL-001", "report_no": "001", "report_date": "2026-01-01", "plant_equip_no": TAG, "pump_tag_number": TAG},
+            {"installation_code": "INSTL-002", "report_no": "002", "report_date": "2026-08-01", "plant_equip_no": TAG, "pump_tag_number": TAG},
         ],
     )
 
@@ -608,7 +608,7 @@ def test_replacement_event_is_derived_only_between_two_consecutive_installations
 def test_timeline_is_sorted_newest_first_not_oldest_first():
     service = _service(
         installations=[
-            {"installation_code": "INSTL-001", "report_no": "001", "report_date": "2026-01-01", "plant_equip_no": TAG},
+            {"installation_code": "INSTL-001", "report_no": "001", "report_date": "2026-01-01", "plant_equip_no": TAG, "pump_tag_number": TAG},
         ],
         work_orders=[
             {"work_order_code": "WO-1", "asset_code": TAG, "created_at": "2026-07-16T00:00:00Z", "closed_at": None},
@@ -892,7 +892,7 @@ def test_analytics_elapsed_service_days_computed_from_installation_report_date_w
                 "installation_code": "INSTL-001-2026",
                 "report_no": "001/INSTL/2026",
                 "report_date": "2026-01-01",
-                "plant_equip_no": TAG,
+                "plant_equip_no": TAG, "pump_tag_number": TAG,
             }
         ],
         work_orders=[],
@@ -965,7 +965,7 @@ def test_build_lifecycle_merges_seal_install_event_and_dedups_linked_report():
     }
     unlinked_report = {
         "installation_code": "INSTL-LEGACY", "report_no": "RPT-2", "report_date": "2026-02-01",
-        "plant_equip_no": TAG, "pump_tag_number": None, "installation_event_id": None,
+        "plant_equip_no": TAG, "pump_tag_number": TAG, "installation_event_id": None,
     }
     service = EquipmentTimelineService(
         knowledge_service=FakeKnowledgeService(knowledge),
@@ -1023,6 +1023,15 @@ class FakeInstallationReportRepository:
         if self._raises is not None:
             raise self._raises
         return {"success": True, "message": "ok", "count": len(self._records), "data": self._records}
+
+    # Mirrors InstallationReportRepository.list_by_pump_tag(): attributed by
+    # pump_tag_number only, newest first (report_date, installation_code DESC).
+    def list_by_pump_tag(self, pump_tag_number):
+        self.list_calls += 1
+        if self._raises is not None:
+            raise self._raises
+        rows = [r for r in self._records if r.get("pump_tag_number") == pump_tag_number]
+        return sorted(rows, key=lambda r: (str(r.get("report_date") or ""), str(r.get("installation_code") or "")), reverse=True)
 
 
 def _installation_211_record(**overrides):
