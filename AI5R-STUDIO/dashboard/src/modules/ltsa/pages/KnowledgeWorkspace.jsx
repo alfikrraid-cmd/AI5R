@@ -250,6 +250,7 @@ export default function KnowledgeWorkspace({ tag }) {
                     currentInstallation={data.currentInstallation}
                     currentInstallations={data.currentInstallations}
                     installationHistory={data.installationHistory}
+                    installationBasedMtbf={data.installationBasedMtbf}
                     compatibleSeals={data.compatibleSeals}
                   />
                 </KnowledgeCard>

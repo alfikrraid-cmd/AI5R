@@ -17,6 +17,7 @@ from dependencies import (
 )
 from API.auth_service import ROLE_PERMISSIONS, AuthenticatedIdentity
 from API.current_installation_contract import InstallationResolution, NOT_RECORDED
+from API.installation_interval_contract import installation_based_mtbf
 from API.equipment_timeline_service import EquipmentTimeline, TimelineEvent
 from API.ltsa_knowledge_service import LTSAKnowledge
 from API.pump_lifecycle_models import PumpLifecycleCurrentSeal
@@ -82,6 +83,11 @@ class FakeTimelineService:
     # also calls build_current_installation(tag); defaults to NOT_RECORDED.
     def build_current_installation(self, tag_number, *, now=None):
         return self.installation
+
+    # LTSA_INSTALLATION_BASED_MTBF_R1 -- GET .../knowledge also calls
+    # build_installation_based_mtbf(tag); defaults to no completed interval.
+    def build_installation_based_mtbf(self, tag_number):
+        return installation_based_mtbf([], tag_number)
 
     # MWO-LTSA-ASSET360-COMPLETENESS-FIX-021B -- GET .../knowledge now also
     # calls build_lifecycle(tag, knowledge=knowledge); defaults to an empty
@@ -857,3 +863,43 @@ def test_get_knowledge_current_installation_serializes_the_resolution():
     assert [(e["installation_code"], e["installed_seal_size"]) for e in data["installation_history"]] == [
         ("INSTL-033-2026", '4.1/2"')
     ]
+
+
+# LTSA_INSTALLATION_BASED_MTBF_R1 -- pump-level MTBF (Installation-based ·
+# Calendar time) is its own key; the failure-based executive_metrics fields
+# are untouched by it.
+def test_get_knowledge_installation_based_mtbf_defaults_to_not_available():
+    _override()
+
+    data = client.get(f"/api/ltsa/pumps/{TAG}/knowledge").json()["data"]
+
+    mtbf = data["installation_based_mtbf"]
+    assert mtbf["completed_interval_count"] == 0
+    assert mtbf["installation_based_mtbf_days"] is None
+    assert mtbf["installation_based_mtbf_hours"] is None
+    assert mtbf["intervals"] == []
+    assert mtbf["time_basis"] == "CALENDAR_TIME"
+
+
+def test_get_knowledge_installation_based_mtbf_serializes_intervals_without_touching_failure_mtbf():
+    from API.installation_interval_contract import installation_based_mtbf as compute
+
+    rows = [
+        {"installation_code": code, "report_no": None, "report_date": day, "pump_tag_number": TAG, "plant_equip_no": TAG,
+         "seal_type": "T48MP", "seal_size": '2.3/8"', "seal_code": None, "seal_unit_id": None, "seal_location": None,
+         "source_document_name": None}
+        for code, day in (("INSTL-022-2026", "2026-04-17"), ("INSTL-026-2026", "2026-05-07"))
+    ]
+    _, timeline_fake, _ = _override()
+    timeline_fake.build_installation_based_mtbf = lambda tag_number: compute(rows, tag_number)
+
+    data = client.get(f"/api/ltsa/pumps/{TAG}/knowledge").json()["data"]
+
+    mtbf = data["installation_based_mtbf"]
+    assert (mtbf["completed_interval_count"], mtbf["installation_based_mtbf_days"], mtbf["installation_based_mtbf_hours"]) == (1, 20, 480)
+    (interval,) = mtbf["intervals"]
+    assert (interval["previous_installation_date"], interval["next_installation_date"]) == ("2026-04-17", "2026-05-07")
+    assert (interval["mtbf_days"], interval["mtbf_hours"], interval["seal_identity_status"]) == (20, 480, "CONFIRMED_SAME")
+    assert (interval["time_basis"], interval["precision"], interval["comparability_status"]) == ("CALENDAR_TIME", "DATE_ONLY", "COMPARABLE")
+    assert data["executive_metrics"]["mtbf_days"] is None
+    assert data["executive_metrics"]["mttr_hours"] is None

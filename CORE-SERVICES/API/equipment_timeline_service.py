@@ -48,6 +48,7 @@ from .current_installation_contract import (
     resolve_current_installation,
 )
 from .installation_gateway import InstallationGateway
+from .installation_interval_contract import InstallationBasedMtbf, installation_based_mtbf
 from .ltsa_knowledge_service import LTSAKnowledgeService
 from .maintenance_history_gateway import MaintenanceHistoryGateway
 from .maintenance_intelligence_service import get_active_work_orders, get_pump_last_cm, get_pump_last_pm
@@ -184,6 +185,13 @@ class EquipmentTimelineService:
             removal_events=self._list_seal_lifecycle_events(tag_number),
             now=now,
         )
+
+    # LTSA_INSTALLATION_BASED_MTBF_R1 -- completed installation-to-
+    # installation intervals (calendar time) from the same governed
+    # installation list; a temporary proxy, separate from the failure-based
+    # mtbf_days and from Current Service Age.
+    def build_installation_based_mtbf(self, tag_number: str) -> InstallationBasedMtbf:
+        return installation_based_mtbf(self._list_installations(tag_number), tag_number)
 
     def build_lifecycle(
         self,

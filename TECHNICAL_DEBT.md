@@ -56,6 +56,9 @@ Pump areas mix spellings for the same area (`SPK`/`S_PAKNING`, `OM`/`OIL MOVEMEN
 
 ### TD-014 — Pre-existing Asset 360 test drift (`knowledge-section-condition`)
 `test_knowledge_workspace.test.jsx` and `test_knowledge_workspace_asset360.test.jsx` still expect a `condition` KnowledgeSection that the current `KnowledgeWorkspace.jsx` no longer renders; these fail on base `4f08c57` (part of the 98 pre-existing frontend failures) and were left failing, unchanged in cause, by `LTSA_ASSET360_CURRENT_INSTALLATION_AND_SERVICE_AGE_R1`, which added standalone tests for its own layout assertions.
+### TD-015 — `ExecutiveDashboard.rc002.test.jsx` mock gap (order-dependent test failures)
+Run on its own, the file fails 40/53 tests on base `4f08c57` and later: its `vi.mock("../../../api/ai5rClient")` lacks `getLtsaAnalyticsExecutive`. In full-suite runs the "routes the 'seal' key to the Seal page" test flips between pass and fail by execution order. Pre-existing, not caused by the Asset 360 installation work; left unfixed by explicit scope lock.
+
 
 ---
 

@@ -1,6 +1,7 @@
 import KnowledgeCompatibleSeals from "./KnowledgeCompatibleSeals";
 import { EmptySection } from "./KnowledgeCard";
 import { mapCurrentInstallation } from "../utils/currentInstallationMapping";
+import { formatInstallationDate, mapInstallationBasedMtbf } from "../utils/installationMtbfMapping";
 
 // MWO-LTSA-032A -- KnowledgeSeal: Asset 360's Mechanical Seal body.
 //
@@ -73,6 +74,55 @@ function TimeSinceInstallation({ installation }) {
   );
 }
 
+// LTSA_INSTALLATION_BASED_MTBF_R1 -- completed installation-to-installation
+// intervals only (calendar time). Kept apart from Time Since Installation:
+// the current installation is right-censored, never a completed interval.
+function describeSeal(type, size) {
+  return [type, size].filter(Boolean).join(" ") || NOT_RECORDED;
+}
+
+function InstallationBasedMtbf({ mtbf }) {
+  const count = mtbf.completedIntervalCount;
+  return (
+    <>
+      <Row
+        label="MTBF"
+        value={mtbf.days === undefined ? undefined : formatCount(mtbf.days, "days")}
+        fallback="Not Available"
+        testId="mtbf-days"
+      />
+      <Row
+        label="Calendar Hours"
+        value={mtbf.hours === undefined ? undefined : formatCount(mtbf.hours, "calendar hours")}
+        fallback={NOT_AVAILABLE}
+        testId="mtbf-hours"
+      />
+      <Row
+        label="Based on"
+        value={`${count} completed installation interval${count === 1 ? "" : "s"}`}
+        testId="mtbf-sample"
+      />
+      {mtbf.intervals.map((interval) => (
+        <div className="part-item" key={interval.key} data-testid={`mtbf-interval-${interval.key}`}>
+          <div className="part-row">
+            <span className="part-name">
+              {formatInstallationDate(interval.previousDate)} → {formatInstallationDate(interval.nextDate)}
+            </span>
+            <span>
+              {formatCount(interval.days, "days") ?? NOT_AVAILABLE} / {formatCount(interval.hours, "hours") ?? NOT_AVAILABLE}
+            </span>
+          </div>
+          <div className="part-meta">
+            {describeSeal(interval.previousSealType, interval.previousSealSize)} →{" "}
+            {describeSeal(interval.nextSealType, interval.nextSealSize)}
+          </div>
+          <div className="part-meta">Seal identity: {interval.sealIdentityLabel}</div>
+        </div>
+      ))}
+    </>
+  );
+}
+
 function InstallationHistory({ events }) {
   if (!events.length) {
     return <EmptySection title="No installation history recorded" />;
@@ -97,8 +147,10 @@ export default function KnowledgeSeal({
   currentInstallation,
   currentInstallations = [],
   installationHistory = [],
+  installationBasedMtbf,
   compatibleSeals = [],
 }) {
+  const mtbf = installationBasedMtbf ?? mapInstallationBasedMtbf(null);
   const primary = currentInstallation ?? mapCurrentInstallation(null);
   // One block per evidenced position (DE/NDE/pump-level); a single
   // NOT_RECORDED block when there is no installation evidence at all.
@@ -131,6 +183,12 @@ export default function KnowledgeSeal({
             <TimeSinceInstallation installation={installation} />
           </div>
         ))}
+      </div>
+
+      <div className="knowledge-seal-group" data-testid="knowledge-seal-mtbf">
+        <h4 className="knowledge-seal-subhead">MTBF</h4>
+        <div className="part-meta">Installation-based · Calendar time</div>
+        <InstallationBasedMtbf mtbf={mtbf} />
       </div>
 
       <div className="knowledge-seal-group" data-testid="knowledge-seal-operating-hours">

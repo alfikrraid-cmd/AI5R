@@ -9,6 +9,7 @@ import {
   mapCurrentInstallations,
   mapInstallationHistory,
 } from "../utils/currentInstallationMapping";
+import { mapInstallationBasedMtbf } from "../utils/installationMtbfMapping";
 
 // MWO-LTSA-032A -- useKnowledgeWorkspace: maps the Knowledge API's raw
 // response into the EquipmentKnowledge shape the approved Open Design
@@ -336,6 +337,10 @@ function mapEquipmentKnowledge(knowledgeData) {
     currentInstallation: mapCurrentInstallation(knowledgeData?.current_installation),
     currentInstallations: mapCurrentInstallations(knowledgeData?.current_installations),
     installationHistory: mapInstallationHistory(knowledgeData?.installation_history),
+    // LTSA_INSTALLATION_BASED_MTBF_R1 -- pump-level, installation-based,
+    // calendar-time MTBF; separate from Current Service Age and from the
+    // failure-based executive metrics.
+    installationBasedMtbf: mapInstallationBasedMtbf(knowledgeData?.installation_based_mtbf),
     configuredSeal: mapConfiguredSeal(knowledgeData?.configured_seal),
     compatibleSeals: mapCompatibleSeals(knowledgeData?.seal),
     inventory: mapInventory(knowledgeData?.inventory, knowledgeData?.seal),

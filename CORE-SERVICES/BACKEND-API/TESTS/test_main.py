@@ -34,6 +34,7 @@ from dependencies import (
 )
 from API.auth_service import ROLE_PERMISSIONS, AuthenticatedIdentity
 from API.current_installation_contract import InstallationResolution, NOT_RECORDED
+from API.installation_interval_contract import installation_based_mtbf
 from API.ltsa_knowledge_service import LTSAKnowledge
 from API.recommendation_engine import Evidence, Recommendation
 
@@ -283,6 +284,11 @@ class FakeEquipmentTimelineService:
     # also calls build_current_installation(tag); defaults to NOT_RECORDED.
     def build_current_installation(self, tag_number, *, now=None):
         return self._installation
+
+    # LTSA_INSTALLATION_BASED_MTBF_R1 -- GET .../knowledge also calls
+    # build_installation_based_mtbf(tag); defaults to no completed interval.
+    def build_installation_based_mtbf(self, tag_number):
+        return installation_based_mtbf([], tag_number)
 
     # MWO-LTSA-ASSET360-COMPLETENESS-FIX-021B -- GET .../knowledge now also
     # calls build_lifecycle(tag, knowledge=knowledge); defaults to an empty

@@ -941,6 +941,87 @@ describe("Mechanical Seal -- Current Installation (LTSA_ASSET360_CURRENT_INSTALL
     expect(within(sealSection).getByTestId("installation-history-INSTL-OLD")).toHaveTextContent("Size: Not Recorded");
   });
 
+  const MTBF_945 = {
+    pump_tag: "945-P-9B",
+    installation_event_count: 2,
+    completed_interval_count: 1,
+    installation_based_mtbf_days: 20,
+    installation_based_mtbf_hours: 480,
+    intervals: [
+      {
+        pump_tag: "945-P-9B", position: "PUMP_LEVEL",
+        previous_installation_code: "INSTL-022-2026", previous_installation_date: "2026-04-17",
+        previous_seal_type: "T48MP", previous_seal_size: '2.3/8"',
+        next_installation_code: "INSTL-026-2026", next_installation_date: "2026-05-07",
+        next_seal_type: "T48MP", next_seal_size: '2.3/8"',
+        mtbf_days: 20, mtbf_hours: 480, seal_identity_status: "CONFIRMED_SAME",
+        comparability_status: "COMPARABLE", time_basis: "CALENDAR_TIME", precision: "DATE_ONLY",
+      },
+    ],
+    excluded_intervals: [],
+    non_comparable_transitions: [],
+    time_basis: "CALENDAR_TIME",
+    precision: "DATE_ONLY",
+  };
+  const NO_MTBF = { ...MTBF_945, installation_event_count: 1, completed_interval_count: 0, installation_based_mtbf_days: null, installation_based_mtbf_hours: null, intervals: [], precision: null };
+
+  it("945-P-9B shows Installation-based MTBF (20 days / 480 calendar hours) with its completed interval, after Time Since Installation", async () => {
+    const current = installed({ installed_seal_type: "T48MP", installed_seal_size: '2.3/8"', installation_date: "2026-05-07", time_since_installation_days: 141, time_since_installation_hours: 3384 });
+    const sealSection = await renderSeal("945-P-9B", {
+      current_installation: current, current_installations: [current], installation_history: [], installation_based_mtbf: MTBF_945,
+    });
+    const group = within(sealSection).getByTestId("knowledge-seal-mtbf");
+    expect(group).toHaveTextContent("Installation-based · Calendar time");
+    expect(rowValue(group, "MTBF")).toBe("20 days");
+    expect(rowValue(group, "Calendar Hours")).toBe("480 calendar hours");
+    expect(rowValue(group, "Based on")).toBe("1 completed installation interval");
+    const interval = within(group).getByTestId("mtbf-interval-INSTL-022-2026->INSTL-026-2026");
+    expect(interval).toHaveTextContent("17 Apr 2026 → 07 May 2026");
+    expect(interval).toHaveTextContent("20 days / 480 hours");
+    expect(interval).toHaveTextContent('T48MP 2.3/8" → T48MP 2.3/8"');
+    expect(interval).toHaveTextContent("Seal identity: Confirmed same");
+    // Current Service Age stays separate and is not the MTBF.
+    expect(rowValue(within(sealSection).getByTestId("knowledge-seal-time"), "Days Since Installation")).toBe("141 days");
+    const groups = Array.from(sealSection.querySelectorAll(".knowledge-seal-group")).map((el) => el.dataset.testid);
+    expect(groups.indexOf("knowledge-seal-mtbf")).toBe(groups.indexOf("knowledge-seal-time") + 1);
+    expect(within(sealSection).queryByText(/operating hours mtbf|failure/i)).toBeNull();
+  });
+
+  it("an unknown seal identity reads 'Not recorded', never a failure", async () => {
+    const unknown = { ...MTBF_945, intervals: [{ ...MTBF_945.intervals[0], previous_seal_type: null, previous_seal_size: null, next_seal_type: null, next_seal_size: null, seal_identity_status: "UNKNOWN", mtbf_days: 64, mtbf_hours: 1536 }], installation_based_mtbf_days: 64, installation_based_mtbf_hours: 1536 };
+    const sealSection = await renderSeal("220-P-3A", { current_installation: installed(), current_installations: [installed()], installation_history: [], installation_based_mtbf: unknown });
+    const group = within(sealSection).getByTestId("knowledge-seal-mtbf");
+    expect(rowValue(group, "MTBF")).toBe("64 days");
+    expect(group).toHaveTextContent("Not Recorded → Not Recorded");
+    expect(group).toHaveTextContent("Seal identity: Not recorded");
+  });
+
+  it("211-P-1A: no completed interval shows MTBF Not Available while Current Service Age stays separate", async () => {
+    const sealSection = await renderSeal("211-P-1A", {
+      current_installation: installed({ time_since_installation_days: 128, time_since_installation_hours: 3072 }),
+      current_installations: [installed({ time_since_installation_days: 128, time_since_installation_hours: 3072 })],
+      installation_history: [],
+      installation_based_mtbf: NO_MTBF,
+    });
+    const group = within(sealSection).getByTestId("knowledge-seal-mtbf");
+    expect(rowValue(group, "MTBF")).toBe("Not Available");
+    expect(rowValue(group, "Calendar Hours")).toBe("N/A");
+    expect(rowValue(group, "Based on")).toBe("0 completed installation intervals");
+    const time = within(sealSection).getByTestId("knowledge-seal-time");
+    expect(rowValue(time, "Days Since Installation")).toBe("128 days");
+    expect(rowValue(time, "Hours Since Installation")).toBe("3,072 hours");
+  });
+
+  it("701-P-1A: no installation evidence shows MTBF Not Available (also when the key is absent)", async () => {
+    const sealSection = await renderSeal("701-P-1A", {
+      configured_seal: { seal_type: "T8B1", api_plan: "23/61" },
+      current_installation: NOT_RECORDED_INSTALLATION, current_installations: [], installation_history: [],
+    });
+    const group = within(sealSection).getByTestId("knowledge-seal-mtbf");
+    expect(rowValue(group, "MTBF")).toBe("Not Available");
+    expect(rowValue(group, "Based on")).toBe("0 completed installation intervals");
+  });
+
   it("renders one current installation per explicitly evidenced position", async () => {
     const de = installed({ installation_position: "DE", installed_seal_type: "DE-TYPE", source_installation_code: "INSTL-1" });
     const nde = installed({ installation_position: "NDE", installed_seal_type: "NDE-TYPE", source_installation_code: "INSTL-2" });

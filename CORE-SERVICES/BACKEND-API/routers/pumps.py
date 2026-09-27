@@ -342,6 +342,10 @@ def get_ltsa_pump_knowledge(
     # and the valid installation history. Distinct from current_seal's
     # seal_registry catalog status and from configured_seal below.
     installation = equipment_timeline_service.build_current_installation(tag)
+    # LTSA_INSTALLATION_BASED_MTBF_R1 -- pump-level MTBF (Installation-based ·
+    # Calendar time); never written into executive_metrics' failure-based
+    # mtbf_days/mttr_hours.
+    installation_mtbf = equipment_timeline_service.build_installation_based_mtbf(tag)
     # MWO-LTSA-ASSET360-COMPLETENESS-FIX-021B (items A/B/E/F) -- reuses
     # the SAME build_lifecycle() already relied on by GET .../lifecycle
     # (below), passed the SAME already-built `knowledge` object above (no
@@ -387,6 +391,7 @@ def get_ltsa_pump_knowledge(
             "current_installation": dataclasses.asdict(installation.current),
             "current_installations": [dataclasses.asdict(item) for item in installation.current_by_position],
             "installation_history": [dataclasses.asdict(event) for event in installation.history],
+            "installation_based_mtbf": dataclasses.asdict(installation_mtbf),
             "configured_seal": configured_seal,
             "inventory": knowledge.inventory,
             "pm": knowledge.pm_history,
