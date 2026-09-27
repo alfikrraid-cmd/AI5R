@@ -465,7 +465,12 @@ export default function LTSAWorkspace({ initialActiveKey = "dashboard", capabili
   // pre-existing onNavigate(key) call site keeps working unchanged;
   // `context` is a new, optional second argument, not a breaking change
   // to the callback's shape.
-  function handleNavigate(key, context) {
+  function handleNavigate(requestedKey, context) {
+    // LTSA_MECHANICAL_SEAL_UNIFIED_NAVIGATION_FIX_R1 -- the legacy
+    // "inventory" key (former Mechanical Seal Stock page) is canonicalized
+    // to the unified "seal" workspace, so the URL (/ltsa/seal) and the
+    // highlighted sidebar entry always agree for any remaining caller.
+    const key = requestedKey === "inventory" ? "seal" : requestedKey;
     const nextContext = context ?? {};
     window.history.pushState({}, "", workspaceLocation(key, nextContext));
     setActiveKey(key);

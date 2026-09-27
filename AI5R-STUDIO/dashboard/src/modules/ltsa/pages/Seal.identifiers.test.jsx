@@ -105,7 +105,9 @@ describe("Seal Identifiers -- view mode (honest empty state, every role)", () =>
     fireEvent.click(screen.getByText("SC-001"));
 
     expect(screen.getByText("KIMAP-9001")).toBeTruthy();
-    expect(screen.getByText("GPN-JC-4002")).toBeTruthy();
+    // The unified Mechanical Seal registry table also lists the GPN, so the
+    // value is rendered in the row and in the identifier detail.
+    expect(screen.getAllByText("GPN-JC-4002").length).toBeGreaterThanOrEqual(1);
   });
 
   it("shows 'Imported / system data' for Updated By when no actor is recorded", () => {

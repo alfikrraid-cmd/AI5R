@@ -626,6 +626,29 @@ describe("LTSA Mechanical Seal Unified Workspace - Component Integration", () =>
     expect(screen.getByText("E13062")).toBeTruthy();
   });
 
+  // LTSA_MECHANICAL_SEAL_UNIFIED_NAVIGATION_FIX_R1 -- stock parity with the
+  // retired Mechanical Seal Stock detail: pool compatibility status and
+  // per-application complete-seal GPNs stay visible in the unified workspace.
+  it("Inventory tab shows pool compatibility status and application GPNs", () => {
+    const pool = {
+      stock_pool_id: "MSSP-PARITY-1", seal_type: "TX99", nominal_size: '2"', quantity_on_hand: 3,
+      quantity_reserved: 1, quantity_available: 2, stock_location: "TAP DMI", verification_status: "CONFIRMED",
+      compatibility_status: "COMPATIBLE", complete_seal_gpn: "GPN-POOL",
+      applications: [
+        { equipment_tag: "999-P-1A", complete_seal_gpn: "GPN-APP-1A" },
+        { equipment_tag: "999-P-1B", complete_seal_gpn: null },
+      ],
+    };
+    render(<Seal seals={[]} stockPools={[pool]} />);
+    fireEvent.click(screen.getAllByText("TX99")[0]);
+    fireEvent.click(screen.getByRole("button", { name: "Inventory" }));
+    expect(screen.getByText("Compatibility Status")).toBeTruthy();
+    expect(screen.getByText("COMPATIBLE")).toBeTruthy();
+    const applicationGpns = screen.getByTestId("seal-application-gpns");
+    expect(applicationGpns.textContent).toContain("999-P-1A: GPN-APP-1A");
+    expect(applicationGpns.textContent).not.toContain("999-P-1B");
+  });
+
   it("compatible pump button in detail view triggers navigation callback", async () => {
     const onNavigate = vi.fn();
     render(<Seal onNavigate={onNavigate} />);
@@ -717,5 +740,27 @@ describe("LTSA Mechanical Seal Unified Workspace - Navigation & Routing", () => 
   it("parseWorkspaceLocation maps legacy /ltsa/inventory to seal workspace", () => {
     const location = parseWorkspaceLocation("/ltsa/inventory");
     expect(location).toEqual({ key: "seal", context: {} });
+  });
+
+  // LTSA_MECHANICAL_SEAL_UNIFIED_NAVIGATION_FIX_R1 -- a direct load / reload /
+  // bookmark of the legacy URL lands on the unified Mechanical Seal workspace,
+  // never on the Executive Dashboard fallback, and the URL is not rewritten.
+  it("a direct load of legacy /ltsa/inventory selects Mechanical Seal (no dashboard fallback)", async () => {
+    window.history.replaceState({}, "", "/ltsa/inventory");
+    try {
+      render(<LTSAWorkspace />);
+      expect(screen.getByRole("tab", { name: "Mechanical Seal" }).getAttribute("aria-selected")).toBe("true");
+      expect(window.location.pathname).toBe("/ltsa/inventory");
+      await waitFor(() => expect(screen.getByRole("heading", { name: "Mechanical Seal" })).toBeTruthy());
+    } finally {
+      window.history.replaceState({}, "", "/");
+    }
+  });
+
+  it("Quick Navigation offers only the unified Mechanical Seal destination (no separate Stock entry)", async () => {
+    const { DESTINATIONS } = await import("../components/QuickNavigationPanel");
+    expect(DESTINATIONS.some((destination) => destination.key === "inventory")).toBe(false);
+    expect(DESTINATIONS.some((destination) => /Mechanical Seal Stock/.test(destination.label))).toBe(false);
+    expect(DESTINATIONS.find((destination) => destination.key === "seal")?.label).toBe("Open Mechanical Seal");
   });
 });

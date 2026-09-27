@@ -11,14 +11,14 @@ import spacing from "../../../design-system/theme/spacing";
 // registry, so no new "Failure" entry is added to avoid a second,
 // competing entry point.
 //
-// UI-D1 -- "inventory" was disabled here as a placeholder when this
-// comment was first written; LTSAWorkspace's own TABS has since wired
-// that exact key to a real, working page ("Mechanical Seal Stock",
-// verified rendering real seal-stock data) -- the `disabled: true` below
-// was stale, not a genuine gap. Corrected; label aligned to match the
-// sidebar's own label for this same key. No permission check is added
-// here to match it, matching every other entry in this list -- this
-// panel has never gated by session/can(), for any destination.
+// LTSA_MECHANICAL_SEAL_UNIFIED_NAVIGATION_FIX_R1 -- the separate
+// "inventory" destination ("Open Mechanical Seal Stock") is removed:
+// complete-seal stock now lives inside the unified Mechanical Seal
+// workspace, reached by "Open Mechanical Seal" below. The legacy
+// "inventory" key/URL still resolves to that workspace (LTSAWorkspace /
+// WorkspaceRegistry alias). No permission check is added here, matching
+// every other entry in this list -- this panel has never gated by
+// session/can(), for any destination.
 //
 // Exported (not just default-exported as a component) so DashboardTopBar's
 // Workspace Selector can reuse this exact same list instead of maintaining
@@ -35,7 +35,6 @@ export const DESTINATIONS = [
   { key: "analytics", label: "Open Analytics" },
   { key: "drawing", label: "Open Drawing" },
   { key: "document", label: "Open Document" },
-  { key: "inventory", label: "Open Mechanical Seal Stock" },
 ];
 
 // MWO-LTSA-DASHBOARD-COMMAND-CENTER-001 -- retitled "Quick Actions" (was

@@ -210,16 +210,16 @@ describe("Navigation", () => {
     expect(onNavigate).toHaveBeenCalledWith("cmon");
   });
 
-  it("UI-D1: Inventory is no longer disabled -- its 'inventory' key has a real page (Mechanical Seal Stock) in LTSAWorkspace's own TABS, so the QuickNavigationPanel `disabled: true` placeholder from before that page existed was stale, not a genuine gap", () => {
+  it("LTSA_MECHANICAL_SEAL_UNIFIED_NAVIGATION_FIX_R1: Quick Navigation no longer offers a separate Mechanical Seal Stock destination -- stock lives inside the unified Mechanical Seal workspace", () => {
     render(<ExecutiveDashboard onNavigate={() => {}} />);
-    expect(screen.getByRole("button", { name: /Open Mechanical Seal Stock/ }).disabled).toBe(false);
+    expect(screen.queryByRole("button", { name: /Open Mechanical Seal Stock/ })).toBeNull();
   });
 
-  it("navigates to Mechanical Seal Stock from Quick Navigation (UI-D1: corrected from disabled)", () => {
+  it("navigates to the unified Mechanical Seal workspace from Quick Navigation", () => {
     const onNavigate = vi.fn();
     render(<ExecutiveDashboard onNavigate={onNavigate} />);
-    fireEvent.click(screen.getByRole("button", { name: /Open Mechanical Seal Stock/ }));
-    expect(onNavigate).toHaveBeenCalledWith("inventory");
+    fireEvent.click(screen.getByRole("button", { name: "Open Mechanical Seal" }));
+    expect(onNavigate).toHaveBeenCalledWith("seal");
   });
 
   it("navigates to Drawing from Quick Navigation (live as of RC-003A)", () => {
@@ -404,9 +404,9 @@ describe("Accessibility", () => {
     expect(screen.getByRole("heading", { name: "Total Pumps" }).tagName).toBe("H3");
   });
 
-  it("UI-D1: Quick Navigation has zero disabled destinations now that Inventory is live -- every button is a real, enabled BUTTON element", () => {
+  it("UI-D1: Quick Navigation has zero disabled destinations -- the Mechanical Seal entry is a real, enabled BUTTON element", () => {
     render(<ExecutiveDashboard onNavigate={() => {}} />);
-    const button = screen.getByRole("button", { name: /Open Mechanical Seal Stock/ });
+    const button = screen.getByRole("button", { name: "Open Mechanical Seal" });
     expect(button.tagName).toBe("BUTTON");
     expect(button.disabled).toBe(false);
   });

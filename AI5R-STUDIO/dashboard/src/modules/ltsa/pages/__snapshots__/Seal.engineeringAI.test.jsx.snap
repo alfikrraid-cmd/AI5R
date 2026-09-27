@@ -4,565 +4,603 @@ exports[`Snapshot > matches the SealOpenDesignView Engineering AI section snapsh
 <div
   class="seal-workspace-detail"
 >
-  <div
-    class="ltsa-open-design"
-    data-testid="seal-open-design"
-  >
+  <div>
     <div
-      class="workspace-identity-shell"
+      style="display: flex; gap: 8px; border-bottom: 1px solid var(--ltsa-border, #1F2937); padding-bottom: 8px; margin-bottom: 16px;"
     >
       <button
-        class="workspace-back-link"
-        type="button"
-      >
-        ‹ 
-        Back to Dashboard
-      </button>
-      <div
-        class="workspace-identity-row"
-      >
-        <div
-          class="workspace-identity-main"
-        >
-          <div
-            class="workspace-identity-icon"
-          >
-            <svg
-              fill="none"
-              stroke="currentColor"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="1.6"
-              viewBox="0 0 24 24"
-            >
-              <circle
-                cx="12"
-                cy="12"
-                r="8"
-              />
-              <circle
-                cx="12"
-                cy="12"
-                r="3"
-              />
-            </svg>
-          </div>
-          <div>
-            <h1
-              class="workspace-identity-tag"
-            >
-              SC-001
-            </h1>
-            <p
-              class="workspace-identity-subtitle"
-            >
-              John Crane Type 21
-              <span
-                class="workspace-identity-subtitle-sep"
-              >
-                 · 
-                Installed on PMP-001
-              </span>
-            </p>
-          </div>
-        </div>
-        <div
-          class="workspace-health-cards"
-        >
-          <div
-            class="workspace-health-card tone-normal"
-          >
-            <span
-              class="workspace-health-card-label"
-            >
-              Status
-            </span>
-            <strong
-              class="workspace-health-card-value"
-            >
-              Sesuai Spesifikasi
-            </strong>
-          </div>
-          <div
-            class="workspace-health-card tone-neutral"
-          >
-            <span
-              class="workspace-health-card-label"
-            >
-              Stock
-            </span>
-            <strong
-              class="workspace-health-card-value"
-            >
-              Unknown
-            </strong>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div
-      class="workspace-tab-strip"
-      role="tablist"
-    >
-      <button
-        aria-selected="false"
-        class="workspace-tab"
-        role="tab"
+        style="color: rgb(255, 255, 255); border-radius: 4px; padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer;"
         type="button"
       >
         Overview
       </button>
       <button
-        aria-selected="false"
-        class="workspace-tab"
-        role="tab"
+        style="background: transparent; color: var(--ltsa-text-muted, #94A3B8); border: 1px solid var(--ltsa-border, #1F2937); border-radius: 4px; padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer;"
         type="button"
       >
-        Compatible
+        Compatible Pumps (
+        2
+        )
       </button>
       <button
-        aria-selected="false"
-        class="workspace-tab"
-        role="tab"
+        style="background: transparent; color: var(--ltsa-text-muted, #94A3B8); border: 1px solid var(--ltsa-border, #1F2937); border-radius: 4px; padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer;"
         type="button"
       >
-        Documents
+        Inventory
       </button>
       <button
-        aria-selected="false"
-        class="workspace-tab"
-        role="tab"
+        style="background: transparent; color: var(--ltsa-text-muted, #94A3B8); border: 1px solid var(--ltsa-border, #1F2937); border-radius: 4px; padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer;"
         type="button"
       >
-        History
+        Installation History
       </button>
       <button
-        aria-selected="true"
-        class="workspace-tab is-active"
-        role="tab"
+        style="background: transparent; color: var(--ltsa-text-muted, #94A3B8); border: 1px solid var(--ltsa-border, #1F2937); border-radius: 4px; padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer;"
         type="button"
       >
-        AI Insight
+        Drawings / Documents
       </button>
     </div>
     <div
-      class="workspace-tab-body"
+      class="ltsa-open-design"
+      data-testid="seal-open-design"
     >
-      <section
-        class="assessment-section"
-        data-od-id="recommended-replacement-section"
+      <div
+        class="workspace-identity-shell"
       >
-        <span
-          class="eyebrow"
+        <button
+          class="workspace-back-link"
+          type="button"
         >
-          Engineering Recommendation
-        </span>
-        <h2
-          class="assessment-headline"
-        >
-          No action required. In service on both Boiler Feedwater units.
-        </h2>
+          ‹ 
+          Back to Dashboard
+        </button>
         <div
-          style="margin-bottom: var(--space-5);"
+          class="workspace-identity-row"
         >
-          <span
-            class="eyebrow"
-            style="display: block; margin-bottom: var(--space-2);"
-          >
-            Preferred Seal
-          </span>
           <div
-            class="part-item"
+            class="workspace-identity-main"
           >
             <div
-              class="part-row"
+              class="workspace-identity-icon"
+            >
+              <svg
+                fill="none"
+                stroke="currentColor"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="1.6"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  cx="12"
+                  cy="12"
+                  r="8"
+                />
+                <circle
+                  cx="12"
+                  cy="12"
+                  r="3"
+                />
+              </svg>
+            </div>
+            <div>
+              <h1
+                class="workspace-identity-tag"
+              >
+                SC-001
+              </h1>
+              <p
+                class="workspace-identity-subtitle"
+              >
+                John Crane Type 21
+                <span
+                  class="workspace-identity-subtitle-sep"
+                >
+                   · 
+                  Installed on PMP-001
+                </span>
+              </p>
+            </div>
+          </div>
+          <div
+            class="workspace-health-cards"
+          >
+            <div
+              class="workspace-health-card tone-normal"
             >
               <span
-                class="part-name"
+                class="workspace-health-card-label"
               >
-                SC-002
+                Status
               </span>
-              <span
-                class="stock-flag ok"
+              <strong
+                class="workspace-health-card-value"
               >
-                Direkomendasikan
-              </span>
+                Sesuai Spesifikasi
+              </strong>
             </div>
             <div
-              class="part-meta"
+              class="workspace-health-card tone-neutral"
             >
-              Interchange tercatat pada Seal Registry
+              <span
+                class="workspace-health-card-label"
+              >
+                Stock
+              </span>
+              <strong
+                class="workspace-health-card-value"
+              >
+                Unknown
+              </strong>
             </div>
           </div>
         </div>
-        <div
-          class="assessment-footer"
+      </div>
+      <div
+        class="workspace-tab-strip"
+        role="tablist"
+      >
+        <button
+          aria-selected="false"
+          class="workspace-tab"
+          role="tab"
+          type="button"
+        >
+          Overview
+        </button>
+        <button
+          aria-selected="false"
+          class="workspace-tab"
+          role="tab"
+          type="button"
+        >
+          Compatible
+        </button>
+        <button
+          aria-selected="false"
+          class="workspace-tab"
+          role="tab"
+          type="button"
+        >
+          Documents
+        </button>
+        <button
+          aria-selected="false"
+          class="workspace-tab"
+          role="tab"
+          type="button"
+        >
+          History
+        </button>
+        <button
+          aria-selected="true"
+          class="workspace-tab is-active"
+          role="tab"
+          type="button"
+        >
+          AI Insight
+        </button>
+      </div>
+      <div
+        class="workspace-tab-body"
+      >
+        <section
+          class="assessment-section"
+          data-od-id="recommended-replacement-section"
         >
           <span
-            class="status-signal normal"
+            class="eyebrow"
+          >
+            Engineering Recommendation
+          </span>
+          <h2
+            class="assessment-headline"
+          >
+            No action required. In service on both Boiler Feedwater units.
+          </h2>
+          <div
+            style="margin-bottom: var(--space-5);"
           >
             <span
-              class="dot-lg"
-            />
-             
-            Sesuai Spesifikasi
+              class="eyebrow"
+              style="display: block; margin-bottom: var(--space-2);"
+            >
+              Preferred Seal
+            </span>
+            <div
+              class="part-item"
+            >
+              <div
+                class="part-row"
+              >
+                <span
+                  class="part-name"
+                >
+                  SC-002
+                </span>
+                <span
+                  class="stock-flag ok"
+                >
+                  Direkomendasikan
+                </span>
+              </div>
+              <div
+                class="part-meta"
+              >
+                Interchange tercatat pada Seal Registry
+              </div>
+            </div>
+          </div>
+          <div
+            class="assessment-footer"
+          >
+            <span
+              class="status-signal normal"
+            >
+              <span
+                class="dot-lg"
+              />
+               
+              Sesuai Spesifikasi
+            </span>
+            <button
+              class="btn-link"
+              data-od-id="cta-generate-recommendation"
+              type="button"
+            >
+              Lihat detail rekomendasi →
+            </button>
+          </div>
+        </section>
+        <section
+          class="assessment-section"
+          data-od-id="engineering-ai-section"
+        >
+          <span
+            class="eyebrow"
+          >
+            Engineering AI
           </span>
+          <div
+            class="info-panel"
+            style="margin-top: var(--space-3);"
+          >
+            <span
+              class="status-signal normal"
+            >
+              SUCCESS
+            </span>
+            <p
+              class="v"
+            >
+              Seal SC-001 is in service with no abnormal indications.
+            </p>
+            <div
+              class="info-row"
+            >
+              <span
+                class="k"
+              >
+                Provider
+              </span>
+              <span
+                class="v"
+              >
+                CLAUDE
+              </span>
+            </div>
+            <div
+              class="info-row"
+            >
+              <span
+                class="k"
+              >
+                Latency
+              </span>
+              <span
+                class="v"
+              >
+                615 ms
+              </span>
+            </div>
+            <div
+              class="info-row"
+            >
+              <span
+                class="k"
+              >
+                Trace ID
+              </span>
+              <span
+                class="v"
+              >
+                trace-seal-001
+              </span>
+            </div>
+            <div
+              class="info-row"
+            >
+              <span
+                class="k"
+              >
+                Confidence
+              </span>
+              <span
+                class="v"
+              >
+                81%
+              </span>
+            </div>
+            <div
+              class="info-row"
+            >
+              <span
+                class="k"
+              >
+                Risk
+              </span>
+              <span
+                class="v"
+              >
+                LOW
+              </span>
+            </div>
+            <div
+              class="info-row"
+            >
+              <span
+                class="k"
+              >
+                Remaining Life
+              </span>
+              <span
+                class="v"
+              >
+                240 days
+              </span>
+            </div>
+          </div>
+        </section>
+        <section
+          class="assessment-section"
+          data-testid="ai-findings"
+        >
+          <div
+            class="section-head"
+          >
+            <h2>
+              Engineering Findings
+            </h2>
+          </div>
+          <div
+            class="info-row"
+          >
+            <span
+              class="v"
+            >
+              No leak indications recorded in the last 30 days.
+            </span>
+          </div>
+        </section>
+        <section
+          class="assessment-section"
+          data-testid="ai-evidence"
+        >
+          <div
+            class="section-head"
+          >
+            <h2>
+              Evidence Strip
+            </h2>
+          </div>
+          <div
+            class="info-row"
+          >
+            <span
+              class="v"
+            >
+              CMON-2001
+            </span>
+          </div>
+        </section>
+        <section
+          class="assessment-section"
+          data-testid="ai-recommendation"
+        >
+          <div
+            class="section-head"
+          >
+            <h2>
+              Recommendation
+            </h2>
+          </div>
+          <div
+            class="info-row"
+          >
+            <span
+              class="v"
+            >
+              Continue routine monitoring.
+            </span>
+          </div>
+        </section>
+        <section
+          class="rail-section"
+          data-testid="ai-source-references"
+        >
+          <h3>
+            Source References
+          </h3>
+          <div
+            class="info-row"
+          >
+            <span
+              class="v"
+            >
+              CMON-2001
+            </span>
+          </div>
+        </section>
+      </div>
+      <div
+        class="workspace-tab-body"
+        style="padding-top: 0px;"
+      >
+        <button
+          class="btn-link"
+          data-od-id="action-bar-open-pump"
+          type="button"
+        >
+          Buka Pump →
+        </button>
+      </div>
+      <div
+        class="drawer-overlay"
+        data-open="false"
+      />
+      <div
+        aria-label="Seal Drawing"
+        class="drawer"
+        data-open="false"
+        role="dialog"
+      >
+        <div
+          class="drawer-head"
+        >
+          <h3
+            class="drawer-title"
+          >
+            Seal Drawing
+          </h3>
           <button
-            class="btn-link"
-            data-od-id="cta-generate-recommendation"
+            aria-label="Close"
+            class="icon-btn"
+            data-od-id="drawer-close"
             type="button"
           >
-            Lihat detail rekomendasi →
+            <svg
+              fill="none"
+              height="16"
+              stroke="currentColor"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="1.6"
+              viewBox="0 0 24 24"
+              width="16"
+            >
+              <path
+                d="M18 6 6 18M6 6l12 12"
+              />
+            </svg>
           </button>
         </div>
-      </section>
-      <section
-        class="assessment-section"
-        data-od-id="engineering-ai-section"
-      >
-        <span
-          class="eyebrow"
-        >
-          Engineering AI
-        </span>
         <div
-          class="info-panel"
-          style="margin-top: var(--space-3);"
+          class="drawer-body"
         >
-          <span
-            class="status-signal normal"
+          <div
+            class="drawing-thumb"
+          />
+          <p>
+            Belum ada data drawing — Drawing Workspace belum memiliki backend.
+          </p>
+        </div>
+      </div>
+      <div
+        class="drawer-overlay"
+        data-open="false"
+      />
+      <div
+        aria-label="Generate Recommendation"
+        class="drawer"
+        data-open="false"
+        role="dialog"
+      >
+        <div
+          class="drawer-head"
+        >
+          <h3
+            class="drawer-title"
           >
-            SUCCESS
-          </span>
-          <p
-            class="v"
+            Generate Recommendation
+          </h3>
+          <button
+            aria-label="Close"
+            class="icon-btn"
+            data-od-id="drawer-close"
+            type="button"
           >
-            Seal SC-001 is in service with no abnormal indications.
+            <svg
+              fill="none"
+              height="16"
+              stroke="currentColor"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="1.6"
+              viewBox="0 0 24 24"
+              width="16"
+            >
+              <path
+                d="M18 6 6 18M6 6l12 12"
+              />
+            </svg>
+          </button>
+        </div>
+        <div
+          class="drawer-body"
+        >
+          <p>
+            No action required. In service on both Boiler Feedwater units.
           </p>
           <div
-            class="info-row"
+            style="margin-bottom: var(--space-5);"
           >
             <span
-              class="k"
+              class="eyebrow"
+              style="display: block; margin-bottom: var(--space-2);"
             >
-              Provider
+              Preferred Seal
             </span>
-            <span
-              class="v"
-            >
-              CLAUDE
-            </span>
-          </div>
-          <div
-            class="info-row"
-          >
-            <span
-              class="k"
-            >
-              Latency
-            </span>
-            <span
-              class="v"
-            >
-              615 ms
-            </span>
-          </div>
-          <div
-            class="info-row"
-          >
-            <span
-              class="k"
-            >
-              Trace ID
-            </span>
-            <span
-              class="v"
-            >
-              trace-seal-001
-            </span>
-          </div>
-          <div
-            class="info-row"
-          >
-            <span
-              class="k"
-            >
-              Confidence
-            </span>
-            <span
-              class="v"
-            >
-              81%
-            </span>
-          </div>
-          <div
-            class="info-row"
-          >
-            <span
-              class="k"
-            >
-              Risk
-            </span>
-            <span
-              class="v"
-            >
-              LOW
-            </span>
-          </div>
-          <div
-            class="info-row"
-          >
-            <span
-              class="k"
-            >
-              Remaining Life
-            </span>
-            <span
-              class="v"
-            >
-              240 days
-            </span>
-          </div>
-        </div>
-      </section>
-      <section
-        class="assessment-section"
-        data-testid="ai-findings"
-      >
-        <div
-          class="section-head"
-        >
-          <h2>
-            Engineering Findings
-          </h2>
-        </div>
-        <div
-          class="info-row"
-        >
-          <span
-            class="v"
-          >
-            No leak indications recorded in the last 30 days.
-          </span>
-        </div>
-      </section>
-      <section
-        class="assessment-section"
-        data-testid="ai-evidence"
-      >
-        <div
-          class="section-head"
-        >
-          <h2>
-            Evidence Strip
-          </h2>
-        </div>
-        <div
-          class="info-row"
-        >
-          <span
-            class="v"
-          >
-            CMON-2001
-          </span>
-        </div>
-      </section>
-      <section
-        class="assessment-section"
-        data-testid="ai-recommendation"
-      >
-        <div
-          class="section-head"
-        >
-          <h2>
-            Recommendation
-          </h2>
-        </div>
-        <div
-          class="info-row"
-        >
-          <span
-            class="v"
-          >
-            Continue routine monitoring.
-          </span>
-        </div>
-      </section>
-      <section
-        class="rail-section"
-        data-testid="ai-source-references"
-      >
-        <h3>
-          Source References
-        </h3>
-        <div
-          class="info-row"
-        >
-          <span
-            class="v"
-          >
-            CMON-2001
-          </span>
-        </div>
-      </section>
-    </div>
-    <div
-      class="workspace-tab-body"
-      style="padding-top: 0px;"
-    >
-      <button
-        class="btn-link"
-        data-od-id="action-bar-open-pump"
-        type="button"
-      >
-        Buka Pump →
-      </button>
-    </div>
-    <div
-      class="drawer-overlay"
-      data-open="false"
-    />
-    <div
-      aria-label="Seal Drawing"
-      class="drawer"
-      data-open="false"
-      role="dialog"
-    >
-      <div
-        class="drawer-head"
-      >
-        <h3
-          class="drawer-title"
-        >
-          Seal Drawing
-        </h3>
-        <button
-          aria-label="Close"
-          class="icon-btn"
-          data-od-id="drawer-close"
-          type="button"
-        >
-          <svg
-            fill="none"
-            height="16"
-            stroke="currentColor"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            stroke-width="1.6"
-            viewBox="0 0 24 24"
-            width="16"
-          >
-            <path
-              d="M18 6 6 18M6 6l12 12"
-            />
-          </svg>
-        </button>
-      </div>
-      <div
-        class="drawer-body"
-      >
-        <div
-          class="drawing-thumb"
-        />
-        <p>
-          Belum ada data drawing — Drawing Workspace belum memiliki backend.
-        </p>
-      </div>
-    </div>
-    <div
-      class="drawer-overlay"
-      data-open="false"
-    />
-    <div
-      aria-label="Generate Recommendation"
-      class="drawer"
-      data-open="false"
-      role="dialog"
-    >
-      <div
-        class="drawer-head"
-      >
-        <h3
-          class="drawer-title"
-        >
-          Generate Recommendation
-        </h3>
-        <button
-          aria-label="Close"
-          class="icon-btn"
-          data-od-id="drawer-close"
-          type="button"
-        >
-          <svg
-            fill="none"
-            height="16"
-            stroke="currentColor"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            stroke-width="1.6"
-            viewBox="0 0 24 24"
-            width="16"
-          >
-            <path
-              d="M18 6 6 18M6 6l12 12"
-            />
-          </svg>
-        </button>
-      </div>
-      <div
-        class="drawer-body"
-      >
-        <p>
-          No action required. In service on both Boiler Feedwater units.
-        </p>
-        <div
-          style="margin-bottom: var(--space-5);"
-        >
-          <span
-            class="eyebrow"
-            style="display: block; margin-bottom: var(--space-2);"
-          >
-            Preferred Seal
-          </span>
-          <div
-            class="part-item"
-          >
             <div
-              class="part-row"
+              class="part-item"
             >
-              <span
-                class="part-name"
+              <div
+                class="part-row"
               >
-                SC-002
-              </span>
-              <span
-                class="stock-flag ok"
+                <span
+                  class="part-name"
+                >
+                  SC-002
+                </span>
+                <span
+                  class="stock-flag ok"
+                >
+                  Direkomendasikan
+                </span>
+              </div>
+              <div
+                class="part-meta"
               >
-                Direkomendasikan
-              </span>
-            </div>
-            <div
-              class="part-meta"
-            >
-              Interchange tercatat pada Seal Registry
+                Interchange tercatat pada Seal Registry
+              </div>
             </div>
           </div>
+          <button
+            class="btn-primary"
+            data-od-id="mark-reviewed-btn"
+            style="margin-top: var(--space-2);"
+            type="button"
+          >
+            Tandai Sudah Ditinjau
+          </button>
         </div>
-        <button
-          class="btn-primary"
-          data-od-id="mark-reviewed-btn"
-          style="margin-top: var(--space-2);"
-          type="button"
-        >
-          Tandai Sudah Ditinjau
-        </button>
       </div>
+      <div
+        class="toast"
+        data-od-id="toast"
+        data-open="false"
+      />
     </div>
-    <div
-      class="toast"
-      data-od-id="toast"
-      data-open="false"
-    />
   </div>
 </div>
 `;

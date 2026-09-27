@@ -699,7 +699,31 @@ export default function Seal({ seals: sealsProp, stockPools: stockPoolsProp, onN
                         {selectedSeal.complete_seal_gpn || selectedSeal.gpnJohnCrane || "—"}
                       </div>
                     </div>
+                    {selectedSeal.stock_pool_id != null && (
+                      <div>
+                        <div style={{ fontSize: "12px", color: colors.textMuted }}>Compatibility Status</div>
+                        <div style={{ fontSize: "16px", color: colors.text, marginTop: "2px" }}>
+                          {selectedSeal.compatibility_status || "UNKNOWN"}
+                        </div>
+                      </div>
+                    )}
                   </div>
+                  {/* LTSA_MECHANICAL_SEAL_UNIFIED_NAVIGATION_FIX_R1 -- parity with the
+                      retired Mechanical Seal Stock detail: an application can carry its
+                      own complete-seal GPN (null from the API when the role may not see
+                      GPNs), listed per equipment tag. */}
+                  {(selectedSeal.applications || []).some((application) => application.complete_seal_gpn) && (
+                    <div style={{ marginTop: "12px" }} data-testid="seal-application-gpns">
+                      <div style={{ fontSize: "12px", color: colors.textMuted }}>Application GPNs</div>
+                      {(selectedSeal.applications || [])
+                        .filter((application) => application.complete_seal_gpn)
+                        .map((application) => (
+                          <div key={application.equipment_tag} style={{ fontSize: "13px", color: colors.text, marginTop: "2px" }}>
+                            {application.equipment_tag}: {application.complete_seal_gpn}
+                          </div>
+                        ))}
+                    </div>
+                  )}
                 </Panel>
               )}
 
