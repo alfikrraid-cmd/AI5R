@@ -1,7 +1,9 @@
 import { useMemo } from "react";
 import { Table } from "../../../design-system";
 import colors from "../../../design-system/theme/colors";
-import { formatDrawingSummary, formatCompatiblePumps, formatAvailableStock } from "../utils/sealMapping";
+import {
+  formatDrawingSummary, formatCompatiblePumps, formatAvailableStock, stockStatus, STOCK_STATUS,
+} from "../utils/sealMapping";
 
 function buildColumns(onSelect) {
   return [
@@ -75,9 +77,7 @@ function buildColumns(onSelect) {
             item.quantity_available ?? item.quantity_on_hand,
             item.hasStockRecord !== false
           );
-        const isLow =
-          item.hasStockRecord !== false &&
-          (item.quantity_available ?? item.quantity_on_hand) === 0;
+        const isLow = stockStatus(item) === STOCK_STATUS.OUT_OF_STOCK;
         const isUnmanaged = item.hasStockRecord === false || label === "N/A";
         return (
           <span

@@ -11,6 +11,7 @@ import {
 import {
   mapSealRecord, resolveCompatiblePumps, resolveStock,
   buildUnifiedSealConfigurations, formatDrawingSummary, formatCompatiblePumps, formatAvailableStock, parseDrawingReferences,
+  parseStockQuantity, stockStatus, STOCK_STATUS,
 } from "../utils/sealMapping";
 import { useOptionalAuth } from "../auth/AuthContext";
 import { can, PERMISSIONS } from "../auth/permissions";
@@ -198,15 +199,21 @@ export default function Seal({ seals: sealsProp, stockPools: stockPoolsProp, onN
         ) {
           return false;
         }
-        if (stockFilter === "IN_STOCK") {
-          const qty = seal.quantity_available ?? seal.quantity_on_hand;
-          if (qty == null || Number(qty) <= 0) return false;
-        } else if (stockFilter === "OUT_OF_STOCK") {
-          const qty = seal.quantity_available ?? seal.quantity_on_hand;
-          if (!seal.hasStockRecord || qty !== 0) return false;
-        } else if (stockFilter === "UNKNOWN") {
-          const qty = seal.quantity_available ?? seal.quantity_on_hand;
-          if (seal.hasStockRecord && qty != null) return false;
+        // LTSA_MECHANICAL_SEAL_STOCK_FILTER_HOTFIX_R1 -- one canonical status
+        // (stockStatus/parseStockQuantity) so numeric-string quantities from
+        // seal_stock ("0") filter exactly like numbers; the "Unknown / N/A"
+        // pill keeps covering both unknown quantities and no stock record.
+        if (stockFilter !== "ALL") {
+          const status = stockStatus(seal);
+          if (stockFilter === "IN_STOCK" && status !== STOCK_STATUS.IN_STOCK) return false;
+          if (stockFilter === "OUT_OF_STOCK" && status !== STOCK_STATUS.OUT_OF_STOCK) return false;
+          if (
+            stockFilter === "UNKNOWN" &&
+            status !== STOCK_STATUS.UNKNOWN &&
+            status !== STOCK_STATUS.NO_STOCK
+          ) {
+            return false;
+          }
         }
         return true;
       }),
@@ -227,9 +234,9 @@ export default function Seal({ seals: sealsProp, stockPools: stockPoolsProp, onN
     let hasKnownStock = false;
     seals.forEach((item) => {
       if (item.hasStockRecord) {
-        const qty = item.quantity_available ?? item.quantity_on_hand;
-        if (qty != null && !isNaN(Number(qty))) {
-          sumKnown += Number(qty);
+        const qty = parseStockQuantity(item.quantity_available ?? item.quantity_on_hand);
+        if (qty != null) {
+          sumKnown += qty;
           hasKnownStock = true;
         }
       }

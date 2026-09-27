@@ -178,19 +178,59 @@ export function resolveStock(sealCode, stockRecords) {
 }
 
 /**
+ * LTSA_MECHANICAL_SEAL_STOCK_FILTER_HOTFIX_R1 -- the one canonical stock
+ * quantity parser for the unified Mechanical Seal workspace (label, KPI,
+ * filter, highlight). Stock quantities arrive as numbers (stock pools) or as
+ * numeric strings (seal_stock via n8n, e.g. "0"). Missing values are decided
+ * BEFORE any numeric conversion, so Number(null) === 0 / Number("") === 0 can
+ * never turn an unknown quantity into a real zero.
+ * Returns a finite number, or null when the quantity is unknown
+ * (null / undefined / empty or whitespace string / non-numeric / non-finite).
+ */
+export function parseStockQuantity(value) {
+  if (value == null) return null;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value === "string") {
+    const text = value.trim();
+    if (text === "") return null;
+    const parsed = Number(text);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+export const STOCK_STATUS = Object.freeze({
+  IN_STOCK: "IN_STOCK",
+  OUT_OF_STOCK: "OUT_OF_STOCK",
+  UNKNOWN: "UNKNOWN", // a stock record exists, its quantity is unknown
+  NO_STOCK: "NO_STOCK", // no applicable stock record (rendered "N/A")
+});
+
+/**
+ * Stock status of one unified seal configuration row:
+ * no record -> NO_STOCK; unknown quantity -> UNKNOWN; <= 0 -> OUT_OF_STOCK
+ * (matches the "0 sets" label); > 0 -> IN_STOCK.
+ */
+export function stockStatus(item) {
+  if (!item || item.hasStockRecord === false) return STOCK_STATUS.NO_STOCK;
+  const quantity = parseStockQuantity(item.quantity_available ?? item.quantity_on_hand);
+  if (quantity == null) return STOCK_STATUS.UNKNOWN;
+  return quantity <= 0 ? STOCK_STATUS.OUT_OF_STOCK : STOCK_STATUS.IN_STOCK;
+}
+
+/**
  * LTSA_MECHANICAL_SEAL_UNIFIED_IMPLEMENTATION_R1 -- Formats complete seal stock with explicit units.
  * Never outputs naked numbers.
  * When hasStockRecord is false -> "N/A" (unmanaged/unknown).
- * When quantity is null/undefined -> "Unknown".
+ * When quantity is unknown (null/undefined/empty/non-numeric) -> "Unknown".
  * When quantity is 0 -> "0 sets".
  * When quantity is 1 -> "1 set".
  * When quantity > 1 -> "N sets".
  */
 export function formatAvailableStock(quantity, hasStockRecord = true) {
   if (!hasStockRecord) return "N/A";
-  if (quantity == null) return "Unknown";
-  const num = Number(quantity);
-  if (isNaN(num)) return "Unknown";
+  const num = parseStockQuantity(quantity);
+  if (num == null) return "Unknown";
   if (num <= 0) return "0 sets";
   if (num === 1) return "1 set";
   return `${num} sets`;
