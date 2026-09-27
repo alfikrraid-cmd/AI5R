@@ -305,7 +305,9 @@ export function matchRegistrySeal(pool, registrySeals = []) {
  * 1. Preserves identity granularity keyed by stock_pool_id so collisions
  *    (e.g. T8B1 2-3/4" Pools 9 & 10, T48MP 1-1/4" Pools 36 & 38) remain separate rows.
  * 2. Preserves MIXED pool as VERIFY_CONFIGURATION, not normalized to a seal type.
- * 3. Registered seals with no stock pool remain visible with Available Stock = "N/A".
+ * 3. Registered seals with no stock pool remain visible; their Available Stock
+ *    comes from their own seal_stock row when one exists, and is "N/A" only
+ *    when neither a pool nor a seal_stock row exists.
  * 4. Explicit 0 stock displays as "0 sets"; unknown stock displays as "Unknown".
  */
 export function buildUnifiedSealConfigurations(
@@ -406,9 +408,15 @@ export function buildUnifiedSealConfigurations(
       return;
     }
 
+    // LTSA_MECHANICAL_SEAL_UNIFIED_RELEASE_INTEGRATION_R1 -- per-seal stock
+    // (seal_stock, raw snake_case rows from getSealStock()) is resolved with
+    // the same mapper the detail view uses (resolveStock/mapSealStockRecord):
+    // no row -> N/A; a row -> its quantity_on_hand, where 0 is a real "0 sets"
+    // and a null quantity stays "Unknown" (never a fabricated zero).
     const stockRec = stockByCode.get(seal.code);
-    const hasStockRecord = stockRec != null && stockRec.quantityOnHand != null;
-    const quantity = hasStockRecord ? stockRec.quantityOnHand : null;
+    const sealStock = stockRec ? mapSealStockRecord(stockRec) : null;
+    const hasStockRecord = sealStock != null;
+    const quantity = sealStock?.quantityOnHand ?? null;
     const size = seal.shaftSize || "—";
     const pumps = Array.from(
       new Set([...(seal.compatiblePumps || []), ...(compatBySealCode.get(seal.code) || [])])
@@ -437,7 +445,7 @@ export function buildUnifiedSealConfigurations(
       availableLabel: formatAvailableStock(quantity, hasStockRecord),
       drawing_reference: null,
       drawingSummary: "—",
-      stock_location: stockRec?.location || null,
+      stock_location: sealStock?.location || null,
       verification_status: seal.status || "CONFIRMED",
       compatibility_status: null,
       complete_seal_gpn: seal.gpnJohnCrane ?? null,

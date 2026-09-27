@@ -726,6 +726,52 @@ describe("LTSA Mechanical Seal Unified Workspace - Component Integration", () =>
     const naBadges = screen.getAllByText("N/A");
     expect(naBadges.length).toBeGreaterThanOrEqual(3);
   });
+
+  // LTSA_MECHANICAL_SEAL_UNIFIED_RELEASE_INTEGRATION_R1 -- per-seal stock label.
+  // seal_stock rows arrive raw (snake_case) from getSealStock(); they must be
+  // resolved the same way the detail view resolves them.
+  it("per-seal stock label: pool, seal_stock only (positive / zero / null quantity), and neither", () => {
+    const registry = [
+      { code: "REG-POS", name: "Seal POS" },
+      { code: "REG-ZERO", name: "Seal ZERO" },
+      { code: "REG-NULLQ", name: "Seal NULLQ" },
+      { code: "REG-NONE", name: "Seal NONE" },
+    ];
+    const pools = [{ stock_pool_id: "MSSP-9", seal_type: "TPOOL", nominal_size: '9"', quantity_on_hand: 3, quantity_available: 3, applications: [] }];
+    const sealStock = [
+      { seal_code: "REG-POS", quantity_on_hand: 4, reorder_point: 1, location: "WH-A" },
+      { seal_code: "REG-ZERO", quantity_on_hand: 0, reorder_point: 1, location: "WH-B" },
+      { seal_code: "REG-NULLQ", quantity_on_hand: null, reorder_point: null, location: null },
+    ];
+    const rows = buildUnifiedSealConfigurations(registry, pools, [], sealStock);
+    const byCode = Object.fromEntries(rows.map((row) => [row.code, row]));
+
+    expect(rows.find((row) => row.stock_pool_id === "MSSP-9").availableLabel).toBe("3 sets"); // A. pool stock
+    expect(byCode["REG-POS"].availableLabel).toBe("4 sets"); // B. seal_stock only, positive
+    expect(byCode["REG-POS"].stock_location).toBe("WH-A");
+    expect(byCode["REG-ZERO"].availableLabel).toBe("0 sets"); // zero is a real quantity
+    expect(byCode["REG-ZERO"].quantity_on_hand).toBe(0);
+    expect(byCode["REG-NULLQ"].availableLabel).toBe("Unknown"); // row exists, quantity missing: never zero
+    expect(byCode["REG-NULLQ"].quantity_on_hand).toBeNull();
+    expect(byCode["REG-NONE"].availableLabel).toBe("N/A"); // C. neither source
+    expect(byCode["REG-NONE"].hasStockRecord).toBe(false);
+  });
+
+  it("registry list renders the seal_stock quantity for a seal without a stock pool (fetch path)", async () => {
+    getSeals.mockResolvedValue([
+      { seal_code: "REG-STK", seal_name: "Stocked registry seal", manufacturer: "John Crane", status: "ACTIVE" },
+      { seal_code: "REG-EMPTY", seal_name: "Unstocked registry seal", manufacturer: "John Crane", status: "ACTIVE" },
+    ]);
+    getMechanicalSealStock.mockResolvedValue({ items: [], total: 0, total_quantity: 0, limit: 100, offset: 0 });
+    getSealStock.mockResolvedValue([{ seal_code: "REG-STK", quantity_on_hand: 7, reorder_point: 2, location: "WH-7" }]);
+
+    render(<Seal />);
+    const stockedRow = (await screen.findByText("REG-STK")).closest("tr");
+    const emptyRow = screen.getByText("REG-EMPTY").closest("tr");
+    expect(stockedRow.textContent).toContain("7 sets");
+    expect(stockedRow.textContent).not.toContain("N/A");
+    expect(emptyRow.textContent).toContain("N/A");
+  });
 });
 
 describe("LTSA Mechanical Seal Unified Workspace - Navigation & Routing", () => {
