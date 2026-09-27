@@ -70,6 +70,10 @@ class InstallationEvent:
     time_precision: str
     installation_position: str | None
     installed_seal_type: str | None
+    # R1.1 -- this report's own installation_report.seal_size, source text
+    # verbatim (trimmed only; e.g. 4.1/2", 2.375", 55 MM). Never normalized,
+    # never taken from the catalog, compatibility, stock or a sibling report.
+    installed_seal_size: str | None
     installed_seal_unit: str | None
     seal_code: str | None
     report_no: str | None
@@ -80,6 +84,7 @@ class InstallationEvent:
 class CurrentInstallation:
     installation_status: str
     installed_seal_type: str | None = None
+    installed_seal_size: str | None = None
     installed_seal_unit: str | None = None
     seal_code: str | None = None
     installation_date: str | None = None
@@ -175,6 +180,7 @@ def valid_installation_events(records: Iterable[dict[str, Any]], tag_number: str
                     time_precision=precision,
                     installation_position=installation_position(record),
                     installed_seal_type=_clean(record.get("seal_type")),
+                    installed_seal_size=_clean(record.get("seal_size")),
                     installed_seal_unit=_clean(record.get("seal_unit_id")),
                     seal_code=_clean(record.get("seal_code")),
                     report_no=_clean(record.get("report_no")),
@@ -232,6 +238,7 @@ def _current_from_event(
     return CurrentInstallation(
         installation_status=STATUS_INSTALLED,
         installed_seal_type=event.installed_seal_type,
+        installed_seal_size=event.installed_seal_size,
         installed_seal_unit=event.installed_seal_unit,
         seal_code=event.seal_code,
         installation_date=event.installation_date,

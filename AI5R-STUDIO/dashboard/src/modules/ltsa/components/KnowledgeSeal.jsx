@@ -42,6 +42,7 @@ function CurrentInstallationRows({ installation }) {
       </span>
       <Row label="Installation Status" value={installation.statusLabel} />
       <Row label="Installed Seal Type" value={installation.installedSealType} />
+      <Row label="Installed Seal Size" value={installation.installedSealSize} />
       <Row label="Installed Seal Unit" value={installation.installedSealUnit} />
       <Row label="Position" value={installation.position} />
       <Row label="Installation Date" value={installation.installationDate} />
@@ -83,7 +84,8 @@ function InstallationHistory({ events }) {
         <span>{event.code}</span>
       </div>
       <div className="part-meta">
-        Installed Seal Type: {event.sealType ?? NOT_RECORDED} · Position: {event.position ?? NOT_RECORDED}
+        Installed Seal Type: {event.sealType ?? NOT_RECORDED} · Size: {event.sealSize ?? NOT_RECORDED} · Position:{" "}
+        {event.position ?? NOT_RECORDED}
       </div>
       <div className="part-meta">Source: {event.sourceDocument ?? NOT_RECORDED}</div>
     </div>

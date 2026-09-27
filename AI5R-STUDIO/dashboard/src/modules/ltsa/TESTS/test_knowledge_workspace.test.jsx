@@ -764,6 +764,7 @@ describe("Mechanical Seal -- Current Installation (LTSA_ASSET360_CURRENT_INSTALL
   const NOT_RECORDED_INSTALLATION = {
     installation_status: "NOT_RECORDED",
     installed_seal_type: null,
+    installed_seal_size: null,
     installed_seal_unit: null,
     seal_code: null,
     installation_date: null,
@@ -783,6 +784,7 @@ describe("Mechanical Seal -- Current Installation (LTSA_ASSET360_CURRENT_INSTALL
       ...NOT_RECORDED_INSTALLATION,
       installation_status: "INSTALLED",
       installed_seal_type: "T8B1-RS",
+      installed_seal_size: '4.1/2"',
       installation_date: "2026-05-22",
       source_document: "SCAN 033 INSTALLATION REPORT 211-P-1A.pdf",
       source_installation_code: "INSTL-033-2026",
@@ -836,6 +838,7 @@ describe("Mechanical Seal -- Current Installation (LTSA_ASSET360_CURRENT_INSTALL
     const current = within(sealSection).getByTestId("knowledge-seal-current");
     expect(rowValue(current, "Installation Status")).toBe("NOT RECORDED");
     expect(rowValue(current, "Installed Seal Type")).toBe("Not Recorded");
+    expect(rowValue(current, "Installed Seal Size")).toBe("Not Recorded");
     expect(rowValue(current, "Installed Seal Unit")).toBe("Not Recorded");
     expect(rowValue(current, "Installation Date")).toBe("Not Recorded");
     expect(within(current).queryByText("T8B1")).toBeNull();
@@ -867,6 +870,7 @@ describe("Mechanical Seal -- Current Installation (LTSA_ASSET360_CURRENT_INSTALL
           time_precision: "DATE_ONLY",
           installation_position: null,
           installed_seal_type: "T8B1-RS",
+          installed_seal_size: '4.1/2"',
           installed_seal_unit: null,
           seal_code: null,
           report_no: "033/INSTL/TAP/05-2026",
@@ -879,7 +883,10 @@ describe("Mechanical Seal -- Current Installation (LTSA_ASSET360_CURRENT_INSTALL
     const current = within(sealSection).getByTestId("knowledge-seal-current");
     expect(rowValue(current, "Installation Status")).toBe("INSTALLED");
     expect(rowValue(current, "Installed Seal Type")).toBe("T8B1-RS");
+    expect(rowValue(current, "Installed Seal Size")).toBe('4.1/2"');
     expect(rowValue(current, "Installed Seal Unit")).toBe("Not Recorded");
+    const labels = Array.from(current.querySelectorAll(".info-row .k")).map((el) => el.textContent);
+    expect(labels.indexOf("Installed Seal Size")).toBe(labels.indexOf("Installed Seal Type") + 1);
     expect(rowValue(current, "Position")).toBe("Not Recorded");
     expect(rowValue(current, "Installation Date")).toBe("2026-05-22");
     expect(rowValue(current, "Source")).toBe("SCAN 033 INSTALLATION REPORT 211-P-1A.pdf");
@@ -894,11 +901,44 @@ describe("Mechanical Seal -- Current Installation (LTSA_ASSET360_CURRENT_INSTALL
     const history = within(sealSection).getByTestId("installation-history-INSTL-033-2026");
     expect(history).toHaveTextContent("2026-05-22");
     expect(history).toHaveTextContent("T8B1-RS");
+    expect(history).toHaveTextContent('Size: 4.1/2"');
 
     const kpi = within(screen.getByTestId("asset-header-kpis")).getByTestId("kpi-installed-seal");
     expect(kpi).toHaveTextContent("T8B1-RS");
     expect(kpi).toHaveTextContent("Installation Status: INSTALLED");
+    expect(kpi).toHaveTextContent('Size: 4.1/2"');
     expect(kpi).toHaveTextContent("Seal type only — no tracked seal unit");
+  });
+
+  it("101-P-3B shows its report's installed size (2.375\"), never the compatible seal's 2.75", async () => {
+    const own = installed({ installed_seal_type: "T48LP", installed_seal_size: '2.375"', source_installation_code: "INSTL-025-2026" });
+    const sealSection = await renderSeal("101-P-3B", {
+      configured_seal: { seal_type: "T48LP", api_plan: null },
+      seal: [{ seal_code: "LTSA-SEAL-T48LP-2-3-4", part_name: "T48LP 2.75", shaft_size: 2.75 }],
+      current_installation: own,
+      current_installations: [own],
+      installation_history: [],
+    });
+    const current = within(sealSection).getByTestId("knowledge-seal-current");
+    expect(rowValue(current, "Installed Seal Size")).toBe('2.375"');
+    expect(within(current).queryByText(/2\.75/)).toBeNull();
+  });
+
+  it("945-P-7B keeps the metric source text verbatim and history keeps each report's own size", async () => {
+    const own = installed({ installed_seal_type: "2648-2 Tandem", installed_seal_size: "55 MM", source_installation_code: "INSTL-038-2026" });
+    const event = (code, date, size) => ({
+      installation_code: code, pump_tag_number: "945-P-7B", installation_date: date, time_precision: "DATE_ONLY",
+      installation_position: null, installed_seal_type: "2648-2 Tandem", installed_seal_size: size,
+      installed_seal_unit: null, seal_code: null, report_no: null, source_document: null,
+    });
+    const sealSection = await renderSeal("945-P-7B", {
+      current_installation: own,
+      current_installations: [own],
+      installation_history: [event("INSTL-038-2026", "2026-06-05", "55 MM"), event("INSTL-OLD", "2026-01-05", null)],
+    });
+    expect(rowValue(within(sealSection).getByTestId("knowledge-seal-current"), "Installed Seal Size")).toBe("55 MM");
+    expect(within(sealSection).getByTestId("installation-history-INSTL-038-2026")).toHaveTextContent("Size: 55 MM");
+    expect(within(sealSection).getByTestId("installation-history-INSTL-OLD")).toHaveTextContent("Size: Not Recorded");
   });
 
   it("renders one current installation per explicitly evidenced position", async () => {

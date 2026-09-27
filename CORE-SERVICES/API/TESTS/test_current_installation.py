@@ -51,20 +51,20 @@ def report(code, plant_equip_no, pump_tag_number, report_date, seal_type=None, *
 
 PRODUCTION_ROWS = [
     report("INSTL-024-2026", "101-P-2A", "101-P-2A", "2026-05-05", "T48LP"),
-    report("INSTL-025-2026", "101-P-2A", "101-P-3B", "2026-05-05", "T48LP"),
-    report("INSTL-031-2026", "140-P-26A", "140-P-26A", "2026-05-19", "T48MP"),
-    report("INSTL-041-2026", "140-P-26A", "140-P-26B", "2026-06-07", "T48MP"),
-    report("INSTL-036-2026", "945-P-7A", "945-P-7A", "2026-05-29", "2648-2 Tandem Seal"),
-    report("INSTL-038-2026", "945-P-7A", "945-P-7B", "2026-06-05", "2648-2 Tandem"),
-    report("INSTL-043-2026", "940-P-2A (NDE)", "940-P-2A", "2026-06-10", "T8B1", seal_location="NDE"),
+    report("INSTL-025-2026", "101-P-2A", "101-P-3B", "2026-05-05", "T48LP", seal_size='2.375"'),
+    report("INSTL-031-2026", "140-P-26A", "140-P-26A", "2026-05-19", "T48MP", seal_size='2.1/8"'),
+    report("INSTL-041-2026", "140-P-26A", "140-P-26B", "2026-06-07", "T48MP", seal_size='2.1/8"'),
+    report("INSTL-036-2026", "945-P-7A", "945-P-7A", "2026-05-29", "2648-2 Tandem Seal", seal_size="55 MM"),
+    report("INSTL-038-2026", "945-P-7A", "945-P-7B", "2026-06-05", "2648-2 Tandem", seal_size="55 MM"),
+    report("INSTL-043-2026", "940-P-2A (NDE)", "940-P-2A", "2026-06-10", "T8B1", seal_location="NDE", seal_size='5"'),
     report("INSTL-002-2026", "212-P-25A SPARE", "212-P-25A", "2026-01-20"),
-    report("INSTL-033-2026", "211-P-1A", "211-P-1A", "2026-05-22", "T8B1-RS"),
+    report("INSTL-033-2026", "211-P-1A", "211-P-1A", "2026-05-22", "T8B1-RS", seal_size='4.1/2"'),
     report(
         "INSTL-003-2026", "211-P-2A", "211-P-2A", "2026-01-24", "T8B1-RS",
         source_document_name="SCAN 003 INSTALLATION REPORT 211-P-2A (DE).pdf",
     ),
-    report("INSTL-022-2026", "945-P-9B", "945-P-9B", "2026-04-17", "T48MP"),
-    report("INSTL-026-2026", "945-P-9B", "945-P-9B", "2026-05-07", "T48MP"),
+    report("INSTL-022-2026", "945-P-9B", "945-P-9B", "2026-04-17", "T48MP", seal_size='2.3/8"'),
+    report("INSTL-026-2026", "945-P-9B", "945-P-9B", "2026-05-07", "T48MP", seal_size='2.3/8"'),
     report("INSTL-019-2026", "220-P-3A", "220-P-3A", "2026-03-30"),
     report("INSTL-037-2026", "220-P-3A", "220-P-3A", "2026-06-02"),
 ]
@@ -380,6 +380,79 @@ def test_removal_before_a_reinstallation_does_not_stop_the_new_counter():
     current = current_for("945-P-9B", lifecycle_events=[removal]).current
     assert current.installation_status == STATUS_INSTALLED
     assert current.source_installation_code == "INSTL-026-2026"
+
+
+# -- installed seal size (R1.1) ---------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "pump, code, seal_type, size",
+    [
+        ("211-P-1A", "INSTL-033-2026", "T8B1-RS", '4.1/2"'),
+        ("945-P-7B", "INSTL-038-2026", "2648-2 Tandem", "55 MM"),
+        ("101-P-3B", "INSTL-025-2026", "T48LP", '2.375"'),
+        ("945-P-9B", "INSTL-026-2026", "T48MP", '2.3/8"'),
+        ("140-P-26B", "INSTL-041-2026", "T48MP", '2.1/8"'),
+    ],
+)
+def test_installed_seal_size_is_the_selected_reports_source_text_verbatim(pump, code, seal_type, size):
+    current = current_for(pump).current
+    assert current.source_installation_code == code
+    assert current.installed_seal_type == seal_type
+    assert current.installed_seal_size == size
+
+
+@pytest.mark.parametrize("pump", ["211-P-2A", "101-P-2A", "220-P-3A", "212-P-25A", "701-P-1A"])
+def test_missing_installed_seal_size_stays_null_without_fallback(pump):
+    # 101-P-2A shares drawing GA-243047 with 101-P-3B (2.375"); 211-P-2A has
+    # compatible seals of 4.5 and 4.625; 701-P-1A has no installation at all.
+    assert current_for(pump).current.installed_seal_size is None
+
+
+def test_size_never_comes_from_pump_size_catalog_or_sibling_fields():
+    rows = [
+        report("INSTL-024-2026", "101-P-2A", "101-P-2A", "2026-05-05", "T48LP",
+               drawing_no="GA-243047", size="4x3-13", shaft_size=2.75, seal_code="LTSA-SEAL-T48LP-2-3-4"),
+        report("INSTL-025-2026", "101-P-2A", "101-P-3B", "2026-05-05", "T48LP",
+               drawing_no="GA-243047", seal_size='2.375"'),
+    ]
+    assert resolve_current_installation(rows, "101-P-2A", now=NOW).current.installed_seal_size is None
+    assert resolve_current_installation(rows, "101-P-3B", now=NOW).current.installed_seal_size == '2.375"'
+
+
+@pytest.mark.parametrize("raw, expected", [('  4.1/2"  ', '4.1/2"'), ("55 MM", "55 MM"), ("", None), ("   ", None), (None, None)])
+def test_installed_seal_size_trims_only(raw, expected):
+    rows = [report("INSTL-070-2026", "P", "P-SIZE", "2026-05-01", "T48MP", seal_size=raw)]
+    assert resolve_current_installation(rows, "P-SIZE", now=NOW).current.installed_seal_size == expected
+
+
+def test_each_history_event_keeps_its_own_size():
+    rows = [
+        report("INSTL-080-2026", "P", "P-HIST", "2026-03-01", "T48MP", seal_size='2.1/8"'),
+        report("INSTL-081-2026", "P", "P-HIST", "2026-06-01", "T48MP", seal_size='2.3/8"'),
+        report("INSTL-082-2026", "P", "P-HIST", "2026-02-01", "T48MP"),
+    ]
+    resolution = resolve_current_installation(rows, "P-HIST", now=NOW)
+    assert resolution.current.installed_seal_size == '2.3/8"'
+    assert [(e.installation_code, e.installed_seal_size) for e in resolution.history] == [
+        ("INSTL-081-2026", '2.3/8"'),
+        ("INSTL-080-2026", '2.1/8"'),
+        ("INSTL-082-2026", None),
+    ]
+
+
+def test_removed_installation_has_no_installed_seal_size():
+    removal = {"event_type": "REMOVE", "pump_tag_number": "211-P-1A", "event_at": "2026-08-01T02:00:00Z"}
+    current = current_for("211-P-1A", lifecycle_events=[removal]).current
+    assert current.installation_status == STATUS_REMOVED
+    assert current.installed_seal_size is None
+
+
+def test_seal_size_does_not_change_selection_or_service_age():
+    current = current_for("211-P-1A").current
+    assert (current.installation_date, current.time_since_installation_days, current.time_since_installation_hours) == (
+        "2026-05-22", 126, 3024,
+    )
 
 
 # -- repository query ------------------------------------------------------------

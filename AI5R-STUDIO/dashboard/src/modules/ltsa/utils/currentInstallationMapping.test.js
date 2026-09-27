@@ -9,6 +9,7 @@ import {
 const INSTALLED = {
   installation_status: "INSTALLED",
   installed_seal_type: "T48MP",
+  installed_seal_size: '2.3/8"',
   installed_seal_unit: null,
   seal_code: null,
   installation_date: "2026-05-07",
@@ -29,6 +30,7 @@ describe("mapCurrentInstallation", () => {
     expect(mapped.status).toBe("NOT_RECORDED");
     expect(mapped.statusLabel).toBe("NOT RECORDED");
     expect(mapped.installedSealType).toBeUndefined();
+    expect(mapped.installedSealSize).toBeUndefined();
     expect(mapped.daysSinceInstallation).toBeUndefined();
     expect(mapped.hoursSinceInstallation).toBeUndefined();
     expect(mapped.timeBasisLabel).toBe("Calendar Time");
@@ -42,6 +44,7 @@ describe("mapCurrentInstallation", () => {
       status: "INSTALLED",
       statusLabel: "INSTALLED",
       installedSealType: "T48MP",
+      installedSealSize: '2.3/8"',
       installedSealUnit: undefined,
       installationDate: "2026-05-07",
       sourceInstallationCode: "INSTL-026-2026",
@@ -98,6 +101,7 @@ describe("lists", () => {
           installation_code: "INSTL-043-2026",
           installation_date: "2026-06-10",
           installed_seal_type: "T8B1",
+          installed_seal_size: '5"',
           installed_seal_unit: null,
           installation_position: "NDE",
           source_document: "SCAN 043.pdf",
@@ -109,6 +113,7 @@ describe("lists", () => {
         code: "INSTL-043-2026",
         date: "2026-06-10",
         sealType: "T8B1",
+        sealSize: '5"',
         sealUnit: undefined,
         position: "NDE",
         sourceDocument: "SCAN 043.pdf",

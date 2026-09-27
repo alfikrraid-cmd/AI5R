@@ -61,6 +61,7 @@ export default function AssetHeaderKpis({
   const installedSeal = installedSealSummary(installation);
   const installedSealSub = [
     `Installation Status: ${installation.statusLabel}`,
+    installation.status === "INSTALLED" && installation.installedSealSize ? `Size: ${installation.installedSealSize}` : null,
     installedSeal.typeOnly ? "Seal type only — no tracked seal unit" : null,
   ]
     .filter(Boolean)

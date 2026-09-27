@@ -30,6 +30,9 @@ export function mapCurrentInstallation(payload) {
     status,
     statusLabel: STATUS_LABELS[status] ?? status,
     installedSealType: payload?.installed_seal_type ?? undefined,
+    // R1.1 -- installation_report.seal_size of the selected report, source
+    // text verbatim (e.g. 4.1/2", 55 MM); never converted or re-derived.
+    installedSealSize: payload?.installed_seal_size ?? undefined,
     installedSealUnit: payload?.installed_seal_unit ?? undefined,
     sealCode: payload?.seal_code ?? undefined,
     installationDate: payload?.installation_date ?? undefined,
@@ -54,6 +57,7 @@ export function mapInstallationHistory(events) {
     code: event.installation_code,
     date: event.installation_date ?? undefined,
     sealType: event.installed_seal_type ?? undefined,
+    sealSize: event.installed_seal_size ?? undefined,
     sealUnit: event.installed_seal_unit ?? undefined,
     position: event.installation_position ?? undefined,
     sourceDocument: event.source_document ?? undefined,

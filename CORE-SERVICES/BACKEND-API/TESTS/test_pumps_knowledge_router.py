@@ -817,6 +817,7 @@ def test_get_knowledge_current_installation_defaults_to_not_recorded():
 
     assert data["current_installation"]["installation_status"] == "NOT_RECORDED"
     assert data["current_installation"]["installed_seal_type"] is None
+    assert data["current_installation"]["installed_seal_size"] is None
     assert data["current_installation"]["time_since_installation_days"] is None
     assert data["current_installation"]["actual_operating_hours"] is None
     assert data["current_installations"] == []
@@ -832,6 +833,7 @@ def test_get_knowledge_current_installation_serializes_the_resolution():
         "installation_code": "INSTL-033-2026", "report_no": "033/INSTL/TAP/05-2026", "report_date": "2026-05-22",
         "pump_tag_number": TAG, "plant_equip_no": TAG, "seal_type": "T8B1-RS", "seal_code": None,
         "seal_unit_id": None, "seal_location": None, "source_document_name": "SCAN 033.pdf",
+        "seal_size": '4.1/2"',
     }]
     resolution = resolve_current_installation(rows, TAG, now=datetime(2026, 9, 25, 3, tzinfo=timezone.utc))
     _, timeline_fake, _ = _override()
@@ -842,6 +844,7 @@ def test_get_knowledge_current_installation_serializes_the_resolution():
     current = data["current_installation"]
     assert current["installation_status"] == "INSTALLED"
     assert current["installed_seal_type"] == "T8B1-RS"
+    assert current["installed_seal_size"] == '4.1/2"'
     assert current["installed_seal_unit"] is None
     assert current["installation_date"] == "2026-05-22"
     assert current["source_installation_code"] == "INSTL-033-2026"
@@ -851,4 +854,6 @@ def test_get_knowledge_current_installation_serializes_the_resolution():
     assert current["time_basis"] == "CALENDAR_TIME"
     assert current["time_precision"] == "DATE_ONLY"
     assert len(data["current_installations"]) == 1
-    assert [e["installation_code"] for e in data["installation_history"]] == ["INSTL-033-2026"]
+    assert [(e["installation_code"], e["installed_seal_size"]) for e in data["installation_history"]] == [
+        ("INSTL-033-2026", '4.1/2"')
+    ]
