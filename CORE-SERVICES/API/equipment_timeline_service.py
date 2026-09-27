@@ -47,6 +47,7 @@ from .current_installation_contract import (
     plant_today,
     resolve_current_installation,
 )
+from .historical_installation_evidence import combined_installation_evidence
 from .installation_gateway import InstallationGateway
 from .installation_interval_contract import InstallationBasedMtbf, installation_based_mtbf
 from .ltsa_knowledge_service import LTSAKnowledgeService
@@ -191,7 +192,28 @@ class EquipmentTimelineService:
     # installation list; a temporary proxy, separate from the failure-based
     # mtbf_days and from Current Service Age.
     def build_installation_based_mtbf(self, tag_number: str) -> InstallationBasedMtbf:
-        return installation_based_mtbf(self._list_installations(tag_number), tag_number)
+        # LTSA_HISTORICAL_INSTALLATION_2024_2025_IMPORT_IMPLEMENTATION_R1 --
+        # MTBF input read model = installation_report + GOVERNED historical
+        # installation evidence, fed to the unchanged interval contract.
+        # Current Installation / Service Age never read the historical rows.
+        return installation_based_mtbf(
+            combined_installation_evidence(
+                self._list_installations(tag_number), self._list_governed_historical_installations(tag_number)
+            ),
+            tag_number,
+        )
+
+    def _list_governed_historical_installations(self, tag_number: str) -> list[dict[str, Any]]:
+        # Same per-section isolation as _list_installations: no repository or a
+        # repository error (e.g. migration 039 not yet applied) degrades to the
+        # installation_report-only input, never to a failure of the response.
+        repository = self._historical_seal_service_activity_repository
+        if repository is None or not hasattr(repository, "list_governed_installation_events_by_pump"):
+            return []
+        try:
+            return list(repository.list_governed_installation_events_by_pump(tag_number) or [])
+        except Exception:
+            return []
 
     def build_lifecycle(
         self,

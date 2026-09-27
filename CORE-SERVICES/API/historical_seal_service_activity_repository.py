@@ -57,6 +57,21 @@ class HistoricalSealServiceActivityRepository:
             self._runner,
         )
 
+    def list_governed_installation_events_by_pump(self, pump_tag_number: str) -> list[dict[str, Any]]:
+        """LTSA_HISTORICAL_INSTALLATION_2024_2025_IMPORT_IMPLEMENTATION_R1 --
+        only rows imported from the approved manifest (migration 039 governed
+        provenance present), for the Installation-Based MTBF read model.
+        Kept separate from list_by_pump() so the lifecycle timeline's column
+        list works before and after migration 039."""
+        return _json_query(
+            f"SELECT {_COLUMNS}, historical_event_id, position, evidence_grade, "
+            "event_fingerprint, source_fingerprint FROM public.historical_seal_service_activity "
+            f"WHERE pump_tag_number = {_sql(pump_tag_number)} AND historical_event_id IS NOT NULL "
+            "AND evidence_grade IN ('DIRECT_EVIDENCE', 'CORROBORATED') AND event_date IS NOT NULL "
+            "ORDER BY event_date ASC, historical_event_id ASC",
+            self._runner,
+        )
+
     def find_by_source_reference(self, source_reference: str) -> dict[str, Any] | None:
         """Find a single record by its idempotent source_reference key."""
         rows = _json_query(

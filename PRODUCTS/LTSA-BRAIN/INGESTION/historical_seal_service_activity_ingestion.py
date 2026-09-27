@@ -1,4 +1,18 @@
-"""MWO-LTSA-HISTORICAL-SEAL-SERVICE-ACTIVITY-001 -- ingestion engine for
+"""DEPRECATED -- DO NOT USE FOR GOVERNED HISTORICAL INSTALLATION IMPORT.
+
+Superseded by historical_installation_manifest_executor.py
+(LTSA_HISTORICAL_INSTALLATION_2024_2025_IMPORT_IMPLEMENTATION_R1). This engine:
+  * labels every workbook row as an INSTALLATION without checking row semantics;
+  * does not honor the governed, hash-frozen approved manifest;
+  * stores 2024 xlsx dates verbatim, so day/month-swapped entries (e.g. the
+    January sheet's 2024-11-01 meaning 11 Jan 2024) become wrong event dates;
+  * does not separate approved rows from the human review queue;
+  * targets obsolete, non-production execution assumptions (a hard-coded
+    'ai5r-runtime-postgres-1' container and C:/Users/USER download paths).
+Its --apply mode is disabled (no override). Kept for its extraction helpers'
+existing tests only; slated for removal in a later cleanup MWO.
+
+MWO-LTSA-HISTORICAL-SEAL-SERVICE-ACTIVITY-001 -- ingestion engine for
 historical mechanical seal service activity records (2024-2025).
 
 MANDATORY RULES:
@@ -396,7 +410,14 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true", help="Dry run without modifying database")
 
     args = parser.parse_args()
-    dry_run = not args.apply
+    if args.apply:
+        print(
+            "DEPRECATED: --apply is disabled. Use historical_installation_manifest_executor.py "
+            "with the approved, hash-frozen manifest for any governed historical installation import.",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+    dry_run = True
 
     canonical_tags = fetch_canonical_pump_tags()
     records = extract_all_records(args.wb_2024, args.wb_2025, canonical_tags)

@@ -178,6 +178,21 @@ def _warranty_to_timeline(assessments: list[dict[str, Any]]) -> list[TimelineEve
     return events
 
 
+# LTSA_HISTORICAL_INSTALLATION_2024_2025_IMPORT_IMPLEMENTATION_R1 -- explicit
+# source distinction for historical evidence (governed 2026 Installation
+# Report events keep their own title).
+_HISTORICAL_EVENT_LABELS = {
+    "INSTALLATION": "Historical Service Activity",
+    "REINSTALLATION_REFURBISHED_SEAL": "Reinstallation (Refurbished Seal)",
+}
+
+
+def _historical_activity_title(record: dict[str, Any]) -> str:
+    label = _HISTORICAL_EVENT_LABELS.get(record.get("event_type"), "Historical Service Activity")
+    detail = record.get("seal_type") or record.get("raw_tag")
+    return f"{label} ({detail})" if detail else label
+
+
 def _historical_service_activity_to_timeline(records: list[dict[str, Any]]) -> list[TimelineEvent]:
     events = []
     for record in records:
@@ -191,7 +206,7 @@ def _historical_service_activity_to_timeline(records: list[dict[str, Any]]) -> l
                 id=str(event_id),
                 event_type=TimelineCategory.SEAL_INSTALL,
                 occurred_at=occurred_at,
-                title=f"Seal Service Activity ({record.get('seal_type') or record.get('raw_tag')})",
+                title=_historical_activity_title(record),
                 description=record.get("raw_job_description") or record.get("remarks"),
                 severity=TimelineSeverity.UNKNOWN,
                 source=TimelineSource.SERVICE_ACTIVITY,

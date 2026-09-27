@@ -60,6 +60,18 @@ Pump areas mix spellings for the same area (`SPK`/`S_PAKNING`, `OM`/`OIL MOVEMEN
 Run on its own, the file fails 40/53 tests on base `4f08c57` and later: its `vi.mock("../../../api/ai5rClient")` lacks `getLtsaAnalyticsExecutive`. In full-suite runs the "routes the 'seal' key to the Seal page" test flips between pass and fail by execution order. Pre-existing, not caused by the Asset 360 installation work; left unfixed by explicit scope lock.
 
 
+### TD-016 — Historical installation review queue (30 rows) unresolved
+The 2024/2025 Service Activity evidence has 30 rows outside the approved manifest: 18 family tags without an A/B suffix, `702-P-4B SPARE`, 8 unmatched/non-pump tags, the possible duplicate `110-P-15A` (2024-11-13 / 2024-11-15) and 2 rows without a completion date. Owner: HUMAN_REVIEW_TAP_ENGINEERING. Resolution must produce a separate, hash-frozen correction/approval manifest; no fuzzy resolver, no automatic aliasing.
+
+### TD-017 — Deprecated `historical_seal_service_activity_ingestion.py` still in the tree
+Superseded by `historical_installation_manifest_executor.py`; `--apply` disabled. Kept only because `test_historical_seal_service_activity.py` imports its extraction helpers. Remove (with those tests reworked) in a cleanup MWO.
+
+### TD-018 — Historical seal identity reads CHANGED for notation-only differences
+Frozen R1 compares seal type/size verbatim, so historical `1.7/8''` / `3.1/2IN` vs report `1.7/8"` yields CHANGED (19 of 22 CHANGED intervals in the approved-manifest projection are notation-only; 3 are substantive). A comparator-only canonicalization was designed and tested in the audit but deliberately NOT wired into `seal_identity_status`; changing it needs an explicit decision.
+
+### TD-019 — Frozen manifest and production baseline are external test inputs
+`test_frozen_manifest_full_replay` is data-gated on `LTSA_HIST_INSTALL_MANIFEST` / `LTSA_HIST_INSTALL_BASELINE` (never committed: governed data). Custody copy: `AI5R-LTSA-HISTCM/TEMP/historical_installation_r1/` (untracked). CI without them skips that test (synthetic disposable-DB tests still run).
+
 ---
 
 This file was created as part of a documentation-only mission (Chief Architect directive). No LTSA implementation, Runtime, or BUILD-PACK file was touched in producing it.
