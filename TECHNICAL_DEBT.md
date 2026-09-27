@@ -68,9 +68,16 @@ Superseded by `historical_installation_manifest_executor.py`; `--apply` disabled
 
 ### TD-018 — Historical seal identity reads CHANGED for notation-only differences
 Frozen R1 compares seal type/size verbatim, so historical `1.7/8''` / `3.1/2IN` vs report `1.7/8"` yields CHANGED (19 of 22 CHANGED intervals in the approved-manifest projection are notation-only; 3 are substantive). A comparator-only canonicalization was designed and tested in the audit but deliberately NOT wired into `seal_identity_status`; changing it needs an explicit decision.
+Status (2026-09-27, production `7ccea61`): **OPEN**. Live Installation-Based MTBF classifies 22 of 36 completed intervals CHANGED (11 CONFIRMED_SAME, 3 UNKNOWN); stored historical seal type/size values remain verbatim. R1 semantics were deliberately not modified at closure.
 
 ### TD-019 — Frozen manifest and production baseline are external test inputs
 `test_frozen_manifest_full_replay` is data-gated on `LTSA_HIST_INSTALL_MANIFEST` / `LTSA_HIST_INSTALL_BASELINE` (never committed: governed data). Custody copy: `AI5R-LTSA-HISTCM/TEMP/historical_installation_r1/` (untracked). CI without them skips that test (synthetic disposable-DB tests still run).
+
+### TD-020 — Executive analytics `work_order.work_type` schema/query mismatch
+`GET /api/ltsa/analytics/executive` fails with `UndefinedColumn: column wo.work_type does not exist`. `CORE-SERVICES/API/ltsa_analytics_service.py` (breakdown count in `get_executive_analytics`) filters on `work_order.work_type`, but the production `work_order` table has no such column (`work_order_code, customer_code, asset_code, asset_type, description, priority, status, assigned_to, created_at, updated_at, closed_at`). Provenance: the query traces to commit `1400c86` (2026-09-09); present in `7b9edb3` before the historical-installation deployment and byte-identical in `7ccea61` (sha256 `4bec7028…`). Classification: PRE_EXISTING_TECHNICAL_DEBT. Reproduced at service level inside the `7ccea61` API container; authenticated HTTP confirmation NOT_PERFORMED (no authenticated session available to the deployment executor; credentials are never minted or bypassed) — AUTHENTICATED_HTTP_CONFIRMATION = PENDING, non-blocking. Resolution needs a separate governed MWO deciding whether (A) `work_type` belongs in the `work_order` schema or (B) the analytics query should derive/use another authoritative field. No solution chosen here.
+
+### TD-021 — API Docker build context includes runtime database backups
+The API image is built with `COPY CORE-SERVICES /app/CORE-SERVICES` from the production checkout, so untracked runtime backup files in `CORE-SERVICES/RUNTIME/BACKUPS/` are copied into every API image: `ltsa_brain__pre_auth_username_026.dump` and `ltsa_brain_20260825T034459Z_pre_auth_username_026.dump` (2026-08-25). Predates `7ccea61`; also present in the rollback image `ai5r/api:rollback-7b9edb3`. Classification: PRE_EXISTING_BUILD_HYGIENE_DEBT. Future resolution should evaluate moving DB backups outside the build context, a `.dockerignore` exclusion, and keeping production backup custody independent from application image construction. The dumps were not moved or deleted, and the Docker build was not changed, at closure.
 
 ---
 
