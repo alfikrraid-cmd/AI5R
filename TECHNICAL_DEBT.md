@@ -87,6 +87,9 @@ The unified Mechanical Seal workspace (`pages/Seal.jsx`) loads complete-seal sto
 
 Original finding: Production `seal_registry` has only `seal_code, seal_name, manufacturer, model, shaft_size, material, temperature_limit, pressure_limit, status, created_at, updated_at` (read-only check, 2026-09-27): the columns added by `MIGRATIONS/013_alter_seal_registry_identifiers_attribution.sql` (`kimap_pertamina`, `gpn_john_crane`, `created_by`, `updated_by`) and present in `CANONICAL_SCHEMA.sql` / `seal_master_data_repository.py` are absent, and `/api/ltsa/seals` returns none of them. Effect: the Mechanical Seal identifier section can only show "Imported / system data" / "—", and KIMAP/GPN edits (PATCH `/api/ltsa/seals/{seal_code}`) most likely cannot persist in production. Pre-existing schema drift, found during the unified Mechanical Seal deploy; not caused by it. Not remediated — migration 013 was deliberately NOT applied. Separate workstream: `LTSA_SEAL_IDENTIFIER_SCHEMA_DRIFT_AUDIT_R1`.
 
+### TD-024 — Many read routes require only authentication, not a permission
+Found in `LTSA_POWER_BI_R1B`: about 60 GET routes (e.g. `/api/ltsa/mechanical-seal-stock`, `/api/ltsa/pumps`, `/api/ltsa/installations`, `/api/ltsa/fleet/*`, `/api/ltsa/analytics/*`, `/api/admin/users`) depend on `get_current_user` without `require_permission`, so any authenticated identity reaches them (area scoping still applies where implemented). Pre-existing; not changed. The new `BI_READER` role is protected independently by central path confinement (`auth_service.ROLE_PATH_ALLOWLIST` enforced in `dependencies.get_current_user`), so it can reach only `/api/ltsa/bi/`. A per-route permission audit is a separate workstream.
+
 ---
 
 This file was created as part of a documentation-only mission (Chief Architect directive). No LTSA implementation, Runtime, or BUILD-PACK file was touched in producing it.

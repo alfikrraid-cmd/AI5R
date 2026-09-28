@@ -31,6 +31,16 @@ _COLUMNS = (
     "source_start_date, source_failure_date, finish_date, event_date, "
     "date_status, status, remarks, created_at"
 )
+# Governed-row selection shared by the per-pump and bulk reads (migration 039
+# provenance present, admissible evidence grade, dated) -- one definition.
+_GOVERNED_COLUMNS = (
+    f"{_COLUMNS}, historical_event_id, position, evidence_grade, "
+    "event_fingerprint, source_fingerprint, date_correction_status"
+)
+_GOVERNED_FILTER = (
+    "historical_event_id IS NOT NULL "
+    "AND evidence_grade IN ('DIRECT_EVIDENCE', 'CORROBORATED') AND event_date IS NOT NULL"
+)
 
 
 class HistoricalSealServiceActivityRepository:
@@ -64,11 +74,20 @@ class HistoricalSealServiceActivityRepository:
         Kept separate from list_by_pump() so the lifecycle timeline's column
         list works before and after migration 039."""
         return _json_query(
-            f"SELECT {_COLUMNS}, historical_event_id, position, evidence_grade, "
-            "event_fingerprint, source_fingerprint FROM public.historical_seal_service_activity "
-            f"WHERE pump_tag_number = {_sql(pump_tag_number)} AND historical_event_id IS NOT NULL "
-            "AND evidence_grade IN ('DIRECT_EVIDENCE', 'CORROBORATED') AND event_date IS NOT NULL "
+            f"SELECT {_GOVERNED_COLUMNS} FROM public.historical_seal_service_activity "
+            f"WHERE pump_tag_number = {_sql(pump_tag_number)} AND {_GOVERNED_FILTER} "
             "ORDER BY event_date ASC, historical_event_id ASC",
+            self._runner,
+        )
+
+    def list_governed_installation_events(self) -> list[dict[str, Any]]:
+        """LTSA_POWER_BI_R1B -- bulk form of
+        list_governed_installation_events_by_pump() for every pump in one
+        query (same columns, same governed filter)."""
+        return _json_query(
+            f"SELECT {_GOVERNED_COLUMNS} FROM public.historical_seal_service_activity "
+            f"WHERE pump_tag_number IS NOT NULL AND {_GOVERNED_FILTER} "
+            "ORDER BY pump_tag_number, event_date ASC, historical_event_id ASC",
             self._runner,
         )
 

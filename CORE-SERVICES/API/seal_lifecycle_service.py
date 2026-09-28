@@ -337,6 +337,16 @@ class SealLifecycleEventRepository:
             self._runner,
         )
 
+    def list_all_pump_events(self) -> list[dict]:
+        """LTSA_POWER_BI_R1B -- bulk form of list_by_pump() (same columns) for
+        every pump-attributed event in one query."""
+        return _json_query(
+            f"SELECT {_SELECT_EVENT_COLUMNS} FROM seal_lifecycle_event "
+            "WHERE pump_tag_number IS NOT NULL "
+            "ORDER BY pump_tag_number, event_at ASC, event_id ASC",
+            self._runner,
+        )
+
 
 __all__ = [
     "EVENT_TYPES",

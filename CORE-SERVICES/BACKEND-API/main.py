@@ -45,6 +45,7 @@ from routers import (
     admin_users,
     analytics,
     auth,
+    bi,
     cm_report,
     condition_monitoring,
     copilot,
@@ -140,6 +141,8 @@ app.include_router(engineering_ai.router)
 # None pattern).
 app.include_router(fleet.router)
 app.include_router(analytics.router)
+# LTSA_POWER_BI_R1B -- governed read-only BI API (/api/ltsa/bi/v1/*, bi.read).
+app.include_router(bi.router)
 app.include_router(document.router)
 app.include_router(installation.router)
 app.include_router(pm_schedule.router)

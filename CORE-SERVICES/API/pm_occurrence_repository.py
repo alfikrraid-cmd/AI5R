@@ -73,6 +73,16 @@ class PMOccurrenceRepository:
             self._runner,
         )
 
+    def list_all_live(self) -> list[dict]:
+        """LTSA_POWER_BI_R1B -- every live (not soft-deleted) occurrence, same
+        columns as list_by_asset(), with NO row cap (list_all() defaults to
+        limit=5000, which a complete BI extract must never inherit)."""
+        return _json_query(
+            f"SELECT {_SELECT_COLUMNS} FROM pm_occurrence WHERE deleted_at IS NULL "
+            "ORDER BY pm_occurrence_code",
+            self._runner,
+        )
+
     def list_all(self, *, scope: frozenset[str] | None = None, limit: int = 5000, offset: int = 0) -> list[dict]:
         # MWO-LTSA-FLEET-ANALYTICS-001 -- fleet-wide batch fetch, mirroring
         # condition_monitoring_reading_repository.list_all()'s own exact

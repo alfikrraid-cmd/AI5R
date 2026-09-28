@@ -163,6 +163,15 @@ class ConditionMonitoringReadingRepository:
             self._runner,
         )
 
+    def list_all_live(self) -> list[dict]:
+        """LTSA_POWER_BI_R1B -- every live (not soft-deleted) reading, same
+        columns as list_by_asset(), in one query with no row cap."""
+        return _json_query(
+            f"SELECT {_SELECT_COLUMNS} FROM condition_monitoring_reading "
+            "WHERE deleted_at IS NULL ORDER BY condition_monitoring_reading_code",
+            self._runner,
+        )
+
     def create_draft(
         self,
         *,

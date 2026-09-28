@@ -208,10 +208,11 @@ def test_token_signed_with_a_different_secret_is_rejected():
 
 
 # MWO-LTSA-AUTH-003A-FINAL -- widened from 4 to the final 6 fixed roles.
+# LTSA_POWER_BI_R1B -- plus BI_READER (bi.read only, path-confined to /api/ltsa/bi/).
 def test_role_permissions_matrix_covers_exactly_the_v1_fixed_roles():
     assert set(ROLE_PERMISSIONS) == {
         "SUPERUSER", "TAP_ADMIN", "TAP_ENGINEER", "JOHN_CRANE_ENGINEER",
-        "PERTAMINA_ENGINEER", "PERTAMINA_VIEWER",
+        "PERTAMINA_ENGINEER", "PERTAMINA_VIEWER", "BI_READER",
     }
 
 

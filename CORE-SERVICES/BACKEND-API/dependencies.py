@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 import jwt as _pyjwt
-from fastapi import Depends, Header, HTTPException
+from fastapi import Depends, Header, HTTPException, Request
 
 BACKEND_API_DIR = Path(__file__).resolve().parent
 CORE_SERVICES_DIR = BACKEND_API_DIR.parent
@@ -18,7 +18,13 @@ for _path in (BACKEND_API_DIR, CORE_SERVICES_DIR, AI5R_SDK_DIR, INGESTION_DIR):
         sys.path.insert(0, str(_path))
 
 from API.auth_repository import AuthRepository
-from API.auth_service import AuthenticatedIdentity, AuthenticationError, decode_access_token, resolve_identity
+from API.auth_service import (
+    AuthenticatedIdentity,
+    AuthenticationError,
+    decode_access_token,
+    is_path_allowed_for_role,
+    resolve_identity,
+)
 from API.cm_report_gateway import CMReportGateway
 from API.condition_monitoring_reading_gateway import ConditionMonitoringReadingGateway
 from API.condition_monitoring_reading_repository import ConditionMonitoringReadingRepository
@@ -234,6 +240,25 @@ _seal_repair_repository = SealRepairRepository(_import_database_runner)
 _seal_warranty_assessment_repository = SealWarrantyAssessmentRepository(_import_database_runner)
 _installation_report_fitment_repository = InstallationReportFitmentRepository(_import_database_runner)
 _historical_seal_service_activity_repository = HistoricalSealServiceActivityRepository(_import_database_runner)
+
+# LTSA_POWER_BI_R1B -- governed read-only BI datasets (contract ltsa-bi/1.0.0),
+# built from the SAME repository singletons above (bulk reads only) and the
+# canonical LTSA contracts; no second runner, no per-pump fan-out.
+from API.bi_asset_repository import BiAssetRepository
+from API.bi_dataset_service import BiDatasetService
+
+_bi_dataset_service = BiDatasetService(
+    asset_repository=BiAssetRepository(_import_database_runner),
+    cm_repository=_condition_monitoring_reading_repository,
+    pm_repository=_pm_occurrence_repository,
+    installation_report_repository=_installation_report_repository,
+    historical_repository=_historical_seal_service_activity_repository,
+    seal_lifecycle_repository=_seal_lifecycle_event_repository,
+)
+
+
+def get_bi_dataset_service() -> BiDatasetService:
+    return _bi_dataset_service
 
 # MWO-LTSA-031D -- built from the same singleton Gateway instances above,
 # not fresh ones -- no second set of Gateways is constructed anywhere.
@@ -658,7 +683,16 @@ def get_copilot_ai_client():
     return _copilot_ai_client
 
 
-def get_current_user(authorization: str | None = Header(default=None)) -> AuthenticatedIdentity:
+def get_current_user(request: Request, authorization: str | None = Header(default=None)) -> AuthenticatedIdentity:
+    identity = _authenticate(authorization)
+    # LTSA_POWER_BI_R1B -- a path-confined role (BI_READER) may reach only its
+    # own API prefix, whatever permission the route itself checks (or not).
+    if not is_path_allowed_for_role(identity.role, request.url.path):
+        raise HTTPException(status_code=403, detail="Role not permitted on this endpoint")
+    return identity
+
+
+def _authenticate(authorization: str | None) -> AuthenticatedIdentity:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing bearer token")
 

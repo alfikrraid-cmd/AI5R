@@ -88,6 +88,13 @@ _SELECT_COLUMNS = (
     "pump_tag_number, drawing_no, source_document_name, "
     "seal_manufacture, seal_size, material_code, signatures"
 )
+# Per-pump and bulk reads share one column list and one registered-PUMP
+# filter, so the BI bulk read can never drift from list_by_pump_tag().
+_PUMP_SELECT_COLUMNS = f"{_SELECT_COLUMNS}, seal_location, seal_unit_id"
+_REGISTERED_PUMP_FILTER = (
+    "EXISTS (SELECT 1 FROM asset_registry ar "
+    "WHERE ar.asset_code = ir.pump_tag_number AND ar.asset_type = 'PUMP')"
+)
 
 
 class InstallationReportRepository:
@@ -113,11 +120,21 @@ class InstallationReportRepository:
         # response; json_agg does not guarantee subquery order, so
         # current_installation_contract re-sorts on the same key.
         return _json_query(
-            f"SELECT {_SELECT_COLUMNS}, seal_location, seal_unit_id FROM installation_report ir "
+            f"SELECT {_PUMP_SELECT_COLUMNS} FROM installation_report ir "
             f"WHERE ir.pump_tag_number = {_sql(pump_tag_number)} "
-            "AND EXISTS (SELECT 1 FROM asset_registry ar "
-            "WHERE ar.asset_code = ir.pump_tag_number AND ar.asset_type = 'PUMP') "
+            f"AND {_REGISTERED_PUMP_FILTER} "
             "ORDER BY ir.report_date DESC NULLS LAST, ir.installation_code DESC",
+            self._runner,
+        )
+
+    def list_for_registered_pumps(self) -> list[dict[str, Any]]:
+        """LTSA_POWER_BI_R1B -- bulk form of list_by_pump_tag() for every
+        registered PUMP in one query (same columns, same filter), so the BI
+        read layer never issues one query per pump."""
+        return _json_query(
+            f"SELECT {_PUMP_SELECT_COLUMNS} FROM installation_report ir "
+            f"WHERE {_REGISTERED_PUMP_FILTER} "
+            "ORDER BY ir.pump_tag_number, ir.report_date DESC NULLS LAST, ir.installation_code DESC",
             self._runner,
         )
 

@@ -138,6 +138,8 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             # MWO-LTSA-SEAL-LIFECYCLE-EVENT-LEDGER-001 -- SUPERUSER + TAP_ADMIN
             # only, per this MWO's own explicit WRITE AUTH grant.
             "seal.lifecycle_write",
+            # LTSA_POWER_BI_R1B -- verification access to the governed BI API.
+            "bi.read",
         }
     ),
     "TAP_ADMIN": frozenset(
@@ -179,7 +181,27 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     "PERTAMINA_VIEWER": frozenset(
         {"pump.read", "seal.read", "inventory.read", "maintenance.read"}
     ),
+    # LTSA_POWER_BI_R1B -- the Power BI identity's role: read the governed BI
+    # API (/api/ltsa/bi/v1/*) and nothing else -- no other read scope, no
+    # write, no admin. The R1 BI dataset is unrestricted by design (TAP
+    # management audience); area-scoped distribution needs a separate RLS
+    # design. Code-defined role: organization_memberships.role has no DB
+    # CHECK (migration 007), so no migration is required.
+    "BI_READER": frozenset({"bi.read"}),
 }
+
+# LTSA_POWER_BI_R1B -- roles confined to API path prefixes, enforced centrally
+# when the caller is authenticated (dependencies.get_current_user), so a
+# confined role cannot reach any other route -- including the many routes that
+# only require authentication and check no permission.
+ROLE_PATH_ALLOWLIST: dict[str, tuple[str, ...]] = {
+    "BI_READER": ("/api/ltsa/bi/",),
+}
+
+
+def is_path_allowed_for_role(role: str | None, path: str) -> bool:
+    prefixes = ROLE_PATH_ALLOWLIST.get(role or "")
+    return prefixes is None or any(path.startswith(prefix) for prefix in prefixes)
 
 # MWO-AUTH-USERNAME-002 -- delegation scope is intentionally narrower than
 # permissions. SUPERUSER may manage every role, including break-glass peers.
