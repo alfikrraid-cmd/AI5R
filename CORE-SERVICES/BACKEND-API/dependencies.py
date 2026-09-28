@@ -4,6 +4,7 @@ import os
 import sys
 from pathlib import Path
 
+import base64
 import jwt as _pyjwt
 from fastapi import Depends, Header, HTTPException, Request
 
@@ -24,6 +25,11 @@ from API.auth_service import (
     decode_access_token,
     is_path_allowed_for_role,
     resolve_identity,
+)
+from API.bi_machine_auth_service import authenticate_basic_credentials
+from API.bi_machine_credential_repository import (
+    BiMachineCredentialPostgresRepository,
+    InMemoryBiMachineCredentialRepository,
 )
 from API.cm_report_gateway import CMReportGateway
 from API.condition_monitoring_reading_gateway import ConditionMonitoringReadingGateway
@@ -683,8 +689,25 @@ def get_copilot_ai_client():
     return _copilot_ai_client
 
 
-def get_current_user(request: Request, authorization: str | None = Header(default=None)) -> AuthenticatedIdentity:
-    identity = _authenticate(authorization)
+# LTSA_POWER_BI_R1C -- Dedicated Power BI machine credential repository.
+# Default uses PostgreSQL backend via _import_database_runner.
+# Swappable in tests via app.dependency_overrides[get_bi_machine_credential_repository].
+_bi_machine_credential_repository = BiMachineCredentialPostgresRepository(_import_database_runner)
+
+
+def get_bi_machine_credential_repository() -> BiMachineCredentialPostgresRepository:
+    return _bi_machine_credential_repository
+
+
+def get_current_user(
+    request: Request,
+    authorization: str | None = Header(default=None),
+    credential_repo: Any = Depends(get_bi_machine_credential_repository),
+) -> AuthenticatedIdentity:
+    try:
+        identity = _authenticate(authorization, repo=credential_repo)
+    except TypeError:
+        identity = _authenticate(authorization)
     # LTSA_POWER_BI_R1B -- a path-confined role (BI_READER) may reach only its
     # own API prefix, whatever permission the route itself checks (or not).
     if not is_path_allowed_for_role(identity.role, request.url.path):
@@ -692,8 +715,32 @@ def get_current_user(request: Request, authorization: str | None = Header(defaul
     return identity
 
 
-def _authenticate(authorization: str | None) -> AuthenticatedIdentity:
-    if not authorization or not authorization.startswith("Bearer "):
+def _authenticate(authorization: str | None, repo: Any | None = None) -> AuthenticatedIdentity:
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing bearer token")
+
+    # LTSA_POWER_BI_R1C -- Dedicated Machine Basic Auth
+    if authorization.startswith("Basic "):
+        raw = authorization[len("Basic "):].strip()
+        try:
+            decoded = base64.b64decode(raw).decode("utf-8")
+            if ":" not in decoded:
+                raise ValueError("Malformed Basic auth header")
+            client_id, secret = decoded.split(":", 1)
+        except Exception:
+            raise HTTPException(status_code=401, detail="Invalid authentication credentials")
+
+        effective_repo = repo if repo is not None else get_bi_machine_credential_repository()
+        try:
+            return authenticate_basic_credentials(
+                client_id=client_id,
+                secret=secret,
+                repository=effective_repo,
+            )
+        except AuthenticationError:
+            raise HTTPException(status_code=401, detail="Invalid authentication credentials")
+
+    if not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing bearer token")
 
     token = authorization[len("Bearer "):].strip()
@@ -757,4 +804,6 @@ def get_group_message_rate_limiter() -> InMemoryRateLimiter:
 
 def get_group_media_store() -> WhatsAppGroupMediaStore:
     return _group_media_store
+
+
 

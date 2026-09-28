@@ -1,6 +1,4 @@
-"""LTSA_POWER_BI_R1B -- governed BI API router (contract ltsa-bi/1.0.0):
-bi.read authorization, BI error envelope, BI_READER path confinement."""
-
+import base64
 import sys
 from pathlib import Path
 
@@ -14,6 +12,8 @@ if str(BACKEND) not in sys.path:
 import dependencies  # noqa: E402
 from API.auth_service import ROLE_PERMISSIONS, AuthenticatedIdentity  # noqa: E402
 from API.bi_dataset_service import BiSourceUnavailable, BiTableLimitExceeded  # noqa: E402
+from API.bi_machine_auth_service import hash_secret  # noqa: E402
+from API.bi_machine_credential_repository import InMemoryBiMachineCredentialRepository  # noqa: E402
 from dependencies import get_bi_dataset_service, get_current_user  # noqa: E402
 from main import app  # noqa: E402
 
@@ -124,3 +124,95 @@ def test_other_roles_are_not_path_confined(monkeypatch):
     app.dependency_overrides[get_bi_dataset_service] = lambda: FakeService()
     response = client.get("/api/ltsa/bi/v1/metadata", headers={"Authorization": "Bearer test"})
     assert_error(response, 403, "BI_FORBIDDEN")  # refused by bi.read, not by path confinement
+
+
+def test_bi_machine_basic_auth_success():
+    repo = InMemoryBiMachineCredentialRepository()
+    client_id = "ltsa_bi_0123456789abcdef01234567"
+    secret = "sec_test_secret_12345678901234567890"
+    repo.create_credential(
+        client_id=client_id,
+        secret_hash=hash_secret(secret),
+        organization_id="org-1",
+        description="Power BI Refresh",
+        actor="TEST",
+    )
+    app.dependency_overrides[get_bi_dataset_service] = lambda: FakeService()
+    app.dependency_overrides[dependencies.get_bi_machine_credential_repository] = lambda: repo
+
+    b64 = base64.b64encode(f"{client_id}:{secret}".encode()).decode()
+    res = client.get("/api/ltsa/bi/v1/metadata", headers={"Authorization": f"Basic {b64}"})
+    assert res.status_code == 200
+    assert res.json()["success"] is True
+
+
+def test_bi_machine_basic_auth_invalid_secret_returns_401_bi_envelope():
+    repo = InMemoryBiMachineCredentialRepository()
+    client_id = "ltsa_bi_0123456789abcdef01234567"
+    secret = "sec_test_secret_12345678901234567890"
+    repo.create_credential(
+        client_id=client_id,
+        secret_hash=hash_secret(secret),
+        organization_id="org-1",
+        description="Power BI Refresh",
+        actor="TEST",
+    )
+    app.dependency_overrides[get_bi_dataset_service] = lambda: FakeService()
+    app.dependency_overrides[dependencies.get_bi_machine_credential_repository] = lambda: repo
+
+    b64 = base64.b64encode(f"{client_id}:wrong_secret".encode()).decode()
+    res = client.get("/api/ltsa/bi/v1/metadata", headers={"Authorization": f"Basic {b64}"})
+    assert_error(res, 401, "BI_UNAUTHENTICATED")
+
+
+def test_bi_machine_basic_auth_overlapping_rotation_support():
+    repo = InMemoryBiMachineCredentialRepository()
+    client_id = "ltsa_bi_0123456789abcdef01234567"
+    primary_secret = "sec_primary_secret_12345"
+    repo.create_credential(
+        client_id=client_id,
+        secret_hash=hash_secret(primary_secret),
+        organization_id="org-1",
+        description="Power BI Refresh",
+        actor="TEST",
+    )
+    secondary_secret = "sec_secondary_secret_67890"
+    repo.rotate_credential(
+        client_id=client_id,
+        new_secret_hash=hash_secret(secondary_secret),
+        grace_days=7,
+        actor="TEST",
+    )
+    app.dependency_overrides[get_bi_dataset_service] = lambda: FakeService()
+    app.dependency_overrides[dependencies.get_bi_machine_credential_repository] = lambda: repo
+
+    # Both primary and secondary authenticate successfully
+    b64_primary = base64.b64encode(f"{client_id}:{primary_secret}".encode()).decode()
+    res_pri = client.get("/api/ltsa/bi/v1/metadata", headers={"Authorization": f"Basic {b64_primary}"})
+    assert res_pri.status_code == 200
+
+    b64_sec = base64.b64encode(f"{client_id}:{secondary_secret}".encode()).decode()
+    res_sec = client.get("/api/ltsa/bi/v1/metadata", headers={"Authorization": f"Basic {b64_sec}"})
+    assert res_sec.status_code == 200
+
+
+def test_bi_machine_basic_auth_confined_from_non_bi_routes():
+    repo = InMemoryBiMachineCredentialRepository()
+    client_id = "ltsa_bi_0123456789abcdef01234567"
+    secret = "sec_test_secret_12345678901234567890"
+    repo.create_credential(
+        client_id=client_id,
+        secret_hash=hash_secret(secret),
+        organization_id="org-1",
+        description="Power BI Refresh",
+        actor="TEST",
+    )
+    app.dependency_overrides[dependencies.get_bi_machine_credential_repository] = lambda: repo
+
+    b64 = base64.b64encode(f"{client_id}:{secret}".encode()).decode()
+    headers = {"Authorization": f"Basic {b64}"}
+    # Non-BI routes must reject Basic machine credentials with 403
+    for path in ["/api/ltsa/mechanical-seal-stock", "/api/ltsa/pumps", "/api/auth/me"]:
+        res = client.get(path, headers=headers)
+        assert res.status_code == 403, f"{path} should be 403"
+

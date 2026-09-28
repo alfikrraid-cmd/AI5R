@@ -160,5 +160,9 @@ tables; for reconciliation, never a KPI source.
   `dependencies.get_current_user` (`auth_service.ROLE_PATH_ALLOWLIST`), so it
   cannot reach any other route — including routes that check no permission.
 - The R1 dataset is unrestricted by design (TAP management audience; no RLS).
-- Unattended Power BI authentication (a non-interactive, revocable machine
-  credential) is **not** part of 1.0.0 — it belongs to R1C.
+- Unattended Power BI authentication (R1C):
+  - Dedicated HTTP Basic authentication: `Authorization: Basic base64(client_id:client_secret)`.
+  - Machine identity is assigned role `BI_READER` with permission `bi.read`, strictly path-confined to `/api/ltsa/bi/*` only.
+  - Secret hashes use canonical scrypt storage format: `scrypt$16384$8$1$<salt_hex>$<hash_hex>`.
+  - Supports zero-downtime dual-secret rotation with secondary secret and grace period expiry.
+  - Existing human user authentication using `Authorization: Bearer <jwt>` remains fully supported.

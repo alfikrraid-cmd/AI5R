@@ -53,3 +53,21 @@ were applied *in order* by *that same mechanism* -- 032 is now known to
 have been applied out-of-band, which is direct evidence the normal
 assumption (sequential, tracked application) does not hold here. `UNKNOWN`
 is the honest status until someone directly checks.
+
+## Migrations 040-048: Reserved Archived R4 Quarantine (as of LTSA_POWER_BI_R1C)
+
+Migrations 040 through 048 were authored on an unreviewed feature branch and executed in production out-of-band during `LTSA_R4_PRODUCTION_BACKUP_AND_MIGRATION_R1` before the release line was formally recovered to commit `0254379deeaa524f3d707d5e3df3c3c473da9e27`.
+
+These migrations are preserved in `archive/ltsa-unified-r4-2af84e4` and quarantined from the governed release branch (`release/ltsa-v1-rc1`):
+- `040_create_ltsa_contract_scope.sql`: `RESERVED_ARCHIVED_R4_QUARANTINE`
+- `041_create_ltsa_finding_and_cm_measurement.sql`: `RESERVED_ARCHIVED_R4_QUARANTINE`
+- `042_create_engineering_drawing.sql`: `RESERVED_ARCHIVED_R4_QUARANTINE`
+- `043_create_engineering_drawing_attribute.sql`: `RESERVED_ARCHIVED_R4_QUARANTINE`
+- `044_create_engineering_drawing_promotion.sql`: `RESERVED_ARCHIVED_R4_QUARANTINE`
+- `045_add_condition_monitoring_reading_field_form_idempotency.sql`: `RESERVED_ARCHIVED_R4_QUARANTINE`
+- `046_document_mechanical_seal_stock_pool.sql`: `RESERVED_ARCHIVED_R4_QUARANTINE`
+- `047_add_seal_registry_identity_and_type.sql`: `RESERVED_ARCHIVED_R4_QUARANTINE`
+- `048_backfill_seal_registry_identity_and_type.sql`: `RESERVED_ARCHIVED_R4_QUARANTINE`
+
+**Governance Rule:** These migrations are NOT dependencies of Power BI R1C (`049_create_ltsa_bi_machine_credentials.sql`). Their sequence slots are permanently reserved to prevent numbering collisions and avoid rewriting production history. In particular, migration 048's synthetic mechanical seal backfill (`MS-JC-XXXX`) is unreviewed and must NEVER be consumed or legitimized by R1C.
+
