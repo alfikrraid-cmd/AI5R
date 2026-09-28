@@ -14,22 +14,29 @@ function statusFor(rawStatus, nextDue) {
   }).status;
 }
 
+function formatLocalDate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 describe("Condition Monitoring schedule lifecycle status", () => {
   it("is PLANNED when next_due falls in a future calendar month", () => {
     const today = new Date();
     const futureMonth = new Date(today.getFullYear(), today.getMonth() + 2, 15);
-    expect(statusFor("ACTIVE", futureMonth.toISOString().slice(0, 10))).toBe("PLANNED");
+    expect(statusFor("ACTIVE", formatLocalDate(futureMonth))).toBe("PLANNED");
   });
 
   it("is ACTIVE when next_due is today (current month, not yet passed)", () => {
     const today = new Date();
-    expect(statusFor("ACTIVE", today.toISOString().slice(0, 10))).toBe("ACTIVE");
+    expect(statusFor("ACTIVE", formatLocalDate(today))).toBe("ACTIVE");
   });
 
   it("is OVERDUE when next_due has passed with no completion recorded", () => {
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
-    expect(statusFor("ACTIVE", yesterday.toISOString().slice(0, 10))).toBe("OVERDUE");
+    expect(statusFor("ACTIVE", formatLocalDate(yesterday))).toBe("OVERDUE");
   });
 
   it("never reports OVERDUE for a schedule already COMPLETED, regardless of an expired next_due", () => {

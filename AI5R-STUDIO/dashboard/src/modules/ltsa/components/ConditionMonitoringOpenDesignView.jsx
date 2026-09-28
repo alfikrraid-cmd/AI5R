@@ -315,16 +315,21 @@ export default function ConditionMonitoringOpenDesignView({
       {activeTab === "trends" && (
         <div className="workspace-tab-body">
           <div className="workspace-overview-card">
-            <div className="eyebrow">Temperature Trend — {reading.equipmentTag ?? "Unknown Asset"}</div>
+            <div className="eyebrow">CM Trend</div>
             <div style={{ marginTop: "var(--space-3)" }}>
+              <div style={{ fontWeight: 600, fontSize: "14px", color: "var(--ltsa-text, #ffffff)", marginBottom: "var(--space-1)" }}>
+                Vibration Trend
+              </div>
+              <p className="confidence-label" style={{ marginTop: "var(--space-1)" }}>
+                Vibration historical trend series is unavailable. Vibration readings are tracked per visit under the Measurements tab.
+              </p>
+            </div>
+            <div style={{ marginTop: "var(--space-4)", paddingTop: "var(--space-3)", borderTop: "1px solid var(--ltsa-border, #1F2937)" }}>
+              <div style={{ fontWeight: 600, fontSize: "14px", color: "var(--ltsa-text, #ffffff)", marginBottom: "var(--space-2)" }}>
+                Temperature Trend — {reading.equipmentTag ?? "Unknown Asset"}
+              </div>
               <TemperatureTrendChart readings={assetReadings} />
             </div>
-          </div>
-          <div className="workspace-overview-card" style={{ marginTop: "var(--space-3)" }}>
-            <div className="eyebrow">Vibration Trend</div>
-            <p className="confidence-label" style={{ marginTop: "var(--space-2)" }}>
-              Vibration historical trend series is unavailable. Vibration readings are tracked per visit under the Measurements tab.
-            </p>
           </div>
         </div>
       )}
