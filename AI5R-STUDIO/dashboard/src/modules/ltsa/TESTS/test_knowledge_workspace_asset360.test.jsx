@@ -213,6 +213,14 @@ describe("Condition Monitoring section (C)", () => {
     expect(within(section).getByTestId("temperature-trend-chart")).toBeInTheDocument();
   });
 
+  it("proves Knowledge CM has no vibration operational field or label", async () => {
+    await renderAsset360();
+
+    const section = screen.getByTestId("knowledge-section-condition");
+    expect(within(section).queryByText(/Vibration/i)).toBeNull();
+    expect(within(section).queryByText("Vibration Trend")).toBeNull();
+  });
+
   it("allows inspecting the full reading detail (View Details) without leaving Asset 360", async () => {
     await renderAsset360();
 

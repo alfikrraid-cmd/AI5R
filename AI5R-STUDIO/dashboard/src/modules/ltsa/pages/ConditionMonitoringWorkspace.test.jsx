@@ -334,3 +334,11 @@ describe("cm (Corrective Maintenance) remains unaffected", () => {
     expect(source).toMatch(/from ["']\.\.\/utils\/cmMapping["']/);
   });
 });
+
+describe("Operational domain enforcement", () => {
+  it("proves CM Workspace has no vibration operational field or label", async () => {
+    await renderAndSelect();
+    expect(screen.queryByText("Vibration")).toBeNull();
+    expect(screen.queryByText(/Vibration/i)).toBeNull();
+  });
+});

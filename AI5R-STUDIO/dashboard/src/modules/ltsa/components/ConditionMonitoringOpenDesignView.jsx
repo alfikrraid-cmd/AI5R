@@ -15,7 +15,7 @@ import TemperatureTrendChart from "./TemperatureTrendChart";
  * - WorkspaceTabStrip with 4 canonical tabs:
  *     1. Overview
  *     2. Measurements (all 35 DE/NDE measurement fields preserved and grouped)
- *     3. Trends (TemperatureTrendChart preserved; vibration unavailable note, no fake chart)
+ *     3. Trends (TemperatureTrendChart preserved; actual monitored parameters only, vibration assumption removed)
  *     4. History (workflow attribution, source provenance, related readings)
  * - Zero fake business data (no fabricated health/severity/condition scores).
  * - Honest tri-state leak state (Detected / Not Detected / N/A).
@@ -31,9 +31,6 @@ function pressureValue(value) {
   return value != null ? `${value} bar` : "—";
 }
 
-function vibrationValue(value) {
-  return value != null ? `${value} mm/s` : "—";
-}
 
 function currentAmpValue(value) {
   return value != null ? `${value} A` : "—";
@@ -209,24 +206,7 @@ export default function ConditionMonitoringOpenDesignView({
       {activeTab === "measurements" && (
         <div className="workspace-tab-body">
           <div className="workspace-overview-grid">
-            {/* 1. Vibration */}
-            <div className="workspace-overview-card">
-              <div className="eyebrow">Vibration (mm/s)</div>
-              <InfoRow
-                label="Vertical Vibration (DE / NDE)"
-                value={`${vibrationValue(reading.verticalVibrationDe)} / ${vibrationValue(reading.verticalVibrationNde)}`}
-              />
-              <InfoRow
-                label="Horizontal Vibration (DE / NDE)"
-                value={`${vibrationValue(reading.horizontalVibrationDe)} / ${vibrationValue(reading.horizontalVibrationNde)}`}
-              />
-              <InfoRow
-                label="Axial Vibration (DE / NDE)"
-                value={`${vibrationValue(reading.axialVibrationDe)} / ${vibrationValue(reading.axialVibrationNde)}`}
-              />
-            </div>
-
-            {/* 2. Bearing Temperature */}
+            {/* 1. Bearing Temperature */}
             <div className="workspace-overview-card">
               <div className="eyebrow">Bearing Temperature (°C)</div>
               <InfoRow
@@ -235,7 +215,7 @@ export default function ConditionMonitoringOpenDesignView({
               />
             </div>
 
-            {/* 3. Mechanical Seal & Gland */}
+            {/* 2. Mechanical Seal & Gland */}
             <div className="workspace-overview-card">
               <div className="eyebrow">Mechanical Seal & Gland</div>
               <InfoRow
@@ -256,7 +236,7 @@ export default function ConditionMonitoringOpenDesignView({
               />
             </div>
 
-            {/* 4. Flushing & Quench */}
+            {/* 3. Flushing & Quench */}
             <div className="workspace-overview-card">
               <div className="eyebrow">Flushing & Quench</div>
               <InfoRow
@@ -281,7 +261,7 @@ export default function ConditionMonitoringOpenDesignView({
               />
             </div>
 
-            {/* 5. Cooling */}
+            {/* 4. Cooling */}
             <div className="workspace-overview-card">
               <div className="eyebrow">Cooling System (°C)</div>
               <InfoRow
@@ -298,7 +278,7 @@ export default function ConditionMonitoringOpenDesignView({
               />
             </div>
 
-            {/* 6. Process Conditions & Operating State */}
+            {/* 5. Process Conditions & Operating State */}
             <div className="workspace-overview-card">
               <div className="eyebrow">Process Conditions</div>
               <InfoRow label="Suction Temp" value={tempValue(reading.suctionTemp)} />
@@ -317,14 +297,6 @@ export default function ConditionMonitoringOpenDesignView({
           <div className="workspace-overview-card">
             <div className="eyebrow">CM Trend</div>
             <div style={{ marginTop: "var(--space-3)" }}>
-              <div style={{ fontWeight: 600, fontSize: "14px", color: "var(--ltsa-text, #ffffff)", marginBottom: "var(--space-1)" }}>
-                Vibration Trend
-              </div>
-              <p className="confidence-label" style={{ marginTop: "var(--space-1)" }}>
-                Vibration historical trend series is unavailable. Vibration readings are tracked per visit under the Measurements tab.
-              </p>
-            </div>
-            <div style={{ marginTop: "var(--space-4)", paddingTop: "var(--space-3)", borderTop: "1px solid var(--ltsa-border, #1F2937)" }}>
               <div style={{ fontWeight: 600, fontSize: "14px", color: "var(--ltsa-text, #ffffff)", marginBottom: "var(--space-2)" }}>
                 Temperature Trend — {reading.equipmentTag ?? "Unknown Asset"}
               </div>

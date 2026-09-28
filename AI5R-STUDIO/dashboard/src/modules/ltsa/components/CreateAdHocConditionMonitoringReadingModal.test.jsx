@@ -192,18 +192,25 @@ describe("CreateAdHocConditionMonitoringReadingModal -- Selected Equipment card"
     expect(screen.getByTestId("cmon-selected-equipment-card").textContent).not.toContain("Area");
   });
 
-  it("Change returns to the searchable selector without losing entered measurement values", async () => {
+  it("Change returns to the searchable selector without losing entered measurement values, and verifies no vibration inputs", async () => {
     loadDefaults();
     render(<CreateAdHocConditionMonitoringReadingModal isOpen onClose={vi.fn()} onCreate={vi.fn()} />);
     await screen.findByLabelText("Pump");
     fireEvent.change(screen.getByLabelText("Pump"), { target: { value: "641-P-5" } });
     expandAllMeasurementSections();
-    fireEvent.change(screen.getByLabelText("Vertical Vibration DE"), { target: { value: "4.2" } });
+
+    // Verify vibration inputs are not present in ad hoc CM form
+    expect(screen.queryByLabelText("Vertical Vibration DE")).toBeNull();
+    expect(screen.queryByLabelText("Vertical Vibration NDE")).toBeNull();
+    expect(screen.queryByLabelText("Horizontal Vibration DE")).toBeNull();
+    expect(screen.queryByLabelText("Axial Vibration DE")).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("Bearing Temp DE"), { target: { value: "62.4" } });
 
     fireEvent.click(screen.getByRole("button", { name: "Change" }));
 
     expect(await screen.findByLabelText("Pump")).toBeTruthy();
-    expect(screen.getByLabelText("Vertical Vibration DE")).toHaveValue(4.2);
+    expect(screen.getByLabelText("Bearing Temp DE")).toHaveValue(62.4);
   });
 });
 

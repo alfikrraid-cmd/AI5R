@@ -190,21 +190,56 @@ describe("PHASE=LTSA_CM_TREND_PRODUCTION_LINEAGE_RECONCILIATION_R1 Canonical Tes
     const trendsTabBtn = screen.getByRole("tab", { name: "Trends" });
     fireEvent.click(trendsTabBtn);
 
-    // Preferred structure check: CM Trend, Vibration Trend, Temperature Trend
+    // CM Trend structure check: CM Trend, Temperature Trend (No Vibration Trend or empty-state notices)
     expect(screen.getByText("CM Trend")).toBeInTheDocument();
-    expect(screen.getByText("Vibration Trend")).toBeInTheDocument();
+    expect(screen.queryByText("Vibration Trend")).toBeNull();
+    expect(screen.queryByText(/Vibration historical trend series is unavailable/i)).toBeNull();
+    expect(screen.queryByText(/Vibration unavailable/i)).toBeNull();
+    expect(screen.queryByText(/Vibration data gap/i)).toBeNull();
     expect(screen.getByText(/Temperature Trend/)).toBeInTheDocument();
-
-    // Vibration graph remains honest (historical unavailable message per 0/1216 audit)
-    expect(
-      screen.getByText(
-        "Vibration historical trend series is unavailable. Vibration readings are tracked per visit under the Measurements tab."
-      )
-    ).toBeInTheDocument();
 
     // Temperature Trend chart is mounted and isolated to selected asset
     const chart = screen.getByTestId("temperature-trend-chart");
     expect(chart).toBeInTheDocument();
+  });
+
+  it("proves vibration assumption is eliminated: no user-facing vibration trend or notices, measurements tab omits vibration, while temperature trend and canonical values are preserved", () => {
+    const selected = BENCHMARK_CANONICAL_READINGS[0];
+    const assetReadings = BENCHMARK_CANONICAL_READINGS;
+
+    render(
+      <ConditionMonitoringOpenDesignView
+        reading={selected}
+        relatedReadings={[]}
+        assetReadings={assetReadings}
+      />
+    );
+
+    // Measurements tab check
+    const measurementsTabBtn = screen.getByRole("tab", { name: "Measurements" });
+    fireEvent.click(measurementsTabBtn);
+    expect(screen.queryByText(/Vibration \(mm\/s\)/i)).toBeNull();
+    expect(screen.queryByText(/Vertical Vibration/i)).toBeNull();
+    expect(screen.queryByText(/Horizontal Vibration/i)).toBeNull();
+    expect(screen.queryByText(/Axial Vibration/i)).toBeNull();
+    expect(screen.getByText("Bearing Temperature (°C)")).toBeInTheDocument();
+
+    // Trends tab check
+    const trendsTabBtn = screen.getByRole("tab", { name: "Trends" });
+    fireEvent.click(trendsTabBtn);
+    expect(screen.getByText("CM Trend")).toBeInTheDocument();
+    expect(screen.queryByText("Vibration Trend")).toBeNull();
+    expect(screen.queryByText(/Vibration historical trend series is unavailable/i)).toBeNull();
+    expect(screen.queryByText(/Vibration unavailable/i)).toBeNull();
+    expect(screen.queryByText(/Vibration N\/A/i)).toBeNull();
+    expect(screen.queryByText(/Vibration data gap/i)).toBeNull();
+    expect(screen.getByText(/Temperature Trend/)).toBeInTheDocument();
+
+    // Temperature Trend chart is mounted with actual canonical CM readings
+    const chart = screen.getByTestId("temperature-trend-chart");
+    expect(chart).toBeInTheDocument();
+    expect(within(chart).getByText("DE (2 pts)")).toBeInTheDocument();
+    expect(within(chart).getByText("NDE (2 pts)")).toBeInTheDocument();
   });
 
   it("proves legacy cm_report is never used as temperature trend source", () => {

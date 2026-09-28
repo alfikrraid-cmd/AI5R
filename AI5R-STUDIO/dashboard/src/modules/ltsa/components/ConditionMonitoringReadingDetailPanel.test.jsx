@@ -461,4 +461,21 @@ describe("ConditionMonitoringReadingDetailPanel (MWO-LTSA-PM-CM-REVIEW-UI-001 ex
       expect(onViewSchedule).toHaveBeenCalledWith("CMON-SCHED-001");
     });
   });
+
+  it("proves reading detail has no vibration section or inputs in either read-only or edit mode", async () => {
+    // Read-only mode
+    const { rerender } = render(<ConditionMonitoringReadingDetailPanel reading={baseReading()} canWrite={false} />);
+    expect(screen.getByText("Pressure / Motor (DE / NDE)")).toBeTruthy();
+    expect(screen.queryByText(/Vibration/i)).toBeNull();
+    expect(screen.queryByText(/Vertical Vibration/i)).toBeNull();
+    expect(screen.queryByText(/Horizontal Vibration/i)).toBeNull();
+    expect(screen.queryByText(/Axial Vibration/i)).toBeNull();
+
+    // Edit mode (DRAFT with canWrite)
+    rerender(<ConditionMonitoringReadingDetailPanel reading={baseReading()} canWrite />);
+    expect(screen.queryByLabelText("Vertical Vibration DE")).toBeNull();
+    expect(screen.queryByLabelText("Vertical Vibration NDE")).toBeNull();
+    expect(screen.queryByLabelText("Horizontal Vibration DE")).toBeNull();
+    expect(screen.queryByLabelText("Axial Vibration DE")).toBeNull();
+  });
 });
