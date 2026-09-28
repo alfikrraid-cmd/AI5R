@@ -3,13 +3,20 @@
  * mapPumpRecord convention exactly: seal_code -> code, seal_name -> name,
  * manufacturer/status map directly (real seal_registry columns).
  *
- * type is left null -- seal_registry (CANONICAL_SCHEMA.sql) has no direct
- * "type" column; model/material exist but mapping either into "type"
- * would be a semantic guess presented as fact, not a real one, so it is
- * left null per this codebase's "never fabricate" discipline
- * (pumpMapping.js's own precedent for healthScore/availability/
- * recommendation) rather than silently repurposing a different real
- * column under a mismatched label.
+ * MECHANICAL-SEAL-DOMAIN-CONSOLIDATION-R1 -- type now reads the real
+ * seal_type column added by migration 043 (backfilled additively by 044
+ * only where an unambiguous source existed). Until this migration runs
+ * against a given environment, or for a seal whose seal_type could not
+ * be safely backfilled, the API's own SELECT * simply omits/nulls the
+ * column, so `?? null` still resolves to the same honest "not yet known"
+ * state as before -- this is a widened mapping, not a behavior change
+ * for any seal that still has no real value.
+ *
+ * sealId is the new human-readable identifier (MS-JC-NNNN, migrations
+ * 043/044) -- additive alongside `code` (seal_code, still the real
+ * business key/PK), never a replacement for it. Also defaults to null:
+ * an OEM this migration's mapping does not yet cover (only 'John Crane'
+ * is mapped today) is left unassigned rather than guessed.
  *
  * MWO-LTSA-042 -- model, shaftSize, material, temperatureLimit,
  * pressureLimit, createdAt, updatedAt added: all real seal_registry
@@ -42,8 +49,9 @@
 export function mapSealRecord(record) {
   return {
     code: record.seal_code,
+    sealId: record.seal_id ?? null,
     name: record.seal_name,
-    type: null,
+    type: record.seal_type ?? null,
     manufacturer: record.manufacturer,
     model: record.model ?? null,
     shaftSize: record.shaft_size ?? null,
@@ -178,19 +186,59 @@ export function resolveStock(sealCode, stockRecords) {
 }
 
 /**
+ * LTSA_MECHANICAL_SEAL_STOCK_FILTER_HOTFIX_R1 -- the one canonical stock
+ * quantity parser for the unified Mechanical Seal workspace (label, KPI,
+ * filter, highlight). Stock quantities arrive as numbers (stock pools) or as
+ * numeric strings (seal_stock via n8n, e.g. "0"). Missing values are decided
+ * BEFORE any numeric conversion, so Number(null) === 0 / Number("") === 0 can
+ * never turn an unknown quantity into a real zero.
+ * Returns a finite number, or null when the quantity is unknown
+ * (null / undefined / empty or whitespace string / non-numeric / non-finite).
+ */
+export function parseStockQuantity(value) {
+  if (value == null) return null;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value === "string") {
+    const text = value.trim();
+    if (text === "") return null;
+    const parsed = Number(text);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+export const STOCK_STATUS = Object.freeze({
+  IN_STOCK: "IN_STOCK",
+  OUT_OF_STOCK: "OUT_OF_STOCK",
+  UNKNOWN: "UNKNOWN", // a stock record exists, its quantity is unknown
+  NO_STOCK: "NO_STOCK", // no applicable stock record (rendered "N/A")
+});
+
+/**
+ * Stock status of one unified seal configuration row:
+ * no record -> NO_STOCK; unknown quantity -> UNKNOWN; <= 0 -> OUT_OF_STOCK
+ * (matches the "0 sets" label); > 0 -> IN_STOCK.
+ */
+export function stockStatus(item) {
+  if (!item || item.hasStockRecord === false) return STOCK_STATUS.NO_STOCK;
+  const quantity = parseStockQuantity(item.quantity_available ?? item.quantity_on_hand);
+  if (quantity == null) return STOCK_STATUS.UNKNOWN;
+  return quantity <= 0 ? STOCK_STATUS.OUT_OF_STOCK : STOCK_STATUS.IN_STOCK;
+}
+
+/**
  * LTSA_MECHANICAL_SEAL_UNIFIED_IMPLEMENTATION_R1 -- Formats complete seal stock with explicit units.
  * Never outputs naked numbers.
  * When hasStockRecord is false -> "N/A" (unmanaged/unknown).
- * When quantity is null/undefined -> "Unknown".
+ * When quantity is unknown (null/undefined/empty/non-numeric) -> "Unknown".
  * When quantity is 0 -> "0 sets".
  * When quantity is 1 -> "1 set".
  * When quantity > 1 -> "N sets".
  */
 export function formatAvailableStock(quantity, hasStockRecord = true) {
   if (!hasStockRecord) return "N/A";
-  if (quantity == null) return "Unknown";
-  const num = Number(quantity);
-  if (isNaN(num)) return "Unknown";
+  const num = parseStockQuantity(quantity);
+  if (num == null) return "Unknown";
   if (num <= 0) return "0 sets";
   if (num === 1) return "1 set";
   return `${num} sets`;
@@ -363,6 +411,10 @@ export function buildUnifiedSealConfigurations(
       stock_pool_id: pool.stock_pool_id ?? poolId,
       code: sealCode,
       name: sealName,
+      // Unified-RC Seal ID (MS-JC-NNNN, seal_registry.seal_id) carried through
+      // from the matched registry seal only -- a pool with no registry match has
+      // no professional identity, so null (rendered N/A), never fabricated.
+      sealId: matchedSeal?.sealId ?? null,
       seal_type: sealType,
       type: matchedSeal?.type ?? null,
       manufacturer: matchedSeal?.manufacturer ?? (sealType === "MIXED" ? "Various" : "John Crane"),
@@ -427,6 +479,7 @@ export function buildUnifiedSealConfigurations(
       stock_pool_id: null,
       code: seal.code,
       name: seal.name,
+      sealId: seal.sealId ?? null,
       seal_type: seal.type || seal.name || seal.code,
       type: seal.type ?? null,
       manufacturer: seal.manufacturer ?? "Unknown",

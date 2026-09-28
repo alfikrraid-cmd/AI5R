@@ -197,7 +197,11 @@ def test_domain_10_ma1_maps_to_hoc():
 
 
 def test_domain_11_ma2_maps_to_hsc_s_pakning_hcc():
-    assert resolve_ma_areas("MA2") == frozenset({"HSC", "S_PAKNING", "HCC"})
+    # MWO-LTSA-CONTRACT-SCOPE-R4-6 -- FRAKSINASI/REAKTOR/H2PLAN/AMINE
+    # added, Chief Architect approved (R4.4/R4.5).
+    assert resolve_ma_areas("MA2") == frozenset(
+        {"HSC", "S_PAKNING", "HCC", "FRAKSINASI", "REAKTOR", "H2PLAN", "AMINE"}
+    )
 
 
 def test_domain_12_ma3_maps_to_utl():
@@ -481,14 +485,17 @@ def test_phase3c_03_list_s_pakning_includes_both_forms():
 
 
 def test_phase3c_04_list_ma2_includes_both_forms():
+    # MWO-LTSA-CONTRACT-SCOPE-R4-6 -- count is 6, not 5: 999-P-01A
+    # (area=AMINE) now correctly resolves to MA2 too.
     answer = _ask_helper("list pompa di ma2", pumps=PUMPS_WITH_SPK_AND_S_PAKNING)
     assert answer.kind == FACT
-    assert "Pompa MA2 — 5" in answer.answer
+    assert "Pompa MA2 — 6" in answer.answer
     assert "• 101-P-2B" in answer.answer
     assert "• 101-P-3A" in answer.answer
     assert "• 101-P-6A" in answer.answer
     assert "• 211-P-10A" in answer.answer
     assert "• 213-P-05A" in answer.answer
+    assert "• 999-P-01A" in answer.answer
 
 
 def test_phase3c_05_count_s_pakning_includes_both_forms():
@@ -504,10 +511,12 @@ def test_phase3c_05_count_s_pakning_includes_both_forms():
 
 
 def test_phase3c_06_count_ma2_includes_both_forms():
+    # MWO-LTSA-CONTRACT-SCOPE-R4-6 -- 6, not 5 (see test_phase3c_04's own
+    # updated comment).
     answer = _ask_helper("berapa pompa di MA2", pumps=PUMPS_WITH_SPK_AND_S_PAKNING)
     assert answer.kind == FACT
-    assert "Terdapat 5 pompa di MA2." in answer.answer
-    assert str(answer.evidence[0]["value"]) == "5"
+    assert "Terdapat 6 pompa di MA2." in answer.answer
+    assert str(answer.evidence[0]["value"]) == "6"
 
 
 def test_phase3c_07_ma2_grouping_combines_both_under_one_s_pakning():
@@ -554,15 +563,34 @@ def test_phase3c_10_spk_cannot_bypass_scope_restrictions():
 
 
 def test_phase3c_11_unknown_areas_remain_na():
-    assert resolve_area_ma("AMINE") is None
+    # MWO-LTSA-CONTRACT-SCOPE-R4-6 -- AMINE removed from this "stays
+    # unknown" example set: it is now a Chief-approved MA2 subarea (see
+    # test_r4_6_hcc_subarea_mapping below and pump_area_scope.py's own
+    # MA_AREA_GROUPS header). CDU/DCU remain genuinely unmapped, unchanged.
     assert resolve_area_ma("CDU") is None
     assert resolve_area_ma("DCU") is None
+
+
+def test_r4_6_hcc_subarea_mapping():
+    # MWO-LTSA-CONTRACT-SCOPE-R4-6 -- Chief Architect approved (R4.4/R4.5),
+    # evidenced by the real Pertamina KAK for HCC RU II Dumai.
+    assert resolve_area_ma("AMINE") == "MA2"
+    assert resolve_area_ma("FRAKSINASI") == "MA2"
+    assert resolve_area_ma("REAKTOR") == "MA2"
+    assert resolve_area_ma("Reaktor") == "MA2"
+    assert resolve_area_ma("H2Plan") == "MA2"
+    assert resolve_area_ma("H2 PLAN") == "MA2"
     assert format_area_display("AMINE") == "AMINE"
 
+    # End-to-end: 999-P-01A's own area is AMINE (PUMPS_WITH_SPK_AND_S_PAKNING).
+    # Before R4-6 this fixture demonstrated "unknown area -> MA: N/A"
+    # (test_phase3c_11's own prior assertion); AMINE is now MA2, so the
+    # real copilot answer reflects that instead -- moved here rather than
+    # left stale in test_phase3c_11.
     answer = _ask_helper("999-P-01A area mana", pumps=PUMPS_WITH_SPK_AND_S_PAKNING)
     assert answer.kind == FACT
     assert "Area: AMINE" in answer.answer
-    assert "MA: N/A" in answer.answer
+    assert "MA: MA2" in answer.answer
 
 
 def test_phase3c_12_existing_areas_unchanged():

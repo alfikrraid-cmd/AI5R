@@ -11,6 +11,7 @@ import {
   getSealUnitWarranty,
   getSealUnitInstallationReports,
   getSealUnitHistory,
+  getConditionMonitoringReadings,
 } from "../../../api/ai5rClient";
 import { AuthProvider } from "../auth/AuthContext";
 import sampleSeals from "../data/sampleSeals";
@@ -35,6 +36,7 @@ vi.mock("../../../api/ai5rClient", () => ({
   getSealUnitWarranty: vi.fn(),
   getSealUnitInstallationReports: vi.fn(),
   getSealUnitHistory: vi.fn(),
+  getConditionMonitoringReadings: vi.fn(),
   onUnauthorized: vi.fn(),
 }));
 
@@ -56,6 +58,7 @@ beforeEach(() => {
   getSealUnitWarranty.mockResolvedValue([]);
   getSealUnitInstallationReports.mockResolvedValue([]);
   getSealUnitHistory.mockResolvedValue([]);
+  getConditionMonitoringReadings.mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -92,7 +95,7 @@ function renderWithSession(permissions) {
 describe("Seal Identifiers -- view mode (honest empty state, every role)", () => {
   it("renders 'Not yet completed' for KIMAP and GPN when neither has been set", () => {
     render(<Seal seals={sampleSeals} />);
-    fireEvent.click(screen.getByText("SC-001"));
+    fireEvent.click(screen.getByText("MS-JC-0001"));
 
     expect(screen.getAllByText("Not yet completed").length).toBeGreaterThanOrEqual(2);
   });
@@ -102,8 +105,11 @@ describe("Seal Identifiers -- view mode (honest empty state, every role)", () =>
       s.code === "SC-001" ? { ...s, kimapPertamina: "KIMAP-9001", gpnJohnCrane: "GPN-JC-4002" } : s
     );
     render(<Seal seals={seals} />);
-    fireEvent.click(screen.getByText("SC-001"));
+    fireEvent.click(screen.getByText("MS-JC-0001"));
 
+    // GPN-JC-4002 now legitimately appears twice: the Registry's own new
+    // GPN column (Part B) plus the detail panel's identifiers section --
+    // both real, both correct, never a duplicate-rendering bug.
     expect(screen.getByText("KIMAP-9001")).toBeTruthy();
     // The unified Mechanical Seal registry table also lists the GPN, so the
     // value is rendered in the row and in the identifier detail.
@@ -112,7 +118,7 @@ describe("Seal Identifiers -- view mode (honest empty state, every role)", () =>
 
   it("shows 'Imported / system data' for Updated By when no actor is recorded", () => {
     render(<Seal seals={sampleSeals} />);
-    fireEvent.click(screen.getByText("SC-001"));
+    fireEvent.click(screen.getByText("MS-JC-0001"));
 
     expect(screen.getByText("Imported / system data")).toBeTruthy();
   });
@@ -122,7 +128,7 @@ describe("Seal Identifiers -- view mode (honest empty state, every role)", () =>
       s.code === "SC-001" ? { ...s, updatedBy: "actor-uuid-123", updatedAt: "2026-08-17T10:00:00" } : s
     );
     render(<Seal seals={seals} />);
-    fireEvent.click(screen.getByText("SC-001"));
+    fireEvent.click(screen.getByText("MS-JC-0001"));
 
     expect(screen.getByText("actor-uuid-123")).toBeTruthy();
     expect(screen.getByText("2026-08-17 10:00:00")).toBeTruthy();
@@ -136,8 +142,8 @@ describe("Seal Identifiers -- search (Phase 11)", () => {
 
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "KIMAP-9001" } });
 
-    expect(screen.getByText("SC-001")).toBeTruthy();
-    expect(screen.queryByText("SC-002")).toBeNull();
+    expect(screen.getByText("MS-JC-0001")).toBeTruthy();
+    expect(screen.queryByText("MS-JC-0002")).toBeNull();
   });
 
   it("finds a seal by GPN John Crane", () => {
@@ -146,8 +152,8 @@ describe("Seal Identifiers -- search (Phase 11)", () => {
 
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "GPN-JC-4002" } });
 
-    expect(screen.getByText("SC-001")).toBeTruthy();
-    expect(screen.queryByText("SC-002")).toBeNull();
+    expect(screen.getByText("MS-JC-0001")).toBeTruthy();
+    expect(screen.queryByText("MS-JC-0002")).toBeNull();
   });
 
   it("finds a seal by compatible Pump Tag", () => {
@@ -155,8 +161,8 @@ describe("Seal Identifiers -- search (Phase 11)", () => {
 
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "PMP-002" } });
 
-    expect(screen.getByText("SC-001")).toBeTruthy();
-    expect(screen.queryByText("SC-002")).toBeNull();
+    expect(screen.getByText("MS-JC-0001")).toBeTruthy();
+    expect(screen.queryByText("MS-JC-0002")).toBeNull();
   });
 
   it("does not crash searching when kimapPertamina/gpnJohnCrane are absent (undefined, not null)", () => {
@@ -170,23 +176,23 @@ describe("Seal Identifiers -- search (Phase 11)", () => {
 describe("Seal Identifiers -- manual completion authorization (Phase 6/13/14)", () => {
   it("shows no edit control when rendered with no AuthProvider at all (every pre-existing Seal.jsx test's own shape)", () => {
     render(<Seal seals={sampleSeals} />);
-    fireEvent.click(screen.getByText("SC-001"));
+    fireEvent.click(screen.getByText("MS-JC-0001"));
 
     expect(screen.queryByText("Edit KIMAP / GPN →")).toBeNull();
   });
 
   it("shows no edit control for a session without master.edit (e.g. JOHN_CRANE_ENGINEER/PERTAMINA_*)", async () => {
     renderWithSession(["seal.read", "inventory.read"]);
-    await waitFor(() => expect(screen.getByText("SC-001")).toBeTruthy());
-    fireEvent.click(screen.getByText("SC-001"));
+    await waitFor(() => expect(screen.getByText("MS-JC-0001")).toBeTruthy());
+    fireEvent.click(screen.getByText("MS-JC-0001"));
 
     expect(screen.queryByText("Edit KIMAP / GPN →")).toBeNull();
   });
 
   it("shows the edit control for a session with master.edit (TAP_ADMIN/SUPERUSER)", async () => {
     renderWithSession(["seal.read", "master.edit"]);
-    await waitFor(() => expect(screen.getByText("SC-001")).toBeTruthy());
-    fireEvent.click(screen.getByText("SC-001"));
+    await waitFor(() => expect(screen.getByText("MS-JC-0001")).toBeTruthy());
+    fireEvent.click(screen.getByText("MS-JC-0001"));
 
     expect(screen.getByText("Edit KIMAP / GPN →")).toBeTruthy();
   });
@@ -202,8 +208,8 @@ describe("Seal Identifiers -- manual completion (Golden Scenarios A/B)", () => {
       },
     });
     renderWithSession(["seal.read", "master.edit"]);
-    await waitFor(() => expect(screen.getByText("SC-001")).toBeTruthy());
-    fireEvent.click(screen.getByText("SC-001"));
+    await waitFor(() => expect(screen.getByText("MS-JC-0001")).toBeTruthy());
+    fireEvent.click(screen.getByText("MS-JC-0001"));
     fireEvent.click(screen.getByText("Edit KIMAP / GPN →"));
 
     fireEvent.change(screen.getByLabelText("KIMAP Pertamina"), { target: { value: "KIMAP-9001" } });
@@ -223,8 +229,8 @@ describe("Seal Identifiers -- manual completion (Golden Scenarios A/B)", () => {
   it("surfaces a verbatim backend error instead of swallowing it, and keeps the form open", async () => {
     updateSealIdentifiers.mockRejectedValueOnce(new Error("master.edit required"));
     renderWithSession(["seal.read", "master.edit"]);
-    await waitFor(() => expect(screen.getByText("SC-001")).toBeTruthy());
-    fireEvent.click(screen.getByText("SC-001"));
+    await waitFor(() => expect(screen.getByText("MS-JC-0001")).toBeTruthy());
+    fireEvent.click(screen.getByText("MS-JC-0001"));
     fireEvent.click(screen.getByText("Edit KIMAP / GPN →"));
 
     fireEvent.click(screen.getByText("Save"));
@@ -238,8 +244,8 @@ describe("Seal Identifiers -- manual completion (Golden Scenarios A/B)", () => {
 
   it("cancel closes the form without calling updateSealIdentifiers", async () => {
     renderWithSession(["seal.read", "master.edit"]);
-    await waitFor(() => expect(screen.getByText("SC-001")).toBeTruthy());
-    fireEvent.click(screen.getByText("SC-001"));
+    await waitFor(() => expect(screen.getByText("MS-JC-0001")).toBeTruthy());
+    fireEvent.click(screen.getByText("MS-JC-0001"));
     fireEvent.click(screen.getByText("Edit KIMAP / GPN →"));
 
     fireEvent.click(screen.getByText("Cancel"));

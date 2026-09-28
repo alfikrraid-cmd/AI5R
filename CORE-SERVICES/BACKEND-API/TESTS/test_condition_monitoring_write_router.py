@@ -30,8 +30,9 @@ def _identity(role: str, user_id: str = "actor-1") -> AuthenticatedIdentity:
 
 
 class FakeConditionMonitoringReadingRepository:
-    def __init__(self, *, existing_codes=("CMONR-1",), known_assets=("G-201-01A",), bulk_failure=None):
+    def __init__(self, *, existing_codes=("CMONR-1",), known_assets=("G-201-01A",), bulk_failure=None, delete_outcomes=None):
         self.existing_codes = set(existing_codes)
+        self.delete_outcomes = dict(delete_outcomes or {})
         self.known_assets = set(known_assets)
         self.bulk_failure = bulk_failure
         self.calls: list[tuple] = []
@@ -100,10 +101,15 @@ class FakeConditionMonitoringReadingRepository:
         return {"condition_monitoring_reading_code": code, "workflow_status": "FINALIZED", **kwargs}
 
     def soft_delete(self, code, **kwargs):
+        # Mirrors the real repository's outcome contract; the status/
+        # provenance guard itself is proven against real Postgres in
+        # test_condition_monitoring_reading_delete_real_db.py.
         self.calls.append(("soft_delete", code, kwargs))
+        if code in self.delete_outcomes:
+            return {"outcome": self.delete_outcomes[code], "data": None}
         if code not in self.existing_codes:
-            return None
-        return {"condition_monitoring_reading_code": code, "deleted_by": kwargs["deleted_by"]}
+            return {"outcome": "NOT_FOUND", "data": None}
+        return {"outcome": "DELETED", "data": {"condition_monitoring_reading_code": code, "deleted_by": kwargs["deleted_by"]}}
 
 
 @pytest.fixture(autouse=True)
@@ -158,17 +164,66 @@ def test_pertamina_engineer_cannot_create_a_reading():
     assert response.status_code == 403
 
 
-def test_only_superuser_can_delete_a_reading():
-    fake = _override("SUPERUSER")
-    response = client.delete("/api/ltsa/condition-monitoring-readings/CMONR-1")
+# LTSA_CONDITION_MONITORING_SAFE_DRAFT_DELETE_R2 -- delete is gated on
+# maintenance.write; the DRAFT/non-historical guard lives in the repository.
+def _delete(code="CMONR-1", reason="Duplicate entry"):
+    return client.request("DELETE", f"/api/ltsa/condition-monitoring-readings/{code}", json={"reason": reason})
+
+
+@pytest.mark.parametrize("role", ["TAP_ADMIN", "TAP_ENGINEER", "SUPERUSER"])
+def test_maintenance_write_roles_can_soft_delete_a_draft(role):
+    fake = _override(role)
+    response = _delete()
     assert response.status_code == 200
-    assert fake.calls[0][0] == "soft_delete"
+    assert response.json()["data"]["condition_monitoring_reading_code"] == "CMONR-1"
+    assert fake.calls[0] == ("soft_delete", "CMONR-1", {"deleted_by": "actor-1", "reason": "Duplicate entry"})
 
 
-def test_tap_admin_cannot_delete_a_reading():
-    _override("TAP_ADMIN")
-    response = client.delete("/api/ltsa/condition-monitoring-readings/CMONR-1")
+@pytest.mark.parametrize("role", ["JOHN_CRANE_ENGINEER", "PERTAMINA_ENGINEER", "PERTAMINA_VIEWER"])
+def test_roles_without_maintenance_write_get_403(role):
+    fake = _override(role)
+    response = _delete()
     assert response.status_code == 403
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize("reason", ["", "   "])
+def test_delete_requires_a_non_empty_reason(reason):
+    fake = _override("TAP_ENGINEER")
+    assert _delete(reason=reason).status_code == 422
+    assert fake.calls == []
+
+
+def test_delete_without_body_is_rejected():
+    fake = _override("TAP_ENGINEER")
+    assert client.delete("/api/ltsa/condition-monitoring-readings/CMONR-1").status_code == 422
+    assert fake.calls == []
+
+
+def test_delete_reason_is_trimmed_before_persisting():
+    fake = _override("TAP_ENGINEER")
+    assert _delete(reason="  Entered twice  ").status_code == 200
+    assert fake.calls[0][2]["reason"] == "Entered twice"
+
+
+@pytest.mark.parametrize("role", ["TAP_ENGINEER", "SUPERUSER"])
+def test_not_deletable_is_409_for_every_role_including_superuser(role):
+    _override(role, repository=FakeConditionMonitoringReadingRepository(delete_outcomes={"CMONR-1": "NOT_DELETABLE"}))
+    response = _delete()
+    assert response.status_code == 409
+    assert "DRAFT" in response.json()["detail"]
+
+
+def test_already_deleted_is_409():
+    _override("TAP_ADMIN", repository=FakeConditionMonitoringReadingRepository(delete_outcomes={"CMONR-1": "ALREADY_DELETED"}))
+    response = _delete()
+    assert response.status_code == 409
+    assert "already deleted" in response.json()["detail"]
+
+
+def test_unknown_reading_delete_is_404():
+    _override("TAP_ADMIN")
+    assert _delete(code="CMONR-MISSING").status_code == 404
 
 
 def test_anonymous_create_is_401():

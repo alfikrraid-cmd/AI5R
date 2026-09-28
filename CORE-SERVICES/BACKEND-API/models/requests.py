@@ -577,6 +577,20 @@ class ConditionMonitoringReadingUpdateRequest(BaseModel):
     finding: str | None = None
 
 
+# LTSA_CONDITION_MONITORING_SAFE_DRAFT_DELETE_R2 -- the DELETE body the
+# dashboard already sends ({reason}); the reason is persisted verbatim to
+# record_change_history.reason, so a blank one is rejected here.
+class ConditionMonitoringReadingDeleteRequest(BaseModel):
+    reason: str = Field(max_length=1000)
+
+    @field_validator("reason")
+    @classmethod
+    def _reason_required(cls, value: str) -> str:
+        if not value or not value.strip():
+            raise ValueError("reason is required")
+        return value.strip()
+
+
 # MWO-LTSA-CMON-ADHOC-ENTRY-001 -- the ad-hoc sibling of
 # ConditionMonitoringReadingCreateRequest: no condition_monitoring_schedule_code
 # at all (a real schedule is genuinely optional for a manual web reading,

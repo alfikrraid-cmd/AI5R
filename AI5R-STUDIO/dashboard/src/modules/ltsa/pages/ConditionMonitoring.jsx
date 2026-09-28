@@ -454,11 +454,23 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
     setSuccessMessage(`Condition Monitoring reading ${code} technical review recorded.`);
   }
 
+  // LTSA_CONDITION_MONITORING_SAFE_DRAFT_DELETE_R2 -- gated on
+  // maintenance.write (canWriteMaintenance), not a role name; the backend
+  // additionally allows only an active, non-historical DRAFT. A rejected
+  // delete (409) throws before any state changes, so the panel shows it.
   async function handleDeleteReading(code, reason) {
     await deleteConditionMonitoringReading(code, reason);
     setReadings((current) => current.filter((reading) => reading.id !== code));
     setSelectedReadingId(null);
     setSuccessMessage(`Condition Monitoring reading ${code} soft-deleted.`);
+    try {
+      const records = await getConditionMonitoringReadings();
+      const resolved = await Promise.all(records.map(mapConditionMonitoringReadingRecord).map(withResolvedArea));
+      setReadings(resolved);
+      setReadingsError(null);
+    } catch {
+      setReadingsError("Condition Monitoring readings could not be reloaded after delete.");
+    }
   }
 
   async function handleDeleteSchedule(code, reason) {
@@ -686,7 +698,7 @@ export default function ConditionMonitoring({ onNavigate, navContext }) {
                         canWrite={canWriteMaintenance}
                         canAdminReview={canAdminReviewMaintenance}
                         canTechnicalReview={canTechnicalReviewMaintenance}
-                        canDelete={canDeleteRecords}
+                        canDelete={canWriteMaintenance}
                         onDelete={handleDeleteReading}
                         onSaveDraft={handleSaveReadingDraft}
                         onSubmit={handleSubmitReading}

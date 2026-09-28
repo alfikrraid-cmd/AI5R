@@ -12,6 +12,9 @@ import {
   normalizeSealSlug,
   buildCanonicalSealCode,
   matchRegistrySeal,
+  parseStockQuantity,
+  stockStatus,
+  STOCK_STATUS,
 } from "../utils/sealMapping";
 import {
   getSeals,
@@ -49,6 +52,14 @@ vi.mock("../../../api/ai5rClient", () => ({
   getSealUnitInstallationReports: vi.fn(),
   getSealUnitHistory: vi.fn(),
   getPumps: vi.fn(),
+  // Unified-RC read paths the merged Seal page also calls (seal documents,
+  // bounded genuine Condition Monitoring readings, engineering drawings/BOM);
+  // empty results keep these V1 unified-workspace tests about the registry.
+  getDocuments: vi.fn(() => Promise.resolve([])),
+  getConditionMonitoringReadings: vi.fn(() => Promise.resolve([])),
+  getEngineeringDrawingsForSeal: vi.fn(() => Promise.resolve([])),
+  getEngineeringDrawingRevisions: vi.fn(() => Promise.resolve([])),
+  getEngineeringDrawingBom: vi.fn(() => Promise.resolve([])),
 }));
 
 const MOCK_STOCK_POOLS = [
@@ -768,9 +779,76 @@ describe("LTSA Mechanical Seal Unified Workspace - Component Integration", () =>
     render(<Seal />);
     const stockedRow = (await screen.findByText("REG-STK")).closest("tr");
     const emptyRow = screen.getByText("REG-EMPTY").closest("tr");
-    expect(stockedRow.textContent).toContain("7 sets");
-    expect(stockedRow.textContent).not.toContain("N/A");
-    expect(emptyRow.textContent).toContain("N/A");
+    // Scoped to the Available Stock cell: the merged registry's Seal ID column
+    // legitimately reads N/A for a seal with no assigned MS-JC-NNNN identity.
+    const headers = Array.from(stockedRow.closest("table").querySelectorAll("th")).map((th) => th.textContent);
+    const stockCol = headers.indexOf("Available Stock");
+    expect(stockCol).toBeGreaterThanOrEqual(0);
+    expect(stockedRow.cells[stockCol].textContent).toContain("7 sets");
+    expect(stockedRow.cells[stockCol].textContent).not.toContain("N/A");
+    expect(emptyRow.cells[stockCol].textContent).toContain("N/A");
+  });
+});
+
+// LTSA_MECHANICAL_SEAL_STOCK_FILTER_HOTFIX_R1 -- one canonical stock quantity /
+// status for label, KPI, filter and highlight. seal_stock quantities arrive as
+// numeric strings ("0") from n8n; missing values must never become a real zero.
+describe("LTSA Mechanical Seal Unified Workspace - Stock status normalization", () => {
+  const row = (quantity, hasStockRecord = true) => ({ hasStockRecord, quantity_on_hand: quantity, quantity_available: quantity });
+
+  it.each([
+    ["0 (number)", 0, 0, STOCK_STATUS.OUT_OF_STOCK, "0 sets"],
+    ['"0" (string)', "0", 0, STOCK_STATUS.OUT_OF_STOCK, "0 sets"],
+    ["positive number", 4, 4, STOCK_STATUS.IN_STOCK, "4 sets"],
+    ['positive numeric string " 4 "', " 4 ", 4, STOCK_STATUS.IN_STOCK, "4 sets"],
+    ["null", null, null, STOCK_STATUS.UNKNOWN, "Unknown"],
+    ["undefined", undefined, null, STOCK_STATUS.UNKNOWN, "Unknown"],
+    ['empty string ""', "", null, STOCK_STATUS.UNKNOWN, "Unknown"],
+    ['whitespace "  "', "  ", null, STOCK_STATUS.UNKNOWN, "Unknown"],
+    ['non-numeric "abc"', "abc", null, STOCK_STATUS.UNKNOWN, "Unknown"],
+    ["NaN", Number.NaN, null, STOCK_STATUS.UNKNOWN, "Unknown"],
+  ])("%s -> parsed %s, status %s, label %s", (_, value, parsed, status, label) => {
+    expect(parseStockQuantity(value)).toBe(parsed);
+    expect(stockStatus(row(value))).toBe(status);
+    expect(formatAvailableStock(value, true)).toBe(label);
+  });
+
+  it("no stock record -> NO_STOCK / N/A, whatever the quantity field holds", () => {
+    expect(stockStatus(row(null, false))).toBe(STOCK_STATUS.NO_STOCK);
+    expect(stockStatus(row("0", false))).toBe(STOCK_STATUS.NO_STOCK);
+    expect(formatAvailableStock(null, false)).toBe("N/A");
+  });
+
+  it('stock filter pills bucket seal_stock "0" as Out of Stock, "" / non-numeric as Unknown / N/A, and no record as Unknown / N/A (fetch path)', async () => {
+    getSeals.mockResolvedValue([
+      { seal_code: "REG-ZERO-STR", seal_name: "Zero string", manufacturer: "John Crane", status: "ACTIVE" },
+      { seal_code: "REG-POS-STR", seal_name: "Positive string", manufacturer: "John Crane", status: "ACTIVE" },
+      { seal_code: "REG-EMPTY-STR", seal_name: "Empty string", manufacturer: "John Crane", status: "ACTIVE" },
+      { seal_code: "REG-TEXT", seal_name: "Non numeric", manufacturer: "John Crane", status: "ACTIVE" },
+      { seal_code: "REG-NONE", seal_name: "No record", manufacturer: "John Crane", status: "ACTIVE" },
+    ]);
+    getMechanicalSealStock.mockResolvedValue({ items: [], total: 0, total_quantity: 0, limit: 100, offset: 0 });
+    getSealStock.mockResolvedValue([
+      { seal_code: "REG-ZERO-STR", quantity_on_hand: "0", reorder_point: null, location: null },
+      { seal_code: "REG-POS-STR", quantity_on_hand: "2", reorder_point: null, location: null },
+      { seal_code: "REG-EMPTY-STR", quantity_on_hand: "", reorder_point: null, location: null },
+      { seal_code: "REG-TEXT", quantity_on_hand: "n/a", reorder_point: null, location: null },
+    ]);
+    render(<Seal />);
+    await screen.findByText("REG-ZERO-STR");
+    const visible = () => ["REG-ZERO-STR", "REG-POS-STR", "REG-EMPTY-STR", "REG-TEXT", "REG-NONE"].filter((code) => screen.queryByText(code));
+
+    expect(screen.getByText("REG-ZERO-STR").closest("tr").textContent).toContain("0 sets");
+    expect(screen.getByText("REG-EMPTY-STR").closest("tr").textContent).toContain("Unknown");
+
+    fireEvent.click(screen.getByRole("button", { name: "Out of Stock (0)" }));
+    expect(visible()).toEqual(["REG-ZERO-STR"]);
+    fireEvent.click(screen.getByRole("button", { name: "In Stock (>0)" }));
+    expect(visible()).toEqual(["REG-POS-STR"]);
+    fireEvent.click(screen.getByRole("button", { name: "Unknown / N/A" }));
+    expect(visible()).toEqual(["REG-EMPTY-STR", "REG-TEXT", "REG-NONE"]);
+    fireEvent.click(screen.getByRole("button", { name: "All Stock" }));
+    expect(visible()).toHaveLength(5);
   });
 });
 

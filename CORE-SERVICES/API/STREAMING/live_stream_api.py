@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from dataclasses import asdict
 from typing import Any, Iterable
@@ -10,16 +11,29 @@ from OSA.STUDIO_EVENT_STREAM import StudioEvent, StudioEventStream
 class LiveStreamAPI:
     def __init__(self, event_stream: StudioEventStream | None = None):
         self.event_stream = event_stream or StudioEventStream()
+        self._subscribers: set[asyncio.Queue[StudioEvent]] = set()
+
+    def add_subscriber(self, queue: asyncio.Queue[StudioEvent]) -> None:
+        self._subscribers.add(queue)
+
+    def remove_subscriber(self, queue: asyncio.Queue[StudioEvent]) -> None:
+        self._subscribers.discard(queue)
 
     def publish(
         self,
         event_type: str,
         payload: dict[str, Any],
     ) -> StudioEvent:
-        return self.event_stream.publish(
+        event = self.event_stream.publish(
             event_type=event_type,
             payload=payload,
         )
+        for queue in list(self._subscribers):
+            try:
+                queue.put_nowait(event)
+            except Exception:
+                pass
+        return event
 
     def latest(self, limit: int = 50) -> dict[str, Any]:
         events = self.event_stream.latest(limit)

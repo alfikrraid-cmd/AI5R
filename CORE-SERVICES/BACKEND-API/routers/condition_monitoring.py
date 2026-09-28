@@ -7,6 +7,11 @@ from fastapi.responses import Response
 
 from API.auth_service import AuthenticatedIdentity, resolve_area_scope
 from API.condition_monitoring_excel_template import build_condition_monitoring_import_template
+from API.condition_monitoring_reading_repository import (
+    DELETE_OUTCOME_ALREADY_DELETED,
+    DELETE_OUTCOME_DELETED,
+    DELETE_OUTCOME_NOT_DELETABLE,
+)
 from API.pm_schedule_excel_import import ExcelImportError, parse_xlsx_grid
 from API.pump_area_scope import filter_records_by_asset_scope, is_asset_in_scope
 from dependencies import (
@@ -24,6 +29,7 @@ from models.requests import (
     ConditionMonitoringReadingAdHocBulkCreateRequest,
     ConditionMonitoringReadingAdHocCreateRequest,
     ConditionMonitoringReadingCreateRequest,
+    ConditionMonitoringReadingDeleteRequest,
     ConditionMonitoringReadingUpdateRequest,
     TechnicalReviewRequest,
     ConditionMonitoringScheduleCreateRequest,
@@ -64,11 +70,11 @@ def delete_condition_monitoring_schedule(code: str, current_user=Depends(require
 # by the dashboard's other real LTSA calls (ai5rClient.js). No new
 # gateway, service, or repository layer -- mirrors WO-BE-001/WO-PUMP-001/
 # WO-MH-001/WO-PM-002/WO-CM-002's identical addition for Work Order/Pump/
-# Maintenance History/PM Schedule/CM Report. Only list/detail are exposed
-# here for both entities, matching this MWO's scope (ADR-CONDITION-
-# MONITORING-001's Future MWOs item 2) -- create/update/delete routes
-# were not requested, and the Reading gateway has no update/delete
-# methods to expose in the first place (append-only, per WO-CMON-001).
+# Maintenance History/PM Schedule/CM Report. That original MWO exposed only
+# list/detail. Later MWOs added the Schedule create/update/soft-delete
+# routes above and the Reading create/draft-update/submit/review/
+# soft-delete routes below; those write routes go through the direct-DB
+# repositories, not the gateway, which stays append-only (WO-CMON-001).
 #
 # Deliberately independent of routers/cm_report.py -- no shared route
 # prefix, no shared gateway, no cross-import, per ADR-CONDITION-
@@ -104,10 +110,39 @@ def list_ltsa_condition_monitoring_readings(
     condition_monitoring_reading_repository=Depends(get_condition_monitoring_reading_repository),
     limit: int = Query(25, ge=1, le=100),
     offset: int = Query(0, ge=0),
+    asset_code: str | None = Query(None),
+    pump_gateway=Depends(get_pump_gateway),
     current_user: AuthenticatedIdentity = Depends(get_current_user),
 ) -> Payload:
+    scope = resolve_area_scope(current_user)
+    # MWO-R2C3 -- bounded, exact-match single-asset read path (Mechanical
+    # Seal Detail's "Related Condition Monitoring"), reusing the existing
+    # trusted list_by_asset(asset_code) this repository already exposes to
+    # copilot_ask_service/equipment_360_service/ltsa_knowledge_service --
+    # no new SQL. list_by_asset() itself carries no area scope (same as
+    # every other by-code/by-asset repository method in this codebase),
+    # so the same is_asset_in_scope() re-check this router's own
+    # get_ltsa_condition_monitoring_reading (by code) already applies is
+    # reused here, once, since every row list_by_asset returns shares the
+    # one requested asset_code. Omitting asset_code preserves list_all()'s
+    # existing limit/offset behavior byte-for-byte -- untouched.
+    if asset_code is not None:
+        if scope is not None and not is_asset_in_scope(asset_code, scope, pump_gateway):
+            rows: list[dict] = []
+        else:
+            rows = condition_monitoring_reading_repository.list_by_asset(asset_code)
+        return {
+            "success": True,
+            "message": "Condition Monitoring reading list retrieved",
+            "count": len(rows),
+            "data": rows,
+            "items": rows,
+            "total": len(rows),
+            "limit": limit,
+            "offset": offset,
+        }
     return condition_monitoring_reading_repository.list_all(
-        scope=resolve_area_scope(current_user), limit=limit, offset=offset
+        scope=scope, limit=limit, offset=offset
     )
 
 
@@ -318,19 +353,35 @@ def update_ltsa_condition_monitoring_reading_draft(
     return {"data": updated}
 
 
+# LTSA_CONDITION_MONITORING_SAFE_DRAFT_DELETE_R2 -- soft delete of an
+# active, non-historical DRAFT only, gated on maintenance.write (the same
+# authority that creates/edits the draft). The status/provenance guard is
+# enforced inside the repository's UPDATE, for every role -- SUPERUSER
+# included -- so this route never pre-checks and never role-checks.
 @router.delete(
     "/api/ltsa/condition-monitoring-readings/{code}",
-    dependencies=[Depends(require_permission("admin.superuser"))],
+    dependencies=[Depends(require_permission("maintenance.write"))],
 )
 def delete_ltsa_condition_monitoring_reading(
     code: str,
-    current_user=Depends(require_permission("admin.superuser")),
+    payload: ConditionMonitoringReadingDeleteRequest,
+    current_user=Depends(require_permission("maintenance.write")),
     condition_monitoring_reading_repository=Depends(get_condition_monitoring_reading_repository),
 ) -> Payload:
-    deleted = condition_monitoring_reading_repository.soft_delete(code, deleted_by=_actor_id(current_user))
-    if deleted is None:
-        raise HTTPException(status_code=404, detail="Condition Monitoring reading not found")
-    return {"data": deleted}
+    result = condition_monitoring_reading_repository.soft_delete(
+        code, deleted_by=_actor_id(current_user), reason=payload.reason
+    )
+    outcome = result["outcome"]
+    if outcome == DELETE_OUTCOME_DELETED:
+        return {"data": result["data"]}
+    if outcome == DELETE_OUTCOME_ALREADY_DELETED:
+        raise HTTPException(status_code=409, detail="Condition Monitoring reading is already deleted")
+    if outcome == DELETE_OUTCOME_NOT_DELETABLE:
+        raise HTTPException(
+            status_code=409,
+            detail="Only a DRAFT Condition Monitoring reading that is not a historical import can be deleted",
+        )
+    raise HTTPException(status_code=404, detail="Condition Monitoring reading not found")
 
 
 @router.post(

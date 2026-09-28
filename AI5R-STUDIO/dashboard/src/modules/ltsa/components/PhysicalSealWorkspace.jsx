@@ -16,6 +16,7 @@ import {
   getSealUnitRepairs,
   getSealUnits,
   getSealUnitWarranty,
+  getSealUnitWarrantyOverview,
   linkInstallationReportToInstallEvent,
 } from "../../../api/ai5rClient";
 
@@ -129,7 +130,9 @@ export default function PhysicalSealWorkspace({ sealTypes = [], units: unitsProp
   const [error, setError] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [activeTab, setActiveTab] = useState("lifecycle");
-  const [detail, setDetail] = useState({ lifecycle: [], inspections: [], repairs: [], warranty: [], reports: [], history: [] });
+  const [detail, setDetail] = useState({
+    lifecycle: [], inspections: [], repairs: [], warranty: [], reports: [], history: [], warrantyOverview: null,
+  });
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState(null);
   const [modal, setModal] = useState(null);
@@ -179,9 +182,10 @@ export default function PhysicalSealWorkspace({ sealTypes = [], units: unitsProp
       getSealUnitWarranty(selectedUnit.seal_unit_id),
       getSealUnitInstallationReports(selectedUnit.seal_unit_id),
       getSealUnitHistory(selectedUnit.seal_unit_id),
-    ]).then(([lifecycle, inspections, repairs, warranty, reports, history]) => {
+      getSealUnitWarrantyOverview(selectedUnit.seal_unit_id).catch(() => null),
+    ]).then(([lifecycle, inspections, repairs, warranty, reports, history, warrantyOverview]) => {
       if (!active) return;
-      setDetail({ lifecycle, inspections, repairs, warranty, reports, history });
+      setDetail({ lifecycle, inspections, repairs, warranty, reports, history, warrantyOverview });
       setDetailError(null);
     }).catch((err) => {
       if (active) setDetailError(err?.message || "Seal unit detail could not be loaded.");
@@ -242,10 +246,11 @@ export default function PhysicalSealWorkspace({ sealTypes = [], units: unitsProp
       setModal(null);
       await refreshDetail();
       const id = selectedUnit.seal_unit_id;
-      const [lifecycle, inspections, repairs, warranty, reports, history] = await Promise.all([
+      const [lifecycle, inspections, repairs, warranty, reports, history, warrantyOverview] = await Promise.all([
         getSealUnitLifecycle(id), getSealUnitInspections(id), getSealUnitRepairs(id), getSealUnitWarranty(id), getSealUnitInstallationReports(id), getSealUnitHistory(id),
+        getSealUnitWarrantyOverview(id).catch(() => null),
       ]);
-      setDetail({ lifecycle, inspections, repairs, warranty, reports, history });
+      setDetail({ lifecycle, inspections, repairs, warranty, reports, history, warrantyOverview });
     } catch (err) {
       setFormError(err?.message || "Backend rejected the operation.");
     }
@@ -331,7 +336,23 @@ export default function PhysicalSealWorkspace({ sealTypes = [], units: unitsProp
         <Panel><h3>Installation Reports</h3>{detail.reports.length ? detail.reports.map((item) => <p key={item.installation_code}>{item.installation_code} - Report Date {dateOnly(item.report_date)} - Install Event {valueOrNA(item.installation_event_id)}</p>) : <p>No linked installation reports.</p>}<p>Install event date is the authoritative fitment date; report date is metadata.</p></Panel>
       ) : null}
       {activeTab === "warranty" ? (
-        <Panel><h3>Warranty</h3><p>KAK rule: warranty period is 18 calendar months from actual installation date.</p>{detail.warranty.length ? detail.warranty.map((item) => <div key={item.assessment_id} className="physical-seal-row"><span>Installation Date {dateOnly(item.installation_date)}</span><span>Warranty End {dateOnly(item.warranty_end)}</span><StatusBadge label="Window Status" status={valueOrNA(item.window_status)} /><StatusBadge label="Claim Decision" status={valueOrNA(item.claim_decision ?? item.decision)} /></div>) : <p>No warranty assessments recorded.</p>}</Panel>
+        <>
+          <Panel>
+            <h3>Warranty (Current Installation)</h3>
+            <p>Warranty Basis: 18 calendar months from installation date.</p>
+            {detail.warrantyOverview?.installation_date ? (
+              <div className="physical-seal-row">
+                <span>Installed {dateOnly(detail.warrantyOverview.installation_date)}</span>
+                <span>Warranty Period End {dateOnly(detail.warrantyOverview.warranty_end)}</span>
+                <StatusBadge label="Time Status" status={valueOrNA(detail.warrantyOverview.time_status)} />
+              </div>
+            ) : (
+              <p>N/A -- this seal unit is not currently installed, or no matching INSTALL event was found for its current pump.</p>
+            )}
+            <p>Eligibility: REVIEW REQUIRED IF CLAIMED. {detail.warrantyOverview?.eligibility_note}</p>
+          </Panel>
+          <Panel><h3>Warranty Assessments (Claims / Investigations)</h3><p>KAK rule: warranty period is 18 calendar months from actual installation date.</p>{detail.warranty.length ? detail.warranty.map((item) => <div key={item.assessment_id} className="physical-seal-row"><span>Installation Date {dateOnly(item.installation_date)}</span><span>Warranty End {dateOnly(item.warranty_end)}</span><StatusBadge label="Window Status" status={valueOrNA(item.window_status)} /><StatusBadge label="Claim Decision" status={valueOrNA(item.claim_decision ?? item.decision)} /></div>) : <p>No warranty assessments recorded.</p>}</Panel>
+        </>
       ) : null}
       {activeTab === "history" ? (
         <Panel><h3>Equipment History</h3>{detail.history.length ? detail.history.map((item, index) => <p key={item.history_id ?? `${item.event_type}-${index}`}>{dateOnly(item.occurred_at ?? item.event_at)} - {item.event_type ?? item.record_type} - Pump {valueOrNA(eventPump(item))}</p>) : <p>No seal history records.</p>}</Panel>

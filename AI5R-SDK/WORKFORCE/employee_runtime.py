@@ -102,7 +102,7 @@ class EmployeeRuntime:
             [
                 work_item.title,
                 work_item.description,
-                " ".join(work_item.metadata.values())
+                " ".join(str(v) for v in work_item.metadata.values())
                 if work_item.metadata
                 else "",
             ]

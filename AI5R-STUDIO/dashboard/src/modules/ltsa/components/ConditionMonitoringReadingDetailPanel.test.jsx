@@ -1,3 +1,4 @@
+import "@testing-library/jest-dom";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ConditionMonitoringReadingDetailPanel from "./ConditionMonitoringReadingDetailPanel";
@@ -460,5 +461,89 @@ describe("ConditionMonitoringReadingDetailPanel (MWO-LTSA-PM-CM-REVIEW-UI-001 ex
       fireEvent.click(button);
       expect(onViewSchedule).toHaveBeenCalledWith("CMON-SCHED-001");
     });
+  });
+});
+
+// LTSA_CONDITION_MONITORING_SAFE_DRAFT_DELETE_R2 -- Soft Delete is offered
+// only to maintenance.write (canDelete) on an active, non-historical DRAFT;
+// the reason is mandatory and a backend 409 is shown, never swallowed.
+describe("ConditionMonitoringReadingDetailPanel -- safe DRAFT delete", () => {
+  function renderPanel(readingOverrides = {}, props = {}) {
+    const onDelete = props.onDelete ?? vi.fn().mockResolvedValue(undefined);
+    render(
+      <ConditionMonitoringReadingDetailPanel
+        reading={baseReading({ provenance: "MANUAL", ...readingOverrides })}
+        canWrite
+        canDelete
+        onDelete={onDelete}
+        {...props}
+      />
+    );
+    return onDelete;
+  }
+
+  it("shows Soft Delete for a maintenance.write user on an ordinary DRAFT", async () => {
+    renderPanel();
+    expect(await screen.findByRole("button", { name: "Soft Delete" })).toBeTruthy();
+  });
+
+  it("hides Soft Delete without maintenance.write", async () => {
+    renderPanel({}, { canDelete: false });
+    await screen.findByText("CMONR-1");
+    expect(screen.queryByRole("button", { name: "Soft Delete" })).toBeNull();
+  });
+
+  it.each([
+    ["HISTORICAL_IMPORT DRAFT", { provenance: "HISTORICAL_IMPORT" }],
+    ["RETURNED_FOR_CORRECTION", { workflowStatus: "RETURNED_FOR_CORRECTION" }],
+    ["SUBMITTED", { workflowStatus: "SUBMITTED" }],
+    ["FINALIZED", { workflowStatus: "FINALIZED" }],
+    ["already deleted", { deletedAt: "2026-09-27T10:00:00Z" }],
+  ])("hides Soft Delete for %s", async (_label, overrides) => {
+    renderPanel(overrides);
+    await screen.findByText("CMONR-1");
+    expect(screen.queryByRole("button", { name: "Soft Delete" })).toBeNull();
+  });
+
+  it("requires a non-empty reason and never calls onDelete without one", async () => {
+    vi.spyOn(window, "prompt").mockReturnValue("   ");
+    const onDelete = renderPanel();
+    fireEvent.click(await screen.findByRole("button", { name: "Soft Delete" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("A deletion reason is required.");
+    expect(window.confirm).not.toHaveBeenCalled();
+    expect(onDelete).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when the reason prompt is cancelled", async () => {
+    vi.spyOn(window, "prompt").mockReturnValue(null);
+    const onDelete = renderPanel();
+    fireEvent.click(await screen.findByRole("button", { name: "Soft Delete" }));
+
+    expect(onDelete).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("confirms, then passes the trimmed reason to onDelete", async () => {
+    vi.spyOn(window, "prompt").mockReturnValue("  Entered twice  ");
+    const onDelete = renderPanel();
+    fireEvent.click(await screen.findByRole("button", { name: "Soft Delete" }));
+
+    await waitFor(() => expect(onDelete).toHaveBeenCalledWith("CMONR-1", "Entered twice"));
+    expect(window.confirm).toHaveBeenCalled();
+  });
+
+  it("shows the backend's 409 not-deletable message", async () => {
+    vi.spyOn(window, "prompt").mockReturnValue("Entered twice");
+    const onDelete = vi.fn().mockRejectedValue(
+      new Error("Only a DRAFT Condition Monitoring reading that is not a historical import can be deleted")
+    );
+    renderPanel({}, { onDelete });
+    fireEvent.click(await screen.findByRole("button", { name: "Soft Delete" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Only a DRAFT Condition Monitoring reading that is not a historical import can be deleted"
+    );
+    expect(screen.getByRole("button", { name: "Soft Delete" })).not.toBeDisabled();
   });
 });

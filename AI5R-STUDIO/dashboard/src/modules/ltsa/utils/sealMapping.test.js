@@ -43,13 +43,25 @@ describe("mapSealRecord", () => {
     expect(mapped.status).toBe("ACTIVE");
   });
 
-  it("leaves type null -- seal_registry has no direct type column, never guessed", () => {
-    // Disclosed judgment call: model/material exist but mapping either
-    // into "type" would be a semantic guess, not a real fact -- left null
-    // per this codebase's "never fabricate" discipline (pumpMapping.js's
-    // own precedent for healthScore/availability/recommendation).
+  it("leaves type null when seal_type is absent from the record, never guessed", () => {
+    // RECORD has no seal_type -- mapSealRecord must not derive one from
+    // model/material (a semantic guess presented as fact), it must stay
+    // null, same "never fabricate" discipline as before.
     const mapped = mapSealRecord(RECORD);
     expect(mapped.type).toBeNull();
+  });
+
+  // MECHANICAL-SEAL-DOMAIN-CONSOLIDATION-R1 -- migration 043/044 added a
+  // real seal_type column (backfilled only where unambiguous); type now
+  // maps it directly instead of being hard-coded null.
+  it("maps seal_type to type when present on the record", () => {
+    const mapped = mapSealRecord({ ...RECORD, seal_type: "T48MP" });
+    expect(mapped.type).toBe("T48MP");
+  });
+
+  it("maps seal_id to sealId when present, defaults to null when absent", () => {
+    expect(mapSealRecord({ ...RECORD, seal_id: "MS-JC-0001" }).sealId).toBe("MS-JC-0001");
+    expect(mapSealRecord(RECORD).sealId).toBeNull();
   });
 
   it("defaults compatiblePumps/compatibleSeals to empty arrays -- Compatibility engine out of scope", () => {

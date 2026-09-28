@@ -46,7 +46,7 @@ class ITDepartmentOperatingModel:
     ) -> None:
         self.project_manager_capability = project_manager_capability or ProjectManagerCapability()
         self.employee_runtime = employee_runtime or EmployeeRuntime()
-        self.work_board = work_board or WorkBoard()
+        self.work_board = work_board or WorkBoard(approval_chain_runtime=approval_chain_runtime)
         self.approval_chain_runtime = approval_chain_runtime
 
     # ------------------------------------------------------------------
@@ -119,5 +119,13 @@ class ITDepartmentOperatingModel:
     # 6. Release Workflow
     # ------------------------------------------------------------------
 
-    def release(self, work_item_id: str) -> WorkItem:
+    def release(self, work_item_id: str, approval: Any = None) -> WorkItem:
+        resolved_approval = approval
+        if resolved_approval is None and self.approval_chain_runtime is not None:
+            resolved_approval = getattr(
+                self.approval_chain_runtime, "get_chief_approval", lambda _: None
+            )(work_item_id)
+
+        if resolved_approval is not None:
+            return self.work_board.release(work_item_id, approval=resolved_approval)
         return self.work_board.release(work_item_id)

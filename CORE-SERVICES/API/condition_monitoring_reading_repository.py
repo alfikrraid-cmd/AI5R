@@ -32,6 +32,21 @@ if TYPE_CHECKING:
 
 _EDITABLE_STATUSES_SQL = f"({_sql(DRAFT)}, {_sql(RETURNED_FOR_CORRECTION)})"
 
+# LTSA_CONDITION_MONITORING_SAFE_DRAFT_DELETE_R2 (Chief-approved policy):
+# only an active, non-historical DRAFT may be soft-deleted, for every role
+# including SUPERUSER. RETURNED_FOR_CORRECTION/SUBMITTED/FINALIZED and
+# HISTORICAL_IMPORT rows are never deletable through this path.
+_DELETABLE_SQL = (
+    f"workflow_status = {_sql(DRAFT)} AND deleted_at IS NULL "
+    "AND provenance IS DISTINCT FROM 'HISTORICAL_IMPORT'"
+)
+
+# soft_delete() outcomes.
+DELETE_OUTCOME_DELETED = "DELETED"
+DELETE_OUTCOME_NOT_FOUND = "NOT_FOUND"
+DELETE_OUTCOME_ALREADY_DELETED = "ALREADY_DELETED"
+DELETE_OUTCOME_NOT_DELETABLE = "NOT_DELETABLE"
+
 # Every measurement column this repository's create/update accept --
 # matches the golden "Mechanical Seal Condition Monitoring" report's
 # Check Points table (this MWO's own Phase 1 audit), split across the
@@ -121,13 +136,14 @@ class ConditionMonitoringReadingRepository:
         )
 
     def list_all(self, *, scope: frozenset[str] | None = None, limit: int = 25, offset: int = 0) -> dict:
-        scope_clause = ""
+        # Soft-deleted readings never appear in the normal operational list.
+        scope_clause = "WHERE r.deleted_at IS NULL"
         if scope is not None:
             if scope:
                 values = ", ".join(_sql(area) for area in sorted(scope))
-                scope_clause = f"WHERE pump.area IN ({values})"
+                scope_clause += f" AND pump.area IN ({values})"
             else:
-                scope_clause = "WHERE FALSE"
+                scope_clause += " AND FALSE"
         rows = _json_query(
             "SELECT r.*, pump.area, pump.name AS pump_name "
             "FROM condition_monitoring_reading r "
@@ -616,18 +632,29 @@ SELECT COALESCE(json_agg(row_to_json(t))::text, '[]') FROM (
         )
         return rows[0] if rows else None
 
-    def soft_delete(self, reading_code: str, *, deleted_by: str) -> dict | None:
-        rows = json.loads(self._runner.query_scalar(
-            "WITH old AS (SELECT row_to_json(r)::text AS snapshot FROM condition_monitoring_reading r "
-            f"WHERE condition_monitoring_reading_code = {_sql(reading_code)} AND deleted_at IS NULL), upd AS (UPDATE condition_monitoring_reading SET deleted_at = NOW(), deleted_by = "
+    def soft_delete(self, reading_code: str, *, deleted_by: str, reason: str) -> dict:
+        # LTSA_CONDITION_MONITORING_SAFE_DRAFT_DELETE_R2 -- the deletable
+        # predicate (_DELETABLE_SQL) is enforced by the UPDATE itself, one
+        # statement, so there is no check-then-write race. `target` is only
+        # the pre-statement snapshot used to explain a zero-row UPDATE; it
+        # never decides whether the write happens. Soft delete only.
+        result = json.loads(self._runner.query_scalar(
+            "WITH target AS (SELECT row_to_json(r)::text AS snapshot, r.deleted_at FROM condition_monitoring_reading r "
+            f"WHERE condition_monitoring_reading_code = {_sql(reading_code)}), upd AS (UPDATE condition_monitoring_reading SET deleted_at = NOW(), deleted_by = "
             f"{_sql(deleted_by)}, updated_by = {_sql(deleted_by)}, updated_at = NOW() "
-            f"WHERE condition_monitoring_reading_code = {_sql(reading_code)} AND deleted_at IS NULL "
+            f"WHERE condition_monitoring_reading_code = {_sql(reading_code)} AND {_DELETABLE_SQL} "
             f"RETURNING {_SELECT_COLUMNS}), audit AS (INSERT INTO record_change_history "
             "(entity_type, entity_id, field_name, old_value, new_value, changed_by, reason) "
-            "SELECT 'CONDITION_MONITORING_READING', condition_monitoring_reading_code, '__record__', old.snapshot, NULL, "
-            f"{_sql(deleted_by)}, 'DELETE' FROM upd CROSS JOIN old) SELECT COALESCE(json_agg(row_to_json(t))::text, '[]') FROM upd t;"
-        ) or "[]")
-        return rows[0] if rows else None
+            "SELECT 'CONDITION_MONITORING_READING', condition_monitoring_reading_code, '__record__', target.snapshot, NULL, "
+            f"{_sql(deleted_by)}, {_sql(reason)} FROM upd CROSS JOIN target) "
+            "SELECT json_build_object('outcome', CASE "
+            f"WHEN EXISTS (SELECT 1 FROM upd) THEN {_sql(DELETE_OUTCOME_DELETED)} "
+            f"WHEN NOT EXISTS (SELECT 1 FROM target) THEN {_sql(DELETE_OUTCOME_NOT_FOUND)} "
+            f"WHEN EXISTS (SELECT 1 FROM target WHERE deleted_at IS NOT NULL) THEN {_sql(DELETE_OUTCOME_ALREADY_DELETED)} "
+            f"ELSE {_sql(DELETE_OUTCOME_NOT_DELETABLE)} END, "
+            "'data', (SELECT row_to_json(u) FROM upd u))::text;"
+        ) or "{}")
+        return {"outcome": result.get("outcome", DELETE_OUTCOME_NOT_FOUND), "data": result.get("data")}
 
     def technical_return_for_correction(
         self, reading_code: str, *, technical_reviewed_by: str, technical_comment: str

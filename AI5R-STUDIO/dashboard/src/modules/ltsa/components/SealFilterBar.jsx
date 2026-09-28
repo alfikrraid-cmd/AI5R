@@ -23,7 +23,7 @@ export default function SealFilterBar({
       <SearchBox
         value={searchValue}
         onChange={onSearchChange}
-        placeholder="Search by code, type, size, pump tag, drawing, manufacturer..."
+        placeholder="Search by Seal ID, code, GPN, type, size, pump tag, drawing, manufacturer..."
       />
 
       <select

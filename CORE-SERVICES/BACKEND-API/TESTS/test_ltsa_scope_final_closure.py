@@ -163,6 +163,58 @@ class TestPMCMEvidenceScope:
             _clear()
 
 
+# LTSA_CONDITION_MONITORING_N8N_SOFT_DELETE_FILTER_R4 -- once the CMON
+# DETAIL workflow filters deleted_at, evidence on a soft-deleted reading
+# resolves to no reading at all (the workflow's own zero-row 404 body).
+# A missing reading -> None area must deny a restricted identity, never
+# broaden it; unrestricted roles are unaffected (scope None skips the check).
+class FakeDeletedCMONGateway:
+    def get_condition_monitoring_reading(self, code):
+        return {"statusCode": 404, "success": False, "message": "Condition Monitoring reading not found", "data": None}
+
+
+class FakeCMONEvidenceRepository:
+    def list_for_record(self, record_type, record_code):
+        return [{"evidence_id": "EV-CMON", "record_type": record_type, "record_code": record_code}]
+
+    def get_file_data(self, evidence_id):
+        if evidence_id != "EV-CMON":
+            return None
+        return {"record_type": "CONDITION_MONITORING_READING", "record_code": "CMONR-DELETED",
+                "content_type": "image/png", "file_data_base64": "aGVsbG8="}
+
+
+class TestPMCMEvidenceDeletedReadingFailsClosed:
+    def _override(self, identity):
+        app.dependency_overrides[get_current_user] = lambda: identity
+        app.dependency_overrides[get_pump_gateway] = lambda: FakePumpGateway()
+        app.dependency_overrides[get_pm_occurrence_gateway] = lambda: FakePMOccurrenceGateway()
+        app.dependency_overrides[get_condition_monitoring_reading_gateway] = lambda: FakeDeletedCMONGateway()
+        app.dependency_overrides[get_pm_cm_evidence_repository] = lambda: FakeCMONEvidenceRepository()
+
+    def test_restricted_identity_gets_no_evidence_list_for_a_deleted_reading(self):
+        self._override(_hoc())
+        try:
+            response = client.get(
+                "/api/ltsa/pm-cm-evidence",
+                params={"record_type": "CONDITION_MONITORING_READING", "record_code": "CMONR-DELETED"},
+            )
+            assert response.status_code == 200
+            assert response.json()["data"] == []
+        finally:
+            _clear()
+
+    def test_restricted_identity_cannot_download_evidence_of_a_deleted_reading(self):
+        self._override(_hoc())
+        try:
+            deleted = client.get("/api/ltsa/pm-cm-evidence/EV-CMON/download")
+            genuinely_missing = client.get("/api/ltsa/pm-cm-evidence/NOT-REAL/download")
+            assert deleted.status_code == genuinely_missing.status_code == 404
+            assert deleted.json() == genuinely_missing.json()
+        finally:
+            _clear()
+
+
 # --- document.py --------------------------------------------------------
 
 

@@ -21,7 +21,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT *\nFROM condition_monitoring_reading\nORDER BY reading_date DESC, created_at DESC;"
+        "query": "SELECT *\nFROM condition_monitoring_reading\nWHERE deleted_at IS NULL\nORDER BY reading_date DESC, created_at DESC;"
       },
       "id": "list-cmon-readings-postgres",
       "name": "List CMON Readings",

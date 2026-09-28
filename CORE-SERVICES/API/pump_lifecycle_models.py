@@ -58,6 +58,22 @@ class PumpLifecycleCurrentSeal:
     # No new fetch, no fabrication: null when the underlying installation
     # record has no value for it.
     source_document_name: str | None = None
+    # MWO-ASSET360-CURRENT-INSTALLATION-SEMANTIC-FIX-R1 -- deliberately
+    # separate from `status` above (that stays seal_registry.status
+    # verbatim, unchanged, for any other consumer that needs the
+    # registry's own condition/lifecycle status). installation_status
+    # answers a narrower, always-answerable question: does an
+    # authoritative current_installation record exist for this pump at
+    # all? "Installed" whenever _build_current_seal() reaches this
+    # constructor (its own early `if current_installation is None: return
+    # None` already guarantees that) -- never derived from seal_code,
+    # seal_registry, or Configured Seal Type. When seal_code is absent,
+    # every identity field above (seal_code/seal_name/model/material)
+    # still correctly stays None -- this field alone answers "was
+    # something installed", not "which one". Defaults to None (not
+    # "Installed") so every pre-existing test fixture that constructs this
+    # dataclass without it is unaffected.
+    installation_status: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

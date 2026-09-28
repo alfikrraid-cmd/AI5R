@@ -144,14 +144,42 @@ def test_list_all_returns_bounded_page_and_total_metadata():
     assert "COUNT(*) AS total" in runner.scalar_calls[1]
 
 
-def test_soft_delete_is_audited_and_preserves_the_record():
-    runner = FakeRunner(scalar_response=json.dumps([{"condition_monitoring_reading_code": "CMONR-1", "deleted_by": "actor-1"}]))
-    result = ConditionMonitoringReadingRepository(runner).soft_delete("CMONR-1", deleted_by="actor-1")
+def test_list_all_excludes_soft_deleted_readings_with_and_without_scope():
+    for scope in (None, frozenset({"HOC"}), frozenset()):
+        runner = FakeRunner(scalar_responses=["[]", json.dumps([{"total": 0}])])
+        ConditionMonitoringReadingRepository(runner).list_all(scope=scope)
+        assert "WHERE r.deleted_at IS NULL" in runner.scalar_calls[0]
+        assert "WHERE r.deleted_at IS NULL" in runner.scalar_calls[1]
 
-    assert result["deleted_by"] == "actor-1"
-    assert "deleted_at = NOW()" in runner.scalar_calls[0]
-    assert "record_change_history" in runner.scalar_calls[0]
-    assert "'DELETE'" in runner.scalar_calls[0]
+
+def test_soft_delete_is_audited_and_preserves_the_record():
+    runner = FakeRunner(scalar_response=json.dumps(
+        {"outcome": "DELETED", "data": {"condition_monitoring_reading_code": "CMONR-1", "deleted_by": "actor-1"}}
+    ))
+    result = ConditionMonitoringReadingRepository(runner).soft_delete(
+        "CMONR-1", deleted_by="actor-1", reason="Duplicate entry"
+    )
+
+    assert result["outcome"] == "DELETED"
+    assert result["data"]["deleted_by"] == "actor-1"
+    sql = runner.scalar_calls[0]
+    assert "deleted_at = NOW()" in sql
+    assert "DELETE FROM" not in sql.upper()
+    assert "record_change_history" in sql
+    assert "'Duplicate entry'" in sql
+    assert "'DELETE'" not in sql
+
+
+def test_soft_delete_guard_is_inside_the_update_statement():
+    runner = FakeRunner(scalar_response=json.dumps({"outcome": "NOT_DELETABLE", "data": None}))
+    result = ConditionMonitoringReadingRepository(runner).soft_delete("CMONR-1", deleted_by="actor-1", reason="x")
+
+    assert result == {"outcome": "NOT_DELETABLE", "data": None}
+    assert len(runner.scalar_calls) == 1  # one atomic statement, no separate pre-check
+    update_clause = runner.scalar_calls[0].split("UPDATE condition_monitoring_reading", 1)[1].split("RETURNING", 1)[0]
+    assert "workflow_status = 'DRAFT'" in update_clause
+    assert "deleted_at IS NULL" in update_clause
+    assert "provenance IS DISTINCT FROM 'HISTORICAL_IMPORT'" in update_clause
 
 
 # MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016A -- atomic schedule->actual

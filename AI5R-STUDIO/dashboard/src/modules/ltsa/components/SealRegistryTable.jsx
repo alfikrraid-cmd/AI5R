@@ -1,10 +1,21 @@
 import { useMemo } from "react";
 import { Table } from "../../../design-system";
 import colors from "../../../design-system/theme/colors";
-import { formatDrawingSummary, formatCompatiblePumps, formatAvailableStock } from "../utils/sealMapping";
+import {
+  formatDrawingSummary, formatCompatiblePumps, formatAvailableStock, stockStatus, STOCK_STATUS,
+} from "../utils/sealMapping";
 
 function buildColumns(onSelect) {
   return [
+    // Unified-RC MECHANICAL-SEAL-DOMAIN-CONSOLIDATION-R1 Seal ID (MS-JC-NNNN,
+    // seal_registry.seal_id), shown ahead of V1's unified columns so the
+    // professional identity is never inferred from Seal Type or the legacy
+    // LTSA-SEAL-* code: no fallback to seal.code, "N/A" when unassigned.
+    {
+      key: "sealId",
+      header: "Seal ID",
+      render: (_, item) => <span>{toDisplay(item.sealId)}</span>,
+    },
     {
       key: "seal",
       header: "Mechanical Seal",
@@ -75,9 +86,7 @@ function buildColumns(onSelect) {
             item.quantity_available ?? item.quantity_on_hand,
             item.hasStockRecord !== false
           );
-        const isLow =
-          item.hasStockRecord !== false &&
-          (item.quantity_available ?? item.quantity_on_hand) === 0;
+        const isLow = stockStatus(item) === STOCK_STATUS.OUT_OF_STOCK;
         const isUnmanaged = item.hasStockRecord === false || label === "N/A";
         return (
           <span
@@ -154,6 +163,12 @@ function buildColumns(onSelect) {
       ),
     },
   ];
+}
+
+const NOT_AVAILABLE = "N/A";
+
+function toDisplay(value) {
+  return value === null || value === undefined || value === "" ? NOT_AVAILABLE : value;
 }
 
 export default function SealRegistryTable({ seals, selectedCode, onSelect }) {

@@ -1,0 +1,70 @@
+-- MECHANICAL-SEAL-DOMAIN-CONSOLIDATION-R1 -- Part A (professional Seal
+-- ID) + Registry "Seal Type" column, schema step only (no data yet --
+-- see 044_backfill_seal_registry_identity_and_type.sql).
+--
+-- FOUR DISTINCT IDENTITY CONCEPTS (production Asset360 audit evidence,
+-- 42 installation_report rows, 100% seal_code NULL, multiple
+-- seal_registry candidates per seal_type such as T48MP -- confirmed
+-- against a database mirroring that same data): seal_id here is ONLY
+-- concept 1. It must never be conflated with 2-4:
+--   1. MASTER SEAL IDENTITY   -- seal_id = MS-JC-NNNN (this column).
+--      Identifies a catalog/type row in seal_registry. Stable, never
+--      renumbered, never derived from seal_type/size/pump.
+--   2. COMPLETE ASSEMBLY GPN  -- gpn_john_crane (migration 013). The
+--      actual John Crane GPN, or NULL/N/A. Never fabricated from seal_id.
+--   3. PHYSICAL UNIT IDENTITY -- seal_unit.seal_unit_id/serial_number
+--      (migration 018), only when uniquely evidenced. seal_id says
+--      nothing about which physical unit is installed anywhere.
+--   4. INSTALLATION/FITMENT EVENT -- installation_report.installation_code
+--      / seal_lifecycle_event. Never assumed linked to a seal_registry
+--      row (seal_code) or a seal_unit merely because seal_type matches --
+--      see DATABASE/DIAGNOSTICS/seal_installation_report_linkage_
+--      classification.sql for the read-only Class A/B/C/D evidence
+--      classification this mission produced instead of guessing.
+--
+-- seal_id: an ADDITIVE, human-readable, OEM-scoped identifier
+-- (MS-<OEM>-NNNN, e.g. MS-JC-0001 for John Crane) living alongside the
+-- existing seal_code PK -- never replacing it. seal_code remains the
+-- real primary key and every existing FK (mechanical_seal_stock_pool,
+-- installation_report, seal_engineering_document, seal_pump_
+-- compatibility, seal_interchange_compatibility, seal_internal_
+-- component_link, seal_pump_compatibility_history, seal_stock,
+-- seal_unit, document_field_extraction -- ten referencing tables,
+-- confirmed via `\d public.seal_registry` "Referenced by") is completely
+-- untouched by this migration. Nullable at this step because it is
+-- populated deterministically by the following data migration, not by a
+-- default expression here -- Hard Rule from migration 013's own
+-- precedent: no fabricated/computed-on-the-fly identifier values.
+--
+-- seal_type: the Registry needs to display Seal Type (T48MP/T48LP/
+-- 5610VQ/etc.), but seal_registry has never had that column -- Phase 1
+-- audit confirmed AI5R-STUDIO's own sealMapping.js hard-codes
+-- `type: null` today specifically because no backing column exists. The
+-- only place seal_type-shaped data exists today is per-pump free text
+-- (ltsa_pumps.seal_type) and per-stock-pool (mechanical_seal_stock_pool.
+-- seal_type, NOT NULL) -- neither is a seal_registry attribute. Adding
+-- it here as a plain nullable column (never fabricated; backfilled only
+-- where unambiguous, see the next migration) keeps seal_registry the
+-- single canonical seal-type source going forward, same discipline
+-- already applied to gpn_john_crane in migration 013.
+--
+-- Both columns nullable, no defaults: every existing seal_registry row
+-- keeps working unchanged. ltsa_pump_inventory_db_upsert.py's seal_registry
+-- INSERT/UPDATE (fixed 4-key payload: seal_code/seal_name/shaft_size/
+-- manufacturer) never references either column, so ingestion is
+-- unaffected without any code change -- identical reasoning to migration
+-- 013's own header.
+--
+-- Uniqueness on seal_id is added as a separate, deferred step in
+-- 044_backfill_seal_registry_identity_and_type.sql (after backfill,
+-- with an explicit preflight duplicate check) rather than here, so this
+-- schema-only migration can never fail on data it does not yet control.
+
+ALTER TABLE public.seal_registry
+    ADD COLUMN IF NOT EXISTS seal_id TEXT,
+    ADD COLUMN IF NOT EXISTS seal_type TEXT;
+
+-- Documented Rollback (forward-only repository convention):
+--
+-- ALTER TABLE public.seal_registry DROP COLUMN IF EXISTS seal_type;
+-- ALTER TABLE public.seal_registry DROP COLUMN IF EXISTS seal_id;

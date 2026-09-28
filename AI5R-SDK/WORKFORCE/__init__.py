@@ -41,6 +41,11 @@ __all__ = [
     "WorkforceExecutionPlan",
     "DigitalWorkforceScheduler",
     "SchedulerDecision",
+    "ApprovalChainRuntime",
+    "ChiefApprovalRecord",
+    "ChiefApprovalRequiredError",
+    "ApprovalRecord",
+    "Approver",
 ]
 
 from .employee_runtime import EmployeeRuntime, RuntimeResult
@@ -57,3 +62,11 @@ from .mission_orchestrator import MissionOrchestrator, MissionResult
 from .workforce_execution_plan import WorkforceExecutionPlan
 
 from .digital_workforce_scheduler import DigitalWorkforceScheduler, SchedulerDecision
+
+from .approval_chain_runtime import (
+    ApprovalChainRuntime,
+    ChiefApprovalRecord,
+    ChiefApprovalRequiredError,
+    ApprovalRecord,
+    Approver,
+)

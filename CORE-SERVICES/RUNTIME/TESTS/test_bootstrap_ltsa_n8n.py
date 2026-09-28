@@ -1165,3 +1165,61 @@ def test_pm_cmon_list_workflows_filter_the_alwaysOutputData_placeholder_row():
                 missing.append(f"{workflow['name']} ({source_path})")
 
     assert missing == []
+
+
+# LTSA_CONDITION_MONITORING_N8N_SOFT_DELETE_FILTER_R4 -- a soft-deleted
+# Condition Monitoring reading (condition_monitoring_reading.deleted_at,
+# migration 027) must never reach a normal operational read. These two
+# workflows back ConditionMonitoringReadingGateway's list/detail (the
+# maintenance-intelligence leak flag, the Copilot fleet-leak fallback,
+# pm_cm_evidence area resolution), so every Postgres query they run
+# against condition_monitoring_reading must keep the active-record filter.
+_CMON_READING_WORKFLOW_SOURCES = (
+    "PRODUCTS/LTSA-BRAIN/BUILD-PACKS/BP-CONDITION-MONITORING/WORKFLOWS/WF-LTSA-BRAIN-CMON-READING-LIST-001.json",
+    "PRODUCTS/LTSA-BRAIN/BUILD-PACKS/BP-CONDITION-MONITORING/WORKFLOWS/WF-LTSA-BRAIN-CMON-READING-DETAIL-001.json",
+)
+
+
+def _cmon_reading_queries(rel_path):
+    workflow = json.loads((REPO_ROOT / rel_path).read_text(encoding="utf-8"))
+    return workflow, [
+        " ".join(node["parameters"]["query"].split())
+        for node in workflow.get("nodes", [])
+        if node.get("type") == POSTGRES_NODE_TYPE
+        and node.get("parameters", {}).get("operation") == "executeQuery"
+        and "condition_monitoring_reading" in node.get("parameters", {}).get("query", "")
+    ]
+
+
+@pytest.mark.parametrize("rel_path", _CMON_READING_WORKFLOW_SOURCES)
+def test_cmon_reading_workflows_exclude_soft_deleted_readings(rel_path):
+    _, queries = _cmon_reading_queries(rel_path)
+    assert queries, f"no condition_monitoring_reading query found in {rel_path}"
+    for query in queries:
+        where = query.split(" WHERE ", 1)
+        assert len(where) == 2 and "deleted_at IS NULL" in where[1], query
+
+
+def test_cmon_reading_list_query_is_active_readings_in_existing_order():
+    _, queries = _cmon_reading_queries(_CMON_READING_WORKFLOW_SOURCES[0])
+    assert queries == [
+        "SELECT * FROM condition_monitoring_reading WHERE deleted_at IS NULL "
+        "ORDER BY reading_date DESC, created_at DESC;"
+    ]
+
+
+def test_cmon_reading_detail_query_and_deleted_reading_is_a_404():
+    workflow, queries = _cmon_reading_queries(_CMON_READING_WORKFLOW_SOURCES[1])
+    assert queries == [
+        "SELECT * FROM condition_monitoring_reading "
+        "WHERE condition_monitoring_reading_code = $1 AND deleted_at IS NULL LIMIT 1;"
+    ]
+    # A filtered-out (soft-deleted) reading yields zero rows; the existing
+    # response node must keep turning that into the same 404 as a miss.
+    response_code = next(
+        node["parameters"]["jsCode"]
+        for node in workflow["nodes"]
+        if node.get("name") == "Build CMON Reading Detail Response"
+    )
+    assert "statusCode: 404" in response_code
+    assert "!row || !row.condition_monitoring_reading_code" in response_code

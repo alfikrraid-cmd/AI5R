@@ -80,6 +80,14 @@ const OPERATING_STATE_OPTIONS = ["Running", "Standby", "Repair"];
 
 const EDITABLE_STATUSES = new Set(["DRAFT", "RETURNED_FOR_CORRECTION"]);
 
+// LTSA_CONDITION_MONITORING_SAFE_DRAFT_DELETE_R2 -- mirrors the backend's
+// guarded soft delete (condition_monitoring_reading_repository.py's
+// _DELETABLE_SQL): only an active, non-historical DRAFT. The server
+// enforces this regardless; the UI only avoids offering a doomed action.
+function isDeletableReading(reading) {
+  return reading.workflowStatus === "DRAFT" && reading.provenance !== "HISTORICAL_IMPORT" && !reading.deletedAt;
+}
+
 // One shared row renderer for a DE/NDE measurement pair -- read-only
 // combined display (existing convention) when not editable, two
 // separately-labeled inputs (never collapsed) when editable. Local to
@@ -163,6 +171,8 @@ export default function ConditionMonitoringReadingDetailPanel({
   const [saveError, setSaveError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState(null);
 
   const [returnReason, setReturnReason] = useState("");
   const [returning, setReturning] = useState(false);
@@ -179,6 +189,7 @@ export default function ConditionMonitoringReadingDetailPanel({
     setMeasurementForm(measurementFormValuesFromReading(reading));
     setSaveError(null);
     setSubmitError(null);
+    setDeleteError(null);
     setReturnReason("");
     setReturnError(null);
     setJcComment("");
@@ -200,11 +211,25 @@ export default function ConditionMonitoringReadingDetailPanel({
   const editable = Boolean(canWrite) && EDITABLE_STATUSES.has(reading.workflowStatus);
   const reviewable = reading.workflowStatus === "SUBMITTED";
 
+  const deletable = Boolean(canDelete) && isDeletableReading(reading);
+
   async function handleDelete() {
     const reason = window.prompt(`Deletion reason for ${reading.id}:`);
-    if (!reason?.trim()) return;
+    if (reason === null) return;
+    if (!reason.trim()) {
+      setDeleteError("A deletion reason is required.");
+      return;
+    }
     if (!window.confirm(`Soft-delete Condition Monitoring reading ${reading.id}?`)) return;
-    await onDelete?.(reading.id, reason.trim());
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await onDelete?.(reading.id, reason.trim());
+    } catch (err) {
+      setDeleteError(err.message);
+    } finally {
+      setDeleting(false);
+    }
   }
 
   function setMeasurementField(key, value) {
@@ -590,7 +615,18 @@ export default function ConditionMonitoringReadingDetailPanel({
           </p>
         </Card>
       )}
-      {canDelete && <Card title="Danger Zone"><Button onClick={handleDelete}>Soft Delete</Button></Card>}
+      {deletable && (
+        <Card title="Danger Zone">
+          {deleteError && (
+            <p role="alert" style={{ color: colors.danger }}>
+              {deleteError}
+            </p>
+          )}
+          <Button onClick={handleDelete} disabled={deleting}>
+            {deleting ? "Deleting..." : "Soft Delete"}
+          </Button>
+        </Card>
+      )}
 
       {/* MWO-LTSA-PM-CMON-SCHEDULE-LIFECYCLE-016 -- "UNSCHEDULED::<workbook>"
           is source-workbook provenance (ltsa_hoc_pm_cm_upsert.py's own

@@ -31,6 +31,12 @@ if TYPE_CHECKING:
     from ltsa_pump_inventory_db_upsert import DatabaseRunner
 
 
+# Soft-deleted Condition Monitoring readings (condition_monitoring_reading.
+# deleted_at, migration 027) must never contribute to active analytics.
+# Every CM query below aliases the reading table as "r".
+_ACTIVE_CM_READING = "r.deleted_at IS NULL"
+
+
 class LTSAAnalyticsService:
     def __init__(self, runner: "DatabaseRunner") -> None:
         self._runner = runner
@@ -121,7 +127,7 @@ class LTSAAnalyticsService:
             FROM (
                 SELECT occurrence_date::date as dt FROM pm_occurrence
                 UNION ALL
-                SELECT reading_date::date as dt FROM condition_monitoring_reading
+                SELECT reading_date::date as dt FROM condition_monitoring_reading WHERE deleted_at IS NULL
             ) all_dates
             """,
             self._runner,
@@ -182,6 +188,7 @@ class LTSAAnalyticsService:
             start_date=start_date,
             end_date=end_date,
             scope=scope,
+            extra_clauses=[_ACTIVE_CM_READING],
         )
         cm_stats = _json_query(
             f"""
@@ -341,7 +348,7 @@ class LTSAAnalyticsService:
                         WHERE r.mechanical_seal_leak_de = true OR r.mechanical_seal_leak_nde = true
                     ) as seal_leaks
                 FROM condition_monitoring_reading r
-                {self._build_where_clauses(pump_alias="r", record_alias="r", date_col="reading_date", start_date=start_date, end_date=end_date)}
+                {self._build_where_clauses(pump_alias="r", record_alias="r", date_col="reading_date", start_date=start_date, end_date=end_date, extra_clauses=[_ACTIVE_CM_READING])}
                 GROUP BY r.asset_code
             )
             SELECT 
@@ -370,7 +377,7 @@ class LTSAAnalyticsService:
             start_date=start_date,
             end_date=end_date,
             scope=scope,
-            extra_clauses=["(r.mechanical_seal_leak_de = true OR r.mechanical_seal_leak_nde = true)"],
+            extra_clauses=[_ACTIVE_CM_READING, "(r.mechanical_seal_leak_de = true OR r.mechanical_seal_leak_nde = true)"],
         )
         bad_actors = _json_query(
             f"""
@@ -471,6 +478,7 @@ class LTSAAnalyticsService:
             start_date=start_date,
             end_date=end_date,
             scope=scope,
+            extra_clauses=[_ACTIVE_CM_READING],
         )
 
         # Check recorded seal replacements in seal_lifecycle_event / installation_report
@@ -595,6 +603,7 @@ class LTSAAnalyticsService:
             start_date=start_date,
             end_date=end_date,
             scope=scope,
+            extra_clauses=[_ACTIVE_CM_READING],
         )
 
         pm_count_res = _json_query(
@@ -618,7 +627,7 @@ class LTSAAnalyticsService:
             start_date=start_date,
             end_date=end_date,
             scope=scope,
-            extra_clauses=["(r.mechanical_seal_leak_de = true OR r.mechanical_seal_leak_nde = true)"],
+            extra_clauses=[_ACTIVE_CM_READING, "(r.mechanical_seal_leak_de = true OR r.mechanical_seal_leak_nde = true)"],
         )
         leak_count_res = _json_query(
             f"""
