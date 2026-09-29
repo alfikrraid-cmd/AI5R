@@ -26,13 +26,4 @@ describe("MaintenanceHealthPanel", () => {
 
     expect(screen.getByText(/1 closed \/ 7 open \(of 8\)/)).toBeTruthy();
   });
-
-  it("renders a badge per corrective maintenance status with its count", () => {
-    render(<MaintenanceHealthPanel health={HEALTH} />);
-
-    expect(screen.getByText("Open: 2")).toBeTruthy();
-    expect(screen.getByText("In Progress: 2")).toBeTruthy();
-    expect(screen.getByText("Resolved: 2")).toBeTruthy();
-    expect(screen.getByText("Closed: 2")).toBeTruthy();
-  });
 });

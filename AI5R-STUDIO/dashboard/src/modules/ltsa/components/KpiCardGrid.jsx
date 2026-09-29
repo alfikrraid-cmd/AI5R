@@ -5,7 +5,6 @@ export default function KpiCardGrid({ kpis }) {
     { title: "Open Work Orders", value: kpis.openWorkOrders },
     { title: "Overdue PM", value: kpis.overduePM },
     { title: "Upcoming PM", value: kpis.upcomingPM },
-    { title: "Open Corrective Maintenance", value: kpis.openCorrectiveMaintenance },
     { title: "Critical Assets", value: kpis.criticalAssets },
     { title: "Recent Maintenance Activity", value: kpis.recentMaintenanceActivity },
   ];

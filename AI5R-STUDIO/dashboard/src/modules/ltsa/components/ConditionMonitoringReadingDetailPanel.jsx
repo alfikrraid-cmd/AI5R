@@ -30,10 +30,6 @@ function pressureValue(value) {
   return value != null ? `${value} bar` : "—";
 }
 
-function vibrationValue(value) {
-  return value != null ? `${value} mm/s` : "—";
-}
-
 function leakLabel(value) {
   if (value === true) return "Leak Detected";
   if (value === false) return "No Leak";
@@ -413,7 +409,7 @@ export default function ConditionMonitoringReadingDetailPanel({
         ))}
       </Card>
 
-      <Card title="Pressure / Vibration / Motor (DE / NDE)">
+      <Card title="Pressure / Motor (DE / NDE)">
         {MEASUREMENT_SINGLE_FIELDS.filter((field) => field.unit === "bar" || field.unit === "A").map((field) => (
           <MeasurementSingleRow
             key={field.key}
@@ -425,7 +421,7 @@ export default function ConditionMonitoringReadingDetailPanel({
           />
         ))}
         {MEASUREMENT_PAIR_FIELDS.filter((field) =>
-          ["quenchPressureDe", "verticalVibrationDe", "horizontalVibrationDe", "axialVibrationDe"].includes(field.deKey)
+          ["quenchPressureDe"].includes(field.deKey)
         ).map((field) => (
           <MeasurementPairRow
             key={field.group}
@@ -433,7 +429,7 @@ export default function ConditionMonitoringReadingDetailPanel({
             editable={editable}
             values={editable ? measurementForm : reading}
             onChange={setMeasurementField}
-            formatValue={field.unit === "bar" ? pressureValue : vibrationValue}
+            formatValue={pressureValue}
           />
         ))}
       </Card>

@@ -21,19 +21,6 @@ export default function MaintenanceHealthPanel({ health }) {
           label={`Work Orders — ${health.closedWorkOrders} closed / ${health.openWorkOrders} open (of ${health.totalWorkOrders})`}
         />
       </div>
-
-      <div>
-        <div style={{ color: colors.textMuted, fontSize: 12, marginBottom: spacing.xs }}>
-          Corrective Maintenance Status
-        </div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: spacing.sm }}>
-          {Object.entries(health.cmStatusCounts).map(([status, count]) => (
-            <Badge key={status} variant={statusBadgeVariant(status)}>
-              {statusLabel(status)}: {count}
-            </Badge>
-          ))}
-        </div>
-      </div>
     </Card>
   );
 }

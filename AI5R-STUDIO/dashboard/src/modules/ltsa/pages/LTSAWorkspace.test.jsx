@@ -248,8 +248,8 @@ describe("LTSAWorkspace navigation shell", () => {
     expect(screen.getByRole("tab", { name: "Pump" })).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Work Order" })).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Preventive Maintenance" })).toBeTruthy();
-    expect(screen.getByRole("tab", { name: "Corrective Maintenance" })).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Condition Monitoring" })).toBeTruthy();
+    expect(screen.queryByRole("tab", { name: "Corrective Maintenance" })).toBeNull();
     expect(screen.getByRole("tab", { name: "Asset 360" })).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Reports" })).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Analytics" })).toBeTruthy();
@@ -355,13 +355,9 @@ describe("LTSAWorkspace navigation shell", () => {
     await screen.findByText(/no pm schedules match/i);
   });
 
-  it("switches to the Corrective Maintenance workspace when its tab is clicked", async () => {
+  it("does not expose a Corrective Maintenance tab in primary navigation", () => {
     render(<LTSAWorkspace />);
-
-    fireEvent.click(screen.getByRole("tab", { name: "Corrective Maintenance" }));
-
-    expect(screen.getByRole("heading", { name: "Corrective Maintenance Workspace" })).toBeTruthy();
-    await screen.findByText(/no corrective maintenance reports match/i);
+    expect(screen.queryByRole("tab", { name: "Corrective Maintenance" })).toBeNull();
   });
 
   it("switches to Asset 360 when its tab is clicked -- untagged, resolves via MaintenanceHistory's asset picker (MWO-LTSA-036G)", async () => {
@@ -452,7 +448,7 @@ describe("LTSAWorkspace navigation shell", () => {
     expect(screen.getByRole("heading", { name: "What should managers do next?" })).toBeTruthy();
 
     // Every outer LTSA tab remains reachable after this journey.
-    ["Executive Dashboard", "Pump", "Work Order", "Preventive Maintenance", "Corrective Maintenance", "Condition Monitoring", "Asset 360", "Reports", "Analytics"].forEach(
+    ["Executive Dashboard", "Pump", "Work Order", "Preventive Maintenance", "Condition Monitoring", "Asset 360", "Reports", "Analytics"].forEach(
       (tabName) => {
         expect(screen.getByRole("tab", { name: tabName })).toBeTruthy();
       }

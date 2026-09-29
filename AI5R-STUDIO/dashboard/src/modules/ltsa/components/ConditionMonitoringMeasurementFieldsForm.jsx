@@ -47,7 +47,6 @@ export const LEAK_OPTIONS = [
 ];
 
 const PAIR_SECTIONS = [
-  { title: "Vibration", groups: ["Vertical Vibration", "Horizontal Vibration", "Axial Vibration"] },
   { title: "Bearing Temperature", groups: ["Bearing Temp"] },
   { title: "Mechanical Seal / Gland", groups: ["Mechanical Seal Temp", "Stuffing Box Temp", "Seal Gland Temp"], includeLeak: true },
   {
@@ -264,7 +263,6 @@ export default function ConditionMonitoringMeasurementFieldsForm({ measurements,
   const pairFieldsByGroup = new Map(MEASUREMENT_PAIR_FIELDS.map((field) => [field.group, field]));
 
   const [sectionOpenStates, setSectionOpenStates] = useState({
-    Vibration: false,
     "Bearing Temperature": false,
     "Mechanical Seal / Gland": false,
     "Flushing / Quench": false,
@@ -277,7 +275,6 @@ export default function ConditionMonitoringMeasurementFieldsForm({ measurements,
   function toggleAll() {
     const nextState = !allOpen;
     setSectionOpenStates({
-      Vibration: nextState,
       "Bearing Temperature": nextState,
       "Mechanical Seal / Gland": nextState,
       "Flushing / Quench": nextState,

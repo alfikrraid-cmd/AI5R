@@ -108,10 +108,10 @@ def test_explicit_single_equipment_diagnostic_outranks_fleet_leak_intent(questio
     assert _detect_intent(question, tag="211-P-13AR") == "seal_leak_diagnostic"
 
 
-def test_breakdown_wording_still_routes_to_cm_not_condition_monitoring():
-    # Regression: "Do not confuse Condition Monitoring with Corrective
-    # Maintenance" -- kerusakan/breakdown must stay on the CM path.
-    assert _detect_intent("pompa mana yang paling sering rusak?") == "cm"
+def test_breakdown_wording_does_not_route_to_condition_monitoring():
+    # LTSA PM/CM Semantic Cutover R1: Corrective Maintenance is retired from LTSA.
+    # CM = Condition Monitoring. Kerusakan/breakdown does not route to condition_monitoring.
+    assert _detect_intent("pompa mana yang paling sering rusak?") is None
 
 
 # --- stock ------------------------------------------------------------------------
@@ -1052,7 +1052,7 @@ def test_diagnostic_intent_examples_route_to_seal_leak_diagnostic():
 
 
 def test_diagnostic_intent_does_not_steal_write_or_fleet_or_pm_intents():
-    assert _detect_intent("CM 110p12b: mechanical seal bocor", tag="110-P-12B") == "cm"
+    assert _detect_intent("CM 110p12b: mechanical seal bocor", tag="110-P-12B") == "condition_monitoring"
     assert _detect_intent("PM 110p12b", tag="110-P-12B") == "pm"
     assert _detect_intent("Pompa mana yang sealnya bocor sekarang?", tag=None) == "condition_monitoring"
     assert _detect_intent("Pompa mana yang paling sering bocor setahun terakhir?", tag=None) == "condition_monitoring"

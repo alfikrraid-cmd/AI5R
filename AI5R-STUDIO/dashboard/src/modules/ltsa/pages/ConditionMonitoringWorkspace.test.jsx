@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+﻿import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import ConditionMonitoringWorkspace from "./ConditionMonitoringWorkspace";
 import {
@@ -332,5 +332,13 @@ describe("cm (Corrective Maintenance) remains unaffected", () => {
     expect(source).not.toMatch(/from ["'].*\bCMOpenDesignView["']/);
     expect(source).not.toMatch(/from ["']\.\.\/pages\/CM["']/);
     expect(source).toMatch(/from ["']\.\.\/utils\/cmMapping["']/);
+  });
+});
+
+describe("Operational domain enforcement", () => {
+  it("proves CM Workspace has no vibration operational field or label", async () => {
+    await renderAndSelect();
+    expect(screen.queryByText("Vibration")).toBeNull();
+    expect(screen.queryByText(/Vibration/i)).toBeNull();
   });
 });

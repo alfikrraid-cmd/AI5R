@@ -11,7 +11,7 @@ describe("QuickNavigationPanel", () => {
     expect(screen.getByRole("button", { name: "Open Pump Registry" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Open Work Orders" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Open Preventive Maintenance" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Open Corrective Maintenance" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Open Condition Monitoring" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Open Asset 360" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Open Reports" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Open Analytics" })).toBeTruthy();
@@ -30,7 +30,7 @@ describe("QuickNavigationPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open Preventive Maintenance" }));
     expect(onNavigate).toHaveBeenCalledWith("pm");
 
-    fireEvent.click(screen.getByRole("button", { name: "Open Corrective Maintenance" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open Condition Monitoring" }));
     expect(onNavigate).toHaveBeenCalledWith("cm");
 
     fireEvent.click(screen.getByRole("button", { name: "Open Asset 360" }));

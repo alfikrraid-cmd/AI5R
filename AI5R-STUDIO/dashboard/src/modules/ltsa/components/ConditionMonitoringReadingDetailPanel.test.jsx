@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+﻿import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ConditionMonitoringReadingDetailPanel from "./ConditionMonitoringReadingDetailPanel";
 import { getPMCMEvidence } from "../../../api/ai5rClient";
@@ -460,5 +460,22 @@ describe("ConditionMonitoringReadingDetailPanel (MWO-LTSA-PM-CM-REVIEW-UI-001 ex
       fireEvent.click(button);
       expect(onViewSchedule).toHaveBeenCalledWith("CMON-SCHED-001");
     });
+  });
+
+  it("proves reading detail has no vibration section or inputs in either read-only or edit mode", async () => {
+    // Read-only mode
+    const { rerender } = render(<ConditionMonitoringReadingDetailPanel reading={baseReading()} canWrite={false} />);
+    expect(screen.getByText("Pressure / Motor (DE / NDE)")).toBeTruthy();
+    expect(screen.queryByText(/Vibration/i)).toBeNull();
+    expect(screen.queryByText(/Vertical Vibration/i)).toBeNull();
+    expect(screen.queryByText(/Horizontal Vibration/i)).toBeNull();
+    expect(screen.queryByText(/Axial Vibration/i)).toBeNull();
+
+    // Edit mode (DRAFT with canWrite)
+    rerender(<ConditionMonitoringReadingDetailPanel reading={baseReading()} canWrite />);
+    expect(screen.queryByLabelText("Vertical Vibration DE")).toBeNull();
+    expect(screen.queryByLabelText("Vertical Vibration NDE")).toBeNull();
+    expect(screen.queryByLabelText("Horizontal Vibration DE")).toBeNull();
+    expect(screen.queryByLabelText("Axial Vibration DE")).toBeNull();
   });
 });

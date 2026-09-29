@@ -673,21 +673,21 @@ def test_get_ltsa_pump_last_pm_prefers_more_recent_pm_occurrence_over_work_order
     assert body["last_pm"]["record"]["pm_occurrence_code"] == "PM-OCC-101"
 
 
-def test_get_ltsa_pump_last_cm_delegates_to_cm_report_gateway():
-    cm_report_list = {
+def test_get_ltsa_pump_last_cm_delegates_to_condition_monitoring_reading_gateway():
+    condition_monitoring_reading_list = {
         "success": True,
         "message": "ok",
         "count": 1,
         "data": [
             {
-                "cm_report_code": "CM-101",
+                "condition_monitoring_reading_code": "CMON-101",
                 "asset_code": "P-101",
-                "created_at": "2026-07-01T00:00:00Z",
+                "reading_date": "2026-07-01T00:00:00Z",
             }
         ],
     }
-    fake_cm_report_gateway = FakeCMReportGateway(list_response=cm_report_list)
-    app.dependency_overrides[get_cm_report_gateway] = lambda: fake_cm_report_gateway
+    fake_gateway = FakeConditionMonitoringReadingGateway(list_response=condition_monitoring_reading_list)
+    app.dependency_overrides[get_condition_monitoring_reading_gateway] = lambda: fake_gateway
 
     try:
         response = client.get("/api/ltsa/pumps/P-101/last-cm")
@@ -697,13 +697,13 @@ def test_get_ltsa_pump_last_cm_delegates_to_cm_report_gateway():
     assert response.status_code == 200
     body = response.json()
     assert body["tag_number"] == "P-101"
-    assert body["last_cm"]["cm_report_code"] == "CM-101"
+    assert body["last_cm"]["condition_monitoring_reading_code"] == "CMON-101"
 
 
 def test_get_ltsa_pump_last_cm_returns_none_when_no_reports():
-    cm_report_list = {"success": True, "message": "ok", "count": 0, "data": []}
-    fake_cm_report_gateway = FakeCMReportGateway(list_response=cm_report_list)
-    app.dependency_overrides[get_cm_report_gateway] = lambda: fake_cm_report_gateway
+    condition_monitoring_reading_list = {"success": True, "message": "ok", "count": 0, "data": []}
+    fake_gateway = FakeConditionMonitoringReadingGateway(list_response=condition_monitoring_reading_list)
+    app.dependency_overrides[get_condition_monitoring_reading_gateway] = lambda: fake_gateway
 
     try:
         response = client.get("/api/ltsa/pumps/P-101/last-cm")

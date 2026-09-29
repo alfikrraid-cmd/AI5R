@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+﻿import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import CreateConditionMonitoringReadingModal from "./CreateConditionMonitoringReadingModal";
 
@@ -44,17 +44,23 @@ describe("CreateConditionMonitoringReadingModal -- golden CMON measurement entry
     expect(payload.measurements.mechanical_seal_leak_nde).toBeNull();
   });
 
-  it("captures every migration-014 field explicitly entered, DE and NDE kept separate", () => {
+  it("captures every active measurement field explicitly entered, DE and NDE kept separate, and omits vibration inputs", () => {
     const onCreate = vi.fn();
     renderModal(onCreate);
+
+    // Verify vibration inputs are not present in the form
+    expect(screen.queryByLabelText("Vertical Vibration DE")).toBeNull();
+    expect(screen.queryByLabelText("Vertical Vibration NDE")).toBeNull();
+    expect(screen.queryByLabelText("Horizontal Vibration DE")).toBeNull();
+    expect(screen.queryByLabelText("Axial Vibration DE")).toBeNull();
 
     fireEvent.change(screen.getByLabelText("Suction Pressure (bar)"), { target: { value: "3.2" } });
     fireEvent.change(screen.getByLabelText("Discharge Pressure (bar)"), { target: { value: "11.4" } });
     fireEvent.change(screen.getByLabelText("Motor Current (A)"), { target: { value: "22.1" } });
     fireEvent.change(screen.getByLabelText("Bearing Temp DE"), { target: { value: "61" } });
     fireEvent.change(screen.getByLabelText("Bearing Temp NDE"), { target: { value: "58" } });
-    fireEvent.change(screen.getByLabelText("Vertical Vibration DE"), { target: { value: "2.1" } });
-    // NDE for vertical vibration intentionally left blank.
+    fireEvent.change(screen.getByLabelText("Mechanical Seal Temp DE"), { target: { value: "82.5" } });
+    // NDE for mechanical seal temp intentionally left blank.
 
     fireEvent.click(screen.getByRole("button", { name: "Create Reading" }));
 
@@ -64,7 +70,9 @@ describe("CreateConditionMonitoringReadingModal -- golden CMON measurement entry
     expect(measurements.motor_current).toBe(22.1);
     expect(measurements.bearing_temp_de).toBe(61);
     expect(measurements.bearing_temp_nde).toBe(58);
-    expect(measurements.vertical_vibration_de).toBe(2.1);
+    expect(measurements.mechseal_temp_de).toBe(82.5);
+    expect(measurements.mechseal_temp_nde).toBeNull();
+    expect(measurements.vertical_vibration_de).toBeNull();
     expect(measurements.vertical_vibration_nde).toBeNull();
   });
 

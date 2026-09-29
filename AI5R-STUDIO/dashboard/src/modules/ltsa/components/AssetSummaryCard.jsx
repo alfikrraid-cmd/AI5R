@@ -34,8 +34,8 @@ export default function AssetSummaryCard({ summary }) {
         value={summary.lastPreventiveMaintenance ?? "None recorded"}
       />
       <Field
-        label="Last Corrective Maintenance"
-        value={summary.lastCorrectiveMaintenance ?? "None recorded"}
+        label="Last Condition Monitoring"
+        value={summary.lastConditionMonitoring ?? summary.lastCorrectiveMaintenance ?? "None recorded"}
       />
       <Field label="Open Work Orders" value={summary.openWorkOrders} />
       <Field label="Last Activity" value={summary.lastActivity ?? "No recorded activity"} />

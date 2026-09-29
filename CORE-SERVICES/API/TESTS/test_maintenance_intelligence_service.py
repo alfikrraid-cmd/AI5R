@@ -396,37 +396,37 @@ def test_get_pump_last_pm_succeeds_if_either_source_succeeds():
     assert result["success"] is True
 
 
-def test_get_pump_last_cm_picks_most_recent_by_created_at():
-    cm_report_gateway = FakeCMReportGateway(
+def test_get_pump_last_cm_picks_most_recent_by_reading_date():
+    condition_monitoring_reading_gateway = FakeConditionMonitoringReadingGateway(
         [
             {
-                "cm_report_code": "CM-101",
+                "condition_monitoring_reading_code": "CMON-101",
                 "asset_code": "P-101",
-                "created_at": "2026-06-01T00:00:00Z",
+                "reading_date": "2026-06-01T00:00:00Z",
             },
             {
-                "cm_report_code": "CM-102",
+                "condition_monitoring_reading_code": "CMON-102",
                 "asset_code": "P-101",
-                "created_at": "2026-07-01T00:00:00Z",
+                "reading_date": "2026-07-01T00:00:00Z",
             },
             {
-                "cm_report_code": "CM-103",
+                "condition_monitoring_reading_code": "CMON-103",
                 "asset_code": "P-999",
-                "created_at": "2026-08-01T00:00:00Z",
+                "reading_date": "2026-08-01T00:00:00Z",
             },
         ]
     )
 
-    result = get_pump_last_cm("P-101", cm_report_gateway=cm_report_gateway)
+    result = get_pump_last_cm("P-101", condition_monitoring_reading_gateway=condition_monitoring_reading_gateway)
 
     assert result["tag_number"] == "P-101"
-    assert result["last_cm"]["cm_report_code"] == "CM-102"
+    assert result["last_cm"]["condition_monitoring_reading_code"] == "CMON-102"
 
 
 def test_get_pump_last_cm_returns_none_when_no_reports():
-    cm_report_gateway = FakeCMReportGateway([])
+    condition_monitoring_reading_gateway = FakeConditionMonitoringReadingGateway([])
 
-    result = get_pump_last_cm("P-101", cm_report_gateway=cm_report_gateway)
+    result = get_pump_last_cm("P-101", condition_monitoring_reading_gateway=condition_monitoring_reading_gateway)
 
     assert result["last_cm"] is None
 

@@ -14,7 +14,6 @@ import ExecutiveDashboard from "./ExecutiveDashboard";
 import Pump from "./Pump";
 import WorkOrder from "./WorkOrder";
 import PM from "./PM";
-import CM from "./CM";
 import ConditionMonitoring from "./ConditionMonitoring";
 import ConditionMonitoringWorkspace from "./ConditionMonitoringWorkspace";
 import MaintenanceHistory from "./MaintenanceHistory";
@@ -77,8 +76,7 @@ const TABS = [
   { key: "installation", label: "Installation" },
   { key: "workorder", label: "Work Order" },
   { key: "pm", label: "Preventive Maintenance" },
-  { key: "cm", label: "Corrective Maintenance" },
-  { key: "cmon", label: "Condition Monitoring" },
+  { key: "cm", label: "Condition Monitoring" },
   // UI/UX Redesign Phase B -- three new sidebar-only entries. Each is a
   // thin routing adapter over existing pages/data (see PAGES below and
   // the KnowledgeLanding/AIInsightRoute/FailureAnalysisRoute components
@@ -128,7 +126,7 @@ const PRIMARY_NAV_KEYS = [
   "seal",
   "workorder",
   "pm",
-  "cmon",
+  "cm",
   "failure",
   "inventory",
   "knowledge",
@@ -394,8 +392,9 @@ const PAGES = {
   import: ImportWorkspace,
   workorder: WorkOrder,
   pm: PM,
-  cm: CM,
+  cm: ConditionMonitoring,
   cmon: ConditionMonitoring,
+  "cm-workspace": ConditionMonitoringWorkspace,
   "cmon-workspace": ConditionMonitoringWorkspace,
   "failure-analysis-workspace": FailureAnalysisWorkspace,
   failure: FailureAnalysisRoute,

@@ -1,4 +1,4 @@
-import "@testing-library/jest-dom";
+﻿import "@testing-library/jest-dom";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -211,6 +211,14 @@ describe("Condition Monitoring section (C)", () => {
 
     expect(within(chart).getByRole("button", { name: "1Y" })).toHaveAttribute("aria-pressed", "true");
     expect(within(section).getByTestId("temperature-trend-chart")).toBeInTheDocument();
+  });
+
+  it("proves Knowledge CM has no vibration operational field or label", async () => {
+    await renderAsset360();
+
+    const section = screen.getByTestId("knowledge-section-condition");
+    expect(within(section).queryByText(/Vibration/i)).toBeNull();
+    expect(within(section).queryByText("Vibration Trend")).toBeNull();
   });
 
   it("allows inspecting the full reading detail (View Details) without leaving Asset 360", async () => {

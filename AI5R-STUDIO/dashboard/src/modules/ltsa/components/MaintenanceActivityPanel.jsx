@@ -15,8 +15,8 @@ export default function MaintenanceActivityPanel({ overview }) {
           <strong>{overview.pm_schedule_count}</strong>
         </div>
         <div className="maintenance-activity-count">
-          <span className="maintenance-activity-count-label">CM Reports</span>
-          <strong>{overview.cm_report_count}</strong>
+          <span className="maintenance-activity-count-label">CM Readings</span>
+          <strong>{overview.cm_readings_count ?? overview.cm_count ?? overview.cm_report_count ?? 0}</strong>
         </div>
         <div className="maintenance-activity-count">
           <span className="maintenance-activity-count-label">Work Orders</span>
