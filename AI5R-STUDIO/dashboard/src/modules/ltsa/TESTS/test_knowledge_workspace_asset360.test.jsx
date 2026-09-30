@@ -14,6 +14,11 @@ import { getPumpKnowledge } from "../../../api/ai5rClient";
 // other pump).
 vi.mock("../../../api/ai5rClient", () => ({
   getPumpKnowledge: vi.fn(),
+  getPumps: vi.fn().mockResolvedValue([
+    { tag_number: "940-P-1B", area: "Area 940" },
+    { tag_number: "211-P-16A", area: "Area 211" },
+    { tag_number: "212-P-18B", area: "Area 212" },
+  ]),
   getPMCMEvidence: vi.fn().mockResolvedValue([]),
 }));
 
@@ -347,7 +352,7 @@ describe("AI Engineering Copilot section (J) -- existing Copilot behavior preser
   it("does not call askCopilot (or any API beyond getPumpKnowledge) on mount", async () => {
     getPumpKnowledge.mockResolvedValue(backendResponse());
     const client = await import("../../../api/ai5rClient");
-    const otherKeys = Object.keys(client).filter((key) => key !== "getPumpKnowledge" && key !== "getPMCMEvidence");
+    const otherKeys = Object.keys(client).filter((key) => key !== "getPumpKnowledge" && key !== "getPumps" && key !== "getPMCMEvidence");
 
     render(<KnowledgeWorkspace tag={TAG} />);
     await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());
