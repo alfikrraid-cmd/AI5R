@@ -240,7 +240,7 @@ function KnowledgeWorkspaceRoute({ navContext, onNavigate }) {
   if (!navContext?.assetTag) {
     return <AssetLauncher onNavigate={onNavigate} />;
   }
-  return <KnowledgeWorkspace tag={navContext.assetTag} />;
+  return <KnowledgeWorkspace tag={navContext.assetTag} onNavigate={onNavigate} />;
 }
 
 // UI/UX Redesign Phase B -- "Knowledge" sidebar entry. Both destinations

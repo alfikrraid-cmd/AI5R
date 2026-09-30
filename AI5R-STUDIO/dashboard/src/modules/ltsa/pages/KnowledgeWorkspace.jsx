@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import KnowledgeSection from "../components/KnowledgeSection";
 import KnowledgeCard, { EmptySection } from "../components/KnowledgeCard";
 import ActivePlansPanel from "../components/ActivePlansPanel";
@@ -19,6 +19,9 @@ import CopilotPanel from "../components/CopilotPanel";
 import { useKnowledgeWorkspace } from "../hooks/useKnowledgeWorkspace";
 import WorkspaceShell from "../workspace/WorkspaceShell";
 import { useWorkspaceTheme } from "../workspace/WorkspaceTheme";
+import { getPumps } from "../../../api/ai5rClient";
+import PumpTagSelector from "../components/PumpTagSelector";
+import { WORKSPACE_KEYS } from "../workspace/WorkspaceRegistry";
 import "./MaintenanceHistory.css";
 import "./KnowledgeWorkspace.css";
 
@@ -120,9 +123,18 @@ function LoadingSkeleton() {
   );
 }
 
-export default function KnowledgeWorkspace({ tag }) {
+export default function KnowledgeWorkspace({ tag, onNavigate }) {
   const [theme, setTheme] = useWorkspaceTheme();
   const { data, loading, error, refetch, refresh } = useKnowledgeWorkspace(tag);
+  const [pumps, setPumps] = useState([]);
+  const [pumpsLoading, setPumpsLoading] = useState(true);
+  const [pumpsError, setPumpsError] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    getPumps().then((items) => { if (active) setPumps(items); }).catch((err) => { if (active) setPumpsError(err); }).finally(() => { if (active) setPumpsLoading(false); });
+    return () => { active = false; };
+  }, []);
 
   // MWO-LTSA-036I -- Breadcrumb, Theme Toggle, and Command Palette are now
   // WorkspaceShell's own chrome, reused unchanged from MaintenanceHistory.jsx.
@@ -140,7 +152,9 @@ export default function KnowledgeWorkspace({ tag }) {
           <>
             <span>Asset 360</span>
             <span className="sep">›</span>
-            <b>{tag}</b>
+            <PumpTagSelector pumps={pumps} currentTag={tag} loading={pumpsLoading} error={pumpsError} onSelect={(nextTag) => {
+              if (nextTag) onNavigate?.(WORKSPACE_KEYS.PUMP, { assetTag: nextTag });
+            }} />
           </>
         ) : undefined
       }
