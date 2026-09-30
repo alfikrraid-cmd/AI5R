@@ -15,7 +15,7 @@ MAX_DIFF_BYTES = 64 * 1024      # 64 KB (matches sandbox max diff)
 MAX_SUMMARY_BYTES = 16 * 1024   # 16 KB
 MAX_ERROR_BYTES = 8 * 1024      # 8 KB
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 3
 
 
 def _now() -> str:
@@ -240,6 +240,66 @@ class ExecutionLedger:
                     status TEXT NOT NULL,
                     scope TEXT NOT NULL DEFAULT 'PRODUCTION_DEPLOYMENT',
                     approved_at TEXT NOT NULL,
+                    metadata_json TEXT NOT NULL DEFAULT '{}',
+                    FOREIGN KEY (work_item_id) REFERENCES work_items (work_item_id) ON DELETE CASCADE
+                );
+                """)
+
+                conn.execute("""
+                CREATE TABLE IF NOT EXISTS revisions (
+                    revision_id TEXT PRIMARY KEY,
+                    work_item_id TEXT NOT NULL,
+                    employee_id TEXT NOT NULL,
+                    role TEXT NOT NULL,
+                    attempt_number INTEGER NOT NULL,
+                    parent_patch_artifact_id TEXT,
+                    trigger_review_id TEXT,
+                    status TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    started_at TEXT,
+                    completed_at TEXT,
+                    error TEXT,
+                    metadata_json TEXT NOT NULL DEFAULT '{}',
+                    FOREIGN KEY (work_item_id) REFERENCES work_items (work_item_id) ON DELETE CASCADE,
+                    UNIQUE (work_item_id, attempt_number)
+                );
+                """)
+
+                conn.execute("""
+                CREATE TABLE IF NOT EXISTS ledger_events (
+                    event_id TEXT PRIMARY KEY,
+                    event_type TEXT NOT NULL,
+                    mission_id TEXT,
+                    work_item_id TEXT,
+                    employee_id TEXT NOT NULL,
+                    role TEXT NOT NULL,
+                    who TEXT NOT NULL,
+                    what TEXT NOT NULL,
+                    why TEXT NOT NULL DEFAULT '',
+                    result TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    metadata_json TEXT NOT NULL DEFAULT '{}',
+                    FOREIGN KEY (mission_id) REFERENCES missions (mission_id) ON DELETE CASCADE,
+                    FOREIGN KEY (work_item_id) REFERENCES work_items (work_item_id) ON DELETE CASCADE
+                );
+                """)
+
+                conn.execute("""
+                CREATE TABLE IF NOT EXISTS review_findings (
+                    finding_id TEXT PRIMARY KEY,
+                    review_id TEXT NOT NULL,
+                    mission_id TEXT,
+                    work_item_id TEXT NOT NULL,
+                    severity TEXT NOT NULL,
+                    category TEXT NOT NULL,
+                    description TEXT NOT NULL,
+                    evidence TEXT NOT NULL DEFAULT '',
+                    responsible_employee_id TEXT NOT NULL,
+                    responsible_role TEXT NOT NULL,
+                    required_action TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL DEFAULT 'OPEN',
+                    created_at TEXT NOT NULL,
+                    resolved_at TEXT,
                     metadata_json TEXT NOT NULL DEFAULT '{}',
                     FOREIGN KEY (work_item_id) REFERENCES work_items (work_item_id) ON DELETE CASCADE
                 );
@@ -951,6 +1011,170 @@ class ExecutionLedger:
             })
         return result
 
+    def record_revision_attempt(
+        self,
+        revision_id: str,
+        work_item_id: str,
+        employee_id: str,
+        role: str,
+        attempt_number: int,
+        parent_patch_artifact_id: str | None = None,
+        trigger_review_id: str | None = None,
+        status: str = "PREPARING",
+        created_at: str | None = None,
+        started_at: str | None = None,
+        completed_at: str | None = None,
+        error: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        """Record a RevisionAttempt. Enforces unique (work_item_id, attempt_number)."""
+        if error:
+            self._validate_bounds(error=error)
+        conn = self._get_connection()
+        try:
+            with conn:
+                conn.execute(
+                    """
+                    INSERT INTO revisions (
+                        revision_id, work_item_id, employee_id, role,
+                        attempt_number, parent_patch_artifact_id, trigger_review_id,
+                        status, created_at, started_at, completed_at, error, metadata_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        revision_id,
+                        work_item_id,
+                        employee_id,
+                        role,
+                        attempt_number,
+                        parent_patch_artifact_id,
+                        trigger_review_id,
+                        status,
+                        created_at or _now(),
+                        started_at,
+                        completed_at,
+                        error,
+                        json.dumps(metadata or {}),
+                    ),
+                )
+        except sqlite3.IntegrityError as exc:
+            raise LedgerPersistenceError(
+                f"Duplicate or invalid revision attempt {attempt_number} for '{work_item_id}': {exc}"
+            ) from exc
+        except LedgerError:
+            raise
+        except Exception as exc:
+            raise LedgerPersistenceError(f"Failed to record revision attempt: {exc}") from exc
+
+    def update_revision_status(
+        self,
+        revision_id: str,
+        status: str,
+        started_at: str | None = None,
+        completed_at: str | None = None,
+        error: str | None = None,
+        metadata_update: dict[str, Any] | None = None,
+    ) -> None:
+        """Update revision status, timestamps, error, or metadata."""
+        if error:
+            self._validate_bounds(error=error)
+        conn = self._get_connection()
+        try:
+            with conn:
+                row = conn.execute(
+                    "SELECT metadata_json FROM revisions WHERE revision_id = ?",
+                    (revision_id,),
+                ).fetchone()
+                if not row:
+                    raise KeyError(f"Revision '{revision_id}' not found")
+
+                query = "UPDATE revisions SET status = ?"
+                params: list[Any] = [status]
+
+                if started_at is not None:
+                    query += ", started_at = ?"
+                    params.append(started_at)
+                if completed_at is not None:
+                    query += ", completed_at = ?"
+                    params.append(completed_at)
+                if error is not None:
+                    query += ", error = ?"
+                    params.append(error)
+                if metadata_update is not None:
+                    existing_meta = json.loads(row["metadata_json"]) if row else {}
+                    existing_meta.update(metadata_update)
+                    query += ", metadata_json = ?"
+                    params.append(json.dumps(existing_meta))
+
+                query += " WHERE revision_id = ?"
+                params.append(revision_id)
+                conn.execute(query, tuple(params))
+        except LedgerError:
+            raise
+        except Exception as exc:
+            raise LedgerPersistenceError(f"Failed to update revision status for '{revision_id}': {exc}") from exc
+
+    def load_revisions(self, work_item_id: str | None = None) -> list[dict[str, Any]]:
+        conn = self._get_connection()
+        if work_item_id:
+            rows = conn.execute(
+                "SELECT * FROM revisions WHERE work_item_id = ? ORDER BY attempt_number ASC",
+                (work_item_id,),
+            ).fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM revisions ORDER BY created_at ASC").fetchall()
+
+        result = []
+        for r in rows:
+            result.append({
+                "revision_id": r["revision_id"],
+                "work_item_id": r["work_item_id"],
+                "employee_id": r["employee_id"],
+                "role": r["role"],
+                "attempt_number": r["attempt_number"],
+                "parent_patch_artifact_id": r["parent_patch_artifact_id"],
+                "trigger_review_id": r["trigger_review_id"],
+                "status": r["status"],
+                "created_at": r["created_at"],
+                "started_at": r["started_at"],
+                "completed_at": r["completed_at"],
+                "error": r["error"],
+                "metadata": json.loads(r["metadata_json"]),
+            })
+        return result
+
+    def get_revision_count(self, work_item_id: str) -> int:
+        """Count existing revision attempts for a work item."""
+        conn = self._get_connection()
+        row = conn.execute(
+            "SELECT COUNT(*) FROM revisions WHERE work_item_id = ?",
+            (work_item_id,),
+        ).fetchone()
+        return row[0] if row else 0
+
+    def get_in_flight_revisions(self) -> list[dict[str, Any]]:
+        """Find revisions that started but did not complete or terminate."""
+        conn = self._get_connection()
+        rows = conn.execute(
+            "SELECT * FROM revisions WHERE status IN ('PREPARING', 'EXECUTING', 'TESTING', 'REVIEWING') ORDER BY created_at ASC"
+        ).fetchall()
+        result = []
+        for r in rows:
+            result.append({
+                "revision_id": r["revision_id"],
+                "work_item_id": r["work_item_id"],
+                "employee_id": r["employee_id"],
+                "role": r["role"],
+                "attempt_number": r["attempt_number"],
+                "parent_patch_artifact_id": r["parent_patch_artifact_id"],
+                "trigger_review_id": r["trigger_review_id"],
+                "status": r["status"],
+                "created_at": r["created_at"],
+                "started_at": r["started_at"],
+                "metadata": json.loads(r["metadata_json"]),
+            })
+        return result
+
     def get_audit_trail(self, work_item_id: str) -> dict[str, Any]:
         """Reconstruct full provenance trail for a work item."""
         conn = self._get_connection()
@@ -959,6 +1183,7 @@ class ExecutionLedger:
             return {}
 
         executions = self.load_executions(work_item_id)
+        revisions = self.load_revisions(work_item_id)
         artifacts = self.load_artifacts(work_item_id)
         approval_row = conn.execute("SELECT * FROM chief_approvals WHERE work_item_id = ?", (work_item_id,)).fetchone()
 
@@ -971,6 +1196,282 @@ class ExecutionLedger:
             "is_production": bool(item_row["is_production"]),
             "recovery_status": item_row["recovery_status"],
             "executions": executions,
+            "revisions": revisions,
             "artifacts": artifacts,
             "chief_approval": dict(approval_row) if approval_row else None,
         }
+
+    def update_mission_status(
+        self,
+        mission_id: str,
+        status: str,
+        updated_at: str | None = None,
+        metadata_update: dict[str, Any] | None = None,
+    ) -> None:
+        """Update mission lifecycle status and metadata atomically."""
+        conn = self._get_connection()
+        try:
+            with conn:
+                row = conn.execute("SELECT metadata_json FROM missions WHERE mission_id = ?", (mission_id,)).fetchone()
+                if not row:
+                    raise KeyError(f"Mission '{mission_id}' not found")
+
+                query = "UPDATE missions SET status = ?, updated_at = ?"
+                params: list[Any] = [status, updated_at or _now()]
+
+                if metadata_update is not None:
+                    existing = json.loads(row["metadata_json"]) if row else {}
+                    existing.update(metadata_update)
+                    query += ", metadata_json = ?"
+                    params.append(json.dumps(existing))
+
+                query += " WHERE mission_id = ?"
+                params.append(mission_id)
+                conn.execute(query, tuple(params))
+        except LedgerError:
+            raise
+        except Exception as exc:
+            raise LedgerPersistenceError(f"Failed to update mission status for '{mission_id}': {exc}") from exc
+
+    def record_event(
+        self,
+        event_type: str,
+        who: str,
+        what: str,
+        employee_id: str = "SYSTEM",
+        role: str = "SYSTEM",
+        mission_id: str | None = None,
+        work_item_id: str | None = None,
+        why: str = "",
+        result: str = "",
+        created_at: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Record an immutable, auditable Level 6 event to the ledger."""
+        event_id = f"EVT-{uuid4().hex[:12].upper()}"
+        ts = created_at or _now()
+        meta = metadata or {}
+        conn = self._get_connection()
+        try:
+            with conn:
+                conn.execute(
+                    """
+                    INSERT INTO ledger_events (
+                        event_id, event_type, mission_id, work_item_id,
+                        employee_id, role, who, what, why, result,
+                        created_at, metadata_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        event_id,
+                        event_type,
+                        mission_id,
+                        work_item_id,
+                        employee_id,
+                        role,
+                        who,
+                        what,
+                        why,
+                        result,
+                        ts,
+                        json.dumps(meta),
+                    ),
+                )
+            return {
+                "event_id": event_id,
+                "event_type": event_type,
+                "mission_id": mission_id,
+                "work_item_id": work_item_id,
+                "employee_id": employee_id,
+                "role": role,
+                "who": who,
+                "what": what,
+                "why": why,
+                "result": result,
+                "created_at": ts,
+                "metadata": meta,
+            }
+        except LedgerError:
+            raise
+        except Exception as exc:
+            raise LedgerPersistenceError(f"Failed to record ledger event: {exc}") from exc
+
+    def load_events(
+        self,
+        mission_id: str | None = None,
+        work_item_id: str | None = None,
+        event_type: str | None = None,
+        limit: int = 500,
+    ) -> list[dict[str, Any]]:
+        """Load ordered audit lifecycle events from the ledger."""
+        conn = self._get_connection()
+        query = "SELECT * FROM ledger_events"
+        conditions: list[str] = []
+        params: list[Any] = []
+        if mission_id:
+            conditions.append("mission_id = ?")
+            params.append(mission_id)
+        if work_item_id:
+            conditions.append("work_item_id = ?")
+            params.append(work_item_id)
+        if event_type:
+            conditions.append("event_type = ?")
+            params.append(event_type)
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        query += " ORDER BY created_at ASC LIMIT ?"
+        params.append(limit)
+
+        rows = conn.execute(query, tuple(params)).fetchall()
+        result = []
+        for r in rows:
+            result.append({
+                "event_id": r["event_id"],
+                "event_type": r["event_type"],
+                "mission_id": r["mission_id"],
+                "work_item_id": r["work_item_id"],
+                "employee_id": r["employee_id"],
+                "role": r["role"],
+                "who": r["who"],
+                "what": r["what"],
+                "why": r["why"],
+                "result": r["result"],
+                "created_at": r["created_at"],
+                "timestamp": r["created_at"],
+                "metadata": json.loads(r["metadata_json"]),
+            })
+        return result
+
+    def record_finding(
+        self,
+        finding_id: str,
+        review_id: str,
+        work_item_id: str,
+        severity: str,
+        category: str,
+        description: str,
+        responsible_employee_id: str,
+        responsible_role: str,
+        mission_id: str | None = None,
+        evidence: str = "",
+        required_action: str = "",
+        status: str = "OPEN",
+        created_at: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Record structured review finding."""
+        conn = self._get_connection()
+        ts = created_at or _now()
+        meta = metadata or {}
+        try:
+            with conn:
+                conn.execute(
+                    """
+                    INSERT INTO review_findings (
+                        finding_id, review_id, mission_id, work_item_id,
+                        severity, category, description, evidence,
+                        responsible_employee_id, responsible_role,
+                        required_action, status, created_at, metadata_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        finding_id,
+                        review_id,
+                        mission_id,
+                        work_item_id,
+                        severity,
+                        category,
+                        description,
+                        evidence,
+                        responsible_employee_id,
+                        responsible_role,
+                        required_action,
+                        status,
+                        ts,
+                        json.dumps(meta),
+                    ),
+                )
+            return {
+                "finding_id": finding_id,
+                "review_id": review_id,
+                "mission_id": mission_id,
+                "work_item_id": work_item_id,
+                "severity": severity,
+                "category": category,
+                "description": description,
+                "evidence": evidence,
+                "responsible_employee_id": responsible_employee_id,
+                "responsible_role": responsible_role,
+                "required_action": required_action,
+                "status": status,
+                "created_at": ts,
+                "metadata": meta,
+            }
+        except LedgerError:
+            raise
+        except Exception as exc:
+            raise LedgerPersistenceError(f"Failed to record review finding: {exc}") from exc
+
+    def update_finding_status(
+        self,
+        finding_id: str,
+        status: str,
+        resolved_at: str | None = None,
+    ) -> None:
+        """Update review finding status (e.g. RESOLVED)."""
+        conn = self._get_connection()
+        try:
+            with conn:
+                conn.execute(
+                    "UPDATE review_findings SET status = ?, resolved_at = ? WHERE finding_id = ?",
+                    (status, resolved_at or _now(), finding_id),
+                )
+        except Exception as exc:
+            raise LedgerPersistenceError(f"Failed to update finding status for '{finding_id}': {exc}") from exc
+
+    def load_findings(
+        self,
+        mission_id: str | None = None,
+        work_item_id: str | None = None,
+        status: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Load review findings filtered by mission, work item, or status."""
+        conn = self._get_connection()
+        query = "SELECT * FROM review_findings"
+        conditions: list[str] = []
+        params: list[Any] = []
+        if mission_id:
+            conditions.append("mission_id = ?")
+            params.append(mission_id)
+        if work_item_id:
+            conditions.append("work_item_id = ?")
+            params.append(work_item_id)
+        if status:
+            conditions.append("status = ?")
+            params.append(status)
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        query += " ORDER BY created_at ASC"
+
+        rows = conn.execute(query, tuple(params)).fetchall()
+        result = []
+        for r in rows:
+            result.append({
+                "finding_id": r["finding_id"],
+                "review_id": r["review_id"],
+                "mission_id": r["mission_id"],
+                "work_item_id": r["work_item_id"],
+                "severity": r["severity"],
+                "category": r["category"],
+                "description": r["description"],
+                "evidence": r["evidence"],
+                "responsible_employee_id": r["responsible_employee_id"],
+                "responsible_role": r["responsible_role"],
+                "required_action": r["required_action"],
+                "status": r["status"],
+                "created_at": r["created_at"],
+                "resolved_at": r["resolved_at"],
+                "metadata": json.loads(r["metadata_json"]),
+            })
+        return result
+

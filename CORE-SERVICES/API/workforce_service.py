@@ -17,8 +17,15 @@ for _path in (API_DIR, CORE_SERVICES_DIR, AI5R_SDK_DIR):
         sys.path.insert(0, str(_path))
 
 from API.agent_execution_adapter import AgentExecutionAdapter, ExecutionArtifact
-from API.coding_sandbox import PatchArtifact, ReviewArtifact, TestResult
+from API.coding_sandbox import PatchArtifact, ReviewArtifact, RevisionAttempt, TestResult
 from API.execution_ledger import ExecutionLedger, LedgerPersistenceError
+from API.level_6_orchestrator import Level6MissionOrchestrator
+from API.mission_lifecycle import (
+    DEFAULT_MAX_REVISION_ITERATIONS,
+    MAX_REVISION_ITERATIONS,
+    MissionStatus,
+    ReviewFinding,
+)
 from API.STREAMING.live_stream_api import LiveStreamAPI
 from DIGITAL_EMPLOYEE.CONVERSATION.employee_conversation_store import EmployeeConversationStore
 from WORKFORCE.approval_chain_runtime import (
@@ -42,6 +49,11 @@ from WORKFORCE.work_board import WorkBoard
 from WORKFORCE.work_item import WorkItem
 from WORKFORCE.workforce_event_bus import WorkforceEvent, WorkforceEventBus
 from WORKFORCE.workforce_execution_plan import WorkforceExecutionPlan
+
+
+def _now() -> str:
+    return datetime.now(UTC).isoformat()
+
 
 POSITION_TITLES: dict[str, str] = {
     "CTO": "AI Chief Technology Officer",
@@ -509,6 +521,8 @@ class WorkforceService:
         description: str = "",
         is_production: bool = False,
         metadata: dict[str, Any] | None = None,
+        include_security: bool = False,
+        max_iterations: int | None = None,
     ) -> dict[str, Any]:
         pm = self.find_employee_by_position("PROJECT_MANAGER")
         if pm is None:
@@ -516,12 +530,22 @@ class WorkforceService:
 
         meta = dict(metadata or {})
         mission_id = f"MISSION-{uuid4().hex[:12].upper()}"
+        include_security = bool(include_security or meta.get("include_security") or meta.get("level") == 6)
+        created_by = meta.get("created_by", "CHIEF")
+        effective_max_iterations = int(max_iterations or meta.get("max_iterations") or DEFAULT_MAX_REVISION_ITERATIONS)
+        meta["max_iterations"] = effective_max_iterations
+        meta["include_security"] = include_security
 
         sprint = Sprint(
             objective=title,
             organization_id=self.organization.organization_id,
             department_id=self.department.department_id,
-            metadata={"mission_id": mission_id, "is_production": is_production, **meta},
+            metadata={
+                "mission_id": mission_id,
+                "is_production": is_production,
+                "include_security": include_security,
+                **meta,
+            },
         )
 
         pm_cap = ProjectManagerCapability()
@@ -548,6 +572,7 @@ class WorkforceService:
         backend_task = tasks_by_pos.get("BACKEND_ENGINEER")
         frontend_task = tasks_by_pos.get("FRONTEND_ENGINEER")
         qa_task = tasks_by_pos.get("QA_ENGINEER")
+        sec_task = tasks_by_pos.get("SECURITY_ENGINEER")
         devops_task = tasks_by_pos.get("DEVOPS_ENGINEER")
         doc_task = tasks_by_pos.get("DOCUMENTATION_ENGINEER")
 
@@ -565,8 +590,18 @@ class WorkforceService:
             if frontend_task:
                 qa_deps.append(frontend_task.work_item_id)
             deps_map[qa_task.work_item_id] = qa_deps
-        if devops_task and qa_task:
-            deps_map[devops_task.work_item_id] = [qa_task.work_item_id]
+        if sec_task:
+            sec_deps = []
+            if qa_task:
+                sec_deps.append(qa_task.work_item_id)
+            elif backend_task:
+                sec_deps.append(backend_task.work_item_id)
+            deps_map[sec_task.work_item_id] = sec_deps
+        if devops_task:
+            if sec_task:
+                deps_map[devops_task.work_item_id] = [sec_task.work_item_id]
+            elif qa_task:
+                deps_map[devops_task.work_item_id] = [qa_task.work_item_id]
         if doc_task and qa_task:
             deps_map[doc_task.work_item_id] = [qa_task.work_item_id]
 
@@ -602,14 +637,21 @@ class WorkforceService:
         mission_data = {
             "mission_id": mission_id,
             "title": title,
+            "objective": title,
             "description": description,
             "is_production": is_production,
             "status": "IN_PROGRESS",
+            "created_by": created_by,
+            "current_iteration": 0,
+            "max_iterations": max_iterations,
+            "approval_status": "PENDING",
+            "execution_worktree": str(REPO_ROOT),
             "sprint_id": sprint.sprint_id,
             "plan_id": plan.plan_id,
             "project_manager_id": pm.employee_id,
             "created_at": datetime.now(UTC).isoformat(),
             "updated_at": datetime.now(UTC).isoformat(),
+            "completed_at": None,
             "task_ids": [t.work_item_id for t in tasks],
             "metadata": meta,
         }
@@ -657,6 +699,32 @@ class WorkforceService:
                 work_items=serialized_tasks,
             )
 
+            try:
+                self.ledger.record_event(
+                    event_type="MISSION_CREATED",
+                    who=created_by,
+                    what=f"Mission '{title}' created with {len(tasks)} tasks",
+                    employee_id=pm.employee_id,
+                    role="PROJECT_MANAGER",
+                    mission_id=mission_id,
+                    why="Mission delegated to NEXA",
+                    result="IN_PROGRESS",
+                    metadata={"title": title, "tasks_count": len(tasks), "is_production": is_production},
+                )
+                self.ledger.record_event(
+                    event_type="PLAN_CREATED",
+                    who="NEXA (PROJECT_MANAGER)",
+                    what=f"Execution plan '{plan.plan_id}' constructed with dependency graph",
+                    employee_id=pm.employee_id,
+                    role="PROJECT_MANAGER",
+                    mission_id=mission_id,
+                    why="Structured task decomposition and DAG scheduling",
+                    result="PLAN_CREATED",
+                    metadata={"plan_id": plan.plan_id, "dependency_graph": deps_map},
+                )
+            except Exception:
+                pass
+
         self.live_stream_api.publish(
             event_type="WORKFORCE_MISSION_CREATED",
             payload={
@@ -698,7 +766,24 @@ class WorkforceService:
 
         total_tasks = len(tasks)
         progress = int((completed_count / total_tasks) * 100) if total_tasks > 0 else 0
-        status = "COMPLETED" if (total_tasks > 0 and completed_count == total_tasks) else "IN_PROGRESS"
+
+        canonical_status = mission.get("status", "IN_PROGRESS")
+        if canonical_status not in (
+            MissionStatus.READY_FOR_CHIEF_APPROVAL,
+            MissionStatus.APPROVED,
+            MissionStatus.REVISION_REQUIRED,
+            MissionStatus.REVISING,
+            MissionStatus.RE_REVIEWING,
+            MissionStatus.REVISION_LIMIT_REACHED,
+            MissionStatus.BLOCKED,
+            MissionStatus.FAILED,
+            MissionStatus.CANCELLED,
+            MissionStatus.COMPLETED,
+        ):
+            if total_tasks > 0 and completed_count == total_tasks:
+                canonical_status = "COMPLETED"
+            elif completed_count > 0:
+                canonical_status = "IN_PROGRESS"
 
         assignments = []
         for t in tasks:
@@ -713,20 +798,215 @@ class WorkforceService:
         return {
             "mission_id": mission["mission_id"],
             "title": mission["title"],
+            "objective": mission.get("objective") or mission["title"],
             "description": mission.get("description", ""),
             "is_production": mission.get("is_production", False),
-            "status": status,
+            "status": canonical_status,
+            "created_by": mission.get("created_by", "CHIEF"),
+            "assigned_employees": [t.get("assigned_employee_id") for t in tasks if t.get("assigned_employee_id")],
             "progress": progress,
             "sprint_id": mission.get("sprint_id"),
             "plan_id": mission.get("plan_id"),
             "project_manager_id": mission.get("project_manager_id"),
+            "current_iteration": mission.get("current_iteration", 0),
+            "max_iterations": mission.get("max_iterations", DEFAULT_MAX_REVISION_ITERATIONS),
+            "execution_worktree": mission.get("execution_worktree", str(REPO_ROOT)),
+            "latest_review_result": mission.get("latest_review_result"),
+            "latest_security_review_result": mission.get("latest_security_review_result"),
+            "approval_status": mission.get("approval_status", "PENDING"),
             "created_at": mission.get("created_at"),
             "updated_at": mission.get("updated_at"),
+            "completed_at": mission.get("completed_at"),
             "tasks": tasks,
             "assignments": assignments,
             "execution_plan": plan.snapshot() if plan else {},
+            "task_graph": plan.dependency_graph if plan else {},
+            "findings": self.get_mission_findings(mission_id),
             "metadata": dict(mission.get("metadata", {})),
         }
+
+    def _persist_mission_state(
+        self,
+        mission_id: str,
+        status: str,
+        metadata_update: dict[str, Any] | None = None,
+    ) -> None:
+        """Atomically persist mission status to in-memory store and SQLite ledger."""
+        mission = self._missions.get(mission_id)
+        if mission:
+            mission["status"] = status
+            mission["updated_at"] = _now()
+            if metadata_update:
+                mission.setdefault("metadata", {}).update(metadata_update)
+
+        if self.ledger is not None:
+            try:
+                self.ledger.update_mission_status(
+                    mission_id=mission_id,
+                    status=status,
+                    updated_at=_now(),
+                    metadata_update=metadata_update,
+                )
+            except Exception:
+                pass
+
+    def orchestrate_mission(
+        self,
+        mission_id: str,
+        ai_client: Any = None,
+        sentry_client: Any = None,
+        security_client: Any = None,
+        max_steps: int = 50,
+    ) -> dict[str, Any]:
+        """Run the governed Level 6 autonomous revision loop for a mission."""
+        orchestrator = Level6MissionOrchestrator(self)
+        return orchestrator.orchestrate(
+            mission_id=mission_id,
+            ai_client=ai_client,
+            sentry_client=sentry_client,
+            security_client=security_client,
+            max_steps=max_steps,
+        )
+
+    def get_mission_findings(self, mission_id: str) -> list[dict[str, Any]]:
+        """Get all review findings for a mission."""
+        if self.ledger is not None:
+            try:
+                return self.ledger.load_findings(mission_id=mission_id)
+            except Exception:
+                pass
+        return self._missions.get(mission_id, {}).get("findings", [])
+
+    def get_mission_events(self, mission_id: str) -> list[dict[str, Any]]:
+        """Get ordered lifecycle events for a mission."""
+        if self.ledger is not None:
+            try:
+                return self.ledger.load_events(mission_id=mission_id)
+            except Exception:
+                pass
+        return [
+            a.to_dict() if hasattr(a, "to_dict") else a
+            for a in self.activity_registry.list_all()
+            if getattr(a, "mission_id", None) == mission_id
+        ]
+
+    def approve_mission(
+        self,
+        mission_id: str,
+        approver_id: str = "raid",
+        approver_role: str = "CHIEF_ARCHITECT",
+        is_human: bool = True,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Human Chief explicit approval gate for mission completion/release."""
+        if not is_human:
+            raise ChiefApprovalRequiredError("Human Chief approval is required. Autonomous/AI approval is strictly forbidden.")
+
+        mission = self._missions.get(mission_id)
+        if not mission:
+            raise KeyError(f"Mission '{mission_id}' not found")
+
+        curr_status = mission.get("status")
+        if curr_status != MissionStatus.READY_FOR_CHIEF_APPROVAL:
+            raise ValueError(
+                f"Cannot approve mission in state '{curr_status}'. Mission must be in READY_FOR_CHIEF_APPROVAL state."
+            )
+
+        now_str = _now()
+        mission["status"] = MissionStatus.APPROVED
+        mission["approval_status"] = "APPROVED"
+        mission["completed_at"] = now_str
+        meta = metadata or {}
+        mission.setdefault("metadata", {}).update(meta)
+        mission["metadata"]["approved_by"] = approver_id
+        mission["metadata"]["approver_role"] = approver_role
+        mission["metadata"]["approved_at"] = now_str
+
+        self._persist_mission_state(mission_id, MissionStatus.APPROVED, metadata_update={
+            "approval_status": "APPROVED",
+            "completed_at": now_str,
+            "approved_by": approver_id,
+        })
+
+        if self.ledger is not None:
+            try:
+                self.ledger.record_event(
+                    event_type="CHIEF_APPROVED",
+                    who=f"{approver_role} ({approver_id})",
+                    what=f"Human Chief approved mission '{mission['title']}'",
+                    employee_id=approver_id,
+                    role=approver_role,
+                    mission_id=mission_id,
+                    why="Chief verification satisfied",
+                    result="APPROVED",
+                    metadata={"approver_id": approver_id, "approver_role": approver_role, "is_human": is_human},
+                )
+                self.ledger.record_event(
+                    event_type="MISSION_COMPLETED",
+                    who="SYSTEM",
+                    what=f"Mission '{mission['title']}' completed successfully following Chief approval",
+                    mission_id=mission_id,
+                    result="COMPLETED",
+                )
+            except Exception:
+                pass
+
+        mission["status"] = MissionStatus.COMPLETED
+        self._persist_mission_state(mission_id, MissionStatus.COMPLETED)
+        return self.get_mission(mission_id)
+
+    def reject_mission(
+        self,
+        mission_id: str,
+        approver_id: str = "raid",
+        approver_role: str = "CHIEF_ARCHITECT",
+        reason: str = "",
+    ) -> dict[str, Any]:
+        """Human Chief rejection of mission."""
+        mission = self._missions.get(mission_id)
+        if not mission:
+            raise KeyError(f"Mission '{mission_id}' not found")
+
+        mission["status"] = MissionStatus.CANCELLED
+        mission["approval_status"] = "REJECTED"
+        mission.setdefault("metadata", {})["rejection_reason"] = reason
+        self._persist_mission_state(mission_id, MissionStatus.CANCELLED)
+
+        if self.ledger is not None:
+            try:
+                self.ledger.record_event(
+                    event_type="CHIEF_REJECTED",
+                    who=f"{approver_role} ({approver_id})",
+                    what=f"Chief rejected mission '{mission['title']}': {reason}",
+                    mission_id=mission_id,
+                    result="REJECTED",
+                )
+            except Exception:
+                pass
+        return self.get_mission(mission_id)
+
+    def cancel_mission(self, mission_id: str, reason: str = "") -> dict[str, Any]:
+        """Cancel an in-progress mission."""
+        mission = self._missions.get(mission_id)
+        if not mission:
+            raise KeyError(f"Mission '{mission_id}' not found")
+
+        mission["status"] = MissionStatus.CANCELLED
+        mission.setdefault("metadata", {})["cancellation_reason"] = reason
+        self._persist_mission_state(mission_id, MissionStatus.CANCELLED)
+
+        if self.ledger is not None:
+            try:
+                self.ledger.record_event(
+                    event_type="MISSION_CANCELLED",
+                    who="USER",
+                    what=f"Mission cancelled: {reason}",
+                    mission_id=mission_id,
+                    result="CANCELLED",
+                )
+            except Exception:
+                pass
+        return self.get_mission(mission_id)
 
     def list_missions(self) -> list[dict[str, Any]]:
         return [self.get_mission(mid) for mid in self._missions if self.get_mission(mid) is not None]
@@ -936,7 +1216,29 @@ class WorkforceService:
             self.execution_adapter._artifacts[obj.artifact_id] = obj
             self.execution_adapter._artifacts_by_task.setdefault(obj.work_item_id, []).append(obj)
 
-        # 7. In-flight recovery (Crashed process recovery without side effect replay)
+        # 7. Revisions
+        self.execution_adapter._revisions.clear()
+        self.execution_adapter._revisions_by_task.clear()
+        for rev in self.ledger.load_revisions():
+            rev_obj = RevisionAttempt(
+                revision_id=rev["revision_id"],
+                work_item_id=rev["work_item_id"],
+                employee_id=rev["employee_id"],
+                role=rev["role"],
+                attempt_number=rev["attempt_number"],
+                parent_patch_artifact_id=rev["parent_patch_artifact_id"],
+                trigger_review_id=rev["trigger_review_id"],
+                status=rev["status"],
+                created_at=rev["created_at"],
+                started_at=rev["started_at"],
+                completed_at=rev["completed_at"],
+                error=rev["error"],
+                metadata=rev["metadata"],
+            )
+            self.execution_adapter._revisions[rev_obj.revision_id] = rev_obj
+            self.execution_adapter._revisions_by_task.setdefault(rev_obj.work_item_id, []).append(rev_obj)
+
+        # 8. In-flight recovery (Crashed process recovery without side effect replay)
         in_flight = self.ledger.get_in_flight_executions()
         for inf in in_flight:
             w_id = inf["work_item_id"]
@@ -963,3 +1265,82 @@ class WorkforceService:
                         metadata={"execution_id": inf["execution_id"], "recovery_status": "RECOVERY_REQUIRED"},
                     )
                 )
+
+        in_flight_revs = self.ledger.get_in_flight_revisions()
+        for ifr in in_flight_revs:
+            w_id = ifr["work_item_id"]
+            rev_id = ifr["revision_id"]
+            item = self.find_work_item(w_id)
+            if item:
+                item.metadata["recovery_status"] = "RECOVERY_REQUIRED"
+                if item.work_item_id not in self.work_board._claimed:
+                    self.work_board._claimed[item.work_item_id] = item
+                    self.work_board._published.pop(item.work_item_id, None)
+                self.ledger.update_revision_status(
+                    revision_id=rev_id,
+                    status="RECOVERY_REQUIRED",
+                )
+                self.ledger.update_work_item_status(
+                    work_item_id=w_id,
+                    status="CLAIMED",
+                    recovery_status="RECOVERY_REQUIRED",
+                    metadata_update={"recovery_status": "RECOVERY_REQUIRED"},
+                )
+                if rev_id in self.execution_adapter._revisions:
+                    self.execution_adapter._revisions[rev_id].status = "RECOVERY_REQUIRED"
+
+                self.live_stream_api.publish(
+                    event_type="revision_recovery_required",
+                    payload={
+                        "work_item_id": w_id,
+                        "revision_id": rev_id,
+                        "status": "RECOVERY_REQUIRED",
+                        "side_effects_replayed": False,
+                    },
+                )
+                self.activity_registry.record(
+                    EmployeeActivity(
+                        employee_id=ifr["employee_id"],
+                        activity_type="REVISION_RECOVERED",
+                        status="CLAIMED",
+                        message=f"Recovered in-flight revision for '{item.title}' after restart. Status set to RECOVERY_REQUIRED. Side effects were not replayed.",
+                        progress=0,
+                        work_item_id=w_id,
+                        metadata={"revision_id": rev_id, "recovery_status": "RECOVERY_REQUIRED"},
+                    )
+                )
+
+    def execute_revision(
+        self,
+        work_item_id: str,
+        ai_client: Any = None,
+        sentry_client: Any = None,
+    ) -> dict[str, Any]:
+        """Execute one bounded autonomous revision cycle."""
+        return self.execution_adapter.execute_revision(
+            work_item_id=work_item_id,
+            ai_client=ai_client,
+            sentry_client=sentry_client,
+        )
+
+    def execute_revision_cycle(
+        self,
+        work_item_id: str,
+        ai_client: Any = None,
+        sentry_client: Any = None,
+    ) -> dict[str, Any]:
+        """Execute the full bounded autonomous revision loop up to MAX_AUTOMATIC_REVISIONS."""
+        return self.execution_adapter.execute_revision_cycle(
+            work_item_id=work_item_id,
+            ai_client=ai_client,
+            sentry_client=sentry_client,
+        )
+
+    def get_task_revisions(self, work_item_id: str) -> list[dict[str, Any]]:
+        """Get all revisions recorded for a work item."""
+        revs = self.execution_adapter.get_task_revisions(work_item_id)
+        return [r.to_dict() for r in revs]
+
+    def check_revision_eligibility(self, work_item_id: str) -> tuple[bool, str]:
+        """Check whether work item meets criteria for autonomous revision."""
+        return self.execution_adapter.check_revision_eligibility(work_item_id)

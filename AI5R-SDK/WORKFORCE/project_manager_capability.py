@@ -54,6 +54,14 @@ class ProjectManagerCapability:
         for task in tasks:
             sprint.add_work_item(task)
 
+        if sprint.metadata.get("include_security"):
+            sec_item = WorkItem(
+                title="Conduct security review",
+                assigned_position_id="SECURITY_ENGINEER",
+            )
+            tasks.append(sec_item)
+            sprint.add_work_item(sec_item)
+
         return {
             "status": "TASKS_CREATED",
             "sprint_id": sprint.sprint_id,

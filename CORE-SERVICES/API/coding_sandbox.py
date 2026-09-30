@@ -158,6 +158,44 @@ class ReviewArtifact:
             "metadata": self.metadata,
         }
 
+MAX_AUTOMATIC_REVISIONS: int = 2
+
+
+@dataclass
+class RevisionAttempt:
+    """Canonical record of a bounded autonomous revision cycle."""
+
+    revision_id: str
+    work_item_id: str
+    employee_id: str
+    role: str
+    attempt_number: int  # 1 or 2 (attempt 0 is initial coding)
+    parent_patch_artifact_id: str | None
+    trigger_review_id: str | None
+    status: str  # "PREPARING" | "EXECUTING" | "TESTING" | "REVIEWING" | "COMPLETED" | "FAILED" | "ESCALATION_REQUIRED" | "RECOVERY_REQUIRED"
+    created_at: str
+    started_at: str | None = None
+    completed_at: str | None = None
+    error: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "revision_id": self.revision_id,
+            "work_item_id": self.work_item_id,
+            "employee_id": self.employee_id,
+            "role": self.role,
+            "attempt_number": self.attempt_number,
+            "parent_patch_artifact_id": self.parent_patch_artifact_id,
+            "trigger_review_id": self.trigger_review_id,
+            "status": self.status,
+            "created_at": self.created_at,
+            "started_at": self.started_at,
+            "completed_at": self.completed_at,
+            "error": self.error,
+            "metadata": self.metadata,
+        }
+
 
 # ==============================================================================
 # PATH & CHANGE POLICY VALIDATION

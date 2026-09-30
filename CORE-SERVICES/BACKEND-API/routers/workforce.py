@@ -45,6 +45,23 @@ class TaskReleaseRequest(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class MissionApproveRequest(BaseModel):
+    approver_id: str = "raid"
+    approver_role: str = "CHIEF_ARCHITECT"
+    is_human: bool = True
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class MissionRejectRequest(BaseModel):
+    approver_id: str = "raid"
+    approver_role: str = "CHIEF_ARCHITECT"
+    reason: str = ""
+
+
+class MissionCancelRequest(BaseModel):
+    reason: str = ""
+
+
 class MissionCreateRequest(BaseModel):
     title: str = Field(..., description="Mission or project title to delegate to NEXA")
     description: str = Field(default="", description="Detailed project / engineering mission description")
@@ -171,6 +188,148 @@ def get_mission(
     return mission
 
 
+@router.post("/api/workforce/missions/{mission_id}/orchestrate")
+def orchestrate_mission(
+    mission_id: str,
+    workforce_service: WorkforceService = Depends(get_workforce_service),
+    ai_client=Depends(get_copilot_ai_client),
+) -> dict[str, Any]:
+    """Execute next phase or full bounded autonomous revision loop for a mission."""
+    mission = workforce_service.get_mission(mission_id)
+    if not mission:
+        raise HTTPException(status_code=404, detail=f"Mission not found: {mission_id}")
+    try:
+        updated = workforce_service.orchestrate_mission(mission_id=mission_id, ai_client=ai_client)
+        return {
+            "status": updated["status"],
+            "mission": updated,
+        }
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@router.get("/api/workforce/missions/{mission_id}/plan")
+def get_mission_plan(
+    mission_id: str,
+    workforce_service: WorkforceService = Depends(get_workforce_service),
+) -> dict[str, Any]:
+    """Get the execution plan and dependency DAG for a mission."""
+    mission = workforce_service.get_mission(mission_id)
+    if not mission:
+        raise HTTPException(status_code=404, detail=f"Mission not found: {mission_id}")
+    return {
+        "mission_id": mission_id,
+        "plan_id": mission.get("plan_id"),
+        "execution_plan": mission.get("execution_plan", {}),
+        "task_graph": mission.get("task_graph", {}),
+    }
+
+
+@router.get("/api/workforce/missions/{mission_id}/tasks")
+def get_mission_tasks(
+    mission_id: str,
+    workforce_service: WorkforceService = Depends(get_workforce_service),
+) -> list[dict[str, Any]]:
+    """Get decomposed tasks for a mission."""
+    mission = workforce_service.get_mission(mission_id)
+    if not mission:
+        raise HTTPException(status_code=404, detail=f"Mission not found: {mission_id}")
+    return mission.get("tasks", [])
+
+
+@router.get("/api/workforce/missions/{mission_id}/findings")
+def get_mission_findings(
+    mission_id: str,
+    workforce_service: WorkforceService = Depends(get_workforce_service),
+) -> list[dict[str, Any]]:
+    """Get structured QA and Security review findings for a mission."""
+    mission = workforce_service.get_mission(mission_id)
+    if not mission:
+        raise HTTPException(status_code=404, detail=f"Mission not found: {mission_id}")
+    return workforce_service.get_mission_findings(mission_id)
+
+
+@router.get("/api/workforce/missions/{mission_id}/events")
+def get_mission_events(
+    mission_id: str,
+    workforce_service: WorkforceService = Depends(get_workforce_service),
+) -> list[dict[str, Any]]:
+    """Get durable execution ledger events for a mission."""
+    mission = workforce_service.get_mission(mission_id)
+    if not mission:
+        raise HTTPException(status_code=404, detail=f"Mission not found: {mission_id}")
+    return workforce_service.get_mission_events(mission_id)
+
+
+@router.post("/api/workforce/missions/{mission_id}/approve")
+def approve_mission(
+    mission_id: str,
+    payload: MissionApproveRequest,
+    workforce_service: WorkforceService = Depends(get_workforce_service),
+) -> dict[str, Any]:
+    """Human Chief Approval Gate for mission completion."""
+    try:
+        updated = workforce_service.approve_mission(
+            mission_id=mission_id,
+            approver_id=payload.approver_id,
+            approver_role=payload.approver_role,
+            is_human=payload.is_human,
+            metadata=payload.metadata,
+        )
+        return {
+            "status": "APPROVED",
+            "mission": updated,
+        }
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except ChiefApprovalRequiredError as error:
+        raise HTTPException(status_code=403, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@router.post("/api/workforce/missions/{mission_id}/reject")
+def reject_mission(
+    mission_id: str,
+    payload: MissionRejectRequest,
+    workforce_service: WorkforceService = Depends(get_workforce_service),
+) -> dict[str, Any]:
+    """Human Chief rejection of mission."""
+    try:
+        updated = workforce_service.reject_mission(
+            mission_id=mission_id,
+            approver_id=payload.approver_id,
+            approver_role=payload.approver_role,
+            reason=payload.reason,
+        )
+        return {
+            "status": "REJECTED",
+            "mission": updated,
+        }
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@router.post("/api/workforce/missions/{mission_id}/cancel")
+def cancel_mission(
+    mission_id: str,
+    payload: MissionCancelRequest | None = None,
+    workforce_service: WorkforceService = Depends(get_workforce_service),
+) -> dict[str, Any]:
+    """Cancel an in-progress mission."""
+    try:
+        reason = payload.reason if payload else ""
+        updated = workforce_service.cancel_mission(mission_id=mission_id, reason=reason)
+        return {
+            "status": "CANCELLED",
+            "mission": updated,
+        }
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
 @router.post("/api/workforce/tasks/{work_item_id}/release")
 def release_task(
     work_item_id: str,
@@ -237,6 +396,63 @@ def get_task_artifacts(
         raise HTTPException(status_code=404, detail=f"Work item not found: {work_item_id}")
     artifacts = workforce_service.get_task_artifacts(work_item_id)
     return [a.to_dict() for a in artifacts]
+
+
+@router.post("/api/workforce/tasks/{work_item_id}/revision/continue")
+def continue_task_revision(
+    work_item_id: str,
+    workforce_service: WorkforceService = Depends(get_workforce_service),
+    ai_client=Depends(get_copilot_ai_client),
+) -> dict[str, Any]:
+    """Execute next governed autonomous revision cycle for an eligible coding task."""
+    try:
+        res = workforce_service.execute_revision(work_item_id=work_item_id, ai_client=ai_client)
+        work_item = workforce_service.find_work_item(work_item_id)
+        return {
+            "status": res["status"],
+            "attempt_number": res["attempt_number"],
+            "revision_id": res["revision_id"],
+            "work_item": workforce_service.serialize_work_item(work_item) if work_item else None,
+            "patch": res["patch"].to_dict() if res.get("patch") else None,
+            "review": res["review"].to_dict() if res.get("review") else None,
+        }
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except RuntimeError as error:
+        raise HTTPException(status_code=502, detail=str(error)) from error
+
+
+@router.get("/api/workforce/tasks/{work_item_id}/revisions")
+def list_task_revisions(
+    work_item_id: str,
+    workforce_service: WorkforceService = Depends(get_workforce_service),
+) -> list[dict[str, Any]]:
+    """Get all revision attempts for a work item."""
+    work_item = workforce_service.find_work_item(work_item_id)
+    if work_item is None:
+        raise HTTPException(status_code=404, detail=f"Work item not found: {work_item_id}")
+    return workforce_service.get_task_revisions(work_item_id)
+
+
+@router.get("/api/workforce/tasks/{work_item_id}/revision/eligibility")
+def check_task_revision_eligibility(
+    work_item_id: str,
+    workforce_service: WorkforceService = Depends(get_workforce_service),
+) -> dict[str, Any]:
+    """Check whether a work item is eligible for autonomous revision."""
+    work_item = workforce_service.find_work_item(work_item_id)
+    if work_item is None:
+        raise HTTPException(status_code=404, detail=f"Work item not found: {work_item_id}")
+    eligible, reason = workforce_service.check_revision_eligibility(work_item_id)
+    return {
+        "work_item_id": work_item_id,
+        "eligible": eligible,
+        "reason": reason,
+        "revision_count": workforce_service.execution_adapter.get_revision_count(work_item_id),
+        "max_revisions": 2,
+    }
 
 
 @router.get("/api/workforce/artifacts/{artifact_id}")

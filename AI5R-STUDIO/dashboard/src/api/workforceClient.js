@@ -311,3 +311,170 @@ export async function fetchWorkforceArtifact(artifactId, { signal } = {}) {
   return handleResponse(response, `Failed to fetch artifact ${artifactId}`);
 }
 
+
+/**
+ * Trigger Level 6 autonomous orchestration of a mission.
+ */
+export async function orchestrateWorkforceMission(missionId, { signal } = {}) {
+  if (!missionId) {
+    throw new Error("missionId is required");
+  }
+  const response = await fetch(
+    `${API_URL}/api/workforce/missions/${encodeURIComponent(missionId)}/orchestrate`,
+    {
+      method: "POST",
+      headers: getHeaders({ "Content-Type": "application/json" }),
+      signal,
+    }
+  );
+  return handleResponse(response, `Failed to orchestrate mission ${missionId}`);
+}
+
+/**
+ * Fetch the generated plan and execution topology of a mission.
+ */
+export async function fetchMissionPlan(missionId, { signal } = {}) {
+  if (!missionId) {
+    throw new Error("missionId is required");
+  }
+  const response = await fetch(
+    `${API_URL}/api/workforce/missions/${encodeURIComponent(missionId)}/plan`,
+    {
+      headers: getHeaders(),
+      signal,
+    }
+  );
+  return handleResponse(response, `Failed to fetch plan for mission ${missionId}`);
+}
+
+/**
+ * Fetch decomposed tasks of a mission.
+ */
+export async function fetchMissionTasks(missionId, { signal } = {}) {
+  if (!missionId) {
+    throw new Error("missionId is required");
+  }
+  const response = await fetch(
+    `${API_URL}/api/workforce/missions/${encodeURIComponent(missionId)}/tasks`,
+    {
+      headers: getHeaders(),
+      signal,
+    }
+  );
+  return handleResponse(response, `Failed to fetch tasks for mission ${missionId}`);
+}
+
+/**
+ * Fetch structured review findings for a mission.
+ */
+export async function fetchMissionFindings(missionId, { signal } = {}) {
+  if (!missionId) {
+    throw new Error("missionId is required");
+  }
+  const response = await fetch(
+    `${API_URL}/api/workforce/missions/${encodeURIComponent(missionId)}/findings`,
+    {
+      headers: getHeaders(),
+      signal,
+    }
+  );
+  return handleResponse(response, `Failed to fetch findings for mission ${missionId}`);
+}
+
+/**
+ * Fetch immutable ledger events for a mission.
+ */
+export async function fetchMissionEvents(missionId, { signal } = {}) {
+  if (!missionId) {
+    throw new Error("missionId is required");
+  }
+  const response = await fetch(
+    `${API_URL}/api/workforce/missions/${encodeURIComponent(missionId)}/events`,
+    {
+      headers: getHeaders(),
+      signal,
+    }
+  );
+  return handleResponse(response, `Failed to fetch events for mission ${missionId}`);
+}
+
+/**
+ * Human Chief Approval Gate for mission completion.
+ */
+export async function approveWorkforceMission(
+  missionId,
+  {
+    approverId = "raid",
+    approverRole = "CHIEF_ARCHITECT",
+    isHuman = true,
+    metadata = {},
+    signal,
+  } = {}
+) {
+  if (!missionId) {
+    throw new Error("missionId is required");
+  }
+  const payload = {
+    approver_id: approverId,
+    approver_role: approverRole,
+    is_human: Boolean(isHuman),
+    metadata,
+  };
+  const response = await fetch(
+    `${API_URL}/api/workforce/missions/${encodeURIComponent(missionId)}/approve`,
+    {
+      method: "POST",
+      headers: getHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(payload),
+      signal,
+    }
+  );
+  return handleResponse(response, `Failed to approve mission ${missionId}`);
+}
+
+/**
+ * Human Chief rejection of mission.
+ */
+export async function rejectWorkforceMission(
+  missionId,
+  { approverId = "raid", approverRole = "CHIEF_ARCHITECT", reason = "", signal } = {}
+) {
+  if (!missionId) {
+    throw new Error("missionId is required");
+  }
+  const payload = {
+    approver_id: approverId,
+    approver_role: approverRole,
+    reason,
+  };
+  const response = await fetch(
+    `${API_URL}/api/workforce/missions/${encodeURIComponent(missionId)}/reject`,
+    {
+      method: "POST",
+      headers: getHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(payload),
+      signal,
+    }
+  );
+  return handleResponse(response, `Failed to reject mission ${missionId}`);
+}
+
+/**
+ * Cancel an in-progress mission.
+ */
+export async function cancelWorkforceMission(missionId, { reason = "", signal } = {}) {
+  if (!missionId) {
+    throw new Error("missionId is required");
+  }
+  const payload = { reason };
+  const response = await fetch(
+    `${API_URL}/api/workforce/missions/${encodeURIComponent(missionId)}/cancel`,
+    {
+      method: "POST",
+      headers: getHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(payload),
+      signal,
+    }
+  );
+  return handleResponse(response, `Failed to cancel mission ${missionId}`);
+}
