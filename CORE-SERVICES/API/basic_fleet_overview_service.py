@@ -149,7 +149,12 @@ def _contract_area_distribution(pumps: list[dict[str, Any]]) -> dict[str, int]:
     counts = {group: 0 for group in CONTRACT_AREA_GROUPS}
     counts[UNCLASSIFIED] = 0
     for pump in pumps:
-        counts[resolve_contract_area(pump.get("area"))] += 1
+        counts[
+            resolve_contract_area(
+                pump.get("area"),
+                pump.get("asset_code") or pump.get("tag_number"),
+            )
+        ] += 1
     return counts
 
 

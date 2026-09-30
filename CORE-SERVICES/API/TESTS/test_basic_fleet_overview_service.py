@@ -258,9 +258,8 @@ def test_contract_area_distribution_sends_unknown_tokens_to_unclassified():
 
 
 def test_contract_area_never_infers_from_tag_number_prefix():
-    # Same tag-number prefix as an HCC-mapped sibling is NOT evidence --
-    # REAKTOR must resolve Unclassified regardless of what its neighbors
-    # under the same prefix are mapped to.
+    # 212-P-4A is HCC because of its explicit governed evidence, not because
+    # of its prefix or neighboring records.
     pumps = [
         {"tag_number": "212-P-4A", "area": "REAKTOR", "status": "ACTIVE"},
         {"tag_number": "212-P-4B", "area": "HCC", "status": "ACTIVE"},
@@ -270,8 +269,8 @@ def test_contract_area_never_infers_from_tag_number_prefix():
 
     result = service.build()
 
-    assert result.contract_area_distribution["HCC"] == 2
-    assert result.contract_area_distribution[UNCLASSIFIED] == 1
+    assert result.contract_area_distribution["HCC"] == 3
+    assert result.contract_area_distribution[UNCLASSIFIED] == 0
 
 
 def test_raw_area_distribution_is_unchanged_by_contract_area_classification():

@@ -107,13 +107,13 @@ def _group(rows: Iterable[dict[str, Any]], key: str) -> dict[str, list[dict[str,
     return grouped
 
 
-def area_fields(raw_area: Any) -> dict[str, Any]:
+def area_fields(raw_area: Any, asset_code: str | None = None) -> dict[str, Any]:
     """The canonical area classification of one raw asset_registry.area value."""
     recorded = raw_area if isinstance(raw_area, str) and raw_area.strip() else None
     return {
         "raw_area_key": recorded if recorded is not None else NOT_RECORDED_AREA_KEY,
         "raw_area": recorded,
-        "contract_area": resolve_contract_area(recorded),
+        "contract_area": resolve_contract_area(recorded, asset_code),
         "maintenance_area": resolve_area_ma(recorded) or UNCLASSIFIED,
     }
 
@@ -205,7 +205,7 @@ class BiDatasetService:
     def assets_rows(self) -> list[dict[str, Any]]:
         out = []
         for row in self._asset_rows():
-            area = area_fields(row.get("raw_area"))
+            area = area_fields(row.get("raw_area"), row.get("asset_code"))
             out.append(
                 {
                     "asset_code": row.get("asset_code"),

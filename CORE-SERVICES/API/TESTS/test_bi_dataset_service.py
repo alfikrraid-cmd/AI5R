@@ -205,6 +205,17 @@ def test_assets_keep_every_registry_asset_with_null_enrichment():
     assert rows["X-1"]["contract_area"] == "Unclassified" and rows["X-1"]["maintenance_area"] == "Unclassified"
 
 
+def test_assets_apply_governed_pump_mapping_without_changing_raw_or_maintenance_area():
+    assets = [asset("101-P-2A", "PUMP", "CDU"), asset("946-P-2A", "PUMP", "ITY")]
+    service, _ = build(assets=assets)
+    rows = by(service.assets()["data"], "asset_code")
+
+    assert rows["101-P-2A"]["contract_area"] == "HSC & S. Pakning"
+    assert rows["101-P-2A"]["raw_area"] == "CDU"
+    assert rows["101-P-2A"]["maintenance_area"] == "Unclassified"
+    assert rows["946-P-2A"]["contract_area"] == "Unclassified"
+
+
 def test_areas_reuse_canonical_mappings_and_keep_their_divergence():
     rows = by(build()[0].areas()["data"], "raw_area_key")
     for key, row in rows.items():
