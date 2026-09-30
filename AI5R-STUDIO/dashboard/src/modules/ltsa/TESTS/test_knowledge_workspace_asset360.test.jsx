@@ -192,26 +192,23 @@ describe("Condition Monitoring section (C)", () => {
     expect(within(waterJacketCard).queryByText(/^0/)).not.toBeInTheDocument();
   });
 
-  it("renders the temperature trend chart with time-range filter buttons (1M/3M/6M/1Y)", async () => {
+  it("renders the temperature trend chart with time-range filter buttons (30D/90D/6M/1Y/ALL)", async () => {
     await renderAsset360();
 
     const section = screen.getByTestId("knowledge-section-condition");
-    const chart = within(section).getByTestId("temperature-trend-chart");
-    ["1M", "3M", "6M", "1Y"].forEach((label) => {
+    const chart = within(within(section).getByTestId("temperature-trend-chart")).getAllByTestId("temperature-trend-subchart")[0];
+    ["30D", "90D", "6M", "1Y", "ALL"].forEach((label) => {
       expect(within(chart).getByRole("button", { name: label })).toBeInTheDocument();
     });
-    expect(within(chart).getByRole("button", { name: "3M" })).toHaveAttribute("aria-pressed", "true");
-    ["3Y", "4Y", "ALL"].forEach((label) => {
-      expect(within(chart).queryByRole("button", { name: label })).not.toBeInTheDocument();
-    });
+    expect(within(chart).getByRole("button", { name: "6M" })).toHaveAttribute("aria-pressed", "true");
   });
 
   it("switching the trend time range does not crash and keeps the chart mounted", async () => {
     await renderAsset360();
 
     const section = screen.getByTestId("knowledge-section-condition");
-    const chart = within(section).getByTestId("temperature-trend-chart");
-    fireEvent.click(within(chart).getByRole("button", { name: "3M" }));
+    const chart = within(within(section).getByTestId("temperature-trend-chart")).getAllByTestId("temperature-trend-subchart")[0];
+    fireEvent.click(within(chart).getByRole("button", { name: "90D" }));
     fireEvent.click(within(chart).getByRole("button", { name: "1Y" }));
 
     expect(within(chart).getByRole("button", { name: "1Y" })).toHaveAttribute("aria-pressed", "true");

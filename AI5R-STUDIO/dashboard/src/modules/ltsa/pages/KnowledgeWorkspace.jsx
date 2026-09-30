@@ -12,6 +12,7 @@ import KnowledgeRecommendation from "../components/KnowledgeRecommendation";
 import AssetHeaderKpis from "../components/AssetHeaderKpis";
 import AssetSectionNav from "../components/AssetSectionNav";
 import ConditionMonitoringReportMeasuring from "../components/ConditionMonitoringReportMeasuring";
+import KnowledgeConditionMonitoringSection from "../components/KnowledgeConditionMonitoringSection";
 import KnowledgeUnifiedHistory from "../components/KnowledgeUnifiedHistory";
 import KnowledgePmHistorySection from "../components/KnowledgePmHistorySection";
 import KnowledgeWorkOrdersSection from "../components/KnowledgeWorkOrdersSection";
@@ -272,6 +273,18 @@ export default function KnowledgeWorkspace({ tag, onNavigate }) {
 
               <KnowledgeSection id="timeline" title="Equipment Timeline" badge={`${data.timeline.length} peristiwa`}>
                 <KnowledgeTimeline items={data.timeline} />
+              </KnowledgeSection>
+
+              {/* Section C -- Condition Monitoring: latest snapshot, ALL
+                  temperature points (DE/NDE), trend chart (3M/6M/1Y/3Y/4Y/
+                  All), and browsable reading history without leaving
+                  Asset 360. */}
+              <KnowledgeSection
+                id="condition"
+                title="Condition Monitoring"
+                badge={String(data.conditionMonitoringReadings.length)}
+              >
+                <KnowledgeConditionMonitoringSection readings={data.conditionMonitoringReadings} />
               </KnowledgeSection>
 
               {/* Section D -- Unified Maintenance History: one chronological

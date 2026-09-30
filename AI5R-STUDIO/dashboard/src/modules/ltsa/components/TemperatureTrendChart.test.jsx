@@ -32,30 +32,29 @@ describe("TemperatureTrendChart", () => {
     vi.useRealTimers();
   });
 
-  it("renders readable fixed range controls with 3M selected by default", () => {
+  it("renders 30D/90D/6M/1Y/ALL controls with 6M selected by default", () => {
     render(<TemperatureTrendChart readings={READINGS} />);
 
     const chart = screen.getByTestId("temperature-trend-chart");
-    ["1M", "3M", "6M", "1Y"].forEach((label) => {
-      const button = within(chart).getByRole("button", { name: label });
+    const sealChart = within(chart).getAllByTestId("temperature-trend-subchart")[0];
+    ["30D", "90D", "6M", "1Y", "ALL"].forEach((label) => {
+      const button = within(sealChart).getByRole("button", { name: label });
       expect(button).toBeVisible();
       expect(button).toHaveTextContent(label);
       expect(button).toHaveStyle({ minWidth: "36px", whiteSpace: "nowrap" });
     });
-    expect(within(chart).getByRole("button", { name: "3M" })).toHaveAttribute("aria-pressed", "true");
-    ["3Y", "4Y", "5Y", "ALL"].forEach((label) => {
-      expect(within(chart).queryByRole("button", { name: label })).not.toBeInTheDocument();
-    });
+    expect(within(sealChart).getByRole("button", { name: "6M" })).toHaveAttribute("aria-pressed", "true");
   });
 
   it("switches range selection without changing the allowed control set", () => {
     render(<TemperatureTrendChart readings={READINGS} />);
 
     const chart = screen.getByTestId("temperature-trend-chart");
-    fireEvent.click(within(chart).getByRole("button", { name: "1Y" }));
+    const sealChart = within(chart).getAllByTestId("temperature-trend-subchart")[0];
+    fireEvent.click(within(sealChart).getByRole("button", { name: "1Y" }));
 
-    expect(within(chart).getByRole("button", { name: "1Y" })).toHaveAttribute("aria-pressed", "true");
-    expect(within(chart).getAllByRole("button")).toHaveLength(4);
+    expect(within(sealChart).getByRole("button", { name: "1Y" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(sealChart).getAllByRole("button")).toHaveLength(5);
   });
 
   it("renders date and Celsius axes with DE/NDE as distinct real-data series", () => {
