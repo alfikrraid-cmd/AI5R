@@ -432,19 +432,24 @@ def resolve_area_scope(identity: "AuthenticatedIdentity") -> frozenset[str] | No
     """Returns the set of physical Area codes `identity` may see, or None
     for "unrestricted" (every non-Pertamina role, always). A Pertamina
     role with no recognized scope recorded returns an EMPTY frozenset --
-    fail-closed, never treated as unrestricted. The actual AREA/MA
-    vocabulary and MA->areas grouping lives in API.pump_area_scope (not
-    here) to keep this module free of LTSA-domain vocabulary; imported
-    lazily to avoid a circular import (pump_area_scope has no reason to
-    import auth_service, but this keeps the dependency direction
-    explicit)."""
+    fail-closed, never treated as unrestricted. When data_scope_type is
+    'ALL', the full authoritative set of LTSA Area codes (AREA_CODES) is
+    returned -- granting access across all physical areas without making
+    the role globally unrestricted. The actual AREA/MA vocabulary and
+    MA->areas grouping lives in API.pump_area_scope (not here) to keep
+    this module free of LTSA-domain vocabulary; imported lazily to avoid
+    a circular import (pump_area_scope has no reason to import
+    auth_service, but this keeps the dependency direction explicit)."""
     if identity.role in _UNRESTRICTED_ROLES:
         return None
     from .pump_area_scope import AREA_CODES, MA_AREA_GROUPS
 
-    if identity.data_scope_type == "AREA" and identity.data_scope_value in AREA_CODES:
+    scope_type = identity.data_scope_type.strip().upper() if identity.data_scope_type else None
+    if scope_type == "ALL":
+        return AREA_CODES
+    if scope_type == "AREA" and identity.data_scope_value in AREA_CODES:
         return frozenset({identity.data_scope_value})
-    if identity.data_scope_type == "MA" and identity.data_scope_value in MA_AREA_GROUPS:
+    if scope_type == "MA" and identity.data_scope_value in MA_AREA_GROUPS:
         return MA_AREA_GROUPS[identity.data_scope_value]
     return frozenset()
 

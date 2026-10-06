@@ -80,15 +80,62 @@ class TestResolveAreaScopePertaminaByArea:
 
 
 class TestResolveAreaScopePertaminaByMA:
+    def test_ma1_covers_hoc(self):
+        identity = _identity("PERTAMINA_ENGINEER", data_scope_type="MA", data_scope_value="MA1")
+        assert resolve_area_scope(identity) == frozenset({"HOC"})
+
     def test_ma2_covers_exactly_hsc_s_pakning_hcc(self):
         identity = _identity("PERTAMINA_ENGINEER", data_scope_type="MA", data_scope_value="MA2")
         assert resolve_area_scope(identity) == frozenset({"HSC", "S_PAKNING", "HCC"})
 
-    def test_ma_group_vocabulary_contains_only_ma2(self):
-        # MA1/MA3/MA4 area membership was not provable from any
-        # authoritative repository source this session -- deliberately
-        # absent, never guessed.
-        assert set(MA_AREA_GROUPS.keys()) == {"MA2"}
+    def test_ma3_covers_utl(self):
+        identity = _identity("PERTAMINA_ENGINEER", data_scope_type="MA", data_scope_value="MA3")
+        assert resolve_area_scope(identity) == frozenset({"UTL"})
+
+    def test_ma4_covers_om(self):
+        identity = _identity("PERTAMINA_ENGINEER", data_scope_type="MA", data_scope_value="MA4")
+        assert resolve_area_scope(identity) == frozenset({"OM"})
+
+    def test_ma_group_vocabulary_contains_all_four_mas(self):
+        assert set(MA_AREA_GROUPS.keys()) == {"MA1", "MA2", "MA3", "MA4"}
+
+
+class TestResolveAreaScopePertaminaByAll:
+    def test_pertamina_engineer_with_all_scope_gets_full_area_codes(self):
+        identity = _identity("PERTAMINA_ENGINEER", data_scope_type="ALL")
+        assert resolve_area_scope(identity) == AREA_CODES
+        assert resolve_area_scope(identity) == frozenset({"HOC", "HSC", "S_PAKNING", "HCC", "OM", "UTL"})
+
+    def test_pertamina_engineer_with_all_scope_case_insensitive(self):
+        identity = _identity("PERTAMINA_ENGINEER", data_scope_type="all")
+        assert resolve_area_scope(identity) == AREA_CODES
+
+    def test_pertamina_engineer_with_all_scope_ignores_data_scope_value(self):
+        identity = _identity("PERTAMINA_ENGINEER", data_scope_type="ALL", data_scope_value="IGNORED")
+        assert resolve_area_scope(identity) == AREA_CODES
+
+    def test_pertamina_viewer_with_all_scope_gets_full_area_codes(self):
+        identity = _identity("PERTAMINA_VIEWER", data_scope_type="ALL")
+        assert resolve_area_scope(identity) == AREA_CODES
+
+    def test_pertamina_engineer_is_never_unrestricted_even_with_all_scope(self):
+        # CRITICAL NEGATIVE TEST:
+        # resolve_area_scope must return AREA_CODES, NEVER None.
+        # None grants unrestricted superuser status, bypassing area bounds.
+        # AREA_CODES explicitly bounds access to valid LTSA physical areas.
+        identity = _identity("PERTAMINA_ENGINEER", data_scope_type="ALL")
+        scope = resolve_area_scope(identity)
+        assert scope is not None
+        assert isinstance(scope, frozenset)
+        assert scope == AREA_CODES
+        assert is_area_in_scope("NON_LTSA_AREA", scope) is False
+        assert is_area_in_scope(None, scope) is False
+        assert is_area_in_scope("HOC", scope) is True
+        assert is_area_in_scope("HSC", scope) is True
+        assert is_area_in_scope("S_PAKNING", scope) is True
+        assert is_area_in_scope("HCC", scope) is True
+        assert is_area_in_scope("OM", scope) is True
+        assert is_area_in_scope("UTL", scope) is True
 
 
 class TestResolveAreaScopeFailClosed:
@@ -97,13 +144,16 @@ class TestResolveAreaScopeFailClosed:
         assert resolve_area_scope(identity) == frozenset()
 
     def test_unresolved_ma_value_gets_empty_scope_never_guessed(self):
-        # MA1/MA3/MA4 -- unresolved. Must never silently grant access to
-        # any area.
-        identity = _identity("PERTAMINA_ENGINEER", data_scope_type="MA", data_scope_value="MA1")
+        # Unresolved MA values (outside MA1..MA4) must fail closed.
+        identity = _identity("PERTAMINA_ENGINEER", data_scope_type="MA", data_scope_value="MA5")
         assert resolve_area_scope(identity) == frozenset()
 
     def test_unknown_area_value_gets_empty_scope(self):
         identity = _identity("PERTAMINA_VIEWER", data_scope_type="AREA", data_scope_value="NOT_A_REAL_AREA")
+        assert resolve_area_scope(identity) == frozenset()
+
+    def test_unknown_scope_type_gets_empty_scope(self):
+        identity = _identity("PERTAMINA_ENGINEER", data_scope_type="DEPARTMENT", data_scope_value="REFINERY")
         assert resolve_area_scope(identity) == frozenset()
 
 
@@ -144,3 +194,16 @@ class TestFilterRecordsByScope:
     def test_empty_scope_drops_every_record(self):
         records = [{"tag_number": "1", "area": "HOC"}]
         assert filter_records_by_scope(records, frozenset()) == []
+
+    def test_all_scope_keeps_all_six_ltsa_areas_and_drops_non_ltsa(self):
+        records = [
+            {"tag_number": "1", "area": "HOC"},
+            {"tag_number": "2", "area": "HSC"},
+            {"tag_number": "3", "area": "S_PAKNING"},
+            {"tag_number": "4", "area": "HCC"},
+            {"tag_number": "5", "area": "OM"},
+            {"tag_number": "6", "area": "UTL"},
+            {"tag_number": "7", "area": "UNKNOWN_OFFSHORE"},
+        ]
+        result = filter_records_by_scope(records, AREA_CODES)
+        assert {r["tag_number"] for r in result} == {"1", "2", "3", "4", "5", "6"}

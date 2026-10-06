@@ -209,3 +209,124 @@ class TestAreaScopedDetail:
             assert client.get("/api/ltsa/pumps").json()["data"] == []
         finally:
             _clear()
+
+    def test_pertamina_engineer_with_all_scope_sees_all_six_areas_in_list(self):
+        _as(_identity("PERTAMINA_ENGINEER", data_scope_type="ALL"))
+        try:
+            assert _list_areas() == {"HOC", "HSC", "S_PAKNING", "HCC", "OM", "UTL"}
+            response = client.get("/api/ltsa/pumps")
+            body = response.json()
+            assert body["count"] == 6 == len(body["data"])
+        finally:
+            _clear()
+
+    def test_pertamina_viewer_with_all_scope_sees_all_six_areas_in_list(self):
+        _as(_identity("PERTAMINA_VIEWER", data_scope_type="ALL"))
+        try:
+            assert _list_areas() == {"HOC", "HSC", "S_PAKNING", "HCC", "OM", "UTL"}
+            response = client.get("/api/ltsa/pumps")
+            body = response.json()
+            assert body["count"] == 6 == len(body["data"])
+        finally:
+            _clear()
+
+    def test_pertamina_engineer_with_null_scope_sees_zero_pumps(self):
+        _as(_identity("PERTAMINA_ENGINEER", data_scope_type=None))
+        try:
+            response = client.get("/api/ltsa/pumps")
+            body = response.json()
+            assert body["count"] == 0
+            assert body["data"] == []
+            assert client.get("/api/ltsa/pumps/110-P-9A").status_code == 404
+        finally:
+            _clear()
+
+    def test_pertamina_engineer_with_all_scope_can_reach_every_individual_pump(self):
+        _as(_identity("PERTAMINA_ENGINEER", data_scope_type="ALL"))
+        try:
+            for pump in _ALL_PUMPS:
+                tag = pump["tag_number"]
+                response = client.get(f"/api/ltsa/pumps/{tag}")
+                assert response.status_code == 200
+                assert response.json()["data"]["tag_number"] == tag
+            # Non-existent pump returns safe 404
+            assert client.get("/api/ltsa/pumps/NON_EXISTENT_PUMP").status_code == 404
+        finally:
+            _clear()
+
+
+class TestPertaminaEngineerPermissionsGuards:
+    """Proves that widening data scope to ALL does NOT grant write or admin permissions.
+    Role permissions remain strictly enforced by FastAPI dependencies.
+    """
+
+    def test_all_scoped_pertamina_engineer_denied_admin_create_user(self):
+        _as(_identity("PERTAMINA_ENGINEER", data_scope_type="ALL"))
+        try:
+            response = client.post(
+                "/api/admin/users",
+                json={
+                    "username": "test_user",
+                    "password": "Password123!",
+                    "organization_id": "org-1",
+                    "role": "PERTAMINA_VIEWER",
+                },
+            )
+            assert response.status_code == 403
+        finally:
+            _clear()
+
+    def test_all_scoped_pertamina_engineer_denied_admin_user_status(self):
+        _as(_identity("PERTAMINA_ENGINEER", data_scope_type="ALL"))
+        try:
+            response = client.patch(
+                "/api/admin/users/test-user-id/status",
+                json={"status": "INACTIVE"},
+            )
+            assert response.status_code == 403
+        finally:
+            _clear()
+
+    def test_all_scoped_pertamina_engineer_denied_admin_reset_password(self):
+        _as(_identity("PERTAMINA_ENGINEER", data_scope_type="ALL"))
+        try:
+            response = client.post(
+                "/api/admin/users/test-user-id/password-reset",
+                json={"new_password": "NewPassword123!"},
+            )
+            assert response.status_code == 403
+        finally:
+            _clear()
+
+    def test_all_scoped_pertamina_engineer_denied_installation_write(self):
+        _as(_identity("PERTAMINA_ENGINEER", data_scope_type="ALL"))
+        try:
+            response = client.post(
+                "/api/ltsa/installation-reports/INST-001/link-installation",
+                json={
+                    "seal_unit_id": "SEAL-1",
+                    "installation_event_id": "EVT-1",
+                    "pump_tag_number": "110-P-9A",
+                    "reason": "Routine installation",
+                },
+            )
+            assert response.status_code == 403
+        finally:
+            _clear()
+
+    def test_all_scoped_pertamina_engineer_denied_record_edit(self):
+        _as(_identity("PERTAMINA_ENGINEER", data_scope_type="ALL"))
+        try:
+            response = client.post(
+                "/api/ltsa/records/edit",
+                json={
+                    "entity_type": "PUMP",
+                    "entity_id": "110-P-9A",
+                    "field_name": "name",
+                    "new_value": "test",
+                    "reason": "Correction",
+                },
+            )
+            assert response.status_code == 403
+        finally:
+            _clear()
