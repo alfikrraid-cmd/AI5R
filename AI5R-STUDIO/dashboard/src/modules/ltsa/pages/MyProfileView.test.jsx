@@ -162,3 +162,65 @@ describe("MyProfileView", () => {
     );
   });
 });
+
+describe("MyProfileView layout", () => {
+  it("renders the page header inside the centered profile container", () => {
+    const { container } = render(<MyProfileView session={BASE_SESSION} onNavigateWorkspace={vi.fn()} />);
+
+    const root = container.querySelector(".ltsa-open-design > .ltsa-profile-container");
+    expect(root).not.toBeNull();
+    expect(screen.getByRole("heading", { level: 1, name: "My Profile" })).toBeInTheDocument();
+    expect(
+      screen.getByText("Manage your LTSA identity, organization, and account security.")
+    ).toBeInTheDocument();
+  });
+
+  it("renders two labelled cards: Profile Information and Security & Credentials", () => {
+    const { container } = render(<MyProfileView session={BASE_SESSION} onNavigateWorkspace={vi.fn()} />);
+
+    expect(container.querySelectorAll(".profile-card")).toHaveLength(2);
+    expect(screen.getByRole("region", { name: "Profile Information" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Security & Credentials" })).toBeInTheDocument();
+  });
+
+  it("keeps every label and value in separate elements within the field grid", () => {
+    const { container } = render(<MyProfileView session={BASE_SESSION} onNavigateWorkspace={vi.fn()} />);
+
+    const grid = container.querySelector(".profile-field-grid");
+    expect(grid).not.toBeNull();
+    const labels = [...grid.querySelectorAll(".profile-field-label")].map((el) => el.textContent);
+    expect(labels).toEqual(["Full Name", "Username", "Organization", "Role", "Area Access", "Registered Email"]);
+    for (const testId of ["profile-full-name", "profile-username", "profile-organization"]) {
+      const value = screen.getByTestId(testId);
+      expect(value).toHaveClass("profile-field-value");
+      expect(value.closest(".profile-field").querySelector(".profile-field-label")).not.toBe(value);
+    }
+  });
+
+  it("renders role and area access as badges and the email row across the full grid width", () => {
+    render(<MyProfileView session={BASE_SESSION} onNavigateWorkspace={vi.fn()} />);
+
+    expect(screen.getByTestId("profile-role")).toHaveClass("profile-badge");
+    expect(screen.getByTestId("profile-area-access")).toHaveClass("profile-badge");
+    expect(screen.getByTestId("profile-email-display").closest(".profile-field")).toHaveClass("profile-field-full");
+  });
+
+  it("keeps a SUPERUSER with no recorded scope as 'No Area Access / Not Assigned' (resolver contract unchanged)", () => {
+    const session = { ...BASE_SESSION, role: "SUPERUSER", data_scope_type: null, data_scope_value: null };
+    render(<MyProfileView session={session} onNavigateWorkspace={vi.fn()} />);
+
+    expect(screen.getByTestId("profile-role")).toHaveTextContent("Superuser");
+    expect(screen.getByTestId("profile-area-access")).toHaveTextContent("No Area Access / Not Assigned");
+  });
+
+  it("shows the disabled Change Password action with its hint underneath, and a masked password", () => {
+    render(<MyProfileView session={BASE_SESSION} onNavigateWorkspace={vi.fn()} />);
+
+    const button = screen.getByTestId("profile-change-password-btn");
+    expect(button).toBeDisabled();
+    expect(button).toHaveClass("btn-secondary");
+    const action = button.closest(".profile-security-action");
+    expect(action.querySelector(".profile-security-hint")).toHaveTextContent("Available after security update");
+    expect(screen.getByTestId("profile-password-display")).toHaveTextContent("••••••••••••");
+  });
+});

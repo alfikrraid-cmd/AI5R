@@ -91,7 +91,7 @@ export default function MyProfileView({ session: propSession, onNavigateWorkspac
   }
 
   return (
-    <div className="ltsa-open-design">
+    <div className="ltsa-open-design ltsa-profile-page">
       <div className="ltsa-profile-container">
         <div className="profile-nav-bar">
           <button
@@ -104,11 +104,15 @@ export default function MyProfileView({ session: propSession, onNavigateWorkspac
           </button>
         </div>
 
+        <header className="profile-page-header">
+          <h1>My Profile</h1>
+          <p>Manage your LTSA identity, organization, and account security.</p>
+        </header>
+
         {/* User Identity & Scope Card */}
-        <div className="profile-card">
+        <section className="profile-card" aria-labelledby="profile-information-heading">
           <div className="profile-card-header">
-            <h2>User Profile</h2>
-            <p>Your identity, organization, and access authorization within LTSA.</p>
+            <h2 id="profile-information-heading">Profile Information</h2>
           </div>
 
           <div className="profile-card-body">
@@ -130,16 +134,20 @@ export default function MyProfileView({ session: propSession, onNavigateWorkspac
 
               <div className="profile-field">
                 <span className="profile-field-label">Role</span>
-                <span className="profile-field-value" data-testid="profile-role">{roleLabel}</span>
+                <span className="profile-field-value">
+                  <span className="profile-badge" data-testid="profile-role">{roleLabel}</span>
+                </span>
               </div>
 
               <div className="profile-field">
                 <span className="profile-field-label">Area Access</span>
-                <span className="profile-field-value" data-testid="profile-area-access">{areaAccessLabel}</span>
+                <span className="profile-field-value">
+                  <span className="profile-badge" data-testid="profile-area-access">{areaAccessLabel}</span>
+                </span>
               </div>
 
               {/* Registered Email Management */}
-              <div className="profile-email-section">
+              <div className="profile-field profile-field-full profile-email-section">
                 <span className="profile-field-label">Registered Email</span>
                 
                 {errorMessage && (
@@ -218,20 +226,22 @@ export default function MyProfileView({ session: propSession, onNavigateWorkspac
               </div>
             </div>
           </div>
-        </div>
+        </section>
 
         {/* Security & Credentials Card */}
-        <div className="profile-card">
+        <section className="profile-card" aria-labelledby="profile-security-heading">
           <div className="profile-card-header">
-            <h2>Security &amp; Credentials</h2>
+            <h2 id="profile-security-heading">Security &amp; Credentials</h2>
             <p>Manage your account password and recovery methods.</p>
           </div>
 
           <div className="profile-card-body">
             <div className="profile-security-row">
-              <div className="profile-security-info">
+              <div className="profile-field profile-security-info">
                 <span className="profile-field-label">Password</span>
-                <span className="profile-field-value" data-testid="profile-password-display">••••••••</span>
+                <span className="profile-field-value profile-password-mask" data-testid="profile-password-display">
+                  ••••••••••••
+                </span>
               </div>
 
               <div className="profile-security-action">
@@ -248,7 +258,7 @@ export default function MyProfileView({ session: propSession, onNavigateWorkspac
               </div>
             </div>
           </div>
-        </div>
+        </section>
       </div>
     </div>
   );
