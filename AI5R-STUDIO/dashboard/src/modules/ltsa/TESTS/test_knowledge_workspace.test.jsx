@@ -10,8 +10,12 @@ import KnowledgeAIInsight from "../components/KnowledgeAIInsight";
 import KnowledgeDrawingSection from "../components/KnowledgeDrawingSection";
 import { getPumpKnowledge } from "../../../api/ai5rClient";
 
+// KnowledgeWorkspace's searchable pump selector (PumpTagSelector) also
+// loads the pump list on mount -- same getPumps mock the Asset 360 test
+// file already carries (b6d2fea6).
 vi.mock("../../../api/ai5rClient", () => ({
   getPumpKnowledge: vi.fn(),
+  getPumps: vi.fn(() => Promise.resolve([])),
 }));
 
 afterEach(() => {
@@ -577,15 +581,18 @@ describe("Reuse verification", () => {
   it("does not call any API other than getPumpKnowledge", async () => {
     getPumpKnowledge.mockResolvedValue(backendResponse());
     const client = await import("../../../api/ai5rClient");
-    const otherKeys = Object.keys(client).filter((key) => key !== "getPumpKnowledge");
+    // getPumps feeds only the searchable pump selector (the pump list), the
+    // same allowance the Asset 360 test file makes (b6d2fea6).
+    const otherKeys = Object.keys(client).filter((key) => key !== "getPumpKnowledge" && key !== "getPumps");
 
     render(<KnowledgeWorkspace tag={TAG} />);
     await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());
 
     // Every other export on the mocked client module must remain untouched --
-    // proves the workspace consumes exactly one API, per the mission's
-    // "Consume ONLY GET /api/ltsa/pumps/{tag}/knowledge" requirement.
+    // proves the workspace's asset data comes from exactly one API, per the
+    // mission's "Consume ONLY GET /api/ltsa/pumps/{tag}/knowledge" requirement.
     expect(otherKeys).toEqual([]);
+    expect(getPumpKnowledge).toHaveBeenCalledTimes(1);
   });
 
   it("renders exactly one KnowledgeCard per card-bodied section (no duplicated cards)", async () => {
