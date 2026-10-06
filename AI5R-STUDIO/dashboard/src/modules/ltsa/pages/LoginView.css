@@ -159,3 +159,30 @@
   object-fit: contain;
   display: block;
 }
+
+.login-footer-links {
+  margin-top: var(--space-4);
+  display: flex;
+  justify-content: center;
+}
+
+.forgot-password-link {
+  font-size: var(--text-sm);
+  color: var(--accent);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.forgot-password-link:hover {
+  opacity: 0.85;
+}
+
+.forgot-password-link:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+

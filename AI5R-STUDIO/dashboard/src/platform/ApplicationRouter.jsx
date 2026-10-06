@@ -10,6 +10,9 @@ function resolveApplication(pathname, applications) {
   }
 
   const [, slug] = pathname.split("/");
+  if (slug === "reset-password" || slug === "forgot-password") {
+    return applications.find((application) => application.applicationId === "ltsa") ?? applications[0];
+  }
   return applications.find((application) => application.slug === slug) ?? applications[0];
 }
 

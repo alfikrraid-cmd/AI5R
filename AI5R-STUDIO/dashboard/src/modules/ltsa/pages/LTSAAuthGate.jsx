@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { AuthProvider, useAuth } from "../auth/AuthContext";
 import { visibleTabKeys, can, PERMISSIONS } from "../auth/permissions";
+import ForgotPasswordView from "./ForgotPasswordView";
+import ResetPasswordView from "./ResetPasswordView";
 import LoginView from "./LoginView";
 import LTSAWorkspace from "./LTSAWorkspace";
 import AdminUsersView from "./AdminUsersView";
@@ -172,6 +174,16 @@ function AuthenticatedLTSA({ organizationContext, platformContext }) {
 
 function LTSAAuthGateInner(props) {
   const { status, error, login } = useAuth();
+  const [pathname, setPathname] = useState(() => (typeof window !== "undefined" ? window.location.pathname : "/ltsa"));
+  const [authView, setAuthView] = useState("login");
+
+  useEffect(() => {
+    function handlePopState() {
+      setPathname(window.location.pathname);
+    }
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
 
   if (status === "checking") {
     return null;
@@ -181,7 +193,55 @@ function LTSAAuthGateInner(props) {
     return <AuthenticatedLTSA {...props} />;
   }
 
-  return <LoginView status={status} error={error} onSubmit={login} />;
+  const isResetPasswordPath =
+    pathname === "/reset-password" ||
+    pathname.startsWith("/reset-password/") ||
+    pathname === "/ltsa/reset-password" ||
+    pathname.startsWith("/ltsa/reset-password/");
+
+  const isForgotPasswordPath =
+    authView === "forgot-password" ||
+    pathname === "/forgot-password" ||
+    pathname === "/ltsa/forgot-password";
+
+  if (isResetPasswordPath) {
+    return (
+      <ResetPasswordView
+        onBackToLogin={() => {
+          if (typeof window !== "undefined") {
+            window.history.pushState({}, "", "/ltsa");
+          }
+          setPathname("/ltsa");
+          setAuthView("login");
+        }}
+      />
+    );
+  }
+
+  if (isForgotPasswordPath) {
+    return (
+      <ForgotPasswordView
+        onBackToLogin={() => {
+          if (typeof window !== "undefined") {
+            window.history.pushState({}, "", "/ltsa");
+          }
+          setPathname("/ltsa");
+          setAuthView("login");
+        }}
+      />
+    );
+  }
+
+  return (
+    <LoginView
+      status={status}
+      error={error}
+      onSubmit={login}
+      onForgotPassword={() => {
+        setAuthView("forgot-password");
+      }}
+    />
+  );
 }
 
 // AUTHENTICATED LTSA SHELL layer (MWO-LTSA-AUTH-OPEN-DESIGN-001). LTSA is a

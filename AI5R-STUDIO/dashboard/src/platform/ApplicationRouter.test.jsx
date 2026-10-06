@@ -57,4 +57,19 @@ describe("ApplicationRouter platform integration", () => {
     expect(adapter.dataset.application).toBe("ltsa");
     expect(adapter.dataset.organization).toBe("");
   });
+
+  it("resolves /reset-password to LTSA application without organization context", () => {
+    const adapter = renderRouter("/reset-password?token=secret123");
+
+    expect(adapter.dataset.application).toBe("ltsa");
+    expect(adapter.dataset.organization).toBe("");
+  });
+
+  it("resolves /ltsa/reset-password as reserved segment without organization context", () => {
+    const adapter = renderRouter("/ltsa/reset-password?token=secret456");
+
+    expect(adapter.dataset.application).toBe("ltsa");
+    expect(adapter.dataset.organization).toBe("");
+  });
 });
+

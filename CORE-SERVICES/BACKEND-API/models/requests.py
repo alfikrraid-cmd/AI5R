@@ -609,3 +609,13 @@ class ConditionMonitoringReadingAdHocCreateRequest(BaseModel):
 # same as that existing model.
 class ConditionMonitoringReadingAdHocBulkCreateRequest(BaseModel):
     readings: list[ConditionMonitoringReadingAdHocCreateRequest] = Field(min_length=1)
+
+
+class ForgotPasswordRequest(BaseModel):
+    identifier: str
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+

@@ -27,4 +27,22 @@ describe("LoginView username/email identifier", () => {
     expect(logo).toHaveAttribute("width", "48");
     expect(logo).toHaveAttribute("height", "46");
   });
+
+  it("renders Forgot password button and invokes onForgotPassword callback", () => {
+    const onForgotPassword = vi.fn();
+    render(
+      <LoginView
+        status="unauthenticated"
+        error={null}
+        onSubmit={vi.fn()}
+        onForgotPassword={onForgotPassword}
+      />
+    );
+
+    const forgotButton = screen.getByRole("button", { name: "Forgot password?" });
+    expect(forgotButton).toBeInTheDocument();
+    fireEvent.click(forgotButton);
+    expect(onForgotPassword).toHaveBeenCalledTimes(1);
+  });
 });
+

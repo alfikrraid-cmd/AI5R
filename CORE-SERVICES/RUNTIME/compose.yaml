@@ -113,6 +113,11 @@ services:
       WHATSAPP_CLOUD_API_TOKEN: ${WHATSAPP_CLOUD_API_TOKEN}
       WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID}
       WHATSAPP_GRAPH_API_VERSION: ${WHATSAPP_GRAPH_API_VERSION}
+      # MWO-LTSA-AUTH-FORGOT-PASSWORD-001 -- Resend password reset email dispatch.
+      RESEND_API_KEY: ${RESEND_API_KEY}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-noreply@mail.osa-system.com}
+      RESEND_FROM_NAME: ${RESEND_FROM_NAME:-AI5R LTSA}
+      APP_PUBLIC_URL: ${APP_PUBLIC_URL:-https://osa-system.com}
     networks:
       - edge
       - backend

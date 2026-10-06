@@ -116,3 +116,60 @@ export async function getSession() {
 export function logout() {
   clearStoredSession();
 }
+
+export async function requestPasswordReset(identifier) {
+  let response;
+  try {
+    response = await fetch(`${API_URL}/api/auth/forgot-password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ identifier }),
+    });
+  } catch {
+    throw serverUnavailableError();
+  }
+
+  if (response.status === 429) {
+    const error = new Error("rate_limited");
+    error.code = "rate_limited";
+    throw error;
+  }
+
+  if (!response.ok) {
+    throw serverUnavailableError();
+  }
+
+  return response.json();
+}
+
+export async function confirmPasswordReset(token, newPassword) {
+  let response;
+  try {
+    response = await fetch(`${API_URL}/api/auth/reset-password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, new_password: newPassword }),
+    });
+  } catch {
+    throw serverUnavailableError();
+  }
+
+  if (response.status === 400) {
+    const error = new Error("invalid_token");
+    error.code = "invalid_token";
+    throw error;
+  }
+
+  if (response.status === 422) {
+    const error = new Error("invalid_password");
+    error.code = "invalid_password";
+    throw error;
+  }
+
+  if (!response.ok) {
+    throw serverUnavailableError();
+  }
+
+  return response.json();
+}
+

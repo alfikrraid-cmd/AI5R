@@ -8,7 +8,7 @@ const ERROR_COPY = {
   server_unavailable: "LTSA Engineering is temporarily unavailable. Please try again shortly.",
 };
 
-export default function LoginView({ status, error, onSubmit }) {
+export default function LoginView({ status, error, onSubmit, onForgotPassword }) {
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const isLoading = status === "authenticating";
@@ -83,6 +83,19 @@ export default function LoginView({ status, error, onSubmit }) {
             <button type="submit" className="btn-primary login-submit" disabled={isLoading}>
               {isLoading ? "Signing in…" : "Sign In"}
             </button>
+
+            {onForgotPassword && (
+              <div className="login-footer-links">
+                <button
+                  type="button"
+                  className="forgot-password-link"
+                  onClick={onForgotPassword}
+                  disabled={isLoading}
+                >
+                  Forgot password?
+                </button>
+              </div>
+            )}
           </form>
         </div>
       </div>

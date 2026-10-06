@@ -31,6 +31,9 @@ from API.bi_machine_credential_repository import (
     BiMachineCredentialPostgresRepository,
     InMemoryBiMachineCredentialRepository,
 )
+from API.password_reset_repository import PasswordResetRepository, PasswordResetRepositoryProtocol
+from API.password_reset_service import PasswordResetService
+from API.resend_client import ResendClient
 from API.cm_report_gateway import CMReportGateway
 from API.condition_monitoring_reading_gateway import ConditionMonitoringReadingGateway
 from API.condition_monitoring_reading_repository import ConditionMonitoringReadingRepository
@@ -526,6 +529,29 @@ def get_recommendation_engine() -> RecommendationEngine:
 
 def get_auth_repository() -> AuthRepository:
     return _auth_repository
+
+
+_password_reset_repository = PasswordResetRepository(_import_database_runner)
+_resend_client = ResendClient()
+_password_reset_service = PasswordResetService(
+    auth_repository=_auth_repository,
+    reset_repository=_password_reset_repository,
+    resend_client=_resend_client,
+    change_history_repository=_record_change_history_repository,
+)
+
+
+def get_password_reset_repository() -> PasswordResetRepositoryProtocol:
+    return _password_reset_repository
+
+
+def get_resend_client() -> ResendClient:
+    return _resend_client
+
+
+def get_password_reset_service() -> PasswordResetService:
+    return _password_reset_service
+
 
 def get_whatsapp_intake_repository() -> WhatsAppIntakeRepository:
     return _whatsapp_intake_repository

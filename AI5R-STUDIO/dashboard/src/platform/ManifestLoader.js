@@ -20,7 +20,14 @@ const APPLICATION_MANIFEST = [
     status: "active",
     organizationAware: true,
     entry: "ltsa",
-    reservedRouteSegments: ["pump", "pump-workspace", "pump-workspace-legacy", "pm-workspace"],
+    reservedRouteSegments: [
+      "pump",
+      "pump-workspace",
+      "pump-workspace-legacy",
+      "pm-workspace",
+      "reset-password",
+      "forgot-password",
+    ],
     defaultPath: "/ltsa/pump-workspace",
     slug: "ltsa",
     // MWO-LTSA-STANDALONE-PRODUCT-SHELL-001 -- LTSA is a standalone product:
