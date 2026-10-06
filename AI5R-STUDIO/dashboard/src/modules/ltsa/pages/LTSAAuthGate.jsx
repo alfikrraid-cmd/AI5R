@@ -7,6 +7,7 @@ import LoginView from "./LoginView";
 import LTSAWorkspace from "./LTSAWorkspace";
 import AdminUsersView from "./AdminUsersView";
 import MyProfileView from "./MyProfileView";
+import ForcedChangePasswordView from "./ForcedChangePasswordView";
 import "./LTSAOpenDesign.css";
 import "./LTSAAuthGate.css";
 
@@ -207,7 +208,7 @@ function AuthenticatedLTSA({ organizationContext, platformContext }) {
 }
 
 function LTSAAuthGateInner(props) {
-  const { status, error, login } = useAuth();
+  const { status, error, login, session, logout, changePassword } = useAuth();
   const [pathname, setPathname] = useState(() => (typeof window !== "undefined" ? window.location.pathname : "/ltsa"));
   const [authView, setAuthView] = useState("login");
 
@@ -224,6 +225,14 @@ function LTSAAuthGateInner(props) {
   }
 
   if (status === "authenticated") {
+    // LTSA_CHANGE_PASSWORD_FIRST_LOGIN_R2A -- checked before AuthenticatedLTSA,
+    // which owns every authenticated route (/ltsa/*, /ltsa/profile,
+    // /ltsa/admin/users), so no URL reaches the workspace until the password
+    // is changed. A successful change replaces the session with
+    // must_change_password=false and this falls through to the normal shell.
+    if (session?.must_change_password) {
+      return <ForcedChangePasswordView session={session} onSubmit={changePassword} onLogout={logout} />;
+    }
     return <AuthenticatedLTSA {...props} />;
   }
 

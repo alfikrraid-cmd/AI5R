@@ -250,6 +250,17 @@
   color: var(--muted);
 }
 
+/* Inline Change Password panel (LTSA_CHANGE_PASSWORD_FIRST_LOGIN_R2A) */
+.ltsa-profile-container .profile-change-password {
+  margin-top: var(--space-5);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border);
+}
+
+.ltsa-profile-container .profile-security-row + .profile-feedback {
+  margin-top: var(--space-4);
+}
+
 /* ---------- Narrow screens: single column ---------- */
 @media (max-width: 640px) {
   .ltsa-profile-container {

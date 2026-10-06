@@ -47,6 +47,10 @@ function toSession(identityPayload, token) {
     permissions: identityPayload.permissions,
     data_scope_type: identityPayload.data_scope_type ?? null,
     data_scope_value: identityPayload.data_scope_value ?? null,
+    // LTSA_CHANGE_PASSWORD_FIRST_LOGIN_R2A -- TRUE keeps LTSAAuthGate on the
+    // forced change-password screen (the backend answers every other API with
+    // 403 password_change_required until it is changed).
+    must_change_password: identityPayload.must_change_password === true,
     token,
   };
 }
@@ -173,6 +177,7 @@ export async function confirmPasswordReset(token, newPassword) {
   if (response.status === 422) {
     const error = new Error("invalid_password");
     error.code = "invalid_password";
+    error.detail = await readDetail(response);
     throw error;
   }
 
@@ -181,6 +186,64 @@ export async function confirmPasswordReset(token, newPassword) {
   }
 
   return response.json();
+}
+
+async function readDetail(response) {
+  try {
+    const body = await response.json();
+    return typeof body?.detail === "string" ? body.detail : null;
+  } catch {
+    return null;
+  }
+}
+
+// LTSA_CHANGE_PASSWORD_FIRST_LOGIN_R2A -- POST /api/auth/change-password.
+// Success returns a fresh token + identity (older tokens are rejected by the
+// backend from now on), stored here as the new session. A wrong current
+// password is a 400 and must NOT sign the user out.
+export async function changePassword(currentPassword, newPassword) {
+  const stored = getStoredSession();
+  if (!stored?.token) {
+    const error = new Error("unauthorized");
+    error.code = "unauthorized";
+    throw error;
+  }
+
+  let response;
+  try {
+    response = await fetch(`${API_URL}/api/auth/change-password`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${stored.token}`,
+      },
+      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+    });
+  } catch {
+    throw serverUnavailableError();
+  }
+
+  const codes = { 400: "incorrect_current_password", 409: "password_changed_elsewhere", 422: "password_policy", 429: "rate_limited" };
+  if (response.status === 401) {
+    clearStoredSession();
+    const error = new Error("unauthorized");
+    error.code = "unauthorized";
+    throw error;
+  }
+  if (codes[response.status]) {
+    const error = new Error(codes[response.status]);
+    error.code = codes[response.status];
+    error.detail = await readDetail(response);
+    throw error;
+  }
+  if (!response.ok) {
+    throw serverUnavailableError();
+  }
+
+  const body = await response.json();
+  const session = toSession(body, body.access_token);
+  storeSession(session);
+  return session;
 }
 
 export async function updateProfileEmail(email) {

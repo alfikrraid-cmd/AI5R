@@ -1182,11 +1182,24 @@ export async function getAdminUsers() {
     return Array.isArray(payload?.users) ? payload.users : [];
 }
 
-export async function createAdminUser({ username, name, email, password, organizationId, role }) {
+// LTSA_CHANGE_PASSWORD_FIRST_LOGIN_R2A -- credentialMode is
+// "EMAIL_SET_PASSWORD" (no password; the user gets a set-password email) or
+// "TEMPORARY_PASSWORD" (admin-supplied password the user must change at
+// first sign-in). Omitted, the backend infers it from whether a password is sent.
+export async function createAdminUser({ username, name, email, password, credentialMode, organizationId, role }) {
+    const body = { username, name: name || null, email: email || null, organization_id: organizationId, role };
+    if (credentialMode) body.credential_mode = credentialMode;
+    if (password) body.password = password;
     return _adminUsersRequest(`${API_URL}/api/admin/users`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, name: name || null, email: email || null, password, organization_id: organizationId, role }),
+        body: JSON.stringify(body),
+    });
+}
+
+export async function sendAdminUserSetPasswordLink(userId) {
+    return _adminUsersRequest(`${API_URL}/api/admin/users/${encodeURIComponent(userId)}/set-password-link`, {
+        method: "POST",
     });
 }
 

@@ -192,6 +192,11 @@ def test_audit_entry_redacts_email(env):
 
 def test_response_leaks_no_password_token_or_secret(env):
     response = client.patch("/api/auth/me", json={"email": "new.me@tap.internal"}, headers=AUTH)
-    body = response.text.lower()
-    for marker in ("password", "hash-must-never-leak", "token", "secret"):
-        assert marker not in body, marker
+    body = response.json()
+    # The only password-related field is the boolean first-login flag.
+    password_keys = [key for key in body if "password" in key.lower()]
+    assert password_keys == ["must_change_password"]
+    assert isinstance(body["must_change_password"], bool)
+    text = response.text.lower()
+    for marker in ("password_hash", "hash-must-never-leak", "scrypt$", "token", "secret"):
+        assert marker not in text, marker

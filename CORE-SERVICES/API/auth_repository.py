@@ -14,6 +14,7 @@ machinery than a handful of read/insert queries need.
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -31,6 +32,16 @@ if TYPE_CHECKING:
     from ltsa_pump_inventory_db_upsert import DatabaseRunner
 
 
+# LTSA_CHANGE_PASSWORD_FIRST_LOGIN_R2A -- every user lookup reads the same
+# columns. name/last_login were previously never selected, so GET
+# /api/auth/me returned name=null after a reload (Full Name fell back to the
+# username); must_change_password/password_changed_at come from migration 051.
+_USER_COLUMNS = (
+    "id, username, name, email, password_hash, status, last_login, "
+    "must_change_password, password_changed_at"
+)
+
+
 class AuthRepository:
     def __init__(self, runner: "DatabaseRunner") -> None:
         self._runner = runner
@@ -39,14 +50,14 @@ class AuthRepository:
 
     def find_user_by_email(self, email: str) -> UserRecord | None:
         rows = _json_query(
-            f"SELECT id, username, email, password_hash, status FROM users WHERE lower(email) = lower({_sql(email)})",
+            f"SELECT {_USER_COLUMNS} FROM users WHERE lower(email) = lower({_sql(email)})",
             self._runner,
         )
         return _row_to_user(rows[0]) if rows else None
 
     def find_user_by_id(self, user_id: str) -> UserRecord | None:
         rows = _json_query(
-            f"SELECT id, username, email, password_hash, status FROM users WHERE id = {_sql(user_id)}",
+            f"SELECT {_USER_COLUMNS} FROM users WHERE id = {_sql(user_id)}",
             self._runner,
         )
         return _row_to_user(rows[0]) if rows else None
@@ -54,7 +65,7 @@ class AuthRepository:
     def find_user_by_username(self, username: str) -> UserRecord | None:
         normalized = normalize_username(username)
         rows = _json_query(
-            f"SELECT id, username, email, password_hash, status FROM users WHERE username = {_sql(normalized)}",
+            f"SELECT {_USER_COLUMNS} FROM users WHERE username = {_sql(normalized)}",
             self._runner,
         )
         return _row_to_user(rows[0]) if rows else None
@@ -183,12 +194,13 @@ class AuthRepository:
         organization_id: str,
         role: str,
         created_by: str | None = None,
+        must_change_password: bool = False,
     ) -> str:
         rows = json.loads(
             self._runner.query_scalar(
                 "WITH ins_user AS ("
-                "INSERT INTO users (username, name, email, password_hash, created_by, updated_by) VALUES "
-                f"({_sql(normalize_username(username))}, {_sql(name)}, {_sql(email.lower() if email else None)}, {_sql(password_hash)}, {_sql(created_by)}, {_sql(created_by)}) "
+                "INSERT INTO users (username, name, email, password_hash, must_change_password, created_by, updated_by) VALUES "
+                f"({_sql(normalize_username(username))}, {_sql(name)}, {_sql(email.lower() if email else None)}, {_sql(password_hash)}, {_sql(bool(must_change_password))}, {_sql(created_by)}, {_sql(created_by)}) "
                 "RETURNING id"
                 "), ins_membership AS ("
                 "INSERT INTO organization_memberships (user_id, organization_id, role, created_by, updated_by) "
@@ -220,15 +232,66 @@ class AuthRepository:
             f"WHERE user_id = {_sql(user_id)} AND organization_id = {_sql(organization_id)};"
         )
 
-    def update_password_hash(self, user_id: str, password_hash: str, *, updated_by: str) -> None:
-        """Administrative password reset (Phase 8) -- the caller has
-        already hashed the new password (auth_password.hash_password());
-        this function never receives or logs a plaintext value."""
+    def update_password_hash(
+        self,
+        user_id: str,
+        password_hash: str,
+        *,
+        updated_by: str,
+        must_change_password: bool | None = None,
+        password_changed_at: datetime | None = None,
+    ) -> None:
+        """Administrative password reset (Phase 8) and self-service
+        reset-password -- the caller has already hashed the new password
+        (auth_password.hash_password()); this function never receives or
+        logs a plaintext value. must_change_password / password_changed_at
+        (LTSA_CHANGE_PASSWORD_FIRST_LOGIN_R2A) are written in the same
+        statement when given; None leaves the column unchanged."""
+        extra = ""
+        if must_change_password is not None:
+            extra += f"must_change_password = {_sql(bool(must_change_password))}, "
+        if password_changed_at is not None:
+            extra += f"password_changed_at = {_sql(password_changed_at.isoformat())}::timestamptz, "
         self._runner.execute_script(
-            f"UPDATE users SET password_hash = {_sql(password_hash)}, "
+            f"UPDATE users SET password_hash = {_sql(password_hash)}, {extra}"
             f"updated_by = {_sql(updated_by)}, updated_at = NOW() "
             f"WHERE id = {_sql(user_id)};"
         )
+
+    def change_password(
+        self,
+        user_id: str,
+        *,
+        expected_password_hash: str,
+        new_password_hash: str,
+        password_changed_at: datetime,
+        reason: str,
+    ) -> bool:
+        """Self-service change (LTSA_CHANGE_PASSWORD_FIRST_LOGIN_R2A). One
+        statement: the UPDATE only applies while the stored hash is still
+        the one the caller just verified (a concurrent change makes it a
+        no-op, returning False), clears must_change_password, records
+        password_changed_at, and inserts the redacted audit row from the
+        updated row, so the change and its audit record commit together."""
+        rows = json.loads(
+            self._runner.query_scalar(
+                "WITH upd AS ("
+                f"UPDATE users SET password_hash = {_sql(new_password_hash)}, "
+                "must_change_password = FALSE, "
+                f"password_changed_at = {_sql(password_changed_at.isoformat())}::timestamptz, "
+                f"updated_by = {_sql(user_id)}, updated_at = NOW() "
+                f"WHERE id = {_sql(user_id)} AND password_hash = {_sql(expected_password_hash)} "
+                "RETURNING id"
+                "), audit AS ("
+                "INSERT INTO record_change_history "
+                "(entity_type, entity_id, field_name, old_value, new_value, changed_by, reason) "
+                f"SELECT 'user', upd.id::text, 'password', '[REDACTED]', '[REDACTED]', upd.id, {_sql(reason)} FROM upd "
+                "RETURNING entity_id"
+                ") SELECT COALESCE(json_agg(row_to_json(t))::text, '[]') FROM (SELECT id FROM upd) t;"
+            )
+            or "[]"
+        )
+        return bool(rows)
 
     def update_user_email(self, user_id: str, email: str, *, updated_by: str) -> None:
         """Self-service profile email update (R2B). Updates user email by authenticated ID."""
@@ -247,6 +310,8 @@ def _row_to_user(row: dict) -> UserRecord:
         username=row.get("username"),
         name=row.get("name"),
         last_login=str(row.get("last_login")) if row.get("last_login") is not None else None,
+        must_change_password=bool(row.get("must_change_password") or False),
+        password_changed_at=row.get("password_changed_at"),
     )
 
 

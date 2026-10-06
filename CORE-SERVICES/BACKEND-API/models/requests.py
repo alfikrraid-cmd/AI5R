@@ -42,7 +42,15 @@ class AdminCreateUserRequest(BaseModel):
     username: str
     name: str | None = None
     email: str | None = None
-    password: str
+    # LTSA_CHANGE_PASSWORD_FIRST_LOGIN_R2A -- credential_mode:
+    #   EMAIL_SET_PASSWORD  (primary): no password; the user receives a
+    #                       set-password link by email. Requires email.
+    #   TEMPORARY_PASSWORD  (fallback): admin-supplied password, and the user
+    #                       must change it at first login.
+    # Omitted: TEMPORARY_PASSWORD when a password is given, otherwise
+    # EMAIL_SET_PASSWORD (keeps existing callers that send a password working).
+    password: str | None = None
+    credential_mode: str | None = None
     organization_id: str
     role: str
 
@@ -58,6 +66,16 @@ class AdminUpdateMembershipRoleRequest(BaseModel):
 
 class AdminResetPasswordRequest(BaseModel):
     new_password: str
+
+
+class ChangePasswordRequest(BaseModel):
+    """LTSA_CHANGE_PASSWORD_FIRST_LOGIN_R2A -- POST /api/auth/change-password.
+    Plaintext only in the request; never persisted, logged or echoed."""
+
+    current_password: str
+    new_password: str
+
+    model_config = {"extra": "forbid"}
 
 
 class UpdateProfileEmailRequest(BaseModel):

@@ -33,14 +33,31 @@ describe("ResetPasswordView", () => {
     const onSubmit = vi.fn();
     render(<ResetPasswordView token="valid-token-123" onBackToLogin={vi.fn()} onSubmit={onSubmit} />);
 
-    fireEvent.change(screen.getByLabelText("New Password"), { target: { value: "123" } });
-    fireEvent.change(screen.getByLabelText("Confirm New Password"), { target: { value: "123" } });
+    // Global password policy (LTSA_CHANGE_PASSWORD_FIRST_LOGIN_R2A): 12-128.
+    fireEvent.change(screen.getByLabelText("New Password"), { target: { value: "elevenchars" } });
+    fireEvent.change(screen.getByLabelText("Confirm New Password"), { target: { value: "elevenchars" } });
     fireEvent.click(screen.getByRole("button", { name: "Reset Password" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("alert")).toHaveTextContent("Password must be at least 6 characters");
+      expect(screen.getByRole("alert")).toHaveTextContent("Password must be at least 12 characters");
     });
     expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("shows the backend policy message when the server rejects the password", async () => {
+    const error = new Error("invalid_password");
+    error.code = "invalid_password";
+    error.detail = "Password must not be the same as the username";
+    const onSubmit = vi.fn().mockRejectedValue(error);
+    render(<ResetPasswordView token="valid-token-123" onBackToLogin={vi.fn()} onSubmit={onSubmit} />);
+
+    fireEvent.change(screen.getByLabelText("New Password"), { target: { value: "tap.engineer.x" } });
+    fireEvent.change(screen.getByLabelText("Confirm New Password"), { target: { value: "tap.engineer.x" } });
+    fireEvent.click(screen.getByRole("button", { name: "Reset Password" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent("Password must not be the same as the username");
+    });
   });
 
   it("successfully resets password and navigates back to sign in", async () => {

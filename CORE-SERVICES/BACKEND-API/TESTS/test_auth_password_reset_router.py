@@ -74,7 +74,15 @@ class FakeAuthRepository:
                 return m
         return None
 
-    def update_password_hash(self, user_id: str, password_hash: str, *, updated_by: str) -> None:
+    def update_password_hash(
+        self,
+        user_id: str,
+        password_hash: str,
+        *,
+        updated_by: str,
+        must_change_password: bool | None = None,
+        password_changed_at=None,
+    ) -> None:
         for u in list(self.users.values()) + list(self.usernames.values()):
             if u.id == user_id:
                 new_record = UserRecord(
@@ -83,6 +91,12 @@ class FakeAuthRepository:
                     password_hash=password_hash,
                     status=u.status,
                     username=u.username,
+                    must_change_password=(
+                        u.must_change_password if must_change_password is None else must_change_password
+                    ),
+                    password_changed_at=(
+                        password_changed_at.isoformat() if password_changed_at is not None else u.password_changed_at
+                    ),
                 )
                 if u.email is not None:
                     self.users[u.email.lower()] = new_record

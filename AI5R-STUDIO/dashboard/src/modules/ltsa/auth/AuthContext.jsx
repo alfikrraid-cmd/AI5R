@@ -61,6 +61,28 @@ export function AuthProvider({ children, client = authClient }) {
     [client]
   );
 
+  // LTSA_CHANGE_PASSWORD_FIRST_LOGIN_R2A -- on success the backend issues a
+  // fresh token (older ones are rejected from now on) with
+  // must_change_password=false, which releases the forced-change screen.
+  // Only an expired/invalid session (401) signs the user out here; a wrong
+  // current password (400) leaves the session untouched.
+  const changePassword = useCallback(
+    async (currentPassword, newPassword) => {
+      try {
+        const nextSession = await client.changePassword(currentPassword, newPassword);
+        setSession(nextSession);
+        return nextSession;
+      } catch (err) {
+        if (err?.code === "unauthorized") {
+          setSession(null);
+          setStatus("unauthenticated");
+        }
+        throw err;
+      }
+    },
+    [client]
+  );
+
   // MWO-LTSA-AUTH-002 Rule 6 -- a 401 from ANY protected LTSA request (not
   // just /api/auth/me) must clear the session and return to LoginView.
   // ai5rClient.js's apiFetch() already clears the stored session on 401;
@@ -75,8 +97,8 @@ export function AuthProvider({ children, client = authClient }) {
   }, []);
 
   const value = useMemo(
-    () => ({ status, session, error, login, logout, updateEmail }),
-    [status, session, error, login, logout, updateEmail]
+    () => ({ status, session, error, login, logout, updateEmail, changePassword }),
+    [status, session, error, login, logout, updateEmail, changePassword]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

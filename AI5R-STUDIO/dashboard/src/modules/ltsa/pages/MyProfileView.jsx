@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useOptionalAuth } from "../auth/AuthContext";
 import { formatAreaScopeDisplay } from "../utils/areaScopeDisplay";
+import ChangePasswordForm from "../components/ChangePasswordForm";
 import "./LTSAOpenDesign.css";
 import "./MyProfileView.css";
 
@@ -13,10 +14,13 @@ export const ROLE_LABEL = {
   PERTAMINA_VIEWER: "Pertamina Viewer",
 };
 
-export default function MyProfileView({ session: propSession, onNavigateWorkspace, onUpdateEmail }) {
+export default function MyProfileView({ session: propSession, onNavigateWorkspace, onUpdateEmail, onChangePassword }) {
   const auth = useOptionalAuth() || {};
   const currentSession = propSession || auth.session;
   const updateEmailFn = onUpdateEmail || auth.updateEmail;
+  const changePasswordFn = onChangePassword || auth.changePassword;
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [passwordChanged, setPasswordChanged] = useState(false);
 
   const currentEmail = currentSession?.user?.email || "";
   const [isEditing, setIsEditing] = useState(false);
@@ -244,19 +248,46 @@ export default function MyProfileView({ session: propSession, onNavigateWorkspac
                 </span>
               </div>
 
-              <div className="profile-security-action">
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  disabled
-                  title="Available after security update"
-                  data-testid="profile-change-password-btn"
-                >
-                  Change Password
-                </button>
-                <span className="profile-security-hint">Available after security update</span>
-              </div>
+              {!isChangingPassword ? (
+                <div className="profile-security-action">
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => {
+                      setPasswordChanged(false);
+                      setIsChangingPassword(true);
+                    }}
+                    disabled={!changePasswordFn}
+                    data-testid="profile-change-password-btn"
+                  >
+                    Change Password
+                  </button>
+                  <span className="profile-security-hint">Other signed-in sessions end after a change</span>
+                </div>
+              ) : null}
             </div>
+
+            {passwordChanged ? (
+              <div className="profile-feedback success" role="status" data-testid="profile-password-success">
+                Password changed. Other signed-in sessions have been signed out.
+              </div>
+            ) : null}
+
+            {isChangingPassword ? (
+              <div className="profile-change-password" data-testid="profile-change-password-panel">
+                <ChangePasswordForm
+                  idPrefix="profile-change-password"
+                  username={currentSession?.user?.username}
+                  email={currentSession?.user?.email}
+                  onSubmit={changePasswordFn}
+                  onCancel={() => setIsChangingPassword(false)}
+                  onSuccess={() => {
+                    setIsChangingPassword(false);
+                    setPasswordChanged(true);
+                  }}
+                />
+              </div>
+            ) : null}
           </div>
         </section>
       </div>

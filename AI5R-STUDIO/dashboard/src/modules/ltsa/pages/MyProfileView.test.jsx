@@ -73,13 +73,50 @@ describe("MyProfileView", () => {
     expect(screen.getByTestId("profile-edit-email-btn")).toHaveTextContent("Register Email");
   });
 
-  it("renders disabled change password button with explanatory hint", () => {
-    render(<MyProfileView session={BASE_SESSION} onNavigateWorkspace={vi.fn()} />);
+  it("enables Change Password and opens the change-password form", () => {
+    render(<MyProfileView session={BASE_SESSION} onNavigateWorkspace={vi.fn()} onChangePassword={vi.fn()} />);
 
     const changePwdBtn = screen.getByTestId("profile-change-password-btn");
-    expect(changePwdBtn).toBeDisabled();
-    expect(changePwdBtn).toHaveAttribute("title", "Available after security update");
-    expect(screen.getByText("Available after security update")).toBeInTheDocument();
+    expect(changePwdBtn).toBeEnabled();
+    expect(screen.queryByTestId("change-password-form")).toBeNull();
+
+    fireEvent.click(changePwdBtn);
+    expect(screen.getByTestId("change-password-form")).toBeInTheDocument();
+    expect(screen.getByLabelText("Current Password")).toHaveProperty("type", "password");
+    expect(screen.getByLabelText("New Password")).toHaveProperty("type", "password");
+    expect(screen.getByLabelText("Confirm New Password")).toHaveProperty("type", "password");
+  });
+
+  it("changes the password through onChangePassword and reports success", async () => {
+    const onChangePassword = vi.fn().mockResolvedValue({});
+    render(<MyProfileView session={BASE_SESSION} onNavigateWorkspace={vi.fn()} onChangePassword={onChangePassword} />);
+
+    fireEvent.click(screen.getByTestId("profile-change-password-btn"));
+    fireEvent.change(screen.getByLabelText("Current Password"), { target: { value: "Old-Passw0rd-2026" } });
+    fireEvent.change(screen.getByLabelText("New Password"), { target: { value: "New-Passw0rd-2026" } });
+    fireEvent.change(screen.getByLabelText("Confirm New Password"), { target: { value: "New-Passw0rd-2026" } });
+    fireEvent.click(screen.getByTestId("change-password-submit"));
+
+    await waitFor(() => expect(onChangePassword).toHaveBeenCalledWith("Old-Passw0rd-2026", "New-Passw0rd-2026"));
+    expect(await screen.findByTestId("profile-password-success")).toHaveTextContent("Password changed");
+    expect(screen.queryByTestId("change-password-form")).toBeNull();
+  });
+
+  it("keeps the form open with a safe message when the current password is wrong", async () => {
+    const error = new Error("incorrect_current_password");
+    error.code = "incorrect_current_password";
+    const onChangePassword = vi.fn().mockRejectedValue(error);
+    render(<MyProfileView session={BASE_SESSION} onNavigateWorkspace={vi.fn()} onChangePassword={onChangePassword} />);
+
+    fireEvent.click(screen.getByTestId("profile-change-password-btn"));
+    fireEvent.change(screen.getByLabelText("Current Password"), { target: { value: "Wrong-Passw0rd-2026" } });
+    fireEvent.change(screen.getByLabelText("New Password"), { target: { value: "New-Passw0rd-2026" } });
+    fireEvent.change(screen.getByLabelText("Confirm New Password"), { target: { value: "New-Passw0rd-2026" } });
+    fireEvent.click(screen.getByTestId("change-password-submit"));
+
+    expect(await screen.findByTestId("change-password-error")).toHaveTextContent("Current password is incorrect.");
+    expect(screen.getByTestId("change-password-form")).toBeInTheDocument();
+    expect(screen.queryByTestId("profile-password-success")).toBeNull();
   });
 
   it("navigates back to workspace when back button is clicked", () => {
@@ -213,14 +250,14 @@ describe("MyProfileView layout", () => {
     expect(screen.getByTestId("profile-area-access")).toHaveTextContent("No Area Access / Not Assigned");
   });
 
-  it("shows the disabled Change Password action with its hint underneath, and a masked password", () => {
-    render(<MyProfileView session={BASE_SESSION} onNavigateWorkspace={vi.fn()} />);
+  it("shows the Change Password action with its hint underneath, and a masked password", () => {
+    render(<MyProfileView session={BASE_SESSION} onNavigateWorkspace={vi.fn()} onChangePassword={vi.fn()} />);
 
     const button = screen.getByTestId("profile-change-password-btn");
-    expect(button).toBeDisabled();
+    expect(button).toBeEnabled();
     expect(button).toHaveClass("btn-secondary");
     const action = button.closest(".profile-security-action");
-    expect(action.querySelector(".profile-security-hint")).toHaveTextContent("Available after security update");
+    expect(action.querySelector(".profile-security-hint")).toHaveTextContent("Other signed-in sessions end after a change");
     expect(screen.getByTestId("profile-password-display")).toHaveTextContent("••••••••••••");
   });
 });

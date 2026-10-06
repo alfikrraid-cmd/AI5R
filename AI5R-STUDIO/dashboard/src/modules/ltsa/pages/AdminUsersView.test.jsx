@@ -5,6 +5,7 @@ import {
   createAdminUser,
   getAdminUsers,
   resetAdminUserPassword,
+  sendAdminUserSetPasswordLink,
   updateAdminUserRole,
   updateAdminUserStatus,
 } from "../../../api/ai5rClient";
@@ -15,6 +16,7 @@ vi.mock("../../../api/ai5rClient", () => ({
   updateAdminUserStatus: vi.fn(),
   updateAdminUserRole: vi.fn(),
   resetAdminUserPassword: vi.fn(),
+  sendAdminUserSetPasswordLink: vi.fn(),
 }));
 
 const SAMPLE_USERS = [
@@ -164,12 +166,14 @@ describe("AdminUsersView actions", () => {
 
     fireEvent.click(screen.getByText("Create User"));
     fireEvent.change(screen.getByLabelText("Username"), { target: { value: "ravi" } });
-    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "temp-pw" } });
+    fireEvent.change(screen.getByLabelText("Initial credential"), { target: { value: "TEMPORARY_PASSWORD" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "Temp-Passw0rd-2026" } });
     fireEvent.click(screen.getByText("Create"));
 
     await waitFor(() =>
       expect(createAdminUser).toHaveBeenCalledWith({
-        username: "ravi", email: null, password: "temp-pw", organizationId: "org-tap", role: "TAP_ENGINEER",
+        username: "ravi", email: null, credentialMode: "TEMPORARY_PASSWORD", password: "Temp-Passw0rd-2026",
+        organizationId: "org-tap", role: "TAP_ENGINEER",
       })
     );
   });
@@ -218,14 +222,58 @@ describe("AdminUsersView actions", () => {
     );
   });
 
-  it("password reset prompts for a new password and never displays it in the DOM afterwards", async () => {
+  it("password reset uses a masked dialog (never window.prompt) and never displays the password afterwards", async () => {
+    const promptSpy = vi.spyOn(window, "prompt");
     render(<AdminUsersView canManageUsers={true} />);
     await waitFor(() => expect(screen.getByText("tap-eng@tap.internal")).toBeTruthy());
 
     fireEvent.click(screen.getAllByText("Reset Password")[0]);
+    const dialog = screen.getByRole("dialog", { name: "Reset password for tapeng" });
+    const password = screen.getByLabelText("New temporary password");
+    expect(password).toHaveProperty("type", "password");
+    expect(screen.getByLabelText("Confirm temporary password")).toHaveProperty("type", "password");
 
-    await waitFor(() => expect(resetAdminUserPassword).toHaveBeenCalledWith("u-1", "a-new-password"));
-    expect(screen.queryByText("a-new-password")).toBeNull();
+    fireEvent.change(password, { target: { value: "Brand-New-Passw0rd-2026" } });
+    fireEvent.change(screen.getByLabelText("Confirm temporary password"), { target: { value: "Brand-New-Passw0rd-2026" } });
+    fireEvent.click(screen.getByText("Set Temporary Password"));
+
+    await waitFor(() => expect(resetAdminUserPassword).toHaveBeenCalledWith("u-1", "Brand-New-Passw0rd-2026"));
+    expect(promptSpy).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(dialog.isConnected).toBe(false);
+    expect(screen.queryByDisplayValue("Brand-New-Passw0rd-2026")).toBeNull();
+    expect(screen.getByTestId("admin-users-notice").textContent).toMatch(/must change it at next sign-in/);
+  });
+
+  it("password reset dialog blocks a short or mismatched password before calling the API", async () => {
+    render(<AdminUsersView canManageUsers={true} />);
+    await waitFor(() => expect(screen.getByText("tap-eng@tap.internal")).toBeTruthy());
+    fireEvent.click(screen.getAllByText("Reset Password")[0]);
+
+    fireEvent.change(screen.getByLabelText("New temporary password"), { target: { value: "short" } });
+    fireEvent.change(screen.getByLabelText("Confirm temporary password"), { target: { value: "short" } });
+    fireEvent.click(screen.getByText("Set Temporary Password"));
+    expect(screen.getByTestId("admin-users-reset-error").textContent).toMatch(/at least 12/);
+
+    fireEvent.change(screen.getByLabelText("New temporary password"), { target: { value: "Brand-New-Passw0rd-2026" } });
+    fireEvent.change(screen.getByLabelText("Confirm temporary password"), { target: { value: "Different-Passw0rd-2026" } });
+    fireEvent.click(screen.getByText("Set Temporary Password"));
+    expect(screen.getByTestId("admin-users-reset-error").textContent).toMatch(/do not match/);
+    expect(resetAdminUserPassword).not.toHaveBeenCalled();
+  });
+
+  it("send set-password link is offered only for users with an email and reports the result", async () => {
+    sendAdminUserSetPasswordLink.mockResolvedValueOnce({ id: "u-1", status: "set_password_link_sent" });
+    render(<AdminUsersView canManageUsers={true} />);
+    await waitFor(() => expect(screen.getByText("tap-eng@tap.internal")).toBeTruthy());
+
+    expect(screen.getAllByText("Send set-password link")).toHaveLength(1);
+    fireEvent.click(screen.getByText("Send set-password link"));
+
+    await waitFor(() => expect(sendAdminUserSetPasswordLink).toHaveBeenCalledWith("u-1"));
+    await waitFor(() =>
+      expect(screen.getByTestId("admin-users-notice").textContent).toMatch(/Set-password email sent to tap-eng@tap.internal/)
+    );
   });
 
   // MWO-LTSA-ADMIN-USERS-WIRING-001 -- Phase 5: JOHN_CRANE organization gap.
@@ -243,22 +291,73 @@ describe("AdminUsersView actions", () => {
     expect(screen.getByLabelText("Organization ID").value).toBe("");
   });
 
-  it("creating a user submits the form fields to createAdminUser", async () => {
+  it("creating a user defaults to the email set-password link and never asks for a password", async () => {
+    createAdminUser.mockResolvedValueOnce({
+      id: "u-9", username: "ravi", email: "new@tap.internal",
+      credential_mode: "EMAIL_SET_PASSWORD", set_password_email: "SENT", must_change_password: true,
+    });
+    render(<AdminUsersView canManageUsers={true} />);
+    await waitFor(() => expect(screen.getByText("tap-eng@tap.internal")).toBeTruthy());
+
+    fireEvent.click(screen.getByText("Create User"));
+    expect(screen.getByLabelText("Initial credential").value).toBe("EMAIL_SET_PASSWORD");
+    expect(screen.queryByLabelText("Password")).toBeNull();
+    fireEvent.change(screen.getByLabelText("Username"), { target: { value: "ravi" } });
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "new@tap.internal" } });
+    fireEvent.change(screen.getByLabelText("Organization ID"), { target: { value: "org-tap" } });
+    fireEvent.click(screen.getByText("Create"));
+
+    await waitFor(() =>
+      expect(createAdminUser).toHaveBeenCalledWith({
+        username: "ravi", email: "new@tap.internal", credentialMode: "EMAIL_SET_PASSWORD",
+        organizationId: "org-tap", role: "TAP_ENGINEER",
+      })
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("admin-users-notice").textContent).toMatch(/set-password email was sent to new@tap.internal/)
+    );
+  });
+
+  it("creating a user with a temporary password submits it and explains the forced change", async () => {
+    createAdminUser.mockResolvedValueOnce({
+      id: "u-9", username: "ravi", email: "new@tap.internal", credential_mode: "TEMPORARY_PASSWORD", must_change_password: true,
+    });
     render(<AdminUsersView canManageUsers={true} />);
     await waitFor(() => expect(screen.getByText("tap-eng@tap.internal")).toBeTruthy());
 
     fireEvent.click(screen.getByText("Create User"));
     fireEvent.change(screen.getByLabelText("Username"), { target: { value: "ravi" } });
     fireEvent.change(screen.getByLabelText("Email"), { target: { value: "new@tap.internal" } });
-    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "temp-pw" } });
+    fireEvent.change(screen.getByLabelText("Initial credential"), { target: { value: "TEMPORARY_PASSWORD" } });
+    expect(screen.getByLabelText("Password")).toHaveProperty("type", "password");
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "Temp-Passw0rd-2026" } });
     fireEvent.change(screen.getByLabelText("Organization ID"), { target: { value: "org-tap" } });
     fireEvent.click(screen.getByText("Create"));
 
     await waitFor(() =>
       expect(createAdminUser).toHaveBeenCalledWith({
-        username: "ravi", email: "new@tap.internal", password: "temp-pw", organizationId: "org-tap", role: "TAP_ENGINEER",
+        username: "ravi", email: "new@tap.internal", credentialMode: "TEMPORARY_PASSWORD", password: "Temp-Passw0rd-2026",
+        organizationId: "org-tap", role: "TAP_ENGINEER",
       })
     );
+    await waitFor(() =>
+      expect(screen.getByTestId("admin-users-notice").textContent).toMatch(/must change the temporary password/)
+    );
+  });
+
+  it("a too-short temporary password is blocked before calling the API", async () => {
+    render(<AdminUsersView canManageUsers={true} />);
+    await waitFor(() => expect(screen.getByText("tapeng")).toBeTruthy());
+
+    fireEvent.click(screen.getByText("Create User"));
+    fireEvent.change(screen.getByLabelText("Username"), { target: { value: "ravi" } });
+    fireEvent.change(screen.getByLabelText("Initial credential"), { target: { value: "TEMPORARY_PASSWORD" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "temp-pw" } });
+    fireEvent.change(screen.getByLabelText("Organization ID"), { target: { value: "org-tap" } });
+    fireEvent.click(screen.getByText("Create"));
+
+    await waitFor(() => expect(screen.getByTestId("admin-users-action-error").textContent).toMatch(/at least 12/));
+    expect(createAdminUser).not.toHaveBeenCalled();
   });
 
   it("creating a username-only user submits null email", async () => {
@@ -267,13 +366,15 @@ describe("AdminUsersView actions", () => {
 
     fireEvent.click(screen.getByText("Create User"));
     fireEvent.change(screen.getByLabelText("Username"), { target: { value: "ravi" } });
-    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "temp-pw" } });
+    fireEvent.change(screen.getByLabelText("Initial credential"), { target: { value: "TEMPORARY_PASSWORD" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "Temp-Passw0rd-2026" } });
     fireEvent.change(screen.getByLabelText("Organization ID"), { target: { value: "org-tap" } });
     fireEvent.click(screen.getByText("Create"));
 
     await waitFor(() =>
       expect(createAdminUser).toHaveBeenCalledWith({
-        username: "ravi", email: null, password: "temp-pw", organizationId: "org-tap", role: "TAP_ENGINEER",
+        username: "ravi", email: null, credentialMode: "TEMPORARY_PASSWORD", password: "Temp-Passw0rd-2026",
+        organizationId: "org-tap", role: "TAP_ENGINEER",
       })
     );
   });

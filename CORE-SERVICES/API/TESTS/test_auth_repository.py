@@ -287,3 +287,86 @@ def test_find_organization_by_id_uses_plain_select():
     assert organization_id == "org-tap"
     assert "FROM organizations" in runner.scalar_calls[0]
     assert "WHERE id = 'org-tap'" in runner.scalar_calls[0]
+
+
+# --- LTSA_CHANGE_PASSWORD_FIRST_LOGIN_R2A -------------------------------------
+
+from datetime import datetime, timezone  # noqa: E402
+
+
+def test_every_user_lookup_selects_name_and_password_change_state():
+    runner = FakeRunner(scalar_response="[]")
+    repo = AuthRepository(runner)
+    repo.find_user_by_id("u-1")
+    repo.find_user_by_email("e@tap.internal")
+    repo.find_user_by_username("tap.engineer")
+    assert len(runner.scalar_calls) == 3
+    for sql in runner.scalar_calls:
+        for column in ("name", "last_login", "must_change_password", "password_changed_at", "password_hash"):
+            assert column in sql, (column, sql)
+
+
+def test_user_row_maps_name_and_password_change_state():
+    row = {
+        "id": "u-1", "username": "tap.engineer", "name": "Tap Engineer", "email": "e@tap.internal",
+        "password_hash": "scrypt$x", "status": "ACTIVE", "last_login": None,
+        "must_change_password": True, "password_changed_at": "2026-10-07T03:21:45+00:00",
+    }
+    runner = FakeRunner(scalar_response=json.dumps([row]))
+    user = AuthRepository(runner).find_user_by_id("u-1")
+    assert user.name == "Tap Engineer"
+    assert user.must_change_password is True
+    assert user.password_changed_at == "2026-10-07T03:21:45+00:00"
+
+
+def test_create_user_with_membership_sets_must_change_password_in_the_same_statement():
+    runner = FakeRunner(scalar_response=json.dumps([{"id": "u-9"}]))
+    AuthRepository(runner).create_user_with_membership(
+        username="newuser", email="n@tap.internal", password_hash="scrypt$x",
+        organization_id="org-1", role="TAP_ENGINEER", must_change_password=True,
+    )
+    sql = runner.scalar_calls[0]
+    assert len(runner.scalar_calls) == 1 and runner.script_calls == []
+    assert "must_change_password" in sql and "TRUE" in sql
+    assert "INSERT INTO organization_memberships" in sql
+
+
+def test_update_password_hash_writes_flags_only_when_given():
+    runner = FakeRunner()
+    repo = AuthRepository(runner)
+    repo.update_password_hash("u-1", "scrypt$new", updated_by="admin-1")
+    assert "must_change_password" not in runner.script_calls[0]
+    assert "password_changed_at" not in runner.script_calls[0]
+
+    repo.update_password_hash(
+        "u-1", "scrypt$new", updated_by="admin-1", must_change_password=True,
+        password_changed_at=datetime(2026, 10, 7, 3, 21, 45, tzinfo=timezone.utc),
+    )
+    sql = runner.script_calls[1]
+    assert "must_change_password = TRUE" in sql
+    assert "password_changed_at = '2026-10-07T03:21:45+00:00'::timestamptz" in sql
+
+
+def test_change_password_is_one_guarded_statement_with_redacted_audit():
+    runner = FakeRunner(scalar_response=json.dumps([{"id": "u-1"}]))
+    changed = AuthRepository(runner).change_password(
+        "u-1", expected_password_hash="scrypt$old", new_password_hash="scrypt$new",
+        password_changed_at=datetime(2026, 10, 7, 3, 21, 45, tzinfo=timezone.utc),
+        reason="self_service_password_change",
+    )
+    assert changed is True
+    assert len(runner.scalar_calls) == 1 and runner.script_calls == []
+    sql = runner.scalar_calls[0]
+    assert sql.strip().upper().startswith("WITH")
+    assert "password_hash = 'scrypt$old'" in sql  # optimistic guard
+    assert "must_change_password = FALSE" in sql
+    assert "INSERT INTO record_change_history" in sql
+    assert sql.count("'[REDACTED]'") == 2
+
+
+def test_change_password_returns_false_when_guard_matches_nothing():
+    runner = FakeRunner(scalar_response="[]")
+    assert AuthRepository(runner).change_password(
+        "u-1", expected_password_hash="scrypt$stale", new_password_hash="scrypt$new",
+        password_changed_at=datetime(2026, 10, 7, tzinfo=timezone.utc), reason="self_service_password_change",
+    ) is False

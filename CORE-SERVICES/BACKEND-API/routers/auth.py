@@ -1,17 +1,28 @@
 from __future__ import annotations
 
+import logging
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from API.auth_service import AuthenticatedIdentity, AuthenticationError, authenticate
-from API.password_reset_service import InvalidTokenError, PasswordResetService, RateLimitExceededError
+from API.auth_password import PasswordPolicyError, hash_password, validate_password_policy, verify_password
+from API.auth_service import AuthenticatedIdentity, AuthenticationError, authenticate, issue_access_token
+from API.password_reset_service import (
+    FailedPasswordAttemptLimiter,
+    InvalidTokenError,
+    PasswordResetService,
+    RateLimitExceededError,
+)
 import dataclasses
 from dependencies import (
     get_auth_repository,
+    get_change_password_attempt_limiter,
     get_current_user,
     get_password_reset_service,
     get_record_change_history_repository,
 )
 from models.requests import (
+    ChangePasswordRequest,
     ForgotPasswordRequest,
     LoginRequest,
     ResetPasswordRequest,
@@ -20,6 +31,7 @@ from models.requests import (
 from models.responses import Payload
 
 router = APIRouter()
+logger = logging.getLogger("auth.change_password")
 
 
 def _identity_payload(identity: AuthenticatedIdentity) -> dict:
@@ -47,6 +59,7 @@ def _identity_payload(identity: AuthenticatedIdentity) -> dict:
         "permissions": sorted(identity.permissions),
         "data_scope_type": identity.data_scope_type,
         "data_scope_value": identity.data_scope_value,
+        "must_change_password": bool(getattr(identity, "must_change_password", False)),
     }
 
 
@@ -127,6 +140,52 @@ def update_me(
 
     updated_identity = dataclasses.replace(current_user, email=normalized_email)
     return _identity_payload(updated_identity)
+
+
+@router.post("/api/auth/change-password")
+def change_password(
+    payload: ChangePasswordRequest,
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
+    auth_repository=Depends(get_auth_repository),
+    attempt_limiter: FailedPasswordAttemptLimiter = Depends(get_change_password_attempt_limiter),
+) -> Payload:
+    """LTSA_CHANGE_PASSWORD_FIRST_LOGIN_R2A -- self-service change, also the
+    only way out of a forced first-login change. A wrong current password is
+    400, never 401: the dashboard signs the user out on any 401."""
+    user_id = current_user.user_id
+    if attempt_limiter.is_blocked(user_id):
+        raise HTTPException(status_code=429, detail="Too many incorrect attempts. Please try again later.")
+
+    user = auth_repository.find_user_by_id(user_id)
+    if user is None or not verify_password(payload.current_password, user.password_hash):
+        attempt_limiter.record_failure(user_id)
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+
+    try:
+        validate_password_policy(payload.new_password, username=user.username, email=user.email)
+    except PasswordPolicyError as error:
+        raise HTTPException(status_code=422, detail=str(error))
+    if verify_password(payload.new_password, user.password_hash):
+        raise HTTPException(status_code=422, detail="New password must be different from the current password")
+
+    # Whole seconds: the fresh token below is issued at exactly this instant,
+    # and resolve_identity rejects only tokens with an earlier iat.
+    changed_at = datetime.now(timezone.utc).replace(microsecond=0)
+    changed = auth_repository.change_password(
+        user_id,
+        expected_password_hash=user.password_hash,
+        new_password_hash=hash_password(payload.new_password),
+        password_changed_at=changed_at,
+        reason="self_service_password_change",
+    )
+    if not changed:
+        raise HTTPException(status_code=409, detail="Password was changed by another request. Please sign in again.")
+
+    attempt_limiter.clear(user_id)
+    logger.info("password_changed user_id=%s", user_id)
+    token = issue_access_token(user_id, current_user.organization_id, issued_at=changed_at)
+    identity = dataclasses.replace(current_user, must_change_password=False)
+    return {"access_token": token, "token_type": "bearer", **_identity_payload(identity)}
 
 
 @router.post("/api/auth/forgot-password")

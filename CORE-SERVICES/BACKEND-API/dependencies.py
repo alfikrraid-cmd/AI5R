@@ -24,6 +24,7 @@ from API.auth_service import (
     AuthenticationError,
     decode_access_token,
     is_path_allowed_for_role,
+    is_route_allowed_during_password_change,
     resolve_identity,
 )
 from API.bi_machine_auth_service import authenticate_basic_credentials
@@ -32,7 +33,7 @@ from API.bi_machine_credential_repository import (
     InMemoryBiMachineCredentialRepository,
 )
 from API.password_reset_repository import PasswordResetRepository, PasswordResetRepositoryProtocol
-from API.password_reset_service import PasswordResetService
+from API.password_reset_service import FailedPasswordAttemptLimiter, PasswordResetService
 from API.resend_client import ResendClient
 from API.cm_report_gateway import CMReportGateway
 from API.condition_monitoring_reading_gateway import ConditionMonitoringReadingGateway
@@ -553,6 +554,15 @@ def get_password_reset_service() -> PasswordResetService:
     return _password_reset_service
 
 
+# LTSA_CHANGE_PASSWORD_FIRST_LOGIN_R2A -- wrong current-password attempts on
+# POST /api/auth/change-password (in-memory, per process).
+_change_password_attempt_limiter = FailedPasswordAttemptLimiter()
+
+
+def get_change_password_attempt_limiter() -> FailedPasswordAttemptLimiter:
+    return _change_password_attempt_limiter
+
+
 def get_whatsapp_intake_repository() -> WhatsAppIntakeRepository:
     return _whatsapp_intake_repository
 
@@ -738,6 +748,13 @@ def get_current_user(
     # own API prefix, whatever permission the route itself checks (or not).
     if not is_path_allowed_for_role(identity.role, request.url.path):
         raise HTTPException(status_code=403, detail="Role not permitted on this endpoint")
+    # LTSA_CHANGE_PASSWORD_FIRST_LOGIN_R2A -- a user who must change their
+    # password reaches only GET /api/auth/me and POST /api/auth/change-password.
+    # 403, never 401: the dashboard clears the session on any 401.
+    if getattr(identity, "must_change_password", False) and not is_route_allowed_during_password_change(
+        request.method, request.url.path
+    ):
+        raise HTTPException(status_code=403, detail="password_change_required")
     return identity
 
 
@@ -779,7 +796,9 @@ def _authenticate(authorization: str | None, repo: Any | None = None) -> Authent
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
     try:
-        return resolve_identity(_auth_repository, payload["sub"], payload["org"])
+        return resolve_identity(
+            _auth_repository, payload["sub"], payload["org"], token_issued_at=payload.get("iat")
+        )
     except AuthenticationError as error:
         # Disabled user / disabled or missing membership, re-checked live
         # against the repository on every request (never trusted from the

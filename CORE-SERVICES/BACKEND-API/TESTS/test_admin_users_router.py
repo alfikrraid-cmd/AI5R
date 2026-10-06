@@ -11,7 +11,7 @@ if str(BACKEND_API_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_API_DIR))
 
 from main import app  # noqa: E402
-from dependencies import get_auth_repository, get_current_user  # noqa: E402
+from dependencies import get_auth_repository, get_current_user, get_password_reset_service  # noqa: E402
 from API.auth_service import ROLE_PERMISSIONS, AuthenticatedIdentity, normalize_username  # noqa: E402
 
 client = TestClient(app)
@@ -77,8 +77,9 @@ class FakeAuthRepository:
             {"user_id": user_id, "organization_id": organization_id, "role": role, "created_by": created_by}
         )
 
-    def create_user_with_membership(self, *, username, email, password_hash, organization_id, role, created_by=None):
+    def create_user_with_membership(self, *, username, email, password_hash, organization_id, role, created_by=None, must_change_password=False):
         user_id = self.create_user(username=username, email=email, password_hash=password_hash, created_by=created_by)
+        self.created_users[-1]["must_change_password"] = must_change_password
         self.create_membership(user_id=user_id, organization_id=organization_id, role=role, created_by=created_by)
         return user_id
 
@@ -105,8 +106,19 @@ class FakeAuthRepository:
             {"user_id": user_id, "organization_id": organization_id, "role": role, "updated_by": updated_by}
         )
 
-    def update_password_hash(self, user_id, password_hash, *, updated_by):
-        self.password_updates.append({"user_id": user_id, "password_hash": password_hash, "updated_by": updated_by})
+    def update_password_hash(self, user_id, password_hash, *, updated_by, must_change_password=None, password_changed_at=None):
+        self.password_updates.append(
+            {
+                "user_id": user_id,
+                "password_hash": password_hash,
+                "updated_by": updated_by,
+                "must_change_password": must_change_password,
+                "password_changed_at": password_changed_at,
+            }
+        )
+
+    def find_user_by_id(self, user_id):
+        return None
 
 
 @pytest.fixture(autouse=True)
@@ -117,7 +129,7 @@ def clear_dependency_overrides():
 
 
 class MembershipFailureRepository(FakeAuthRepository):
-    def create_user_with_membership(self, *, username, email, password_hash, organization_id, role, created_by=None):
+    def create_user_with_membership(self, *, username, email, password_hash, organization_id, role, created_by=None, must_change_password=False):
         self.user_insert_attempted = True
         raise RuntimeError("membership insert failed")
 
@@ -184,7 +196,7 @@ class TestCreateUser:
         _override(role="SUPERUSER", repo=repo)
         response = client.post(
             "/api/admin/users",
-            json={"username": "newuser", "name": "New User", "email": "new@tap.internal", "password": "s3cret-pw", "organization_id": "org-tap", "role": "TAP_ENGINEER"},
+            json={"username": "newuser", "name": "New User", "email": "new@tap.internal", "password": "Temp-Passw0rd-2026", "organization_id": "org-tap", "role": "TAP_ENGINEER"},
         )
         assert response.status_code == 200
         assert repo.created_users[0]["created_by"] == "actor-1"
@@ -197,16 +209,16 @@ class TestCreateUser:
         _override(role="SUPERUSER", repo=repo)
         client.post(
             "/api/admin/users",
-            json={"username": "newuser", "email": "new@tap.internal", "password": "s3cret-pw", "organization_id": "org-tap", "role": "TAP_ENGINEER"},
+            json={"username": "newuser", "email": "new@tap.internal", "password": "Temp-Passw0rd-2026", "organization_id": "org-tap", "role": "TAP_ENGINEER"},
         )
-        assert repo.created_users[0]["password_hash"] != "s3cret-pw"
+        assert repo.created_users[0]["password_hash"] != "Temp-Passw0rd-2026"
 
     def test_tap_admin_cannot_create_user(self):
         repo = FakeAuthRepository()
         _override(role="TAP_ADMIN", repo=repo)
         response = client.post(
             "/api/admin/users",
-            json={"username": "newuser", "email": "new@tap.internal", "password": "s3cret-pw", "organization_id": "org-tap", "role": "TAP_ENGINEER"},
+            json={"username": "newuser", "email": "new@tap.internal", "password": "Temp-Passw0rd-2026", "organization_id": "org-tap", "role": "TAP_ENGINEER"},
         )
         assert response.status_code == 403
         assert repo.created_users == []
@@ -216,7 +228,7 @@ class TestCreateUser:
         _override(role="TAP_ADMIN", repo=repo)
         response = client.post(
             "/api/admin/users",
-            json={"username": "newadmin", "email": "new@tap.internal", "password": "s3cret-pw", "organization_id": "org-tap", "role": "SUPERUSER"},
+            json={"username": "newadmin", "email": "new@tap.internal", "password": "Temp-Passw0rd-2026", "organization_id": "org-tap", "role": "SUPERUSER"},
         )
         assert response.status_code == 403
         assert repo.created_users == []
@@ -226,7 +238,7 @@ class TestCreateUser:
         _override(role="TAP_ADMIN", repo=repo)
         response = client.post(
             "/api/admin/users",
-            json={"username": "newadmin", "password": "s3cret-pw", "organization_id": "org-tap", "role": "TAP_ADMIN"},
+            json={"username": "newadmin", "password": "Temp-Passw0rd-2026", "organization_id": "org-tap", "role": "TAP_ADMIN"},
         )
         assert response.status_code == 403
         assert repo.created_users == []
@@ -236,7 +248,7 @@ class TestCreateUser:
         _override(role="TAP_ADMIN", repo=repo)
         response = client.post(
             "/api/admin/users",
-            json={"username": "newuser", "password": "s3cret-pw", "organization_id": "org-other", "role": "TAP_ENGINEER"},
+            json={"username": "newuser", "password": "Temp-Passw0rd-2026", "organization_id": "org-other", "role": "TAP_ENGINEER"},
         )
         assert response.status_code == 403
         assert repo.created_users == []
@@ -249,7 +261,7 @@ class TestCreateUser:
 
         response = client.post(
             "/api/admin/users",
-            json={"username": "newuser", "password": "s3cret-pw", "organization_id": "org-tap", "role": "TAP_ENGINEER"},
+            json={"username": "newuser", "password": "Temp-Passw0rd-2026", "organization_id": "org-tap", "role": "TAP_ENGINEER"},
         )
 
         assert response.status_code == 200
@@ -264,7 +276,7 @@ class TestCreateUser:
 
         response = client.post(
             "/api/admin/users",
-            json={"username": "newuser", "password": "s3cret-pw", "organization_id": "org-tap", "role": "TAP_ENGINEER"},
+            json={"username": "newuser", "password": "Temp-Passw0rd-2026", "organization_id": "org-tap", "role": "TAP_ENGINEER"},
         )
 
         assert response.status_code == 500
@@ -278,7 +290,7 @@ class TestCreateUser:
         _override(role="SUPERUSER", repo=repo)
         response = client.post(
             "/api/admin/users",
-            json={"username": "newuser", "password": "s3cret-pw", "organization_id": "org-missing", "role": "TAP_ENGINEER"},
+            json={"username": "newuser", "password": "Temp-Passw0rd-2026", "organization_id": "org-missing", "role": "TAP_ENGINEER"},
         )
         assert response.status_code == 404
         assert repo.created_users == []
@@ -289,7 +301,7 @@ class TestCreateUser:
         _override(role="SUPERUSER", repo=repo)
         response = client.post(
             "/api/admin/users",
-            json={"username": "newuser", "password": "s3cret-pw", "organization_id": "org-tap", "role": "NOT_A_ROLE"},
+            json={"username": "newuser", "password": "Temp-Passw0rd-2026", "organization_id": "org-tap", "role": "NOT_A_ROLE"},
         )
         assert response.status_code == 422
         assert repo.created_users == []
@@ -301,7 +313,7 @@ class TestCreateUser:
         _override(role="SUPERUSER", repo=repo)
         response = client.post(
             "/api/admin/users",
-            json={"username": "newuser", "email": "NEW@TAP.INTERNAL", "password": "s3cret-pw", "organization_id": "org-tap", "role": "TAP_ENGINEER"},
+            json={"username": "newuser", "email": "NEW@TAP.INTERNAL", "password": "Temp-Passw0rd-2026", "organization_id": "org-tap", "role": "TAP_ENGINEER"},
         )
         assert response.status_code == 409
         assert repo.created_users == []
@@ -409,23 +421,23 @@ class TestResetPassword:
     def test_reset_never_echoes_the_new_password_or_its_hash(self):
         repo = FakeAuthRepository(memberships={("u-1", "org-tap"): FakeMembership("org-tap", "TAP", "TAP_ENGINEER")})
         _override(role="SUPERUSER", repo=repo)
-        response = client.post("/api/admin/users/u-1/password-reset", json={"new_password": "brand-new-pw"})
+        response = client.post("/api/admin/users/u-1/password-reset", json={"new_password": "Brand-New-Passw0rd-2026"})
         assert response.status_code == 200
         body_text = response.text
-        assert "brand-new-pw" not in body_text
-        assert repo.password_updates[0]["password_hash"] != "brand-new-pw"
+        assert "Brand-New-Passw0rd-2026" not in body_text
+        assert repo.password_updates[0]["password_hash"] != "Brand-New-Passw0rd-2026"
 
     def test_tap_admin_cannot_reset_any_password(self):
         repo = FakeAuthRepository(memberships={("u-1", "org-tap"): FakeMembership("org-tap", "TAP", "TAP_ENGINEER")})
         _override(role="TAP_ADMIN", repo=repo)
-        response = client.post("/api/admin/users/u-1/password-reset", json={"new_password": "brand-new-pw"})
+        response = client.post("/api/admin/users/u-1/password-reset", json={"new_password": "Brand-New-Passw0rd-2026"})
         assert response.status_code == 403
         assert repo.password_updates == []
 
     def test_tap_admin_cannot_reset_a_superuser_password(self):
         repo = FakeAuthRepository(memberships={("su-1", "org-tap"): FakeMembership("org-tap", "TAP", "SUPERUSER")})
         _override(role="TAP_ADMIN", repo=repo)
-        response = client.post("/api/admin/users/su-1/password-reset", json={"new_password": "brand-new-pw"})
+        response = client.post("/api/admin/users/su-1/password-reset", json={"new_password": "Brand-New-Passw0rd-2026"})
         assert response.status_code == 403
         assert repo.password_updates == []
 
@@ -438,7 +450,7 @@ def test_create_user_username_only_email_null():
 
     response = client.post(
         "/api/admin/users",
-        json={"username": " Ravi ", "password": "s3cret-pw", "organization_id": "org-tap", "role": "TAP_ENGINEER"},
+        json={"username": " Ravi ", "password": "Temp-Passw0rd-2026", "organization_id": "org-tap", "role": "TAP_ENGINEER"},
     )
 
     assert response.status_code == 200
@@ -453,7 +465,7 @@ def test_create_user_username_and_email():
 
     response = client.post(
         "/api/admin/users",
-        json={"username": "ravi", "email": "RAVI@TAP.INTERNAL", "password": "s3cret-pw", "organization_id": "org-tap", "role": "TAP_ENGINEER"},
+        json={"username": "ravi", "email": "RAVI@TAP.INTERNAL", "password": "Temp-Passw0rd-2026", "organization_id": "org-tap", "role": "TAP_ENGINEER"},
     )
 
     assert response.status_code == 200
@@ -468,7 +480,7 @@ def test_create_user_duplicate_username_rejected():
 
     response = client.post(
         "/api/admin/users",
-        json={"username": "ravi", "password": "s3cret-pw", "organization_id": "org-tap", "role": "TAP_ENGINEER"},
+        json={"username": "ravi", "password": "Temp-Passw0rd-2026", "organization_id": "org-tap", "role": "TAP_ENGINEER"},
     )
 
     assert response.status_code == 409
@@ -483,9 +495,165 @@ def test_create_user_case_collision_rejected():
 
     response = client.post(
         "/api/admin/users",
-        json={"username": " RAVI ", "password": "s3cret-pw", "organization_id": "org-tap", "role": "TAP_ENGINEER"},
+        json={"username": " RAVI ", "password": "Temp-Passw0rd-2026", "organization_id": "org-tap", "role": "TAP_ENGINEER"},
     )
 
     assert response.status_code == 409
     assert repo.created_users == []
     assert repo.created_memberships == []
+
+
+# --- LTSA_CHANGE_PASSWORD_FIRST_LOGIN_R2A -------------------------------------
+
+
+class FakeSetPasswordService:
+    def __init__(self, sent=True):
+        self.sent = sent
+        self.calls = []
+
+    def send_set_password_link(self, user_id):
+        self.calls.append(user_id)
+        return self.sent
+
+
+def _override_with_service(repo, service, role="SUPERUSER"):
+    _override(role=role, repo=repo)
+    app.dependency_overrides[get_password_reset_service] = lambda: service
+
+
+class TestFirstLoginCredentialModes:
+    def test_temporary_password_creates_user_with_forced_change(self):
+        repo, service = FakeAuthRepository(), FakeSetPasswordService()
+        _override_with_service(repo, service)
+        response = client.post(
+            "/api/admin/users",
+            json={"username": "newuser", "email": "new@tap.internal", "password": "Temp-Passw0rd-2026",
+                  "credential_mode": "TEMPORARY_PASSWORD", "organization_id": "org-tap", "role": "TAP_ENGINEER"},
+        )
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["credential_mode"] == "TEMPORARY_PASSWORD" and body["must_change_password"] is True
+        assert repo.created_users[0]["must_change_password"] is True
+        assert service.calls == []
+        assert "Temp-Passw0rd-2026" not in response.text
+
+    def test_password_without_mode_defaults_to_temporary_with_forced_change(self):
+        repo, service = FakeAuthRepository(), FakeSetPasswordService()
+        _override_with_service(repo, service)
+        response = client.post(
+            "/api/admin/users",
+            json={"username": "newuser", "password": "Temp-Passw0rd-2026", "organization_id": "org-tap", "role": "TAP_ENGINEER"},
+        )
+        assert response.status_code == 200
+        assert response.json()["credential_mode"] == "TEMPORARY_PASSWORD"
+        assert repo.created_users[0]["must_change_password"] is True
+
+    def test_email_set_password_sends_link_and_admin_never_sees_a_password(self):
+        repo, service = FakeAuthRepository(), FakeSetPasswordService(sent=True)
+        _override_with_service(repo, service)
+        response = client.post(
+            "/api/admin/users",
+            json={"username": "newuser", "email": "New@Tap.Internal", "credential_mode": "EMAIL_SET_PASSWORD",
+                  "organization_id": "org-tap", "role": "TAP_ENGINEER"},
+        )
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["credential_mode"] == "EMAIL_SET_PASSWORD"
+        assert body["set_password_email"] == "SENT"
+        assert service.calls == ["new-user-id"]
+        assert [k for k in body if "password" in k and k != "set_password_email"] == ["must_change_password"]
+        assert repo.created_users[0]["must_change_password"] is True
+        assert repo.created_users[0]["password_hash"].startswith("scrypt$")
+        assert "scrypt$" not in response.text
+
+    def test_no_password_and_no_mode_defaults_to_email_set_password(self):
+        repo, service = FakeAuthRepository(), FakeSetPasswordService()
+        _override_with_service(repo, service)
+        response = client.post(
+            "/api/admin/users",
+            json={"username": "newuser", "email": "new@tap.internal", "organization_id": "org-tap", "role": "TAP_ENGINEER"},
+        )
+        assert response.status_code == 200
+        assert response.json()["credential_mode"] == "EMAIL_SET_PASSWORD"
+        assert service.calls == ["new-user-id"]
+
+    def test_email_dispatch_failure_is_reported_not_hidden(self):
+        repo, service = FakeAuthRepository(), FakeSetPasswordService(sent=False)
+        _override_with_service(repo, service)
+        response = client.post(
+            "/api/admin/users",
+            json={"username": "newuser", "email": "new@tap.internal", "credential_mode": "EMAIL_SET_PASSWORD",
+                  "organization_id": "org-tap", "role": "TAP_ENGINEER"},
+        )
+        assert response.status_code == 200
+        assert response.json()["set_password_email"] == "FAILED"
+
+    @pytest.mark.parametrize(
+        "payload,detail",
+        [
+            ({"credential_mode": "EMAIL_SET_PASSWORD"}, "email is required"),
+            ({"credential_mode": "EMAIL_SET_PASSWORD", "email": "new@tap.internal", "password": "Temp-Passw0rd-2026"}, "must not be supplied"),
+            ({"credential_mode": "SOMETHING_ELSE", "password": "Temp-Passw0rd-2026"}, "unknown credential_mode"),
+            ({"credential_mode": "TEMPORARY_PASSWORD", "password": "short"}, "at least 12"),
+            ({"credential_mode": "TEMPORARY_PASSWORD"}, "blank"),
+            ({"credential_mode": "TEMPORARY_PASSWORD", "password": "              "}, "blank"),
+        ],
+    )
+    def test_invalid_credential_requests_are_rejected_without_creating_a_user(self, payload, detail):
+        repo, service = FakeAuthRepository(), FakeSetPasswordService()
+        _override_with_service(repo, service)
+        body = {"username": "newuser", "organization_id": "org-tap", "role": "TAP_ENGINEER", **payload}
+        response = client.post("/api/admin/users", json=body)
+        assert response.status_code == 422, response.text
+        assert detail in response.json()["detail"].lower()
+        assert repo.created_users == []
+        assert service.calls == []
+
+    def test_temporary_password_equal_to_username_is_rejected(self):
+        repo, service = FakeAuthRepository(), FakeSetPasswordService()
+        _override_with_service(repo, service)
+        response = client.post(
+            "/api/admin/users",
+            json={"username": "newuser.account", "password": "NewUser.Account", "organization_id": "org-tap", "role": "TAP_ENGINEER"},
+        )
+        assert response.status_code == 422
+        assert "username" in response.json()["detail"].lower()
+        assert repo.created_users == []
+
+
+class TestAdminResetForcesChange:
+    def test_admin_reset_sets_forced_change_and_password_changed_at(self):
+        repo = FakeAuthRepository(memberships={("u-1", "org-tap"): FakeMembership("org-tap", "TAP", "TAP_ENGINEER")})
+        _override(role="SUPERUSER", repo=repo)
+        response = client.post("/api/admin/users/u-1/password-reset", json={"new_password": "Brand-New-Passw0rd-2026"})
+        assert response.status_code == 200
+        assert response.json()["must_change_password"] is True
+        update = repo.password_updates[0]
+        assert update["must_change_password"] is True
+        assert update["password_changed_at"] is not None and update["password_changed_at"].tzinfo is not None
+
+    def test_admin_reset_rejects_policy_violation(self):
+        repo = FakeAuthRepository(memberships={("u-1", "org-tap"): FakeMembership("org-tap", "TAP", "TAP_ENGINEER")})
+        _override(role="SUPERUSER", repo=repo)
+        response = client.post("/api/admin/users/u-1/password-reset", json={"new_password": "too-short"})
+        assert response.status_code == 422
+        assert repo.password_updates == []
+
+
+class TestSetPasswordLinkEndpoint:
+    def test_superuser_can_send_set_password_link(self):
+        repo = FakeAuthRepository(memberships={("u-1", "org-tap"): FakeMembership("org-tap", "TAP", "TAP_ENGINEER")})
+        service = FakeSetPasswordService(sent=True)
+        _override_with_service(repo, service)
+        response = client.post("/api/admin/users/u-1/set-password-link")
+        assert response.status_code == 200
+        assert response.json() == {"id": "u-1", "status": "set_password_link_sent"}
+        assert service.calls == ["u-1"]
+
+    def test_tap_admin_cannot_send_set_password_link(self):
+        repo = FakeAuthRepository(memberships={("u-1", "org-tap"): FakeMembership("org-tap", "TAP", "TAP_ENGINEER")})
+        service = FakeSetPasswordService()
+        _override_with_service(repo, service, role="TAP_ADMIN")
+        response = client.post("/api/admin/users/u-1/set-password-link")
+        assert response.status_code == 403
+        assert service.calls == []

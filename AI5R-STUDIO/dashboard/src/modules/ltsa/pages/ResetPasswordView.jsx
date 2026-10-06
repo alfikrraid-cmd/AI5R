@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { confirmPasswordReset } from "../auth/authClient";
+import { PASSWORD_POLICY_HINT, passwordPolicyError } from "../auth/passwordPolicy";
 import "./LTSAOpenDesign.css";
 import "./LoginView.css";
 import "./ForgotPasswordView.css";
@@ -31,13 +32,12 @@ export default function ResetPasswordView({
       return;
     }
 
-    if (!newPassword) {
-      setError("Please enter a new password.");
-      return;
-    }
-
-    if (newPassword.length < 6) {
-      setError("Password must be at least 6 characters.");
+    // LTSA_CHANGE_PASSWORD_FIRST_LOGIN_R2A -- same global policy as the
+    // backend (12-128 characters); the backend also rejects a password equal
+    // to the account's username or email and explains that on submit.
+    const policyProblem = passwordPolicyError(newPassword);
+    if (policyProblem) {
+      setError(policyProblem);
       return;
     }
 
@@ -56,7 +56,7 @@ export default function ResetPasswordView({
       if (err.code === "invalid_token") {
         setError("This password reset link is invalid or has expired. Please request a new reset link.");
       } else if (err.code === "invalid_password") {
-        setError("Password does not meet requirements.");
+        setError(err.detail || "Password does not meet requirements.");
       } else {
         setError("Unable to reset password right now. Please try again shortly.");
       }
@@ -122,7 +122,7 @@ export default function ResetPasswordView({
             <div>
               <div className="login-card-head">
                 <h2>Set new password</h2>
-                <p>Choose a secure password for your account.</p>
+                <p>Choose a secure password for your account. {PASSWORD_POLICY_HINT}</p>
               </div>
 
               <form onSubmit={handleSubmit} noValidate>

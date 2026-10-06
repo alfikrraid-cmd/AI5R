@@ -69,4 +69,37 @@ def verify_password(password: str, encoded: str) -> bool:
     return hmac.compare_digest(candidate, expected)
 
 
-__all__ = ["hash_password", "verify_password"]
+# LTSA_CHANGE_PASSWORD_FIRST_LOGIN_R2A -- the one password policy, applied to
+# every password write (self-service change, reset-password, admin create,
+# admin reset). Messages never echo the password itself.
+PASSWORD_MIN_LENGTH = 12
+PASSWORD_MAX_LENGTH = 128
+
+
+class PasswordPolicyError(ValueError):
+    """A new password does not satisfy the policy. The message is safe to
+    return to the client."""
+
+
+def validate_password_policy(password: str | None, *, username: str | None = None, email: str | None = None) -> None:
+    if password is None or not password.strip():
+        raise PasswordPolicyError("Password must not be blank")
+    if len(password) < PASSWORD_MIN_LENGTH:
+        raise PasswordPolicyError(f"Password must be at least {PASSWORD_MIN_LENGTH} characters")
+    if len(password) > PASSWORD_MAX_LENGTH:
+        raise PasswordPolicyError(f"Password must be at most {PASSWORD_MAX_LENGTH} characters")
+    candidate = password.strip().lower()
+    if username and candidate == username.strip().lower():
+        raise PasswordPolicyError("Password must not be the same as the username")
+    if email and candidate == email.strip().lower():
+        raise PasswordPolicyError("Password must not be the same as the email address")
+
+
+__all__ = [
+    "PASSWORD_MAX_LENGTH",
+    "PASSWORD_MIN_LENGTH",
+    "PasswordPolicyError",
+    "hash_password",
+    "validate_password_policy",
+    "verify_password",
+]

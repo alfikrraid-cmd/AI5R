@@ -61,7 +61,15 @@ class InMemoryAuthRepository:
                 return u
         return None
 
-    def update_password_hash(self, user_id: str, password_hash: str, *, updated_by: str) -> None:
+    def update_password_hash(
+        self,
+        user_id: str,
+        password_hash: str,
+        *,
+        updated_by: str,
+        must_change_password: bool | None = None,
+        password_changed_at=None,
+    ) -> None:
         for u in list(self.users.values()) + list(self.usernames.values()):
             if u.id == user_id:
                 new_record = UserRecord(
@@ -70,6 +78,12 @@ class InMemoryAuthRepository:
                     password_hash=password_hash,
                     status=u.status,
                     username=u.username,
+                    must_change_password=(
+                        u.must_change_password if must_change_password is None else must_change_password
+                    ),
+                    password_changed_at=(
+                        password_changed_at.isoformat() if password_changed_at is not None else u.password_changed_at
+                    ),
                 )
                 if u.email is not None:
                     self.users[u.email.lower()] = new_record
@@ -318,3 +332,100 @@ def test_audit_logs_do_not_contain_secrets_or_identifiers(auth_repo, reset_repo,
     assert "tap_engineer" not in log_text
     assert "token" not in log_text
     assert "re_mock" not in log_text
+
+
+# --- LTSA_CHANGE_PASSWORD_FIRST_LOGIN_R2A -------------------------------------
+
+import dataclasses  # noqa: E402
+
+from API.auth_password import PasswordPolicyError  # noqa: E402
+
+
+def _service(auth_repo, reset_repo, mock_resend_client):
+    return PasswordResetService(auth_repository=auth_repo, reset_repository=reset_repo, resend_client=mock_resend_client)
+
+
+def _issue_reset_token(service, mock_resend_client, identifier="engineer@tap.com"):
+    service.request_password_reset(identifier, client_ip="192.168.1.1")
+    url = mock_resend_client.send_email.call_args[1]["text"].split("Reset Password: ")[1].split("\n")[0]
+    return url.split("token=")[1]
+
+
+def test_reset_password_clears_forced_change_and_records_password_changed_at(auth_repo, reset_repo, mock_resend_client):
+    user = auth_repo.find_user_by_email("engineer@tap.com")
+    forced = dataclasses.replace(user, must_change_password=True)
+    auth_repo.users["engineer@tap.com"] = forced
+    auth_repo.usernames["tap_engineer"] = forced
+    service = _service(auth_repo, reset_repo, mock_resend_client)
+    raw_token = _issue_reset_token(service, mock_resend_client)
+
+    service.reset_password(raw_token, "NewSecurePassword456!", client_ip="192.168.1.1")
+
+    updated = auth_repo.find_user_by_email("engineer@tap.com")
+    assert updated.must_change_password is False
+    assert updated.password_changed_at is not None
+
+
+@pytest.mark.parametrize("weak", ["short-pw", "             ", "tap_engineer", "Engineer@Tap.com", "x" * 129])
+def test_reset_password_policy_violation_is_rejected_and_token_stays_usable(auth_repo, reset_repo, mock_resend_client, weak):
+    service = _service(auth_repo, reset_repo, mock_resend_client)
+    raw_token = _issue_reset_token(service, mock_resend_client)
+
+    with pytest.raises(PasswordPolicyError):
+        service.reset_password(raw_token, weak, client_ip="192.168.1.1")
+
+    assert list(reset_repo.tokens.values())[0]["used_at"] is None
+    assert verify_password("OldPassword123", auth_repo.find_user_by_email("engineer@tap.com").password_hash)
+
+    # the same link still works with a valid password
+    service.reset_password(raw_token, "NewSecurePassword456!", client_ip="192.168.1.1")
+    assert verify_password("NewSecurePassword456!", auth_repo.find_user_by_email("engineer@tap.com").password_hash)
+
+
+def test_reset_password_invalid_token_still_reported_as_invalid(auth_repo, reset_repo, mock_resend_client):
+    service = _service(auth_repo, reset_repo, mock_resend_client)
+    with pytest.raises(InvalidTokenError):
+        service.reset_password("bogus-token", "NewSecurePassword456!", client_ip="192.168.1.1")
+
+
+def test_reset_email_text_is_unchanged(auth_repo, reset_repo, mock_resend_client):
+    service = _service(auth_repo, reset_repo, mock_resend_client)
+    service.request_password_reset("engineer@tap.com", client_ip="192.168.1.1")
+    kwargs = mock_resend_client.send_email.call_args[1]
+    assert kwargs["subject"] == "Reset Password — AI5R LTSA"
+    assert kwargs["text"].startswith(
+        "AI5R LTSA Engineering\n\nA request was received to reset your password for your AI5R LTSA account.\n\nReset Password: "
+    )
+    assert "This password reset link is valid for 15 minutes." in kwargs["text"]
+
+
+def test_send_set_password_link_emails_a_reset_token_link(auth_repo, reset_repo, mock_resend_client):
+    service = _service(auth_repo, reset_repo, mock_resend_client)
+    assert service.send_set_password_link("user-1") is True
+    kwargs = mock_resend_client.send_email.call_args[1]
+    assert kwargs["to"] == "engineer@tap.com"
+    assert kwargs["subject"] == "Set your password — AI5R LTSA"
+    url = kwargs["text"].split("Set Password: ")[1].split("\n")[0]
+    raw_token = url.split("token=")[1]
+    assert url.startswith("https://osa-system.com/reset-password?token=")
+    assert len(reset_repo.tokens) == 1
+
+    # the link is an ordinary reset token: it sets the password and clears any forced change
+    service.reset_password(raw_token, "Chosen-By-User-2026", client_ip="10.0.0.1")
+    user = auth_repo.find_user_by_email("engineer@tap.com")
+    assert verify_password("Chosen-By-User-2026", user.password_hash)
+    assert user.must_change_password is False
+
+
+@pytest.mark.parametrize("user_id", ["user-2", "user-3", "missing-user"])
+def test_send_set_password_link_refuses_accounts_that_cannot_receive_it(auth_repo, reset_repo, mock_resend_client, user_id):
+    service = _service(auth_repo, reset_repo, mock_resend_client)
+    assert service.send_set_password_link(user_id) is False
+    assert mock_resend_client.send_email.call_count == 0
+    assert reset_repo.tokens == {}
+
+
+def test_send_set_password_link_reports_dispatch_failure(auth_repo, reset_repo, mock_resend_client):
+    mock_resend_client.send_email.side_effect = RuntimeError("smtp down")
+    service = _service(auth_repo, reset_repo, mock_resend_client)
+    assert service.send_set_password_link("user-1") is False

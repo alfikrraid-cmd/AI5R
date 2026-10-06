@@ -203,6 +203,22 @@ def is_path_allowed_for_role(role: str | None, path: str) -> bool:
     prefixes = ROLE_PATH_ALLOWLIST.get(role or "")
     return prefixes is None or any(path.startswith(prefix) for prefix in prefixes)
 
+
+# LTSA_CHANGE_PASSWORD_FIRST_LOGIN_R2A -- while must_change_password is TRUE
+# the identity may reach exactly these (method, path) pairs; get_current_user
+# answers every other authenticated route with 403 password_change_required.
+# Exact matches, not prefixes: PATCH /api/auth/me (email edit) is blocked too.
+PASSWORD_CHANGE_ALLOWED_ROUTES: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("GET", "/api/auth/me"),
+        ("POST", "/api/auth/change-password"),
+    }
+)
+
+
+def is_route_allowed_during_password_change(method: str, path: str) -> bool:
+    return (method.upper(), path.rstrip("/") or "/") in PASSWORD_CHANGE_ALLOWED_ROUTES
+
 # MWO-AUTH-USERNAME-002 -- delegation scope is intentionally narrower than
 # permissions. SUPERUSER may manage every role, including break-glass peers.
 # TAP_ADMIN may manage authorized operational accounts, including JC
@@ -249,13 +265,17 @@ def signing_secret() -> str:
     return "INSECURE-DEV-ONLY-JWT-SECRET-DO-NOT-USE-IN-PRODUCTION"
 
 
-def issue_access_token(user_id: str, organization_id: str) -> str:
+def issue_access_token(user_id: str, organization_id: str, *, issued_at: datetime | None = None) -> str:
     """Token payload is deliberately minimal (sub/org/iat/exp only) --
     role/permissions are never baked in. get_current_user() re-resolves
     them from the repository on every request, so a role change or a
     membership/user being disabled takes effect immediately, not only
-    after the (short-lived) token expires."""
-    now = datetime.now(timezone.utc)
+    after the (short-lived) token expires.
+
+    issued_at (LTSA_CHANGE_PASSWORD_FIRST_LOGIN_R2A) lets change-password
+    issue the fresh token at exactly the recorded password_changed_at
+    second, so it is never rejected by the iat check in resolve_identity."""
+    now = issued_at or datetime.now(timezone.utc)
     payload = {
         "sub": user_id,
         "org": organization_id,
@@ -285,6 +305,9 @@ class UserRecord:
     username: str | None = None
     name: str | None = None
     last_login: str | None = None
+    # LTSA_CHANGE_PASSWORD_FIRST_LOGIN_R2A (migration 051).
+    must_change_password: bool = False
+    password_changed_at: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -329,6 +352,9 @@ class AuthenticatedIdentity:
     name: str | None = None
     last_login: str | None = None
     organization_name: str | None = None
+    # LTSA_CHANGE_PASSWORD_FIRST_LOGIN_R2A -- while TRUE, only the
+    # PASSWORD_CHANGE_ALLOWED_ROUTES below are reachable.
+    must_change_password: bool = False
 
 
 def normalize_username(username: str | None) -> str:
@@ -375,38 +401,10 @@ def authenticate(repository: AuthRepositoryProtocol, identifier: str, password: 
             pass
 
     token = issue_access_token(user.id, membership.organization_id)
-    identity = AuthenticatedIdentity(
-        user_id=user.id,
-        email=user.email,
-        username=user.username,
-        name=user.name,
-        last_login=user.last_login,
-        organization_id=membership.organization_id,
-        organization_code=membership.organization_code,
-        role=membership.role,
-        permissions=permissions_for_role(membership.role),
-        data_scope_type=membership.data_scope_type,
-        data_scope_value=membership.data_scope_value,
-        organization_name=membership.organization_name or membership.organization_code,
-    )
-    return token, identity
+    return token, build_identity(user, membership)
 
 
-def resolve_identity(repository: AuthRepositoryProtocol, user_id: str, organization_id: str) -> AuthenticatedIdentity:
-    """get_current_user()'s own logic, given an already-decoded token's
-    sub/org. Re-fetches user AND membership fresh from the repository on
-    every call -- a user or membership disabled after the token was
-    issued is rejected immediately, never trusted from stale token
-    claims (this MWO's own required "membership disabled -> rejected"
-    behavior, proven even for a token that has not yet expired)."""
-    user = repository.find_user_by_id(user_id)
-    if user is None or user.status != "ACTIVE":
-        raise AuthenticationError("User is not active")
-
-    membership = repository.find_membership(user_id, organization_id)
-    if membership is None or membership.status != "ACTIVE":
-        raise AuthenticationError("Organization membership is not active")
-
+def build_identity(user: UserRecord, membership: MembershipRecord) -> AuthenticatedIdentity:
     return AuthenticatedIdentity(
         user_id=user.id,
         email=user.email,
@@ -420,7 +418,58 @@ def resolve_identity(repository: AuthRepositoryProtocol, user_id: str, organizat
         data_scope_type=membership.data_scope_type,
         data_scope_value=membership.data_scope_value,
         organization_name=membership.organization_name or membership.organization_code,
+        must_change_password=bool(user.must_change_password),
     )
+
+
+def password_changed_epoch_seconds(value: str | datetime | None) -> int | None:
+    """users.password_changed_at as whole UTC epoch seconds (floor), or None
+    when never changed. JWT iat is whole seconds too, so the comparison in
+    resolve_identity is like-for-like. A naive value is taken as UTC (the
+    column is TIMESTAMPTZ; the repository serializes it with an offset)."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, datetime):
+        moment = value
+    else:
+        moment = datetime.fromisoformat(str(value).replace("Z", "+00:00").replace(" ", "T", 1))
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return int(moment.timestamp())
+
+
+def resolve_identity(
+    repository: AuthRepositoryProtocol,
+    user_id: str,
+    organization_id: str,
+    *,
+    token_issued_at: int | float | None = None,
+) -> AuthenticatedIdentity:
+    """get_current_user()'s own logic, given an already-decoded token's
+    sub/org. Re-fetches user AND membership fresh from the repository on
+    every call -- a user or membership disabled after the token was
+    issued is rejected immediately, never trusted from stale token
+    claims (this MWO's own required "membership disabled -> rejected"
+    behavior, proven even for a token that has not yet expired).
+
+    LTSA_CHANGE_PASSWORD_FIRST_LOGIN_R2A -- when the token's iat
+    (token_issued_at) is earlier than the user's password_changed_at, the
+    token predates the latest password change and is rejected. Both are
+    whole seconds; a token issued in the same second as the change is
+    accepted (change-password issues its fresh token at that second)."""
+    user = repository.find_user_by_id(user_id)
+    if user is None or user.status != "ACTIVE":
+        raise AuthenticationError("User is not active")
+
+    changed_at = password_changed_epoch_seconds(user.password_changed_at)
+    if changed_at is not None and token_issued_at is not None and int(token_issued_at) < changed_at:
+        raise AuthenticationError("Session ended after a password change")
+
+    membership = repository.find_membership(user_id, organization_id)
+    if membership is None or membership.status != "ACTIVE":
+        raise AuthenticationError("Organization membership is not active")
+
+    return build_identity(user, membership)
 
 
 # --- Data scope (MWO-LTSA-AUTH-DATA-SCOPE-CLOSURE-001) ---------------------
@@ -475,4 +524,8 @@ __all__ = [
     "normalize_username",
     "authenticate",
     "resolve_identity",
+    "build_identity",
+    "password_changed_epoch_seconds",
+    "PASSWORD_CHANGE_ALLOWED_ROUTES",
+    "is_route_allowed_during_password_change",
 ]

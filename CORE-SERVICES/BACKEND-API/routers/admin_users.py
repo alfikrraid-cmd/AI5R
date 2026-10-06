@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import secrets
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from API.auth_admin_service import (
@@ -8,8 +11,9 @@ from API.auth_admin_service import (
     authorize_user_management,
     guard_last_superuser,
 )
-from API.auth_password import hash_password
+from API.auth_password import PasswordPolicyError, hash_password, validate_password_policy
 from API.auth_service import ROLE_PERMISSIONS, can_delegate_role, normalize_username
+from API.password_reset_service import PasswordResetService
 from API.whatsapp_registration_service import (
     IdentityNotPendingError,
     PhoneAlreadyBoundError,
@@ -23,6 +27,7 @@ from API.whatsapp_registration_service import (
 from dependencies import (
     get_auth_repository,
     get_current_user,
+    get_password_reset_service,
     get_record_change_history_repository,
     get_whatsapp_intake_repository,
 )
@@ -78,6 +83,23 @@ def _is_same_organization(current_user, organization_id: str | None) -> bool:
 def _require_same_organization(current_user, organization_id: str | None) -> None:
     if not _is_same_organization(current_user, organization_id):
         raise HTTPException(status_code=403, detail="Cannot manage users outside your organization")
+
+
+CREDENTIAL_MODE_EMAIL = "EMAIL_SET_PASSWORD"
+CREDENTIAL_MODE_TEMPORARY = "TEMPORARY_PASSWORD"
+
+
+def _resolve_credential_mode(payload) -> str:
+    """Explicit credential_mode wins; when omitted, a supplied password
+    means TEMPORARY_PASSWORD and no password means EMAIL_SET_PASSWORD."""
+    mode = (payload.credential_mode or "").strip().upper()
+    if not mode:
+        return CREDENTIAL_MODE_TEMPORARY if payload.password else CREDENTIAL_MODE_EMAIL
+    if mode not in (CREDENTIAL_MODE_EMAIL, CREDENTIAL_MODE_TEMPORARY):
+        raise HTTPException(status_code=422, detail="Unknown credential_mode")
+    if mode == CREDENTIAL_MODE_EMAIL and payload.password:
+        raise HTTPException(status_code=422, detail="A password must not be supplied with EMAIL_SET_PASSWORD")
+    return mode
 
 
 def _normalize_email(email: str | None) -> str | None:
@@ -154,6 +176,7 @@ def create_user(
     payload: AdminCreateUserRequest,
     current_user=Depends(get_current_user),
     auth_repository=Depends(get_auth_repository),
+    password_reset_service: PasswordResetService = Depends(get_password_reset_service),
 ) -> Payload:
     _require_superuser(current_user)
     if payload.role not in ROLE_PERMISSIONS:
@@ -179,13 +202,31 @@ def create_user(
     if email and auth_repository.find_user_by_email(email) is not None:
         raise HTTPException(status_code=409, detail="Email already exists")
 
+    # LTSA_CHANGE_PASSWORD_FIRST_LOGIN_R2A -- both modes create the user with
+    # must_change_password=TRUE in the same statement as the user/membership
+    # insert. EMAIL_SET_PASSWORD stores a random, never-disclosed password
+    # (nobody can sign in with it) and emails a set-password link;
+    # TEMPORARY_PASSWORD stores the admin-supplied, policy-checked password.
+    credential_mode = _resolve_credential_mode(payload)
+    if credential_mode == CREDENTIAL_MODE_EMAIL:
+        if not email:
+            raise HTTPException(status_code=422, detail="Email is required to send a set-password link")
+        password_hash = hash_password(secrets.token_urlsafe(48))
+    else:
+        try:
+            validate_password_policy(payload.password, username=username, email=email)
+        except PasswordPolicyError as error:
+            raise HTTPException(status_code=422, detail=str(error))
+        password_hash = hash_password(payload.password)
+
     kwargs = {
         "username": username,
         "email": email,
-        "password_hash": hash_password(payload.password),
+        "password_hash": password_hash,
         "organization_id": target_organization_id,
         "role": payload.role,
         "created_by": current_user.user_id,
+        "must_change_password": True,
     }
     if payload.name is not None:
         kwargs["name"] = payload.name
@@ -197,7 +238,22 @@ def create_user(
             user_id = auth_repository.create_user_with_membership(**kwargs)
     except Exception as error:
         raise HTTPException(status_code=500, detail="User creation failed before persistence completed") from error
-    return {"id": user_id, "username": username, "name": payload.name, "email": email, "organization_id": target_organization_id, "role": payload.role}
+    response = {
+        "id": user_id,
+        "username": username,
+        "name": payload.name,
+        "email": email,
+        "organization_id": target_organization_id,
+        "role": payload.role,
+        "credential_mode": credential_mode,
+        "must_change_password": True,
+    }
+    if credential_mode == CREDENTIAL_MODE_EMAIL:
+        # The user exists either way; a failed dispatch is reported so the
+        # admin can resend via POST .../set-password-link.
+        sent = password_reset_service.send_set_password_link(user_id)
+        response["set_password_email"] = "SENT" if sent else "FAILED"
+    return response
 
 @router.patch("/api/admin/users/{user_id}/status")
 def update_user_status(
@@ -270,6 +326,48 @@ def reset_password(
     current_user=Depends(get_current_user),
     auth_repository=Depends(get_auth_repository),
 ) -> Payload:
+    _authorize_credential_action(current_user, auth_repository, user_id)
+
+    # LTSA_CHANGE_PASSWORD_FIRST_LOGIN_R2A -- an admin-set password is a
+    # temporary one: policy-checked, the user must change it at next sign-in,
+    # and the user's existing sessions end now (password_changed_at).
+    target = auth_repository.find_user_by_id(user_id)
+    try:
+        validate_password_policy(
+            payload.new_password,
+            username=target.username if target else None,
+            email=target.email if target else None,
+        )
+    except PasswordPolicyError as error:
+        raise HTTPException(status_code=422, detail=str(error))
+
+    auth_repository.update_password_hash(
+        user_id,
+        hash_password(payload.new_password),
+        updated_by=current_user.user_id,
+        must_change_password=True,
+        password_changed_at=datetime.now(timezone.utc).replace(microsecond=0),
+    )
+    # Never echo the new password (or its hash) back, per Hard Rule 24.
+    return {"id": user_id, "status": "password_reset", "must_change_password": True}
+
+
+@router.post("/api/admin/users/{user_id}/set-password-link")
+def send_set_password_link(
+    user_id: str,
+    current_user=Depends(get_current_user),
+    auth_repository=Depends(get_auth_repository),
+    password_reset_service: PasswordResetService = Depends(get_password_reset_service),
+) -> Payload:
+    """LTSA_CHANGE_PASSWORD_FIRST_LOGIN_R2A -- (re)send the user a
+    set-password email (same token store and endpoint as Forgot Password).
+    The admin never sees or sets a password through this route."""
+    _authorize_credential_action(current_user, auth_repository, user_id)
+    sent = password_reset_service.send_set_password_link(user_id)
+    return {"id": user_id, "status": "set_password_link_sent" if sent else "set_password_link_not_sent"}
+
+
+def _authorize_credential_action(current_user, auth_repository, user_id: str) -> None:
     _require_superuser(current_user)
     membership = auth_repository.find_active_membership_for_user(user_id)
     if membership is not None:
@@ -278,12 +376,6 @@ def reset_password(
             authorize_user_management(current_user.role, membership.role)
         except DelegationDeniedError as error:
             raise HTTPException(status_code=403, detail=str(error))
-
-    auth_repository.update_password_hash(
-        user_id, hash_password(payload.new_password), updated_by=current_user.user_id
-    )
-    # Never echo the new password (or its hash) back, per Hard Rule 24.
-    return {"id": user_id, "status": "password_reset"}
 
 
 # MWO-LTSA-WHATSAPP-ADMIN-REGISTRATION-001 -- admin-controlled WhatsApp
