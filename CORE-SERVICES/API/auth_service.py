@@ -301,6 +301,7 @@ class MembershipRecord:
     # never as "unrestricted" by default for a customer role).
     data_scope_type: str | None = None
     data_scope_value: str | None = None
+    organization_name: str | None = None
 
 
 class AuthRepositoryProtocol(Protocol):
@@ -309,6 +310,7 @@ class AuthRepositoryProtocol(Protocol):
     def find_user_by_id(self, user_id: str) -> UserRecord | None: ...
     def find_active_membership_for_user(self, user_id: str) -> MembershipRecord | None: ...
     def find_membership(self, user_id: str, organization_id: str) -> MembershipRecord | None: ...
+    def update_user_email(self, user_id: str, email: str, *, updated_by: str) -> None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -326,6 +328,7 @@ class AuthenticatedIdentity:
     username: str | None = None
     name: str | None = None
     last_login: str | None = None
+    organization_name: str | None = None
 
 
 def normalize_username(username: str | None) -> str:
@@ -384,6 +387,7 @@ def authenticate(repository: AuthRepositoryProtocol, identifier: str, password: 
         permissions=permissions_for_role(membership.role),
         data_scope_type=membership.data_scope_type,
         data_scope_value=membership.data_scope_value,
+        organization_name=membership.organization_name or membership.organization_code,
     )
     return token, identity
 
@@ -415,6 +419,7 @@ def resolve_identity(repository: AuthRepositoryProtocol, user_id: str, organizat
         permissions=permissions_for_role(membership.role),
         data_scope_type=membership.data_scope_type,
         data_scope_value=membership.data_scope_value,
+        organization_name=membership.organization_name or membership.organization_code,
     )
 
 

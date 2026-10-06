@@ -60,6 +60,21 @@ class AdminResetPasswordRequest(BaseModel):
     new_password: str
 
 
+class UpdateProfileEmailRequest(BaseModel):
+    email: str
+
+    model_config = {
+        "extra": "forbid"
+    }
+
+    @field_validator("email")
+    @classmethod
+    def validate_email_not_blank(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("Email cannot be empty")
+        return v
+
+
 # MWO-LTSA-WHATSAPP-ADMIN-REGISTRATION-001 -- Admin-controlled WhatsApp
 # sender registration. `provider` defaults to the only provider this
 # codebase currently integrates (whatsapp_cloud, see whatsapp_intake

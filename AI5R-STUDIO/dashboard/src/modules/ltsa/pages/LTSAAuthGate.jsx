@@ -6,6 +6,7 @@ import ResetPasswordView from "./ResetPasswordView";
 import LoginView from "./LoginView";
 import LTSAWorkspace from "./LTSAWorkspace";
 import AdminUsersView from "./AdminUsersView";
+import MyProfileView from "./MyProfileView";
 import "./LTSAOpenDesign.css";
 import "./LTSAAuthGate.css";
 
@@ -34,8 +35,18 @@ const ROLE_LABEL = {
 // establish -- not a parallel router, the same one applied one level
 // higher, entirely within already-clean, already-committed files.
 const ADMIN_USERS_ROUTE = "/ltsa/admin/users";
+const PROFILE_ROUTE = "/ltsa/profile";
 
-function IdentityBar({ session, onLogout, canManageUsers, isAdminUsersRoute, onNavigateAdminUsers, onNavigateWorkspace }) {
+function IdentityBar({
+  session,
+  onLogout,
+  canManageUsers,
+  isAdminUsersRoute,
+  isProfileRoute,
+  onNavigateAdminUsers,
+  onNavigateProfile,
+  onNavigateWorkspace,
+}) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
@@ -78,18 +89,36 @@ function IdentityBar({ session, onLogout, canManageUsers, isAdminUsersRoute, onN
                   <span className="auth-identity-label">Role</span>
                   <span>{ROLE_LABEL[session.role] ?? session.role}</span>
                 </div>
+                {!isProfileRoute && (
+                  <button
+                    type="button"
+                    className="btn-link auth-identity-profile"
+                    onClick={onNavigateProfile}
+                  >
+                    My Profile
+                  </button>
+                )}
                 {/* MWO-LTSA-ADMIN-USERS-WIRING-001 -- capability-driven,
                     never `role === "..."`. Hiding this is UX only: the
                     backend (routers/admin_users.py) and AdminUsersView's
                     own canManageUsers prop remain the real gate even if a
                     non-admin user reaches the route directly. */}
                 {canManageUsers && !isAdminUsersRoute && (
-                  <button type="button" className="btn-link auth-identity-admin-users" onClick={onNavigateAdminUsers} aria-label="Administration > User Management">
+                  <button
+                    type="button"
+                    className="btn-link auth-identity-admin-users"
+                    onClick={onNavigateAdminUsers}
+                    aria-label="Administration > User Management"
+                  >
                     Administration &gt; User Management
                   </button>
                 )}
-                {isAdminUsersRoute && (
-                  <button type="button" className="btn-link auth-identity-back-to-workspace" onClick={onNavigateWorkspace}>
+                {(isAdminUsersRoute || isProfileRoute) && (
+                  <button
+                    type="button"
+                    className="btn-link auth-identity-back-to-workspace"
+                    onClick={onNavigateWorkspace}
+                  >
                     Back to LTSA Workspace
                   </button>
                 )}
@@ -127,6 +156,7 @@ function AuthenticatedLTSA({ organizationContext, platformContext }) {
   const initialActiveKey = allowedKeys.includes(DEFAULT_LANDING_KEY) ? DEFAULT_LANDING_KEY : allowedKeys[0];
   const canManageUsers = can(session, PERMISSIONS.ADMIN_ACCESS);
   const isAdminUsersRoute = pathname === ADMIN_USERS_ROUTE;
+  const isProfileRoute = pathname === PROFILE_ROUTE;
 
   useEffect(() => {
     function handlePopState() {
@@ -148,7 +178,9 @@ function AuthenticatedLTSA({ organizationContext, platformContext }) {
         onLogout={logout}
         canManageUsers={canManageUsers}
         isAdminUsersRoute={isAdminUsersRoute}
+        isProfileRoute={isProfileRoute}
         onNavigateAdminUsers={() => navigateTo(ADMIN_USERS_ROUTE)}
+        onNavigateProfile={() => navigateTo(PROFILE_ROUTE)}
         onNavigateWorkspace={() => navigateTo("/ltsa")}
       />
       {isAdminUsersRoute ? (
@@ -160,6 +192,8 @@ function AuthenticatedLTSA({ organizationContext, platformContext }) {
         // (every /api/admin/users route) remains the actual enforcement
         // point regardless of what this prop says.
         <AdminUsersView canManageUsers={canManageUsers} session={session} />
+      ) : isProfileRoute ? (
+        <MyProfileView session={session} onNavigateWorkspace={() => navigateTo("/ltsa")} />
       ) : (
         <LTSAWorkspace
           initialActiveKey={initialActiveKey}

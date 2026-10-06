@@ -25,6 +25,15 @@ vi.mock("./AdminUsersView", () => ({
   ),
 }));
 
+vi.mock("./MyProfileView", () => ({
+  default: ({ session, onNavigateWorkspace }) => (
+    <div data-testid="my-profile-view-stub">
+      <span>{session.user.name}</span>
+      <button onClick={onNavigateWorkspace}>Back to LTSA Workspace</button>
+    </div>
+  ),
+}));
+
 // MWO-LTSA-AUTH-002 -- authClient.js now talks to the real AUTH-001
 // backend (POST /api/auth/login, GET /api/auth/me); production code no
 // longer contains demo identities (Rule 2). This suite supplies its own
@@ -352,3 +361,48 @@ describe("Direct route: /ltsa/admin/users (Phase 3 -- hiding the nav item is not
     expect(window.location.pathname).toBe("/ltsa");
   });
 });
+
+describe("My Profile navigation (accessible by all roles)", () => {
+  afterEach(() => {
+    window.history.pushState({}, "", "/ltsa");
+  });
+
+  it("all authenticated roles see My Profile menu item in IdentityBar", async () => {
+    render(<LTSAAuthGate />);
+    await screen.findByRole("heading", { name: "Sign in" });
+    await login("budi.santoso@pertamina.com");
+    await screen.findByTestId("ltsa-workspace-stub");
+
+    fireEvent.click(screen.getByRole("button", { name: /budi santoso/i }));
+    expect(screen.getByText("My Profile")).toBeInTheDocument();
+  });
+
+  it("clicking My Profile navigates to /ltsa/profile and displays MyProfileView", async () => {
+    render(<LTSAAuthGate />);
+    await screen.findByRole("heading", { name: "Sign in" });
+    await login("budi.santoso@pertamina.com");
+    await screen.findByTestId("ltsa-workspace-stub");
+
+    fireEvent.click(screen.getByRole("button", { name: /budi santoso/i }));
+    fireEvent.click(screen.getByText("My Profile"));
+
+    expect(await screen.findByTestId("my-profile-view-stub")).toBeInTheDocument();
+    expect(screen.queryByTestId("ltsa-workspace-stub")).not.toBeInTheDocument();
+    expect(window.location.pathname).toBe("/ltsa/profile");
+  });
+
+  it("navigating back from MyProfileView returns to LTSA workspace", async () => {
+    window.history.pushState({}, "", "/ltsa/profile");
+    render(<LTSAAuthGate />);
+    await screen.findByRole("heading", { name: "Sign in" });
+    await login("budi.santoso@pertamina.com");
+
+    expect(await screen.findByTestId("my-profile-view-stub")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Back to LTSA Workspace" }));
+
+    expect(await screen.findByTestId("ltsa-workspace-stub")).toBeInTheDocument();
+    expect(screen.queryByTestId("my-profile-view-stub")).not.toBeInTheDocument();
+    expect(window.location.pathname).toBe("/ltsa");
+  });
+});
+

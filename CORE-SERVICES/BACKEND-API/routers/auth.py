@@ -4,8 +4,19 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from API.auth_service import AuthenticatedIdentity, AuthenticationError, authenticate
 from API.password_reset_service import InvalidTokenError, PasswordResetService, RateLimitExceededError
-from dependencies import get_auth_repository, get_current_user, get_password_reset_service
-from models.requests import ForgotPasswordRequest, LoginRequest, ResetPasswordRequest
+import dataclasses
+from dependencies import (
+    get_auth_repository,
+    get_current_user,
+    get_password_reset_service,
+    get_record_change_history_repository,
+)
+from models.requests import (
+    ForgotPasswordRequest,
+    LoginRequest,
+    ResetPasswordRequest,
+    UpdateProfileEmailRequest,
+)
 from models.responses import Payload
 
 router = APIRouter()
@@ -15,12 +26,47 @@ def _identity_payload(identity: AuthenticatedIdentity) -> dict:
     # password_hash is never read here at all (AuthenticatedIdentity has
     # no such field -- resolve_identity()/authenticate() never copy it
     # out of UserRecord), so there is no field to accidentally serialize.
+    org_name = getattr(identity, "organization_name", None) or identity.organization_code
     return {
-        "user": {"id": identity.user_id, "username": identity.username, "email": identity.email},
-        "organization": {"id": identity.organization_id, "code": identity.organization_code},
+        "id": identity.user_id,
+        "name": identity.name,
+        "username": identity.username,
+        "email": identity.email,
+        "user": {
+            "id": identity.user_id,
+            "username": identity.username,
+            "name": identity.name,
+            "email": identity.email,
+        },
+        "organization": {
+            "id": identity.organization_id,
+            "code": identity.organization_code,
+            "name": org_name,
+        },
         "role": identity.role,
         "permissions": sorted(identity.permissions),
+        "data_scope_type": identity.data_scope_type,
+        "data_scope_value": identity.data_scope_value,
     }
+
+
+def _normalize_and_validate_email(email: str) -> str:
+    cleaned = (email or "").strip().lower()
+    if not cleaned:
+        raise HTTPException(status_code=422, detail="Email cannot be empty")
+    if "@" not in cleaned or cleaned.startswith("@") or cleaned.endswith("@"):
+        raise HTTPException(status_code=422, detail="Invalid email format")
+    parts = cleaned.split("@")
+    if (
+        len(parts) != 2
+        or not parts[0]
+        or not parts[1]
+        or "." not in parts[1]
+        or parts[1].startswith(".")
+        or parts[1].endswith(".")
+    ):
+        raise HTTPException(status_code=422, detail="Invalid email format")
+    return cleaned
 
 
 @router.post("/api/auth/login")
@@ -43,6 +89,44 @@ def login(payload: LoginRequest, auth_repository=Depends(get_auth_repository)) -
 @router.get("/api/auth/me")
 def me(current_user: AuthenticatedIdentity = Depends(get_current_user)) -> Payload:
     return _identity_payload(current_user)
+
+
+@router.patch("/api/auth/me")
+def update_me(
+    payload: UpdateProfileEmailRequest,
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
+    auth_repository=Depends(get_auth_repository),
+    history_repository=Depends(get_record_change_history_repository),
+) -> Payload:
+    normalized_email = _normalize_and_validate_email(payload.email)
+
+    existing = auth_repository.find_user_by_email(normalized_email)
+    if existing is not None and existing.id != current_user.user_id:
+        raise HTTPException(status_code=409, detail="Email already registered to another user")
+
+    # If same normalized email already belongs to current user, return 200 without DB update
+    if current_user.email and current_user.email.lower() == normalized_email:
+        return _identity_payload(current_user)
+
+    old_email = current_user.email
+    auth_repository.update_user_email(current_user.user_id, normalized_email, updated_by=current_user.user_id)
+
+    if history_repository is not None:
+        try:
+            history_repository.append(
+                entity_type="user",
+                entity_id=current_user.user_id,
+                field_name="email",
+                old_value="[REDACTED]" if old_email else None,
+                new_value="[REDACTED]",
+                changed_by=current_user.user_id,
+                reason="self_service_email_update",
+            )
+        except Exception:
+            pass
+
+    updated_identity = dataclasses.replace(current_user, email=normalized_email)
+    return _identity_payload(updated_identity)
 
 
 @router.post("/api/auth/forgot-password")

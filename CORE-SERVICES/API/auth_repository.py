@@ -60,7 +60,7 @@ class AuthRepository:
         return _row_to_user(rows[0]) if rows else None
     def find_active_membership_for_user(self, user_id: str) -> MembershipRecord | None:
         rows = _json_query(
-            "SELECT m.organization_id, o.code AS organization_code, m.role, m.status, "
+            "SELECT m.organization_id, o.code AS organization_code, o.name AS organization_name, m.role, m.status, "
             "m.data_scope_type, m.data_scope_value "
             "FROM organization_memberships m "
             "JOIN organizations o ON o.id = m.organization_id "
@@ -72,7 +72,7 @@ class AuthRepository:
 
     def find_membership(self, user_id: str, organization_id: str) -> MembershipRecord | None:
         rows = _json_query(
-            "SELECT m.organization_id, o.code AS organization_code, m.role, m.status, "
+            "SELECT m.organization_id, o.code AS organization_code, o.name AS organization_name, m.role, m.status, "
             "m.data_scope_type, m.data_scope_value "
             "FROM organization_memberships m "
             "JOIN organizations o ON o.id = m.organization_id "
@@ -230,6 +230,13 @@ class AuthRepository:
             f"WHERE id = {_sql(user_id)};"
         )
 
+    def update_user_email(self, user_id: str, email: str, *, updated_by: str) -> None:
+        """Self-service profile email update (R2B). Updates user email by authenticated ID."""
+        self._runner.execute_script(
+            f"UPDATE users SET email = {_sql(email.lower())}, updated_by = {_sql(updated_by)}, updated_at = NOW() "
+            f"WHERE id = {_sql(user_id)};"
+        )
+
 
 def _row_to_user(row: dict) -> UserRecord:
     return UserRecord(
@@ -251,6 +258,7 @@ def _row_to_membership(row: dict) -> MembershipRecord:
         status=row["status"],
         data_scope_type=row.get("data_scope_type"),
         data_scope_value=row.get("data_scope_value"),
+        organization_name=row.get("organization_name") or row.get("organization_code"),
     )
 
 

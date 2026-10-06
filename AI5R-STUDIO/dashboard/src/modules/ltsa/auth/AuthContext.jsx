@@ -52,6 +52,15 @@ export function AuthProvider({ children, client = authClient }) {
     setError(null);
   }, [client]);
 
+  const updateEmail = useCallback(
+    async (email) => {
+      const nextSession = await client.updateProfileEmail(email);
+      setSession(nextSession);
+      return nextSession;
+    },
+    [client]
+  );
+
   // MWO-LTSA-AUTH-002 Rule 6 -- a 401 from ANY protected LTSA request (not
   // just /api/auth/me) must clear the session and return to LoginView.
   // ai5rClient.js's apiFetch() already clears the stored session on 401;
@@ -66,8 +75,8 @@ export function AuthProvider({ children, client = authClient }) {
   }, []);
 
   const value = useMemo(
-    () => ({ status, session, error, login, logout }),
-    [status, session, error, login, logout]
+    () => ({ status, session, error, login, logout, updateEmail }),
+    [status, session, error, login, logout, updateEmail]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

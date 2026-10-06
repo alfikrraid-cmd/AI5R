@@ -24,19 +24,29 @@ import { clearStoredSession, getStoredSession, storeSession } from "../../../api
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:18000";
 
 function toSession(identityPayload, token) {
+  const user = identityPayload.user || {};
+  const org = identityPayload.organization || {};
+  const email = identityPayload.email ?? user.email ?? null;
+  const username = identityPayload.username ?? user.username ?? null;
+  const name = identityPayload.name || user.name || username || email || "Unknown User";
+
   return {
     user: {
-      id: identityPayload.user.id,
-      email: identityPayload.user.email,
-      name: identityPayload.user.username || identityPayload.user.email,
+      id: identityPayload.id ?? user.id,
+      email,
+      username,
+      name,
     },
     organization: {
-      id: identityPayload.organization.id,
-      code: identityPayload.organization.code,
-      displayName: identityPayload.organization.code,
+      id: org.id,
+      code: org.code,
+      name: org.name ?? org.code,
+      displayName: org.code,
     },
     role: identityPayload.role,
     permissions: identityPayload.permissions,
+    data_scope_type: identityPayload.data_scope_type ?? null,
+    data_scope_value: identityPayload.data_scope_value ?? null,
     token,
   };
 }
@@ -171,5 +181,66 @@ export async function confirmPasswordReset(token, newPassword) {
   }
 
   return response.json();
+}
+
+export async function updateProfileEmail(email) {
+  const stored = getStoredSession();
+  if (!stored?.token) {
+    const error = new Error("unauthorized");
+    error.code = "unauthorized";
+    throw error;
+  }
+
+  let response;
+  try {
+    response = await fetch(`${API_URL}/api/auth/me`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${stored.token}`,
+      },
+      body: JSON.stringify({ email }),
+    });
+  } catch {
+    throw serverUnavailableError();
+  }
+
+  if (response.status === 401) {
+    clearStoredSession();
+    const error = new Error("unauthorized");
+    error.code = "unauthorized";
+    throw error;
+  }
+
+  if (response.status === 409) {
+    const error = new Error("email_already_in_use");
+    error.code = "email_already_in_use";
+    throw error;
+  }
+
+  if (response.status === 422 || response.status === 400) {
+    let detail = "invalid_email";
+    try {
+      const errBody = await response.json();
+      if (errBody?.detail) {
+        detail = typeof errBody.detail === "string" ? errBody.detail : "invalid_email";
+      }
+    } catch {
+      // ignore
+    }
+    const error = new Error(detail);
+    error.code = "invalid_email";
+    error.detail = detail;
+    throw error;
+  }
+
+  if (!response.ok) {
+    throw serverUnavailableError();
+  }
+
+  const body = await response.json();
+  const session = toSession(body, stored.token);
+  storeSession(session);
+  return session;
 }
 

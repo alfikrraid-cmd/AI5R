@@ -84,6 +84,17 @@ class FakeAuthRepository:
     def find_membership(self, user_id, organization_id):
         return self.memberships.get((user_id, organization_id))
 
+    def update_user_email(self, user_id, email, *, updated_by=None):
+        user = self.find_user_by_id(user_id)
+        if user:
+            import dataclasses
+            if user.email and user.email.lower() in self.users:
+                del self.users[user.email.lower()]
+            updated_user = dataclasses.replace(user, email=email.lower())
+            self.users[email.lower()] = updated_user
+            if user.username:
+                self.usernames[user.username] = updated_user
+
 
 def _identity(role: str) -> AuthenticatedIdentity:
     return AuthenticatedIdentity(
