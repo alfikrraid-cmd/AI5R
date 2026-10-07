@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { can, PERMISSIONS, ROLES, visibleTabKeys } from "./permissions";
+import { can, PERMISSIONS, ROLES, TAB_PERMISSIONS, visibleTabKeys } from "./permissions";
 
 describe("permissions", () => {
   it("derives visibility from capability, never from a hardcoded role/org check", () => {
@@ -235,6 +235,52 @@ describe("permissions", () => {
       expect(can(session, "maintenance.technical_review")).toBe(true);
       expect(can(session, "maintenance.write")).toBe(false);
       expect(can(session, "maintenance.admin_review")).toBe(false);
+    });
+  });
+
+  // LTSA_PERTAMINA_ENGINEER_REACT_130_FIX_R4 -- full per-role tab matrix, in
+  // TAB_PERMISSIONS order (LTSAAuthGate lands on "dashboard" when present,
+  // otherwise on the first key). The retired "equipment" key used to lead
+  // every non-dashboard role's list and crash /ltsa with React #130.
+  describe("visibleTabKeys role matrix (LTSA_PERTAMINA_ENGINEER_REACT_130_FIX_R4)", () => {
+    const TAP_FULL = [
+      "dashboard", "pump", "seal", "drawing", "document", "installation", "workorder", "pm", "cm",
+      "cmon", "inventory", "knowledgereview", "import", "history", "reports", "analytics",
+      "historical-review", "historical-batch-review", "whatsapp-groups", "knowledge", "ai-insight",
+      "failure",
+    ];
+    const EXPECTED = {
+      [ROLES.SUPERUSER]: TAP_FULL,
+      [ROLES.TAP_ADMIN]: TAP_FULL,
+      [ROLES.TAP_ENGINEER]: [
+        "dashboard", "pump", "seal", "drawing", "document", "installation", "workorder", "pm", "cm",
+        "cmon", "inventory", "knowledgereview", "history", "reports", "analytics",
+        "historical-batch-review", "knowledge", "ai-insight", "failure",
+      ],
+      [ROLES.JOHN_CRANE_ENGINEER]: [
+        "pump", "seal", "drawing", "document", "installation", "workorder", "pm", "cm", "cmon",
+        "inventory", "knowledgereview", "history", "reports", "analytics", "historical-batch-review",
+        "knowledge", "ai-insight", "failure",
+      ],
+      [ROLES.PERTAMINA_ENGINEER]: [
+        "pump", "seal", "drawing", "document", "installation", "workorder", "pm", "cm", "cmon",
+        "inventory", "history", "reports", "historical-batch-review", "knowledge", "ai-insight",
+        "failure",
+      ],
+      [ROLES.PERTAMINA_VIEWER]: [
+        "pump", "seal", "drawing", "document", "installation", "workorder", "pm", "cm", "cmon",
+        "inventory", "history", "reports", "historical-batch-review", "knowledge", "failure",
+      ],
+    };
+
+    it.each(Object.keys(EXPECTED))("%s sees exactly its expected tabs, never equipment", (role) => {
+      const keys = visibleTabKeys({ role });
+      expect(keys).toEqual(EXPECTED[role]);
+      expect(keys).not.toContain("equipment");
+    });
+
+    it("TAB_PERMISSIONS no longer gates the retired equipment tab", () => {
+      expect(TAB_PERMISSIONS).not.toHaveProperty("equipment");
     });
   });
 });

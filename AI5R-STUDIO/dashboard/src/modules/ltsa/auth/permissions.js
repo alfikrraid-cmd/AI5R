@@ -214,9 +214,15 @@ export function can(session, permission) {
 // LTSAWorkspace tab key -> the permission that gates it. Tabs with no
 // entry here are always visible to any authenticated session (none
 // currently -- every tab is gated deliberately).
+//
+// LTSA_PERTAMINA_ENGINEER_REACT_130_FIX_R4 -- every key here MUST have a
+// PAGES entry in LTSAWorkspace.jsx. The stale "equipment" key (its page was
+// retired by b9433fa4) made visibleTabKeys()[0] === "equipment" for every
+// role without dashboard access, so LTSAAuthGate landed on a key with no
+// page and rendered an undefined component (React #130, blank /ltsa).
+// LTSAWorkspace.consolidation.test.jsx enforces the invariant.
 export const TAB_PERMISSIONS = Object.freeze({
   dashboard: PERMISSIONS.DASHBOARD_READ,
-  equipment: PERMISSIONS.EQUIPMENT_READ,
   pump: PERMISSIONS.PUMP_READ,
   seal: PERMISSIONS.SEAL_READ,
   drawing: PERMISSIONS.DRAWING_READ,

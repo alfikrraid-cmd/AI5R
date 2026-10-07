@@ -2,6 +2,7 @@ import { readFileSync } from "fs";
 import { dirname, resolve } from "path";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
+import { ROLES, TAB_PERMISSIONS, visibleTabKeys } from "../auth/permissions";
 
 // MWO-LTSA-036M -- Consolidate LTSA workspaces. Source-text assertions
 // (not render-based), mirroring the established precedent
@@ -100,4 +101,74 @@ describe("LTSA workspace consolidation (MWO-LTSA-036M)", () => {
     expect(source).not.toMatch(/<MaintenanceHistory /);
     expect(source).toMatch(/<AssetLauncher /);
   });
+});
+
+// LTSA_PERTAMINA_ENGINEER_REACT_130_FIX_R4 -- TAB_PERMISSIONS kept a stale
+// "equipment" key after its page was retired, so every role without
+// dashboard access landed on PAGES["equipment"] === undefined (React #130,
+// blank /ltsa). These lock in that every permission-visible key is backed by
+// a real PAGES entry, for every role's real backend permission array.
+function pagesKeys() {
+  const pagesBlock = readSource("LTSAWorkspace.jsx").match(/const PAGES = \{([\s\S]*?)\n\};/)[1];
+  return new Set([...pagesBlock.matchAll(/^\s*"?([\w-]+)"?:/gm)].map((match) => match[1]));
+}
+
+// Mirrors LTSAAuthGate.jsx's DEFAULT_LANDING_KEY fallback.
+function landingKey(keys) {
+  return keys.includes("dashboard") ? "dashboard" : keys[0];
+}
+
+// Verbatim CORE-SERVICES/API/auth_service.py ROLE_PERMISSIONS, as served by
+// GET /api/auth/me for the three roles that previously crashed.
+const BACKEND_PERMISSIONS = {
+  [ROLES.PERTAMINA_ENGINEER]: [
+    "condition.read", "drawing.read", "engineering_ai.ask", "inventory.read",
+    "maintenance.read", "pump.read", "seal.read",
+  ],
+  [ROLES.PERTAMINA_VIEWER]: ["inventory.read", "maintenance.read", "pump.read", "seal.read"],
+  [ROLES.JOHN_CRANE_ENGINEER]: [
+    "condition.read", "drawing.read", "engineering_ai.ask", "internal_component.read",
+    "inventory.read", "maintenance.read", "maintenance.technical_review", "pump.read", "seal.read",
+  ],
+};
+
+describe("TAB_PERMISSIONS / PAGES consistency (LTSA_PERTAMINA_ENGINEER_REACT_130_FIX_R4)", () => {
+  it("every TAB_PERMISSIONS key is backed by a real PAGES entry", () => {
+    const pages = pagesKeys();
+    const orphaned = Object.keys(TAB_PERMISSIONS).filter((key) => !pages.has(key));
+
+    expect(orphaned).toEqual([]);
+  });
+
+  it("the retired Equipment page is not restored and no longer gated", () => {
+    expect(TAB_PERMISSIONS).not.toHaveProperty("equipment");
+    expect(pagesKeys().has("equipment")).toBe(false);
+  });
+
+  it("every role's visible keys resolve to real pages, under fallback and real backend sessions", () => {
+    const pages = pagesKeys();
+    const sessions = [
+      ...Object.values(ROLES).map((role) => ({ role })),
+      ...Object.entries(BACKEND_PERMISSIONS).map(([role, permissions]) => ({ role, permissions })),
+    ];
+
+    sessions.forEach((session) => {
+      const keys = visibleTabKeys(session);
+      expect(keys.length).toBeGreaterThan(0);
+      keys.forEach((key) => expect(pages.has(key)).toBe(true));
+      expect(pages.has(landingKey(keys))).toBe(true);
+    });
+  });
+
+  it.each(Object.keys(BACKEND_PERMISSIONS))(
+    "%s (real backend permissions) lands on pump, a real page, with no equipment key",
+    (role) => {
+      const keys = visibleTabKeys({ role, permissions: BACKEND_PERMISSIONS[role] });
+
+      expect(keys).not.toContain("equipment");
+      expect(keys).not.toContain("dashboard");
+      expect(landingKey(keys)).toBe("pump");
+      expect(pagesKeys().has(landingKey(keys))).toBe(true);
+    }
+  );
 });
