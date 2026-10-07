@@ -58,6 +58,9 @@ from API.recommendation_engine import RecommendationEngine
 from API.maintenance_history_gateway import MaintenanceHistoryGateway
 from API.pm_cm_evidence_repository import PMCMEvidenceRepository
 from API.record_change_history_repository import RecordChangeHistoryRepository
+from API.drawing_repository import DrawingRepository
+from API.minio_storage_service import MinIOStorageService
+from API.drawing_service import DrawingService
 from API.seal_unit_repository import SealUnitRepository
 from API.seal_lifecycle_service import SealLifecycleEventRepository
 from API.seal_inspection_service import SealInspectionRepository
@@ -252,6 +255,15 @@ _seal_repair_repository = SealRepairRepository(_import_database_runner)
 _seal_warranty_assessment_repository = SealWarrantyAssessmentRepository(_import_database_runner)
 _installation_report_fitment_repository = InstallationReportFitmentRepository(_import_database_runner)
 _historical_seal_service_activity_repository = HistoricalSealServiceActivityRepository(_import_database_runner)
+
+# LTSA Mechanical Seal Drawing Storage Foundation (R9C)
+_drawing_repository = DrawingRepository(_import_database_runner)
+_drawing_storage_service = MinIOStorageService()
+_drawing_service = DrawingService(
+    repository=_drawing_repository,
+    storage_service=_drawing_storage_service,
+    change_history_repository=_record_change_history_repository,
+)
 
 # LTSA_POWER_BI_R1B -- governed read-only BI datasets (contract ltsa-bi/1.0.0),
 # built from the SAME repository singletons above (bulk reads only) and the
@@ -647,6 +659,18 @@ def get_installation_report_fitment_repository() -> InstallationReportFitmentRep
 
 def get_historical_seal_service_activity_repository() -> HistoricalSealServiceActivityRepository:
     return _historical_seal_service_activity_repository
+
+
+def get_drawing_repository() -> DrawingRepository:
+    return _drawing_repository
+
+
+def get_drawing_storage_service() -> MinIOStorageService:
+    return _drawing_storage_service
+
+
+def get_drawing_service() -> DrawingService:
+    return _drawing_service
 
 
 _ltsa_analytics_service = LTSAAnalyticsService(_import_database_runner)

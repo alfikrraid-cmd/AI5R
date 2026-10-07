@@ -51,6 +51,7 @@ from routers import (
     copilot,
     dashboard,
     document,
+    drawing,
     engineering_ai,
     fleet,
     health,
@@ -144,6 +145,7 @@ app.include_router(analytics.router)
 # LTSA_POWER_BI_R1B -- governed read-only BI API (/api/ltsa/bi/v1/*, bi.read).
 app.include_router(bi.router)
 app.include_router(document.router)
+app.include_router(drawing.router)
 app.include_router(installation.router)
 app.include_router(pm_schedule.router)
 app.include_router(pm_occurrence.router)

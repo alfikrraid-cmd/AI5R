@@ -138,7 +138,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
         {
             "pump.read", "seal.read", "inventory.read",
             "maintenance.read", "maintenance.write", "maintenance.technical_review", "maintenance.admin_review",
-            "condition.read", "drawing.read", "engineering_ai.ask",
+            "condition.read", "drawing.read", "drawing.upload", "drawing.manage", "engineering_ai.ask",
             "import.read", "import.execute", "master.edit",
             "internal_inventory.read", "internal_component.read",
             "installation.write", "installation.review",
@@ -155,7 +155,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
         {
             "pump.read", "seal.read", "inventory.read",
             "maintenance.read", "maintenance.write", "maintenance.admin_review",
-            "condition.read", "drawing.read", "engineering_ai.ask",
+            "condition.read", "drawing.read", "drawing.upload", "drawing.manage", "engineering_ai.ask",
             "import.read", "import.execute", "master.edit",
             "internal_inventory.read", "internal_component.read",
             "installation.write", "installation.review",
@@ -168,7 +168,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
         {
             "pump.read", "seal.read", "inventory.read",
             "maintenance.read", "maintenance.write",
-            "condition.read", "drawing.read", "engineering_ai.ask",
+            "condition.read", "drawing.read", "drawing.upload", "engineering_ai.ask",
             "import.read", "import.execute",
             "internal_inventory.read", "internal_component.read",
             "installation.write",
@@ -179,7 +179,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
         {
             "pump.read", "seal.read", "inventory.read",
             "maintenance.read", "maintenance.technical_review",
-            "condition.read", "drawing.read", "engineering_ai.ask",
+            "condition.read", "drawing.read", "drawing.upload", "drawing.manage", "engineering_ai.ask",
             "internal_component.read",
         }
     ),
