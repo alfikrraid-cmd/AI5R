@@ -29,14 +29,14 @@ export const ROLES = Object.freeze({
 // identifiers (PERMISSIONS.X) are unchanged, so no consuming code/test
 // needed to change, only what they resolve to.
 export const PERMISSIONS = Object.freeze({
-  // DASHBOARD_READ deliberately does NOT reuse pump.read: every role has
-  // pump.read (backend dashboard.py's own choice for ITS gate), but the
-  // frozen Open Design shows "Executive Dashboard" to TAP only, never
-  // Pertamina -- confirmed by MWO-LTSA-AUTH-OPEN-DESIGN-002B's own frozen
-  // screenshots. internal_inventory.read is the closest real backend
-  // permission that is TAP-only (TAP_ADMIN/TAP_ENGINEER) and absent from
-  // both Pertamina roles, preserving that frozen visibility split.
-  DASHBOARD_READ: "internal_inventory.read",
+  // LTSA_EXECUTIVE_DASHBOARD_AREA_SCOPED_R6B -- the dedicated backend
+  // dashboard.read permission (SUPERUSER, TAP_ADMIN, TAP_ENGINEER,
+  // PERTAMINA_ENGINEER), also enforced server-side on every
+  // /api/ltsa/fleet/* and /api/ltsa/analytics/* route. It replaces the
+  // former internal_inventory.read stand-in, which stays TAP-only and is
+  // never granted to Pertamina. Not pump.read: PERTAMINA_VIEWER and
+  // JOHN_CRANE_ENGINEER have pump.read but no dashboard.
+  DASHBOARD_READ: "dashboard.read",
   EQUIPMENT_READ: "pump.read",
   PUMP_READ: "pump.read",
   SEAL_READ: "seal.read",
@@ -142,9 +142,10 @@ export const ROLE_PERMISSIONS = Object.freeze({
     // widening an existing permission to fit this UI)
   ]),
   [ROLES.PERTAMINA_ENGINEER]: Object.freeze([
+    PERMISSIONS.DASHBOARD_READ,
     ...ENGINEERING_CORE,
     PERMISSIONS.ENGINEERING_AI_ASK,
-    // no dashboard.read (TAP fleet executive view), no analytics.read
+    // dashboard.read: area-scoped Executive Dashboard (R6B). No analytics.read
     // (cross-customer), no knowledgereview.read (internal curation), no
     // import.execute, no internal_component.read, no admin.access, no
     // maintenance.write/admin_review/technical_review (Pertamina is
@@ -153,7 +154,7 @@ export const ROLE_PERMISSIONS = Object.freeze({
   [ROLES.PERTAMINA_VIEWER]: Object.freeze([
     ...ENGINEERING_CORE,
     // read-only: everything PERTAMINA_ENGINEER has except
-    // engineering_ai.ask
+    // engineering_ai.ask and dashboard.read
   ]),
   // MWO-LTSA-AUTH-003A-FINAL -- SUPERUSER is the superset of TAP_ADMIN's
   // fallback grant (the backend's own admin.superuser/audit.read_full are
@@ -180,7 +181,7 @@ export const ROLE_PERMISSIONS = Object.freeze({
   ]),
   // JOHN_CRANE_ENGINEER: technical authority, not administrative -- reads
   // (including internal_component.read for GPN/internal-component data)
-  // but no dashboard.read (internal_inventory.read), no import.execute,
+  // but no dashboard.read, no import.execute,
   // no admin.access. Matches ROLE_PERMISSIONS["JOHN_CRANE_ENGINEER"] on
   // the backend exactly -- maintenance.technical_review only (no write,
   // no admin_review: JC reviews, it does not create/edit field records

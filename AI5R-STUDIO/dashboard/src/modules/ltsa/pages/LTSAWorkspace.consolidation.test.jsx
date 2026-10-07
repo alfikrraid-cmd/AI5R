@@ -120,9 +120,11 @@ function landingKey(keys) {
 
 // Verbatim CORE-SERVICES/API/auth_service.py ROLE_PERMISSIONS, as served by
 // GET /api/auth/me for the three roles that previously crashed.
+// (LTSA_EXECUTIVE_DASHBOARD_AREA_SCOPED_R6B: PERTAMINA_ENGINEER now also
+// holds dashboard.read.)
 const BACKEND_PERMISSIONS = {
   [ROLES.PERTAMINA_ENGINEER]: [
-    "condition.read", "drawing.read", "engineering_ai.ask", "inventory.read",
+    "condition.read", "dashboard.read", "drawing.read", "engineering_ai.ask", "inventory.read",
     "maintenance.read", "pump.read", "seal.read",
   ],
   [ROLES.PERTAMINA_VIEWER]: ["inventory.read", "maintenance.read", "pump.read", "seal.read"],
@@ -160,14 +162,18 @@ describe("TAB_PERMISSIONS / PAGES consistency (LTSA_PERTAMINA_ENGINEER_REACT_130
     });
   });
 
-  it.each(Object.keys(BACKEND_PERMISSIONS))(
-    "%s (real backend permissions) lands on pump, a real page, with no equipment key",
-    (role) => {
+  it.each([
+    [ROLES.PERTAMINA_ENGINEER, "dashboard"],
+    [ROLES.PERTAMINA_VIEWER, "pump"],
+    [ROLES.JOHN_CRANE_ENGINEER, "pump"],
+  ])(
+    "%s (real backend permissions) lands on %s, a real page, with no equipment key",
+    (role, expectedLanding) => {
       const keys = visibleTabKeys({ role, permissions: BACKEND_PERMISSIONS[role] });
 
       expect(keys).not.toContain("equipment");
-      expect(keys).not.toContain("dashboard");
-      expect(landingKey(keys)).toBe("pump");
+      expect(keys.includes("dashboard")).toBe(expectedLanding === "dashboard");
+      expect(landingKey(keys)).toBe(expectedLanding);
       expect(pagesKeys().has(landingKey(keys))).toBe(true);
     }
   );

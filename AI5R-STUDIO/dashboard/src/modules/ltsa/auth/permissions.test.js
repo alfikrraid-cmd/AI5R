@@ -263,7 +263,7 @@ describe("permissions", () => {
         "knowledge", "ai-insight", "failure",
       ],
       [ROLES.PERTAMINA_ENGINEER]: [
-        "pump", "seal", "drawing", "document", "installation", "workorder", "pm", "cm", "cmon",
+        "dashboard", "pump", "seal", "drawing", "document", "installation", "workorder", "pm", "cm", "cmon",
         "inventory", "history", "reports", "historical-batch-review", "knowledge", "ai-insight",
         "failure",
       ],
@@ -281,6 +281,34 @@ describe("permissions", () => {
 
     it("TAB_PERMISSIONS no longer gates the retired equipment tab", () => {
       expect(TAB_PERMISSIONS).not.toHaveProperty("equipment");
+    });
+
+    // LTSA_EXECUTIVE_DASHBOARD_AREA_SCOPED_R6B
+    it("the dashboard tab is gated on dashboard.read, never internal_inventory.read", () => {
+      expect(PERMISSIONS.DASHBOARD_READ).toBe("dashboard.read");
+      expect(TAB_PERMISSIONS.dashboard).toBe("dashboard.read");
+    });
+
+    it("a real PERTAMINA_ENGINEER session sees the dashboard without internal_inventory.read", () => {
+      const session = {
+        role: ROLES.PERTAMINA_ENGINEER,
+        permissions: ["pump.read", "seal.read", "inventory.read", "maintenance.read", "condition.read",
+          "drawing.read", "engineering_ai.ask", "dashboard.read"],
+      };
+      expect(visibleTabKeys(session)).toContain("dashboard");
+      expect(can(session, "internal_inventory.read")).toBe(false);
+      expect(can(session, PERMISSIONS.INTERNAL_COMPONENT_READ)).toBe(false);
+      expect(visibleTabKeys(session)).not.toContain("analytics");
+    });
+
+    it("PERTAMINA_VIEWER and JOHN_CRANE_ENGINEER real sessions never see the dashboard", () => {
+      for (const permissions of [
+        ["pump.read", "seal.read", "inventory.read", "maintenance.read"],
+        ["pump.read", "seal.read", "inventory.read", "maintenance.read", "maintenance.technical_review",
+          "condition.read", "drawing.read", "engineering_ai.ask", "internal_component.read"],
+      ]) {
+        expect(visibleTabKeys({ permissions })).not.toContain("dashboard");
+      }
     });
   });
 });

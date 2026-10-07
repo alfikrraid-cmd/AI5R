@@ -19,7 +19,7 @@ const TAP_ADMIN_LOGIN_RESPONSE = {
   permissions: [
     "pump.read", "seal.read", "inventory.read", "maintenance.read", "maintenance.write",
     "condition.read", "drawing.read", "engineering_ai.ask", "import.read", "import.execute",
-    "master.edit", "internal_inventory.read", "internal_component.read", "admin.users",
+    "master.edit", "internal_inventory.read", "internal_component.read", "admin.users", "dashboard.read",
   ],
 };
 

@@ -4,7 +4,7 @@ Provides server-side aggregations for the 7 LTSA dashboard domains:
 1. Reliability (Fleet, Bad Actors, MTBF/MTTR policy)
 2. PM / CM (Compliance, execution, inspections)
 3. Breakdown (Work orders / failures, zero vs unknown)
-4. Mechanical Seal Replacement (Lifecycle events, leaks by position/pump)
+4. Mechanical Seal Installation (pump-bound lifecycle INSTALL events, leaks by pump type/API plan)
 5. Material Consumption (Spare parts usage, zero vs unknown)
 6. Inventory / Stock (Seal stock and registry)
 7. Maintenance Effectiveness (PM-to-CM ratio, proactive maintenance)
@@ -13,6 +13,18 @@ CRITICAL RULES:
 - REAL PRODUCTION DATA ONLY: No mocks, no synthetic records, no hardcoded counts.
 - UNKNOWN != ZERO: If records cannot be mathematically derived or domain table
   has no records, return None so UI explicitly renders 'N/A'.
+
+LTSA_EXECUTIVE_DASHBOARD_AREA_SCOPED_R6B:
+- Area scope is compared on the CANONICAL area (pump_area_scope.
+  canonical_area_sql, generated from the same alias map is_area_in_scope
+  uses), so alias-coded pumps (SPK, OIL MOVEMENT, UTILITIES) are never lost
+  and SQL agrees with the Python pump scope.
+- Figures that cannot follow an area (seal_stock, seal_registry,
+  internal_component_stock) are returned only for an unrestricted, unfiltered
+  request (scope None); internal_component_stock additionally requires
+  internal_component.read.
+- work_order has no work_type column in production (TD-020): breakdowns are
+  not derivable here and are reported as None, never inferred.
 """
 
 from __future__ import annotations
@@ -26,6 +38,8 @@ if str(_INGESTION_DIR) not in sys.path:
     sys.path.insert(0, str(_INGESTION_DIR))
 
 from ltsa_pump_inventory_db_upsert import _json_query, _sql  # noqa: E402
+
+from .pump_area_scope import canonical_area_sql, normalize_area_token
 
 if TYPE_CHECKING:
     from ltsa_pump_inventory_db_upsert import DatabaseRunner
@@ -51,18 +65,22 @@ class LTSAAnalyticsService:
     ) -> str:
         clauses: list[str] = []
 
-        # Area scoping (security / tenancy)
+        # Area scoping (security / tenancy), on the canonical area.
+        area_expr = canonical_area_sql(f"{pump_alias}.area")
         if scope is not None:
             if scope:
                 values = ", ".join(_sql(a) for a in sorted(scope))
-                clauses.append(f"{pump_alias}.area IN ({values})")
+                clauses.append(f"{area_expr} IN ({values})")
             else:
                 clauses.append("FALSE")
 
-        # Specific Area filter (or contract_area)
+        # Specific Area filter (or contract_area) -- an additional narrowing
+        # only, always ANDed with the scope clause above. The dashboard
+        # routers pass the selected area as the narrowed `scope` instead.
         target_area = area or contract_area
         if target_area:
-            clauses.append(f"{pump_alias}.area = {_sql(target_area)}")
+            target_code = normalize_area_token(target_area) or target_area.strip().upper()
+            clauses.append(f"{area_expr} = {_sql(target_code)}")
 
         # Specific Pump Tag filter
         if pump_tag:
@@ -84,20 +102,21 @@ class LTSAAnalyticsService:
 
     def get_filter_options(self, *, scope: frozenset[str] | None = None) -> dict[str, Any]:
         """Returns distinct filter options available in the live database."""
+        area_expr = canonical_area_sql("area")
         scope_clause = ""
         if scope is not None:
             if scope:
                 values = ", ".join(_sql(a) for a in sorted(scope))
-                scope_clause = f"WHERE area IN ({values})"
+                scope_clause = f"WHERE {area_expr} IN ({values})"
             else:
                 scope_clause = "WHERE FALSE"
 
         area_rows = _json_query(
             f"""
-            SELECT area, count(*) as pump_count
+            SELECT {area_expr} as area, count(*) as pump_count
             FROM ltsa_pumps
             {scope_clause}
-            GROUP BY area
+            GROUP BY 1
             ORDER BY pump_count DESC, area ASC
             """,
             self._runner,
@@ -105,7 +124,7 @@ class LTSAAnalyticsService:
 
         pump_rows = _json_query(
             f"""
-            SELECT tag_number, area, pump_type, api_plan, status
+            SELECT tag_number, area, {area_expr} as canonical_area, pump_type, api_plan, status
             FROM ltsa_pumps
             {scope_clause}
             ORDER BY tag_number ASC
@@ -234,45 +253,32 @@ class LTSAAnalyticsService:
         pm_executed = pm_data.get("pm_executed", 0)
         pm_done = pm_data.get("pm_done", 0)
 
-        # 4. PM schedule compliance (check if pm_schedule has records)
-        sched_count_query = _json_query("SELECT count(*) as c FROM pm_schedule", self._runner)
-        total_sched_in_db = sched_count_query[0]["c"] if sched_count_query else 0
-        if total_sched_in_db > 0:
-            sched_stats = _json_query(
-                f"""
-                SELECT count(*) as pm_scheduled
-                FROM pm_schedule s
-                JOIN ltsa_pumps p ON p.tag_number = s.asset_code
-                {self._build_where_clauses(pump_alias="p", contract_area=contract_area, area=area, pump_tag=pump_tag, scope=scope)}
-                """,
-                self._runner,
-            )
-            pm_scheduled = sched_stats[0]["pm_scheduled"] if sched_stats else 0
-            pm_compliance_percent = round((pm_done / pm_scheduled * 100), 1) if pm_scheduled > 0 else 100.0
+        # 4. PM schedule compliance -- counted within the requested scope
+        # only. No scheduled PM in scope means compliance is UNKNOWN (None),
+        # never 100%.
+        sched_stats = _json_query(
+            f"""
+            SELECT count(*) as pm_scheduled
+            FROM pm_schedule s
+            JOIN ltsa_pumps p ON p.tag_number = s.asset_code
+            {self._build_where_clauses(pump_alias="p", contract_area=contract_area, area=area, pump_tag=pump_tag, scope=scope)}
+            """,
+            self._runner,
+        )
+        scoped_scheduled = sched_stats[0]["pm_scheduled"] if sched_stats else 0
+        if scoped_scheduled > 0:
+            pm_scheduled = scoped_scheduled
+            pm_compliance_percent = round((pm_done / pm_scheduled * 100), 1)
         else:
             pm_scheduled = None
             pm_compliance_percent = None
 
         # 5. Breakdowns & MTBF/MTTR derivation
-        # Query work_order and maintenance_history for breakdown records
-        wo_where = self._build_where_clauses(
-            pump_alias="p",
-            pump_tag=pump_tag,
-            contract_area=contract_area,
-            area=area,
-            scope=scope,
-            extra_clauses=["(wo.work_type ILIKE '%BREAKDOWN%' OR wo.work_type ILIKE '%CORRECTIVE%')"],
-        )
-        wo_stats = _json_query(
-            f"""
-            SELECT count(*) as breakdowns
-            FROM work_order wo
-            JOIN ltsa_pumps p ON p.tag_number = wo.asset_code
-            {wo_where}
-            """,
-            self._runner,
-        )
-        breakdown_count = wo_stats[0]["breakdowns"] if wo_stats else 0
+        # TD-020: production work_order has no work_type (or any other)
+        # classification column, so breakdown/corrective work orders cannot
+        # be identified. UNKNOWN != ZERO -- reported as None, never inferred
+        # from description/priority/status/CM reports.
+        breakdown_count = None
 
         # Hard Rule: UNKNOWN != ZERO. Without >= 2 breakdown events, MTBF/MTTR cannot be derived.
         fleet_mtbf_days = None
@@ -323,7 +329,7 @@ class LTSAAnalyticsService:
         area_breakdown = _json_query(
             f"""
             WITH p_filtered AS (
-                SELECT p.tag_number, p.area
+                SELECT p.tag_number, {canonical_area_sql("p.area")} as area
                 FROM ltsa_pumps p
                 {pump_where}
             ),
@@ -460,7 +466,7 @@ class LTSAAnalyticsService:
         end_date: str | None = None,
         scope: frozenset[str] | None = None,
     ) -> dict[str, Any]:
-        """Seal domain analytics: replacements, leaks by type/size, stock."""
+        """Seal domain analytics: pump-bound installations, leaks by type/API plan, stock."""
         cm_where = self._build_where_clauses(
             pump_alias="p",
             record_alias="r",
@@ -473,14 +479,34 @@ class LTSAAnalyticsService:
             scope=scope,
         )
 
-        # Check recorded seal replacements in seal_lifecycle_event / installation_report
-        replacement_check = _json_query(
-            "SELECT count(*) as c FROM seal_lifecycle_event WHERE event_type IN ('INSTALLATION', 'REPLACEMENT')",
+        # Seal installations: pump-bound INSTALL lifecycle events only (the
+        # pump link is what makes them area-attributable; NULL-pump events
+        # are excluded). An INSTALL alone is NOT a replacement -- a true
+        # replacement KPI needs governed REMOVE -> INSTALL evidence, so none
+        # is reported. No events in scope -> None (no recorded data).
+        install_where = self._build_where_clauses(
+            pump_alias="p",
+            record_alias="e",
+            date_col="event_at",
+            contract_area=contract_area,
+            area=area,
+            pump_tag=pump_tag,
+            start_date=start_date,
+            end_date=end_date,
+            scope=scope,
+            extra_clauses=["e.event_type = 'INSTALL'"],
+        )
+        install_check = _json_query(
+            f"""
+            SELECT count(*) as c
+            FROM seal_lifecycle_event e
+            JOIN ltsa_pumps p ON p.tag_number = e.pump_tag_number
+            {install_where}
+            """,
             self._runner,
         )
-        total_replacements_in_db = replacement_check[0]["c"] if replacement_check else 0
-        seal_replacements_count = total_replacements_in_db if total_replacements_in_db > 0 else None
-        mtbsr_days = None  # None if insufficient replacements
+        installations_in_scope = install_check[0]["c"] if install_check else 0
+        seal_installations_count = installations_in_scope if installations_in_scope > 0 else None
 
         # Leaks by Pump Type
         leaks_by_pump_type = _json_query(
@@ -519,20 +545,27 @@ class LTSAAnalyticsService:
             self._runner,
         )
 
-        # Stock summary
-        stock_count = _json_query("SELECT count(*) as c FROM seal_stock", self._runner)
-        total_stock = stock_count[0]["c"] if stock_count else 0
-        registry_count = _json_query("SELECT count(*) as c FROM seal_registry", self._runner)
-        total_registered = registry_count[0]["c"] if registry_count else 0
+        # Stock summary -- seal_stock / seal_registry carry no pump or area,
+        # so they are fleet-wide figures: only an unrestricted, unfiltered
+        # request (scope None) receives them; any scoped/filtered request
+        # gets None rather than a fleet-wide number beside area KPIs.
+        if scope is None:
+            stock_count = _json_query("SELECT count(*) as c FROM seal_stock", self._runner)
+            total_stock = stock_count[0]["c"] if stock_count else 0
+            registry_count = _json_query("SELECT count(*) as c FROM seal_registry", self._runner)
+            total_registered = registry_count[0]["c"] if registry_count else 0
+        else:
+            total_stock = None
+            total_registered = None
 
         return {
             "summary": {
-                "seal_replacements_count": seal_replacements_count,
-                "mtbsr_days": mtbsr_days,
+                "seal_installations_count": seal_installations_count,
                 "total_registered_seals": total_registered,
                 "total_stock_units": total_stock,
-                "has_replacement_data": total_replacements_in_db > 0,
-                "has_stock_data": total_stock > 0,
+                "fleet_inventory_available": scope is None,
+                "has_installation_data": seal_installations_count is not None,
+                "has_stock_data": bool(total_stock),
             },
             "leaks_by_pump_type": leaks_by_pump_type,
             "leaks_by_api_plan": leaks_by_api_plan,
@@ -547,8 +580,21 @@ class LTSAAnalyticsService:
         start_date: str | None = None,
         end_date: str | None = None,
         scope: frozenset[str] | None = None,
+        include_internal_components: bool = False,
     ) -> dict[str, Any]:
-        """Material consumption & spare parts usage. Strict UNKNOWN != ZERO."""
+        """Material consumption & spare parts usage. Strict UNKNOWN != ZERO.
+
+        internal_component_stock is TAP-internal and has no pump/area link:
+        it is read only for a caller holding internal_component.read
+        (include_internal_components) on an unrestricted, unfiltered request.
+        """
+        if not include_internal_components or scope is not None:
+            return {
+                "has_data": False,
+                "summary": {"total_items_consumed": None, "total_cost": None},
+                "top_consumed_materials": [],
+                "message": "Material and spare parts data is not available for this view.",
+            }
         component_stock = _json_query("SELECT count(*) as c FROM internal_component_stock", self._runner)
         total_items = component_stock[0]["c"] if component_stock else 0
 
@@ -640,22 +686,22 @@ class LTSAAnalyticsService:
         area_effectiveness = _json_query(
             f"""
             WITH area_pm AS (
-                SELECT p.area, count(pm.pm_occurrence_code) as pm_count
+                SELECT {canonical_area_sql("p.area")} as area, count(pm.pm_occurrence_code) as pm_count
                 FROM pm_occurrence pm
                 JOIN ltsa_pumps p ON p.tag_number = pm.asset_code
                 {pm_where}
-                GROUP BY p.area
+                GROUP BY 1
             ),
             area_cm AS (
                 SELECT 
-                    p.area,
+                    {canonical_area_sql("p.area")} as area,
                     count(r.condition_monitoring_reading_code) FILTER (
                         WHERE r.mechanical_seal_leak_de = true OR r.mechanical_seal_leak_nde = true
                     ) as leak_count
                 FROM condition_monitoring_reading r
                 JOIN ltsa_pumps p ON p.tag_number = r.asset_code
                 {cm_where}
-                GROUP BY p.area
+                GROUP BY 1
             ),
             all_areas AS (
                 SELECT area FROM area_pm

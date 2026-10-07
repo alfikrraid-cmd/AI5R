@@ -59,7 +59,7 @@ class BasicFleetOverview:
     work_order_status_distribution: dict[str, int]
     pm_schedule_count: int
     cm_report_count: int
-    seal_stock_count: int
+    seal_stock_count: int | None
     low_stock_seal_count: int | None
 
 
@@ -95,9 +95,13 @@ class BasicFleetOverviewService:
             _safe_list(self.cm_report_gateway.list_cm_reports), scoped_tags
         )
         # Seal stock is not pump-attributed (spare-part inventory, not a
-        # per-asset record) -- reported fleet-wide, unscoped, matching
+        # per-asset record) -- a fleet-wide figure, matching
         # SealStockGateway's own "location"-only granularity.
-        seal_stocks = _safe_list(self.seal_stock_gateway.list_seal_stocks)
+        # LTSA_EXECUTIVE_DASHBOARD_AREA_SCOPED_R6B -- it is therefore only
+        # reported for an unrestricted, unfiltered request (scope None); a
+        # scoped/area-filtered overview gets None (N/A), never a fleet-wide
+        # number beside area-scoped KPIs.
+        seal_stocks = _safe_list(self.seal_stock_gateway.list_seal_stocks) if scope is None else None
 
         return BasicFleetOverview(
             pump_count=len(pumps),
@@ -108,8 +112,8 @@ class BasicFleetOverviewService:
             work_order_status_distribution=_distribution(work_orders, "status"),
             pm_schedule_count=len(pm_schedules),
             cm_report_count=len(cm_reports),
-            seal_stock_count=len(seal_stocks),
-            low_stock_seal_count=_count_low_stock(seal_stocks),
+            seal_stock_count=len(seal_stocks) if seal_stocks is not None else None,
+            low_stock_seal_count=_count_low_stock(seal_stocks) if seal_stocks is not None else None,
         )
 
     def _list_scoped_pumps(self, scope: frozenset[str] | None) -> list[dict[str, Any]]:

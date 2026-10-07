@@ -735,11 +735,11 @@ export async function getPumpLifecycle(tagNumber) {
 // Fleet Reliability API (MWO-LTSA-037C, consumed by MWO-LTSA-037D's Fleet
 // Dashboard). One endpoint, {success, data} shape -- same convention as
 // getPumpKnowledge.
-export async function getFleetReliability() {
-    const response = await apiFetch(`${API_URL}/api/ltsa/fleet/reliability`);
+export async function getFleetReliability(params = {}) {
+    const response = await apiFetch(`${API_URL}/api/ltsa/fleet/reliability${_buildAnalyticsQueryParams(params)}`);
 
     if (!response.ok) {
-        throw new Error("Fleet reliability API unavailable");
+        throw await _dashboardRequestError(response, "Fleet reliability API unavailable");
     }
 
     const payload = await response.json();
@@ -754,11 +754,11 @@ export async function getFleetReliability() {
 // Power BI API (MWO-LTSA-038A, consumed by MWO-LTSA-038B's Power BI
 // Dashboard foundation). One endpoint, {success, data} shape -- same
 // convention as getPumpKnowledge/getFleetReliability.
-export async function getFleetPowerBI() {
-    const response = await apiFetch(`${API_URL}/api/ltsa/fleet/powerbi`);
+export async function getFleetPowerBI(params = {}) {
+    const response = await apiFetch(`${API_URL}/api/ltsa/fleet/powerbi${_buildAnalyticsQueryParams(params)}`);
 
     if (!response.ok) {
-        throw new Error("Fleet Power BI API unavailable");
+        throw await _dashboardRequestError(response, "Fleet Power BI API unavailable");
     }
 
     const payload = await response.json();
@@ -776,11 +776,11 @@ export async function getFleetPowerBI() {
 // gateway on the backend, no per-pump n8n fan-out, so this is expected to
 // stay fast/reliable even when the two calls above cannot. Same
 // {success, data} convention.
-export async function getFleetOverview() {
-    const response = await apiFetch(`${API_URL}/api/ltsa/fleet/overview`);
+export async function getFleetOverview(params = {}) {
+    const response = await apiFetch(`${API_URL}/api/ltsa/fleet/overview${_buildAnalyticsQueryParams(params)}`);
 
     if (!response.ok) {
-        throw new Error("Fleet overview API unavailable");
+        throw await _dashboardRequestError(response, "Fleet overview API unavailable");
     }
 
     const payload = await response.json();
@@ -1728,6 +1728,25 @@ export async function askCopilot(question, assetContext) {
     return payload;
 }
 
+// LTSA_EXECUTIVE_DASHBOARD_AREA_SCOPED_R6B -- Executive Dashboard requests
+// (fleet + analytics) reject with an Error carrying the HTTP status and the
+// backend's detail code (e.g. 403 "area_not_in_scope" / "Missing permission:
+// dashboard.read", 422 "invalid_area"), so the dashboard can tell an
+// unauthorized area apart from an outage.
+async function _dashboardRequestError(response, message) {
+    let detail = null;
+    try {
+        const body = await response.json();
+        detail = typeof body?.detail === "string" ? body.detail : null;
+    } catch {
+        // non-JSON error body
+    }
+    const error = new Error(detail || message);
+    error.status = response.status;
+    error.code = detail;
+    return error;
+}
+
 function _buildAnalyticsQueryParams(params = {}) {
     const searchParams = new URLSearchParams();
     for (const [key, value] of Object.entries(params)) {
@@ -1752,7 +1771,7 @@ export async function getLtsaAnalyticsExecutive(params = {}) {
     const qs = _buildAnalyticsQueryParams(params);
     const response = await apiFetch(`${API_URL}/api/ltsa/analytics/executive${qs}`);
     if (!response.ok) {
-        throw new Error(`Failed to fetch executive analytics: ${response.statusText}`);
+        throw await _dashboardRequestError(response, "Failed to fetch executive analytics");
     }
     const payload = await response.json();
     return payload?.data ?? null;
@@ -1762,7 +1781,7 @@ export async function getLtsaAnalyticsSeals(params = {}) {
     const qs = _buildAnalyticsQueryParams(params);
     const response = await apiFetch(`${API_URL}/api/ltsa/analytics/seals${qs}`);
     if (!response.ok) {
-        throw new Error(`Failed to fetch seal analytics: ${response.statusText}`);
+        throw await _dashboardRequestError(response, "Failed to fetch seal analytics");
     }
     const payload = await response.json();
     return payload?.data ?? null;
@@ -1772,7 +1791,7 @@ export async function getLtsaAnalyticsMaterials(params = {}) {
     const qs = _buildAnalyticsQueryParams(params);
     const response = await apiFetch(`${API_URL}/api/ltsa/analytics/materials${qs}`);
     if (!response.ok) {
-        throw new Error(`Failed to fetch material analytics: ${response.statusText}`);
+        throw await _dashboardRequestError(response, "Failed to fetch material analytics");
     }
     const payload = await response.json();
     return payload?.data ?? null;
@@ -1782,7 +1801,7 @@ export async function getLtsaAnalyticsEffectiveness(params = {}) {
     const qs = _buildAnalyticsQueryParams(params);
     const response = await apiFetch(`${API_URL}/api/ltsa/analytics/effectiveness${qs}`);
     if (!response.ok) {
-        throw new Error(`Failed to fetch maintenance effectiveness: ${response.statusText}`);
+        throw await _dashboardRequestError(response, "Failed to fetch maintenance effectiveness");
     }
     const payload = await response.json();
     return payload?.data ?? null;

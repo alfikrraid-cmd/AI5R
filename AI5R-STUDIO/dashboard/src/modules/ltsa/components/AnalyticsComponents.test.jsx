@@ -81,10 +81,11 @@ describe("HistoricalFindingsFeed Component", () => {
 describe("DomainAnalyticsTabs Component", () => {
   const sealAnalytics = {
     summary: {
-      seal_replacements_count: null,
-      mtbsr_days: null,
-      total_registered_seals: 0,
-      total_stock_units: 0,
+      seal_installations_count: null,
+      total_registered_seals: null,
+      total_stock_units: null,
+      fleet_inventory_available: false,
+      has_installation_data: false,
     },
     leaks_by_pump_type: [{ pump_type: "BB", leak_count: 22 }],
     leaks_by_api_plan: [{ api_plan: "11/61", leak_count: 12 }],
@@ -121,7 +122,12 @@ describe("DomainAnalyticsTabs Component", () => {
 
     // Initial tab: Seals
     expect(screen.getByTestId("tab-content-seals")).toBeTruthy();
-    expect(screen.getByText(/insufficient lifecycle events/i)).toBeTruthy();
+    // LTSA_EXECUTIVE_DASHBOARD_AREA_SCOPED_R6B -- installations, never
+    // "replacements"; fleet-wide registry/stock hidden for a scoped view.
+    expect(screen.getByText("SEAL INSTALLATIONS")).toBeTruthy();
+    expect(screen.getByText(/no recorded installation events in scope/i)).toBeTruthy();
+    expect(screen.queryByText(/replacement/i)).toBeNull();
+    expect(screen.queryByTestId("seal-fleet-inventory-card")).toBeNull();
 
     // Switch to Materials
     fireEvent.click(screen.getByRole("button", { name: /material consumption/i }));
@@ -137,20 +143,55 @@ describe("DomainAnalyticsTabs Component", () => {
 });
 
 describe("LtsaGlobalFilterBar Component", () => {
-  it("renders cascading controls and fires onFilterChange", async () => {
+  const authorizedAreas = [
+    { code: "HOC", label: "HOC" },
+    { code: "HSC", label: "HSC" },
+    { code: "S_PAKNING", label: "S. Pakning" },
+  ];
+  const filterOptions = {
+    pumps: [
+      { tag_number: "110-P-1", area: "HOC", canonical_area: "HOC", pump_type: "OH" },
+      { tag_number: "SPK-P-1", area: "SPK", canonical_area: "S_PAKNING", pump_type: "BB" },
+    ],
+    date_range: { min_date: "2026-07-01", max_date: "2026-07-31" },
+  };
+
+  it("offers All Areas plus only the backend's authorized areas and reports area changes", () => {
+    const onAreaChange = vi.fn();
     const onFilterChange = vi.fn();
-    render(<LtsaGlobalFilterBar onFilterChange={onFilterChange} />);
+    render(
+      <LtsaGlobalFilterBar
+        authorizedAreas={authorizedAreas}
+        filterOptions={filterOptions}
+        onAreaChange={onAreaChange}
+        onFilterChange={onFilterChange}
+      />
+    );
 
-    expect(screen.getByTestId("ltsa-global-filter-bar")).toBeTruthy();
-    expect(screen.getByLabelText("Filter by Area")).toBeTruthy();
-    expect(screen.getByLabelText("Filter by Pump")).toBeTruthy();
-    expect(screen.getByRole("button", { name: /reset filters/i })).toBeTruthy();
+    const select = screen.getByLabelText("Filter by Area");
+    const options = Array.from(select.querySelectorAll("option")).map((o) => [o.value, o.textContent]);
+    expect(options).toEqual([["ALL", "All Areas"], ["HOC", "HOC"], ["HSC", "HSC"], ["S_PAKNING", "S. Pakning"]]);
 
-    fireEvent.change(screen.getByLabelText("Filter by Area"), { target: { value: "HCC" } });
-    expect(onFilterChange).toHaveBeenCalled();
+    fireEvent.change(select, { target: { value: "HSC" } });
+    expect(onAreaChange).toHaveBeenCalledWith("HSC");
+    // The area is never sent through the analytics filter callback.
+    expect(onFilterChange).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText("Filter by Pump"), { target: { value: "110-P-1" } });
+    const sent = onFilterChange.mock.calls.at(-1)[0];
+    expect(sent.pump_tag).toBe("110-P-1");
+    expect(sent).not.toHaveProperty("area");
+    expect(sent).not.toHaveProperty("contract_area");
 
     fireEvent.click(screen.getByRole("button", { name: /reset filters/i }));
-    expect(onFilterChange).toHaveBeenCalled();
+    expect(onAreaChange).toHaveBeenLastCalledWith("ALL");
+  });
+
+  it("lists alias-coded pumps under their canonical area", () => {
+    render(<LtsaGlobalFilterBar area="S_PAKNING" authorizedAreas={authorizedAreas} filterOptions={filterOptions} />);
+    const pumps = Array.from(screen.getByLabelText("Filter by Pump").querySelectorAll("option")).map((o) => o.value);
+    expect(pumps).toEqual(["", "SPK-P-1"]);
+    expect(screen.getByTestId("selected-area-badge").textContent).toBe("S. Pakning");
   });
 });
 

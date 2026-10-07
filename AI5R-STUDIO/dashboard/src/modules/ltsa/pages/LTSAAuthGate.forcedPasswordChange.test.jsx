@@ -29,7 +29,7 @@ function session(mustChange) {
     user: { id: "u-new", email: "new.user@tap.internal", username: "new.user", name: "New User" },
     organization: { id: "org-tap", code: "TAP", displayName: "TAP" },
     role: "TAP_ENGINEER",
-    permissions: ["pump.read", "maintenance.read", "internal_inventory.read"],
+    permissions: ["pump.read", "maintenance.read", "internal_inventory.read", "dashboard.read"],
     must_change_password: mustChange,
     token: mustChange ? "token.first-login" : "token.fresh",
   };

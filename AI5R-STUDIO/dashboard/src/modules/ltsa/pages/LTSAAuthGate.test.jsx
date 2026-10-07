@@ -48,7 +48,7 @@ const FIXTURES = {
     permissions: [
       "pump.read", "seal.read", "inventory.read", "maintenance.read", "maintenance.write",
       "condition.read", "drawing.read", "engineering_ai.ask", "import.read", "import.execute",
-      "master.edit", "internal_inventory.read", "internal_component.read", "admin.users",
+      "master.edit", "internal_inventory.read", "internal_component.read", "admin.users", "dashboard.read",
     ],
     token: "fixture.tap-admin",
   },
@@ -59,7 +59,7 @@ const FIXTURES = {
     permissions: [
       "pump.read", "seal.read", "inventory.read", "maintenance.read", "maintenance.write",
       "condition.read", "drawing.read", "engineering_ai.ask", "import.read", "import.execute",
-      "internal_inventory.read", "internal_component.read",
+      "internal_inventory.read", "internal_component.read", "dashboard.read",
     ],
     token: "fixture.tap-engineer",
   },
@@ -67,7 +67,7 @@ const FIXTURES = {
     user: { id: "u-pertamina-engineer", email: "budi.santoso@pertamina.com", name: "Budi Santoso" },
     organization: { id: "org-pertamina-ru2", code: "PERTAMINA_RU_II", displayName: "Pertamina RU II" },
     role: "PERTAMINA_ENGINEER",
-    permissions: ["pump.read", "seal.read", "inventory.read", "maintenance.read", "condition.read", "drawing.read", "engineering_ai.ask"],
+    permissions: ["pump.read", "seal.read", "inventory.read", "maintenance.read", "condition.read", "drawing.read", "engineering_ai.ask", "dashboard.read"],
     token: "fixture.pertamina-engineer",
   },
   "viewer@pertamina.com": {
@@ -87,7 +87,7 @@ const FIXTURES = {
       "maintenance.technical_review", "maintenance.admin_review", "condition.read", "drawing.read",
       "engineering_ai.ask", "import.read", "import.execute", "master.edit", "internal_inventory.read",
       "internal_component.read", "installation.write", "installation.review",
-      "admin.users", "admin.superuser", "audit.read_full",
+      "admin.users", "admin.superuser", "audit.read_full", "dashboard.read",
     ],
     token: "fixture.superuser",
   },
@@ -191,6 +191,9 @@ describe("LTSAAuthGate", () => {
     const allowedKeys = stub.textContent.split(",");
     expect(allowedKeys).toEqual(expect.arrayContaining(["pump", "seal"]));
     expect(allowedKeys).not.toContain("import");
+    // LTSA_EXECUTIVE_DASHBOARD_AREA_SCOPED_R6B -- dashboard.read, never
+    // internal_inventory.read.
+    expect(allowedKeys).toContain("dashboard");
     expect(await screen.findByText("Budi Santoso")).toBeInTheDocument();
     expect(screen.getByText("Pertamina RU II")).toBeInTheDocument();
   });
@@ -223,6 +226,7 @@ describe("LTSAAuthGate", () => {
     const allowedKeys = stub.textContent.split(",");
     expect(allowedKeys).toEqual(expect.arrayContaining(["pump", "seal"]));
     expect(allowedKeys).not.toContain("import");
+    expect(allowedKeys).not.toContain("dashboard");
     expect(await screen.findByText("Siti Rahayu")).toBeInTheDocument();
   });
 

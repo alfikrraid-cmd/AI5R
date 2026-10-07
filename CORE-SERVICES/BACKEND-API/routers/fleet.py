@@ -5,19 +5,22 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends
 
-from API.auth_service import AuthenticatedIdentity, resolve_area_scope
 from API.fleet_insight import build_fleet_insight
 from dependencies import (
     get_basic_fleet_overview_service,
-    get_current_user,
+    get_dashboard_scope,
     get_fleet_executive_summary_service,
     get_fleet_reliability_service,
     require_permission,
 )
 from models.responses import Payload
 
-# MWO-LTSA-AUTH-001
-router = APIRouter(dependencies=[Depends(require_permission("pump.read"))])
+# MWO-LTSA-AUTH-001; LTSA_EXECUTIVE_DASHBOARD_AREA_SCOPED_R6B -- Executive
+# Dashboard data: dashboard.read AND pump.read. Every route reads its scope
+# from get_dashboard_scope (resolve_area_scope narrowed by ?area=).
+router = APIRouter(
+    dependencies=[Depends(require_permission("dashboard.read")), Depends(require_permission("pump.read"))]
+)
 
 # MWO-LTSA-038C -- Power BI dataset contract version. Reuses the exact
 # same constant-plus-isoformat-timestamp convention
@@ -48,9 +51,9 @@ DATASET_VERSION = "1.0.0"
 @router.get("/api/ltsa/fleet/overview")
 def get_fleet_overview(
     basic_fleet_overview_service=Depends(get_basic_fleet_overview_service),
-    current_user: AuthenticatedIdentity = Depends(get_current_user),
+    scope: frozenset[str] | None = Depends(get_dashboard_scope),
 ) -> Payload:
-    overview = basic_fleet_overview_service.build(scope=resolve_area_scope(current_user))
+    overview = basic_fleet_overview_service.build(scope=scope)
 
     return {
         "success": True,
@@ -61,13 +64,13 @@ def get_fleet_overview(
 @router.get("/api/ltsa/fleet/reliability")
 def get_fleet_reliability(
     fleet_reliability_service=Depends(get_fleet_reliability_service),
-    current_user: AuthenticatedIdentity = Depends(get_current_user),
+    scope: frozenset[str] | None = Depends(get_dashboard_scope),
 ) -> Payload:
     # MWO-LTSA-AUTH-DATA-SCOPE-FINAL-CLOSURE-001 -- scope is passed into
     # build() itself (filtered at pump discovery, before aggregation),
     # never applied to the finished snapshot -- a scoped identity's
     # pump_count/totals are genuinely recomputed from only their pumps.
-    fleet_reliability = fleet_reliability_service.build(scope=resolve_area_scope(current_user))
+    fleet_reliability = fleet_reliability_service.build(scope=scope)
 
     return {
         "success": True,
@@ -88,9 +91,9 @@ def get_fleet_reliability(
 @router.get("/api/ltsa/fleet/powerbi")
 def get_fleet_powerbi(
     fleet_executive_summary_service=Depends(get_fleet_executive_summary_service),
-    current_user: AuthenticatedIdentity = Depends(get_current_user),
+    scope: frozenset[str] | None = Depends(get_dashboard_scope),
 ) -> Payload:
-    summary = fleet_executive_summary_service.build(scope=resolve_area_scope(current_user))
+    summary = fleet_executive_summary_service.build(scope=scope)
     insight = build_fleet_insight(summary)
 
     return {

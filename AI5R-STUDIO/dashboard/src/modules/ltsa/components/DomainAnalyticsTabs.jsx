@@ -77,29 +77,31 @@ export default function DomainAnalyticsTabs({
         <div style={{ display: "flex", flexDirection: "column", gap: "16px" }} data-testid="tab-content-seals">
           {/* Summary KPIs */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px" }}>
-            <div style={{ background: "rgba(255,255,255,0.02)", border: `1px solid ${colors.border}`, borderRadius: "6px", padding: "10px 14px" }}>
-              <div style={{ fontSize: "0.7rem", color: colors.textMuted }}>SEAL REPLACEMENTS</div>
+            {/* LTSA_EXECUTIVE_DASHBOARD_AREA_SCOPED_R6B -- pump-bound INSTALL
+                lifecycle events in the selected scope. Not "replacements":
+                an INSTALL alone does not evidence a replacement. */}
+            <div style={{ background: "rgba(255,255,255,0.02)", border: `1px solid ${colors.border}`, borderRadius: "6px", padding: "10px 14px" }} data-testid="seal-installations-card">
+              <div style={{ fontSize: "0.7rem", color: colors.textMuted }}>SEAL INSTALLATIONS</div>
               <div style={{ fontSize: "1.2rem", fontWeight: 700, color: colors.text }}>
-                {sealAnalytics?.summary?.seal_replacements_count ?? <span style={{ color: colors.textMuted }}>N/A</span>}
+                {sealAnalytics?.summary?.seal_installations_count ?? <span style={{ color: colors.textMuted }}>N/A</span>}
               </div>
-              <div style={{ fontSize: "0.7rem", color: colors.textMuted }}>0 recorded replacements in period</div>
+              <div style={{ fontSize: "0.7rem", color: colors.textMuted }}>
+                {sealAnalytics?.summary?.seal_installations_count ? "Pump-bound installation events in scope" : "No recorded installation events in scope"}
+              </div>
             </div>
 
-            <div style={{ background: "rgba(255,255,255,0.02)", border: `1px solid ${colors.border}`, borderRadius: "6px", padding: "10px 14px" }}>
-              <div style={{ fontSize: "0.7rem", color: colors.textMuted }}>MEAN TIME BETWEEN REPLACEMENT (MTBSR)</div>
-              <div style={{ fontSize: "1.2rem", fontWeight: 700, color: colors.textMuted }}>
-                {sealAnalytics?.summary?.mtbsr_days ?? "N/A"}
+            {/* Seal registry / stock are fleet-wide (not area-attributable):
+                shown only when the backend returned them, i.e. for an
+                unrestricted, unfiltered view -- never as an area KPI. */}
+            {sealAnalytics?.summary?.fleet_inventory_available && (
+              <div style={{ background: "rgba(255,255,255,0.02)", border: `1px solid ${colors.border}`, borderRadius: "6px", padding: "10px 14px" }} data-testid="seal-fleet-inventory-card">
+                <div style={{ fontSize: "0.7rem", color: colors.textMuted }}>REGISTERED SEALS & STOCK (FLEET-WIDE)</div>
+                <div style={{ fontSize: "1.2rem", fontWeight: 700, color: colors.info }}>
+                  {sealAnalytics.summary.total_registered_seals ?? "N/A"}
+                </div>
+                <div style={{ fontSize: "0.7rem", color: colors.textMuted }}>{sealAnalytics.summary.total_stock_units ?? "N/A"} stock records</div>
               </div>
-              <div style={{ fontSize: "0.7rem", color: colors.textMuted }}>Insufficient lifecycle events</div>
-            </div>
-
-            <div style={{ background: "rgba(255,255,255,0.02)", border: `1px solid ${colors.border}`, borderRadius: "6px", padding: "10px 14px" }}>
-              <div style={{ fontSize: "0.7rem", color: colors.textMuted }}>REGISTERED SEALS & STOCK</div>
-              <div style={{ fontSize: "1.2rem", fontWeight: 700, color: colors.info }}>
-                {sealAnalytics?.summary?.total_registered_seals ?? 0}
-              </div>
-              <div style={{ fontSize: "0.7rem", color: colors.textMuted }}>{sealAnalytics?.summary?.total_stock_units ?? 0} units in inventory</div>
-            </div>
+            )}
           </div>
 
           {/* Charts: Leaks by Pump Type, API Plan, and Position */}

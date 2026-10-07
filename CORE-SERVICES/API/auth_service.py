@@ -125,6 +125,14 @@ class AuthenticationError(Exception):
 #     it -- this is a distinct authority from maintenance.write (which
 #     governs the normal DRAFT-lifecycle create/edit/submit flow, not a
 #     post-hoc correction to an already-submitted/finalized value).
+#
+# LTSA_EXECUTIVE_DASHBOARD_AREA_SCOPED_R6B -- one new permission:
+#   - dashboard.read: view the Executive Dashboard (/api/ltsa/fleet/*,
+#     /api/ltsa/analytics/*, always together with pump.read and always
+#     area-scoped by resolve_area_scope). SUPERUSER, TAP_ADMIN,
+#     TAP_ENGINEER and PERTAMINA_ENGINEER only. Read-only; it replaces the
+#     frontend's former internal_inventory.read stand-in, which Pertamina
+#     must never receive.
 ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     "SUPERUSER": frozenset(
         {
@@ -140,6 +148,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "seal.lifecycle_write",
             # LTSA_POWER_BI_R1B -- verification access to the governed BI API.
             "bi.read",
+            "dashboard.read",
         }
     ),
     "TAP_ADMIN": frozenset(
@@ -152,6 +161,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "installation.write", "installation.review",
             "admin.users", "record.edit",
             "seal.lifecycle_write",
+            "dashboard.read",
         }
     ),
     "TAP_ENGINEER": frozenset(
@@ -162,6 +172,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "import.read", "import.execute",
             "internal_inventory.read", "internal_component.read",
             "installation.write",
+            "dashboard.read",
         }
     ),
     "JOHN_CRANE_ENGINEER": frozenset(
@@ -176,6 +187,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
         {
             "pump.read", "seal.read", "inventory.read", "maintenance.read",
             "condition.read", "drawing.read", "engineering_ai.ask",
+            "dashboard.read",
         }
     ),
     "PERTAMINA_VIEWER": frozenset(

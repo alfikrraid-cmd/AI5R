@@ -8,7 +8,7 @@ import LTSASidebar from "../components/LTSASidebar";
 import { IconSun } from "../components/PumpWorkspaceIcons";
 import { IconBell } from "../components/LTSANavIcons";
 import CopilotPanel from "../components/CopilotPanel";
-import { can, PERMISSIONS } from "../auth/permissions";
+import { can, PERMISSIONS, TAB_PERMISSIONS } from "../auth/permissions";
 import { useOptionalAuth } from "../auth/AuthContext";
 import ExecutiveDashboard from "./ExecutiveDashboard";
 import Pump from "./Pump";
@@ -415,8 +415,22 @@ const PAGES = {
 // caller/test keeps working unchanged). When provided by LTSAAuthGate,
 // `capabilities.allowedKeys` filters which TABS entries are shown; tab
 // content itself is untouched, this only gates navigation visibility.
+// LTSA_EXECUTIVE_DASHBOARD_AREA_SCOPED_R6B -- a key gated by
+// TAB_PERMISSIONS is reachable only when it is in capabilities.allowedKeys,
+// on every entry path (initial deep link, handleNavigate, popstate) -- not
+// just hidden from the sidebar. Deep-link-only keys with no TAB_PERMISSIONS
+// entry (pm-workspace, cmon-workspace, ...) are unaffected. Presentation
+// only: the backend still answers 403 for the data itself.
+function isKeyPermitted(key, capabilities) {
+  if (!capabilities) return true;
+  if (!Object.prototype.hasOwnProperty.call(TAB_PERMISSIONS, key)) return true;
+  return capabilities.allowedKeys.includes(key);
+}
+
 export default function LTSAWorkspace({ initialActiveKey = "dashboard", capabilities = null }) {
-  const initialLocation = parseWorkspaceLocation(window.location.pathname);
+  const requestedLocation = parseWorkspaceLocation(window.location.pathname);
+  const initialLocation =
+    requestedLocation && isKeyPermitted(requestedLocation.key, capabilities) ? requestedLocation : null;
   const [activeKey, setActiveKey] = useState(initialLocation?.key ?? initialActiveKey);
   const [navContext, setNavContext] = useState(initialLocation?.context ?? null);
   const ActivePage = PAGES[activeKey];
@@ -471,12 +485,28 @@ export default function LTSAWorkspace({ initialActiveKey = "dashboard", capabili
     // to the unified "seal" workspace, so the URL (/ltsa/seal) and the
     // highlighted sidebar entry always agree for any remaining caller.
     const key = requestedKey === "inventory" ? "seal" : requestedKey;
+    if (!isKeyPermitted(key, capabilities)) return;
     const nextContext = context ?? {};
     window.history.pushState({}, "", workspaceLocation(key, nextContext));
     setActiveKey(key);
     setNavContext(nextContext);
   }
-  useEffect(() => { const onPopState = () => { const location = parseWorkspaceLocation(window.location.pathname); if (location) { setActiveKey(location.key); setNavContext(location.context); } }; window.addEventListener("popstate", onPopState); return () => window.removeEventListener("popstate", onPopState); }, []);
+  useEffect(() => {
+    const onPopState = () => {
+      const location = parseWorkspaceLocation(window.location.pathname);
+      if (!location) return;
+      if (isKeyPermitted(location.key, capabilities)) {
+        setActiveKey(location.key);
+        setNavContext(location.context);
+      } else {
+        window.history.replaceState({}, "", workspaceLocation(initialActiveKey, {}));
+        setActiveKey(initialActiveKey);
+        setNavContext({});
+      }
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [capabilities, initialActiveKey]);
 
   return (
     <WorkspaceProvider value={{ navigate: handleNavigate }}>

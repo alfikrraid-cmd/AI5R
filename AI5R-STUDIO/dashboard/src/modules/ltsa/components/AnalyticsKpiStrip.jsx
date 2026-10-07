@@ -38,7 +38,7 @@ export default function AnalyticsKpiStrip({ kpis = {} }) {
     {
       title: "PM Compliance",
       value: renderMetricValue(kpis.pm_compliance_percent, "%"),
-      subtitle: kpis.pm_scheduled_count ? `${kpis.pm_scheduled_count} scheduled` : "No schedule target",
+      subtitle: kpis.pm_scheduled_count ? `${kpis.pm_scheduled_count} scheduled` : "No scheduled PM data",
       color: kpis.pm_compliance_percent !== null ? colors.success : colors.textMuted,
       testId: "kpi-pm-compliance",
     },
@@ -52,7 +52,8 @@ export default function AnalyticsKpiStrip({ kpis = {} }) {
     {
       title: "Breakdowns",
       value: renderMetricValue(kpis.breakdown_count),
-      subtitle: "0 reported failures",
+      // TD-020: work orders carry no breakdown classification -> N/A, never 0.
+      subtitle: kpis.breakdown_count === null || kpis.breakdown_count === undefined ? "Not derivable from work orders" : "Reported failures",
       color: colors.info,
       testId: "kpi-breakdowns",
     },

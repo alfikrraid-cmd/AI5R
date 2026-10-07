@@ -6,7 +6,7 @@ from pathlib import Path
 
 import base64
 import jwt as _pyjwt
-from fastapi import Depends, Header, HTTPException, Request
+from fastapi import Depends, Header, HTTPException, Query, Request
 
 BACKEND_API_DIR = Path(__file__).resolve().parent
 CORE_SERVICES_DIR = BACKEND_API_DIR.parent
@@ -25,8 +25,10 @@ from API.auth_service import (
     decode_access_token,
     is_path_allowed_for_role,
     is_route_allowed_during_password_change,
+    resolve_area_scope,
     resolve_identity,
 )
+from API.pump_area_scope import AreaNotInScopeError, InvalidAreaError, resolve_requested_scope
 from API.bi_machine_auth_service import authenticate_basic_credentials
 from API.bi_machine_credential_repository import (
     BiMachineCredentialPostgresRepository,
@@ -814,6 +816,24 @@ def require_permission(permission: str):
         return current_user
 
     return _check
+
+
+def get_dashboard_scope(
+    area: str | None = Query(default=None),
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
+) -> frozenset[str] | None:
+    """LTSA_EXECUTIVE_DASHBOARD_AREA_SCOPED_R6B -- the one place the
+    Executive Dashboard's ?area= is turned into a data scope: the caller's
+    resolve_area_scope() result, narrowed (never widened) to the requested
+    area. Missing/ALL keeps the full authorized scope; an area outside it
+    is 403 area_not_in_scope, an unrecognized token 422 invalid_area. The
+    client-supplied value is never trusted on its own."""
+    try:
+        return resolve_requested_scope(resolve_area_scope(current_user), area)
+    except InvalidAreaError:
+        raise HTTPException(status_code=422, detail="invalid_area")
+    except AreaNotInScopeError:
+        raise HTTPException(status_code=403, detail="area_not_in_scope")
 
 
 # MWO-LTSA-TAP-GROUP-AGENT-001 Phase 2A -- TAP LTSA WhatsApp Group Agent,

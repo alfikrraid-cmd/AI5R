@@ -1,108 +1,55 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import colors from "../../../design-system/theme/colors";
-import { getLtsaAnalyticsFilters } from "../../../api/ai5rClient";
 
+export const ALL_AREAS = "ALL";
+
+/**
+ * LTSA_EXECUTIVE_DASHBOARD_AREA_SCOPED_R6B -- the Executive Dashboard's ONE
+ * global filter bar, fully controlled by ExecutiveDashboard.
+ *
+ * - Area: "All Areas" plus exactly the backend's `authorizedAreas`
+ *   ({code, label}, derived server-side from resolve_area_scope) -- never a
+ *   hard-coded or data-derived list. Selecting an area changes the whole
+ *   dashboard (onAreaChange); the backend re-checks it on every request.
+ * - Pump / dates: narrow the analytics requests only (onFilterChange sends
+ *   pump_tag/start_date/end_date; area is never sent from here).
+ */
 export default function LtsaGlobalFilterBar({
+  area = ALL_AREAS,
+  authorizedAreas = [],
+  onAreaChange,
+  filterOptions = {},
   filters = {},
   onFilterChange,
 }) {
-  const [filterOptions, setFilterOptions] = useState({ areas: [], pumps: [], date_range: {} });
-  const [selectedArea, setSelectedArea] = useState(filters.area || "");
-  const [selectedPump, setSelectedPump] = useState(filters.pump_tag || "");
-  const [startDate, setStartDate] = useState(filters.start_date || "");
-  const [endDate, setEndDate] = useState(filters.end_date || "");
+  const pumps = filterOptions.pumps || [];
+  const dateRange = filterOptions.date_range || {};
+  const selectedPump = filters.pump_tag || "";
+  const startDate = filters.start_date ?? dateRange.min_date ?? "";
+  const endDate = filters.end_date ?? dateRange.max_date ?? "";
 
-  useEffect(() => {
-    let active = true;
-    getLtsaAnalyticsFilters()
-      .then((data) => {
-        if (active && data) {
-          setFilterOptions(data);
-          if (!startDate && data.date_range?.min_date) {
-            setStartDate(data.date_range.min_date);
-          }
-          if (!endDate && data.date_range?.max_date) {
-            setEndDate(data.date_range.max_date);
-          }
-        }
-      })
-      .catch(() => {
-        // absorb filter failure gracefully
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  // Filter pumps available in the selected area
+  // Pumps of the selected area, matched on the canonical area so alias-coded
+  // pumps (SPK, OIL MOVEMENT, UTILITIES) stay under their area.
   const availablePumps = useMemo(() => {
-    if (!filterOptions.pumps) return [];
-    if (!selectedArea) return filterOptions.pumps;
-    return filterOptions.pumps.filter((p) => p.area === selectedArea);
-  }, [filterOptions.pumps, selectedArea]);
+    if (area === ALL_AREAS) return pumps;
+    return pumps.filter((p) => (p.canonical_area ?? p.area) === area);
+  }, [pumps, area]);
 
-  const handleAreaChange = (e) => {
-    const area = e.target.value;
-    setSelectedArea(area);
-    setSelectedPump(""); // Reset pump selection when area changes
+  function emit(next) {
     onFilterChange?.({
-      area: area || undefined,
-      contract_area: area || undefined,
-      pump_tag: undefined,
-      start_date: startDate || undefined,
-      end_date: endDate || undefined,
-    });
-  };
-
-  const handlePumpChange = (e) => {
-    const pump = e.target.value;
-    setSelectedPump(pump);
-    onFilterChange?.({
-      area: selectedArea || undefined,
-      contract_area: selectedArea || undefined,
-      pump_tag: pump || undefined,
-      start_date: startDate || undefined,
-      end_date: endDate || undefined,
-    });
-  };
-
-  const handleStartDateChange = (e) => {
-    const date = e.target.value;
-    setStartDate(date);
-    onFilterChange?.({
-      area: selectedArea || undefined,
-      contract_area: selectedArea || undefined,
-      pump_tag: selectedPump || undefined,
-      start_date: date || undefined,
-      end_date: endDate || undefined,
-    });
-  };
-
-  const handleEndDateChange = (e) => {
-    const date = e.target.value;
-    setEndDate(date);
-    onFilterChange?.({
-      area: selectedArea || undefined,
-      contract_area: selectedArea || undefined,
       pump_tag: selectedPump || undefined,
       start_date: startDate || undefined,
-      end_date: date || undefined,
+      end_date: endDate || undefined,
+      ...next,
     });
-  };
+  }
 
   const handleReset = () => {
-    setSelectedArea("");
-    setSelectedPump("");
-    const minD = filterOptions.date_range?.min_date || "2026-07-01";
-    const maxD = filterOptions.date_range?.max_date || "2026-07-31";
-    setStartDate(minD);
-    setEndDate(maxD);
+    onAreaChange?.(ALL_AREAS);
     onFilterChange?.({
-      area: undefined,
-      contract_area: undefined,
       pump_tag: undefined,
-      start_date: minD,
-      end_date: maxD,
+      start_date: dateRange.min_date || undefined,
+      end_date: dateRange.max_date || undefined,
     });
   };
 
@@ -116,7 +63,9 @@ export default function LtsaGlobalFilterBar({
     outline: "none",
   };
 
-  const hasActiveFilters = Boolean(selectedArea || selectedPump);
+  const selectedAreaLabel =
+    area === ALL_AREAS ? "All Areas" : authorizedAreas.find((a) => a.code === area)?.label ?? area;
+  const hasActiveFilters = Boolean(area !== ALL_AREAS || selectedPump);
 
   return (
     <div
@@ -139,22 +88,22 @@ export default function LtsaGlobalFilterBar({
           Scope & Filter:
         </span>
 
-        {/* Contract Area / Area Filter */}
+        {/* Global Area Filter -- authorized areas only */}
         <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
           <label htmlFor="filter-area" style={{ fontSize: "0.75rem", color: colors.textMuted }}>
             Area:
           </label>
           <select
             id="filter-area"
-            value={selectedArea}
-            onChange={handleAreaChange}
-            style={selectStyle}
+            value={area}
+            onChange={(e) => onAreaChange?.(e.target.value)}
+            style={{ ...selectStyle, fontWeight: 600 }}
             aria-label="Filter by Area"
           >
-            <option value="">All Areas (Fleet)</option>
-            {filterOptions.areas.map((a) => (
-              <option key={a.area} value={a.area}>
-                {a.area} ({a.pump_count} pumps)
+            <option value={ALL_AREAS}>All Areas</option>
+            {authorizedAreas.map((a) => (
+              <option key={a.code} value={a.code}>
+                {a.label}
               </option>
             ))}
           </select>
@@ -168,7 +117,7 @@ export default function LtsaGlobalFilterBar({
           <select
             id="filter-pump"
             value={selectedPump}
-            onChange={handlePumpChange}
+            onChange={(e) => emit({ pump_tag: e.target.value || undefined })}
             style={{ ...selectStyle, maxWidth: "160px" }}
             aria-label="Filter by Pump"
           >
@@ -190,7 +139,7 @@ export default function LtsaGlobalFilterBar({
             id="filter-start-date"
             type="date"
             value={startDate}
-            onChange={handleStartDateChange}
+            onChange={(e) => emit({ start_date: e.target.value || undefined })}
             style={selectStyle}
             aria-label="Filter Start Date"
           />
@@ -201,20 +150,28 @@ export default function LtsaGlobalFilterBar({
             id="filter-end-date"
             type="date"
             value={endDate}
-            onChange={handleEndDateChange}
+            onChange={(e) => emit({ end_date: e.target.value || undefined })}
             style={selectStyle}
             aria-label="Filter End Date"
           />
         </div>
       </div>
 
-      {/* Reset & Status */}
+      {/* Selected scope & Reset */}
       <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-        {hasActiveFilters && (
-          <span style={{ fontSize: "0.75rem", color: colors.info }}>
-            Filtered View
-          </span>
-        )}
+        <span
+          data-testid="selected-area-badge"
+          style={{
+            fontSize: "0.75rem",
+            fontWeight: 600,
+            color: hasActiveFilters ? colors.info : colors.textMuted,
+            border: `1px solid ${hasActiveFilters ? colors.info : colors.border}`,
+            borderRadius: "999px",
+            padding: "2px 10px",
+          }}
+        >
+          {selectedAreaLabel}
+        </span>
         <button
           type="button"
           onClick={handleReset}
@@ -243,4 +200,3 @@ export default function LtsaGlobalFilterBar({
     </div>
   );
 }
-

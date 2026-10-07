@@ -7,17 +7,12 @@ Area/MA is DATA SCOPE, not a role -- this module holds ONLY the
 vocabulary and the generic filter/check primitives; it has no knowledge
 of roles, tokens, or permissions (that stays in auth_service.py).
 
-MA grouping: only MA2 (HSC + S_PAKNING + HCC) is included. MA1/MA3/MA4's
-area membership could NOT be independently corroborated from any
-authoritative repository source this session -- the only prior evidence
-(historical_pm_cmon_extraction.py's own _MA_BY_LOCATION dict) is itself
-traceable to a prior session's supplied business context, not a repo
-artifact (ADR, migration, or other independent code). Per this MWO's own
-"DO NOT GUESS... report unresolved mapping" instruction, MA1/MA3/MA4 are
-deliberately NOT added here. A membership recorded with
-data_scope_value in {'MA1','MA3','MA4'} resolves to an EMPTY scope
-(auth_service.resolve_area_scope's own fail-closed default) rather than
-being silently invented -- unresolved, never guessed.
+MA grouping (MA_AREA_GROUPS below): MA1 = HOC, MA2 = HSC + S_PAKNING +
+HCC, MA3 = UTL, MA4 = OM. (The original closure MWO shipped MA2 only; the
+other three groups were added later -- this note previously still said
+"only MA2".) An unrecognized MA value resolves to an EMPTY scope
+(auth_service.resolve_area_scope's own fail-closed default), never
+guessed.
 """
 
 from __future__ import annotations
@@ -196,8 +191,76 @@ def filter_records_by_asset_scope(
     return [r for r in records if is_area_in_scope(cache.area_for(r.get(asset_field)), scope)]
 
 
+# LTSA_EXECUTIVE_DASHBOARD_AREA_SCOPED_R6B -- the Executive Dashboard's
+# area filter narrows the caller's ALREADY-RESOLVED scope
+# (auth_service.resolve_area_scope); it never widens it and is not a
+# second authorization system. Only the six AREA_CODES are selectable:
+# areas outside them (REAKTOR, FRAKSINASI, DCU, ...) stay reachable for
+# unrestricted roles through "All Areas" only, exactly as before.
+
+AREA_CODE_ORDER: tuple[str, ...] = ("HOC", "HSC", "S_PAKNING", "HCC", "OM", "UTL")
+
+_AREA_LABELS: dict[str, str] = {"S_PAKNING": "S. Pakning"}
+
+
+class InvalidAreaError(ValueError):
+    """The requested area token does not normalize to an AREA_CODE."""
+
+
+class AreaNotInScopeError(PermissionError):
+    """The requested area is outside the caller's resolved scope."""
+
+
+def resolve_requested_scope(
+    user_scope: frozenset[str] | None, requested_area: str | None
+) -> frozenset[str] | None:
+    """Missing/"ALL" -> user_scope unchanged (None stays unrestricted, a
+    finite or empty set stays exactly that). A specific area returns
+    {canonical code} = intersection(user_scope, {code}); an unknown token
+    raises InvalidAreaError and an area outside a finite scope (including
+    the empty, fail-closed scope) raises AreaNotInScopeError."""
+    if requested_area is None or not requested_area.strip() or requested_area.strip().upper() == "ALL":
+        return user_scope
+    code = normalize_area_token(requested_area)
+    if code is None:
+        raise InvalidAreaError(requested_area)
+    if user_scope is not None and code not in user_scope:
+        raise AreaNotInScopeError(code)
+    return frozenset({code})
+
+
+def area_label(code: str) -> str:
+    return _AREA_LABELS.get(code, code)
+
+
+def authorized_area_options(scope: frozenset[str] | None) -> list[dict[str, str]]:
+    """The selectable areas for `scope` (resolve_area_scope's result), in
+    AREA_CODE_ORDER. Unrestricted -> all six; finite -> its members; empty
+    -> []."""
+    allowed = AREA_CODES if scope is None else scope
+    return [{"code": code, "label": area_label(code)} for code in AREA_CODE_ORDER if code in allowed]
+
+
+def canonical_area_sql(column: str) -> str:
+    """SQL expression mirroring is_area_in_scope's canonicalization
+    (normalize_area_token, else the stripped upper-case raw value), built
+    from _AREA_TOKEN_MAP itself so SQL and Python can never disagree on an
+    alias (SPK, OIL MOVEMENT, UTILITIES, ...). `column` is a trusted,
+    code-supplied identifier such as "p.area"."""
+    token = f"upper(btrim(regexp_replace({column}, '\\s+', ' ', 'g')))"
+    whens = " ".join(f"WHEN '{alias}' THEN '{code}'" for alias, code in _AREA_TOKEN_MAP.items())
+    return f"(CASE {token} {whens} ELSE upper(btrim({column})) END)"
+
+
 __all__ = [
     "AREA_CODES",
+    "AREA_CODE_ORDER",
+    "InvalidAreaError",
+    "AreaNotInScopeError",
+    "resolve_requested_scope",
+    "area_label",
+    "authorized_area_options",
+    "canonical_area_sql",
     "MA_AREA_GROUPS",
     "resolve_ma_areas",
     "resolve_area_ma",

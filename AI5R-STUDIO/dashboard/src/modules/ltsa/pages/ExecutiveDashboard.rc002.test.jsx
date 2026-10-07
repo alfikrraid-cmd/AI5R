@@ -373,7 +373,10 @@ describe("Reuse existing components", () => {
 
   it("QuickNavigationPanel's DESTINATIONS is exported and reused by DashboardTopBar (single source of truth)", () => {
     expect(NAV_SOURCE).toMatch(/export const DESTINATIONS/);
-    expect(TOPBAR_SOURCE).toMatch(/import \{ DESTINATIONS \} from ["']\.\/QuickNavigationPanel["']/);
+    // LTSA_EXECUTIVE_DASHBOARD_AREA_SCOPED_R6B -- reused through the
+    // capability-filtered usePermittedDestinations() (still the one list).
+    expect(NAV_SOURCE).toMatch(/export function usePermittedDestinations\(\)[\s\S]*DESTINATIONS\.filter/);
+    expect(TOPBAR_SOURCE).toMatch(/import \{ usePermittedDestinations \} from ["']\.\/QuickNavigationPanel["']/);
   });
 
   it("ImmediateActionTable receives assets as a prop rather than recomputing them", () => {

@@ -150,7 +150,9 @@ def test_analytics_endpoints_require_permission():
     app.dependency_overrides[get_current_user] = lambda: _UNAUTHORIZED_IDENTITY
     response = client.get("/api/ltsa/analytics/executive")
     assert response.status_code == 403
-    assert "Missing permission: pump.read" in response.json()["detail"]
+    # LTSA_EXECUTIVE_DASHBOARD_AREA_SCOPED_R6B -- dashboard.read is checked
+    # first, then pump.read; both are required.
+    assert "Missing permission: dashboard.read" in response.json()["detail"]
 
 
 def test_get_analytics_filters():
@@ -179,9 +181,12 @@ def test_get_executive_analytics_success_and_unknown_policy():
     assert payload["success"] is True
     data = payload["data"]
 
-    # Verify query parameter forwarding
-    assert fake.last_executive_kwargs["contract_area"] == "HCC"
-    assert fake.last_executive_kwargs["area"] == "HCC"
+    # Verify query parameter forwarding. LTSA_EXECUTIVE_DASHBOARD_AREA_SCOPED_R6B
+    # -- the area reaches the service only as the narrowed, authorized scope;
+    # raw area/contract_area strings are no longer forwarded.
+    assert fake.last_executive_kwargs["scope"] == frozenset({"HCC"})
+    assert "area" not in fake.last_executive_kwargs
+    assert "contract_area" not in fake.last_executive_kwargs
     assert fake.last_executive_kwargs["pump_tag"] == "101-P-10A"
     assert fake.last_executive_kwargs["start_date"] == "2026-07-01"
     assert fake.last_executive_kwargs["end_date"] == "2026-07-31"

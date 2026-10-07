@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Badge, SearchBox } from "../../../design-system";
 import spacing from "../../../design-system/theme/spacing";
-import { DESTINATIONS } from "./QuickNavigationPanel";
+import { usePermittedDestinations } from "./QuickNavigationPanel";
 
 /**
  * RC-002 (Executive Dashboard React Implementation): Top Bar.
@@ -21,6 +21,9 @@ import { DESTINATIONS } from "./QuickNavigationPanel";
  */
 export default function DashboardTopBar({ onNavigate }) {
   const [searchValue, setSearchValue] = useState("");
+  // LTSA_EXECUTIVE_DASHBOARD_AREA_SCOPED_R6B -- same capability-filtered
+  // list as QuickNavigationPanel.
+  const destinations = usePermittedDestinations();
 
   return (
     <div
@@ -56,7 +59,7 @@ export default function DashboardTopBar({ onNavigate }) {
             <option value="" disabled>
               Jump to workspace…
             </option>
-            {DESTINATIONS.map((destination) => (
+            {destinations.map((destination) => (
               <option key={destination.key} value={destination.key} disabled={destination.disabled}>
                 {destination.label}
               </option>
