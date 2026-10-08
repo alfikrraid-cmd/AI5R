@@ -1234,3 +1234,211 @@ def test_e0_content_endpoint_rbac_and_scope_security(test_env):
     res_in_scope = client.get(f"/api/ltsa/drawings/{doc_code}/content")
     assert res_in_scope.status_code == 200
     assert res_in_scope.content == SYNTHETIC_PDF
+
+
+def test_r9e_list_drawings_filtered_by_target_code(test_env):
+    """R9E: GET /api/ltsa/drawings?target_code={TAG} returns authoritative applicable drawings with side and storage availability."""
+    client = test_env["client"]
+    svc = test_env["service"]
+    repo = test_env["repo"]
+
+    # 1. Register DE drawing for pump 110-P-9A
+    doc_de = svc.register_drawing(
+        file_bytes=SYNTHETIC_PDF,
+        filename="GA-230821-DE.pdf",
+        drawing_number="GA-230821",
+        title="DE Drawing",
+        revision="0",
+        asset_code="110-P-9A",
+        equipment_side="DE",
+    )
+
+    # 2. Register NDE drawing for pump 110-P-9A
+    doc_nde = svc.register_drawing(
+        file_bytes=SYNTHETIC_PDF,
+        filename="GA-230826-NDE.pdf",
+        drawing_number="GA-230826",
+        title="NDE Drawing",
+        revision="0",
+        asset_code="110-P-9A",
+        equipment_side="NDE",
+    )
+
+    # 3. Create a REFERENCE_ONLY document with no object_key, linked to 110-P-9A
+    doc_ref = repo.create_document(
+        document_code="470900-ID",
+        drawing_number="470900-ID",
+        title="Reference Drawing",
+        revision="0",
+        uploaded_by="system",
+        sha256_checksum="none",
+        file_name="470900-ID.pdf",
+        file_size_bytes=0,
+        content_type="application/pdf",
+        object_key="",
+        status="APPROVED",
+    )
+    repo.create_link(
+        drawing_number="470900-ID",
+        document_code="470900-ID",
+        target_type="PUMP",
+        target_code="110-P-9A",
+        equipment_side=None,
+        source_type="ARCHIVE_INVENTORY",
+        evidence_method="MATCHED_BY_ARCHIVE_SCOPE",
+        confidence_status="REFERENCE_ONLY",
+    )
+
+    # 4. Register unrelated drawing for pump 200-P-1A
+    svc.register_drawing(
+        file_bytes=SYNTHETIC_PDF,
+        filename="GA-320688.pdf",
+        drawing_number="GA-320688",
+        title="Unrelated Pump Drawing",
+        revision="0",
+        asset_code="200-P-1A",
+    )
+
+    app.dependency_overrides[get_current_user] = lambda: make_identity("SUPERUSER")
+
+    # Fetch drawings for 110-P-9A
+    res = client.get("/api/ltsa/drawings?target_code=110-P-9A&target_type=PUMP")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["count"] == 3
+    items = body["data"]
+
+    # Verify DE item
+    de_item = next((i for i in items if i["document_number"] == "GA-230821"), None)
+    assert de_item is not None
+    assert de_item["equipment_side"] == "DE"
+    assert de_item["storage_available"] is True
+
+    # Verify NDE item
+    nde_item = next((i for i in items if i["document_number"] == "GA-230826"), None)
+    assert nde_item is not None
+    assert nde_item["equipment_side"] == "NDE"
+    assert nde_item["storage_available"] is True
+
+    # Verify Reference-only item
+    ref_item = next((i for i in items if i["document_number"] == "470900-ID"), None)
+    assert ref_item is not None
+    assert ref_item["equipment_side"] is None
+    assert ref_item["confidence_status"] == "REFERENCE_ONLY"
+    assert ref_item["storage_available"] is False
+
+    # Verify unrelated pump drawing is NOT present
+    assert not any(i["document_number"] == "GA-320688" for i in items)
+
+
+def test_r9e_list_drawings_target_code_area_scope_enforcement(test_env):
+    """R9E: target_code filtering respects Pertamina area scoping and fails closed for out-of-scope pumps."""
+    client = test_env["client"]
+    svc = test_env["service"]
+
+    # Pump 110-P-9A is in area HOC
+    svc.register_drawing(
+        file_bytes=SYNTHETIC_PDF,
+        filename="hoc_pump.pdf",
+        drawing_number="GA-HOC-110",
+        title="HOC Drawing",
+        revision="0",
+        asset_code="110-P-9A",
+    )
+
+    # Pump 200-P-1A is in area HSC
+    svc.register_drawing(
+        file_bytes=SYNTHETIC_PDF,
+        filename="hsc_pump.pdf",
+        drawing_number="GA-HSC-200",
+        title="HSC Drawing",
+        revision="0",
+        asset_code="200-P-1A",
+    )
+
+    # 1. Engineer scoped to HOC -> can access 110-P-9A, but NOT 200-P-1A
+    app.dependency_overrides[get_current_user] = lambda: make_identity("PERTAMINA_ENGINEER", area_scope="HOC")
+
+    res_in_scope = client.get("/api/ltsa/drawings?target_code=110-P-9A")
+    assert res_in_scope.status_code == 200
+    assert res_in_scope.json()["count"] == 1
+    assert res_in_scope.json()["data"][0]["document_number"] == "GA-HOC-110"
+
+    res_out_scope = client.get("/api/ltsa/drawings?target_code=200-P-1A")
+    assert res_out_scope.status_code == 200
+    assert res_out_scope.json()["count"] == 0
+    assert res_out_scope.json()["data"] == []
+
+    # 2. Engineer scoped to HSC -> can access 200-P-1A, but NOT 110-P-9A
+    app.dependency_overrides[get_current_user] = lambda: make_identity("PERTAMINA_ENGINEER", area_scope="HSC")
+
+    res_in_scope2 = client.get("/api/ltsa/drawings?target_code=200-P-1A")
+    assert res_in_scope2.status_code == 200
+    assert res_in_scope2.json()["count"] == 1
+    assert res_in_scope2.json()["data"][0]["document_number"] == "GA-HSC-200"
+
+    res_out_scope2 = client.get("/api/ltsa/drawings?target_code=110-P-9A")
+    assert res_out_scope2.status_code == 200
+    assert res_out_scope2.json()["count"] == 0
+    assert res_out_scope2.json()["data"] == []
+
+
+def test_r9e_slash_in_document_code_routing(test_env):
+    """R9E: Document codes with slashes (e.g., D/74904-1) correctly match detail, content, and link endpoints."""
+    client = test_env["client"]
+    repo = test_env["repo"]
+    storage = test_env["storage"]
+
+    # Register document with slash in document_code
+    slash_code = "D/74904-1"
+    staged_key = "staging/test_slash.pdf"
+    object_key = "drawings/D_74904-1/rev0/test.pdf"
+    storage.put_staged_object(staged_key, SYNTHETIC_PDF, "application/pdf")
+    storage.register_promoted_object(staged_key, object_key)
+
+    repo.create_document(
+        document_code=slash_code,
+        drawing_number="D/74904-1",
+        title="Drawing With Slash",
+        revision="0",
+        uploaded_by="system",
+        sha256_checksum=hashlib.sha256(SYNTHETIC_PDF).hexdigest(),
+        file_name="D_74904-1.pdf",
+        file_size_bytes=len(SYNTHETIC_PDF),
+        content_type="application/pdf",
+        object_key=object_key,
+        status="APPROVED",
+        revision_status="APPROVED",
+    )
+
+    # Link to a pump
+    repo.create_link(
+        drawing_number="D/74904-1",
+        document_code=slash_code,
+        target_type="PUMP",
+        target_code="110-P-9A",
+        equipment_side="SINGLE",
+        source_type="ARCHIVE_INVENTORY",
+        evidence_method="MANUAL_VERIFICATION",
+        confidence_status="CONFIRMED",
+    )
+
+    app.dependency_overrides[get_current_user] = lambda: make_identity("SUPERUSER")
+
+    # 1. Detail endpoint with slash
+    res_detail = client.get(f"/api/ltsa/drawings/{slash_code}")
+    assert res_detail.status_code == 200
+    assert res_detail.json()["data"]["document_code"] == slash_code
+
+    # 2. Content endpoint with slash
+    res_content = client.get(f"/api/ltsa/drawings/{slash_code}/content")
+    assert res_content.status_code == 200
+    assert res_content.content == SYNTHETIC_PDF
+
+    # 3. Create link endpoint with slash
+    res_link = client.post(
+        f"/api/ltsa/drawings/{slash_code}/links",
+        data={"target_type": "PUMP", "target_code": "200-P-1A", "equipment_side": "DE"},
+    )
+    assert res_link.status_code == 201
+    assert res_link.json()["data"]["document_code"] == slash_code

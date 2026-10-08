@@ -52,6 +52,7 @@ class DrawingRepositoryProtocol:
     def list_links_for_document(self, document_code: str) -> list[dict[str, Any]]: ...
     def list_links_for_drawing_number(self, drawing_number: str) -> list[dict[str, Any]]: ...
     def list_links_for_target(self, target_type: str, target_code: str) -> list[dict[str, Any]]: ...
+    def list_drawings_for_target(self, target_code: str, target_type: str = "PUMP") -> list[dict[str, Any]]: ...
 
 
 class DrawingRepository:
@@ -237,6 +238,51 @@ class DrawingRepository:
             "ORDER BY created_at ASC",
             self._runner,
         )
+
+    def list_drawings_for_target(
+        self, target_code: str, target_type: str = "PUMP"
+    ) -> list[dict[str, Any]]:
+        sql = (
+            "SELECT "
+            "COALESCE(d.document_code, l.document_code) AS document_code, "
+            "d.seal_code, "
+            "COALESCE(d.document_type, 'DRAWING') AS document_type, "
+            "COALESCE(d.document_number, l.drawing_number) AS document_number, "
+            "COALESCE(d.title, l.drawing_number || ' Engineering Drawing') AS title, "
+            "COALESCE(d.revision, '') AS revision, "
+            "d.object_key, "
+            "d.sha256_checksum, "
+            "d.file_size_bytes, "
+            "d.content_type, "
+            "d.file_name, "
+            "d.uploaded_by, "
+            "d.provenance, "
+            "d.revision_status, "
+            "COALESCE(d.is_current_revision, FALSE) AS is_current_revision, "
+            "d.superseded_at, "
+            "d.superseded_by_document_code, "
+            "d.drawing_generation, "
+            "COALESCE(d.status, 'REFERENCE_ONLY') AS status, "
+            "d.created_at, "
+            "d.updated_at, "
+            "l.link_id, "
+            "l.target_type, "
+            "l.target_code, "
+            "l.equipment_side, "
+            "l.confidence_status, "
+            "l.evidence_method, "
+            "l.notes, "
+            "l.raw_reference, "
+            "l.normalized_reference, "
+            "(d.object_key IS NOT NULL AND d.object_key <> '') AS storage_available "
+            "FROM public.drawing_engineering_link l "
+            "LEFT JOIN public.seal_engineering_document d "
+            "ON (l.document_code IS NOT NULL AND d.document_code = l.document_code) "
+            "OR (l.document_code IS NULL AND d.document_type = 'DRAWING' AND UPPER(d.document_number) = UPPER(l.drawing_number) AND d.is_current_revision = TRUE) "
+            f"WHERE l.target_type = {_sql(target_type)} AND l.target_code = {_sql(target_code)} "
+            "ORDER BY l.created_at ASC"
+        )
+        return _json_query(sql, self._runner)
 
 
 class InMemoryDrawingRepository:
@@ -427,6 +473,51 @@ class InMemoryDrawingRepository:
             for l in self.links
             if l.get("target_type") == target_type and l.get("target_code") == target_code
         ]
+
+    def list_drawings_for_target(
+        self, target_code: str, target_type: str = "PUMP"
+    ) -> list[dict[str, Any]]:
+        links = self.list_links_for_target(target_type, target_code)
+        results = []
+        for link in links:
+            doc_code = link.get("document_code")
+            doc = self.documents.get(doc_code) if doc_code else None
+            if not doc:
+                for d in self.documents.values():
+                    if (
+                        d.get("document_type") == "DRAWING"
+                        and str(d.get("document_number", "")).upper() == str(link.get("drawing_number", "")).upper()
+                    ):
+                        doc = d
+                        break
+
+            row: dict[str, Any] = {}
+            if doc:
+                row.update(dict(doc))
+            else:
+                row.update({
+                    "document_code": link.get("document_code"),
+                    "document_number": link.get("drawing_number"),
+                    "title": f"{link.get('drawing_number')} Engineering Drawing",
+                    "revision": "",
+                    "document_type": "DRAWING",
+                    "status": "REFERENCE_ONLY",
+                    "drawing_generation": "STANDARD",
+                })
+            row.update({
+                "link_id": link.get("link_id"),
+                "target_type": link.get("target_type"),
+                "target_code": link.get("target_code"),
+                "equipment_side": link.get("equipment_side"),
+                "confidence_status": link.get("confidence_status"),
+                "evidence_method": link.get("evidence_method"),
+                "notes": link.get("notes"),
+                "raw_reference": link.get("raw_reference"),
+                "normalized_reference": link.get("normalized_reference"),
+                "storage_available": bool(row.get("object_key")),
+            })
+            results.append(row)
+        return results
 
 
 __all__ = [

@@ -171,6 +171,8 @@ def list_drawings(
     drawing_number: str | None = Query(default=None),
     seal_code: str | None = Query(default=None),
     status_filter: str | None = Query(default=None, alias="status"),
+    target_code: str | None = Query(default=None),
+    target_type: str = Query(default="PUMP"),
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     current_user: AuthenticatedIdentity = Depends(get_current_user),
@@ -178,6 +180,27 @@ def list_drawings(
     pump_gateway=Depends(get_pump_gateway),
     seal_pump_compatibility_gateway=Depends(get_seal_pump_compatibility_gateway),
 ) -> Payload:
+    scope = resolve_area_scope(current_user)
+
+    if target_code:
+        if scope is not None:
+            if target_type == "PUMP":
+                asset_area = resolve_asset_area(target_code, pump_gateway)
+                if not is_area_in_scope(asset_area, scope):
+                    return {"data": [], "count": 0}
+            elif target_type == "SEAL":
+                area_cache: dict[str, str | None] = {}
+                if not _is_seal_in_scope(target_code, scope, seal_pump_compatibility_gateway, pump_gateway, area_cache):
+                    return {"data": [], "count": 0}
+            else:
+                return {"data": [], "count": 0}
+
+        drawings = drawing_repository.list_drawings_for_target(
+            target_code=target_code,
+            target_type=target_type,
+        )
+        return {"data": drawings, "count": len(drawings)}
+
     drawings = drawing_repository.list_documents(
         drawing_number=drawing_number,
         seal_code=seal_code,
@@ -186,7 +209,6 @@ def list_drawings(
         offset=offset,
     )
 
-    scope = resolve_area_scope(current_user)
     if scope is not None:
         filtered = [
             d
@@ -205,37 +227,7 @@ def list_drawings(
 
 
 @router.get(
-    "/{document_code}",
-    dependencies=[Depends(require_permission("drawing.read"))],
-)
-def get_drawing_detail(
-    document_code: str,
-    current_user: AuthenticatedIdentity = Depends(get_current_user),
-    drawing_service=Depends(get_drawing_service),
-    drawing_repository=Depends(get_drawing_repository),
-    pump_gateway=Depends(get_pump_gateway),
-    seal_pump_compatibility_gateway=Depends(get_seal_pump_compatibility_gateway),
-) -> Payload:
-    try:
-        detail = drawing_service.get_drawing(document_code)
-    except DrawingNotFoundError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Drawing document not found")
-
-    scope = resolve_area_scope(current_user)
-    if scope is not None and not _is_drawing_in_scope(
-        detail,
-        scope,
-        drawing_repository,
-        pump_gateway,
-        seal_pump_compatibility_gateway,
-    ):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Drawing document not found")
-
-    return {"data": detail}
-
-
-@router.get(
-    "/{document_code}/content",
+    "/{document_code:path}/content",
     dependencies=[Depends(require_permission("drawing.read"))],
 )
 def get_drawing_content(
@@ -274,7 +266,7 @@ def get_drawing_content(
 
 
 @router.post(
-    "/{document_code}/revisions",
+    "/{document_code:path}/revisions",
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_permission("drawing.upload"))],
 )
@@ -321,7 +313,7 @@ async def upload_drawing_revision(
 
 
 @router.post(
-    "/{document_code}/links",
+    "/{document_code:path}/links",
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_permission("drawing.manage"))],
 )
@@ -366,7 +358,7 @@ def create_drawing_link(
 
 
 @router.post(
-    "/{document_code}/lineage",
+    "/{document_code:path}/lineage",
     status_code=status.HTTP_200_OK,
     dependencies=[Depends(require_permission("drawing.manage"))],
 )
@@ -390,3 +382,33 @@ def link_drawing_lineage(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(not_found))
 
     return {"data": updated}
+
+
+@router.get(
+    "/{document_code:path}",
+    dependencies=[Depends(require_permission("drawing.read"))],
+)
+def get_drawing_detail(
+    document_code: str,
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
+    drawing_service=Depends(get_drawing_service),
+    drawing_repository=Depends(get_drawing_repository),
+    pump_gateway=Depends(get_pump_gateway),
+    seal_pump_compatibility_gateway=Depends(get_seal_pump_compatibility_gateway),
+) -> Payload:
+    try:
+        detail = drawing_service.get_drawing(document_code)
+    except DrawingNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Drawing document not found")
+
+    scope = resolve_area_scope(current_user)
+    if scope is not None and not _is_drawing_in_scope(
+        detail,
+        scope,
+        drawing_repository,
+        pump_gateway,
+        seal_pump_compatibility_gateway,
+    ):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Drawing document not found")
+
+    return {"data": detail}
