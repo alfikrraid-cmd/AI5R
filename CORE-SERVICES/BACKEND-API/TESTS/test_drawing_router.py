@@ -1086,3 +1086,151 @@ def test_r9d_br03_api_lineage_endpoint(test_env):
     assert res.status_code == 200
     data = res.json()["data"]
     assert data["superseded_by_document_code"] == newer_code
+
+
+# ==============================================================================
+# R9E0: MinIO Content Delivery Hardening Tests
+# ==============================================================================
+
+def test_e0_minio_storage_service_adapter_semantics():
+    """R9E0: MinIOStorageService adapter put, exists, get, stream, verify, path traversal."""
+    from API.minio_storage_service import MinIOStorageService
+
+    service = MinIOStorageService(bucket="ltsa-drawings-test")
+    test_key = "drawings/TEST-DWG/0/abcd1234ef567890.pdf"
+    test_data = b"%PDF-1.4 test binary data for r9e0"
+
+    # 1. Path traversal protection
+    with pytest.raises(ValueError):
+        service.put_staged_object("../escape.pdf", test_data, "application/pdf")
+    with pytest.raises(ValueError):
+        service.put_staged_object("/absolute.pdf", test_data, "application/pdf")
+    assert not service.object_exists("../escape.pdf")
+    with pytest.raises(KeyError):
+        service.get_object_bytes("../escape.pdf")
+
+    # 2. Put staged object
+    meta = service.put_staged_object(test_key, test_data, "application/pdf")
+    assert meta["key"] == test_key
+    assert meta["size"] == len(test_data)
+    assert meta["content_type"] == "application/pdf"
+
+    # 3. Exists and get
+    assert service.object_exists(test_key)
+    retrieved = service.get_object_bytes(test_key)
+    assert retrieved == test_data
+
+    # 4. Stream object
+    chunks = list(service.stream_object(test_key, chunk_size=8))
+    assert b"".join(chunks) == test_data
+
+    # 5. Checksum verification
+    expected_sha = hashlib.sha256(test_data).hexdigest()
+    assert service.verify_object(test_key, expected_sha)
+    assert not service.verify_object(test_key, "0000000000000000000000000000000000000000000000000000000000000000")
+
+    # 6. Metadata
+    obj_meta = service.get_object_metadata(test_key)
+    assert obj_meta["size"] == len(test_data)
+
+
+def test_e0_minio_storage_service_missing_object():
+    """R9E0: Missing object returns False on exists and raises KeyError on get."""
+    from API.minio_storage_service import MinIOStorageService
+
+    service = MinIOStorageService(bucket="ltsa-drawings-test")
+    missing_key = "drawings/NONEXISTENT/0/00000000.pdf"
+
+    assert not service.object_exists(missing_key)
+    with pytest.raises(KeyError):
+        service.get_object_bytes(missing_key)
+
+
+def test_e0_content_endpoint_reference_only_no_binary(test_env):
+    """R9E0: Reference-only drawing document with no physical binary returns 404 on content endpoint."""
+    client = test_env["client"]
+    repo = test_env["repo"]
+
+    # Create a reference-only document record in repository with object_key=None
+    doc = repo.create_document(
+        document_code="DOC-REF-ONLY-01",
+        drawing_number="GA-REF-ONLY-01",
+        title="Reference Only Drawing",
+        revision="0",
+        uploaded_by="system",
+        sha256_checksum="none",
+        file_name="GA-REF-ONLY-01.pdf",
+        file_size_bytes=0,
+        content_type="application/pdf",
+        object_key="",  # Pure reference-only (empty/null object_key)
+        status="APPROVED",
+        revision_status="APPROVED",
+    )
+
+    app.dependency_overrides[get_current_user] = lambda: make_identity("SUPERUSER")
+    res = client.get(f"/api/ltsa/drawings/{doc['document_code']}/content")
+    assert res.status_code == 404
+    assert "Drawing document content not found" in res.json()["detail"]
+
+
+def test_e0_content_endpoint_mime_and_safe_disposition(test_env):
+    """R9E0: Binary delivery streams exact bytes, MIME type, and safe inline Content-Disposition."""
+    client = test_env["client"]
+    svc = test_env["service"]
+
+    unique_binary = SYNTHETIC_PDF + b"%R9E0_DELIVERY_TEST"
+    expected_sha = hashlib.sha256(unique_binary).hexdigest()
+
+    doc = svc.register_drawing(
+        file_bytes=unique_binary,
+        filename="GA-230821-DE.pdf",
+        drawing_number="GA-230821-DE",
+        title="DE Drawing",
+        revision="0",
+    )
+
+    app.dependency_overrides[get_current_user] = lambda: make_identity("SUPERUSER")
+    res = client.get(f"/api/ltsa/drawings/{doc['document_code']}/content")
+    assert res.status_code == 200
+    assert res.headers["content-type"] == "application/pdf"
+    assert 'inline; filename="GA-230821-DE.pdf"' in res.headers.get("content-disposition", "")
+    assert res.content == unique_binary
+    assert hashlib.sha256(res.content).hexdigest() == expected_sha
+
+
+def test_e0_content_endpoint_rbac_and_scope_security(test_env):
+    """R9E0: Authorization gate precedes binary retrieval; fail-closed outside scope."""
+    client = test_env["client"]
+    svc = test_env["service"]
+
+    # Register drawing linked to HSC pump
+    doc = svc.register_drawing(
+        file_bytes=SYNTHETIC_PDF,
+        filename="hsc_isolated.pdf",
+        drawing_number="GA-HSC-ISO",
+        title="HSC Isolated",
+        revision="0",
+        asset_code="200-P-1A",
+    )
+    doc_code = doc["document_code"]
+
+    # 1. Anonymous -> 401
+    app.dependency_overrides.pop(get_current_user, None)
+    res_anon = client.get(f"/api/ltsa/drawings/{doc_code}/content")
+    assert res_anon.status_code == 401
+
+    # 2. PERTAMINA_VIEWER -> 403 Forbidden
+    app.dependency_overrides[get_current_user] = lambda: make_identity("PERTAMINA_VIEWER", area_scope="HSC")
+    res_viewer = client.get(f"/api/ltsa/drawings/{doc_code}/content")
+    assert res_viewer.status_code == 403
+
+    # 3. PERTAMINA_ENGINEER scoped to HOC (wrong area) -> 404 Fail Closed
+    app.dependency_overrides[get_current_user] = lambda: make_identity("PERTAMINA_ENGINEER", area_scope="HOC")
+    res_out_scope = client.get(f"/api/ltsa/drawings/{doc_code}/content")
+    assert res_out_scope.status_code == 404
+
+    # 4. PERTAMINA_ENGINEER scoped to HSC (matching area) -> 200 OK
+    app.dependency_overrides[get_current_user] = lambda: make_identity("PERTAMINA_ENGINEER", area_scope="HSC")
+    res_in_scope = client.get(f"/api/ltsa/drawings/{doc_code}/content")
+    assert res_in_scope.status_code == 200
+    assert res_in_scope.content == SYNTHETIC_PDF
