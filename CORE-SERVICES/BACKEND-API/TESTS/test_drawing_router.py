@@ -43,9 +43,12 @@ from API.drawing_file_validator import (  # noqa: E402
     validate_drawing_file,
 )
 from API.drawing_reference_normalizer import (  # noqa: E402
+    ALLOWED_EQUIPMENT_SIDES,
+    classify_drawing_generation,
     normalize_reference,
     parse_reference_components,
     sanitize_for_path_segment,
+    validate_equipment_side,
 )
 from API.drawing_repository import InMemoryDrawingRepository  # noqa: E402
 from API.drawing_service import DrawingConflictError, DrawingNotFoundError, DrawingService  # noqa: E402
@@ -672,3 +675,414 @@ def test_35_existing_rbac_tests_pass():
     assert "drawing.read" not in ROLE_PERMISSIONS["PERTAMINA_VIEWER"]
     assert "internal_inventory.read" not in ROLE_PERMISSIONS["PERTAMINA_ENGINEER"]
     assert "internal_component.read" not in ROLE_PERMISSIONS["PERTAMINA_ENGINEER"]
+
+
+# ==============================================================================
+# R9C2: Equipment Side & Multi-Pump Linkage Foundation Tests
+# ==============================================================================
+
+def test_r9c2_equipment_side_schema_and_validation():
+    """R9C2 TEST_01 - TEST_07: equipment_side validation, allowed values, and nullability."""
+    # TEST_01: Nullable (None accepted, returns None)
+    assert validate_equipment_side(None) is None
+    # TEST_07: Empty string returns None (no default UNKNOWN)
+    assert validate_equipment_side("") is None
+    assert validate_equipment_side("   ") is None
+
+    # TEST_02: Accepts DE
+    assert validate_equipment_side("DE") == "DE"
+    assert validate_equipment_side("de") == "DE"
+
+    # TEST_03: Accepts NDE
+    assert validate_equipment_side("NDE") == "NDE"
+    assert validate_equipment_side("nde") == "NDE"
+
+    # TEST_04: Accepts SINGLE
+    assert validate_equipment_side("SINGLE") == "SINGLE"
+    assert validate_equipment_side("single") == "SINGLE"
+
+    # TEST_05: Accepts NA
+    assert validate_equipment_side("NA") == "NA"
+    assert validate_equipment_side("na") == "NA"
+
+    # TEST_06: Rejects arbitrary or unclassified values with ValueError
+    with pytest.raises(ValueError, match="Invalid equipment_side 'UNKNOWN'"):
+        validate_equipment_side("UNKNOWN")
+
+    with pytest.raises(ValueError, match="Invalid equipment_side 'DRIVE_END'"):
+        validate_equipment_side("DRIVE_END")
+
+    with pytest.raises(ValueError, match="Invalid equipment_side 'NON_DRIVE_END'"):
+        validate_equipment_side("NON_DRIVE_END")
+
+    with pytest.raises(ValueError, match="Invalid equipment_side 'XYZ'"):
+        validate_equipment_side("XYZ")
+
+
+def test_r9c2_reference_only_with_null_and_explicit_side(test_env):
+    """R9C2 TEST_08 - TEST_09: REFERENCE_ONLY supports both NULL side and explicit side."""
+    svc = test_env["service"]
+
+    # TEST_08: REFERENCE_ONLY with document_code=NULL and equipment_side=NULL
+    link_null_side = svc.add_reference_only_link(
+        drawing_number="E12894",
+        target_type="PUMP",
+        target_code="101-P-2A",
+        equipment_side=None,
+        source_type="PUMP_REGISTRY",
+        notes="Legacy reference with no side evidence",
+    )
+    assert link_null_side["document_code"] is None
+    assert link_null_side["equipment_side"] is None
+    assert link_null_side["confidence_status"] == "REFERENCE_ONLY"
+
+    # TEST_09: REFERENCE_ONLY carrying explicit DE/NDE where evidence exists
+    link_de_side = svc.add_reference_only_link(
+        drawing_number="GA-289674",
+        target_type="PUMP",
+        target_code="100-P-6B",
+        equipment_side="DE",
+        source_type="INSTALLATION_REPORT",
+        notes="Explicit Drive End reference",
+    )
+    assert link_de_side["document_code"] is None
+    assert link_de_side["equipment_side"] == "DE"
+    assert link_de_side["confidence_status"] == "REFERENCE_ONLY"
+
+
+def test_r9c2_multi_pump_linkage_single_binary(test_env):
+    """R9C2 TEST_10 - TEST_13: Multi-pump linkage from a single document binary."""
+    svc = test_env["service"]
+    repo = test_env["repo"]
+    storage = test_env["storage"]
+
+    # 1. Register a single physical drawing (folder 101-P-2 AB New -> GA-243047)
+    doc = svc.register_drawing(
+        file_bytes=SYNTHETIC_PDF,
+        filename="GA-243047.pdf",
+        drawing_number="GA-243047",
+        title="101-P-2 Seal Drawing",
+        revision="0",
+    )
+    doc_code = doc["document_code"]
+    initial_storage_count = len(storage._objects)
+
+    # 2. TEST_10: Link document to both 101-P-2A and 101-P-2B
+    link_a = svc.link_drawing(
+        document_code=doc_code,
+        target_type="PUMP",
+        target_code="101-P-2A",
+        evidence_method="FOLDER_SCOPE_EXPANSION",
+        notes="Expanded from 101-P-2 AB New (R9D-BR01)",
+    )
+    link_b = svc.link_drawing(
+        document_code=doc_code,
+        target_type="PUMP",
+        target_code="101-P-2B",
+        evidence_method="FOLDER_SCOPE_EXPANSION",
+        notes="Expanded from 101-P-2 AB New (R9D-BR01)",
+    )
+
+    # TEST_11: Creating second pump link does NOT duplicate document binary or document record
+    assert len(storage._objects) == initial_storage_count
+    assert len(repo.documents) == 1
+    assert link_a["document_code"] == doc_code
+    assert link_b["document_code"] == doc_code
+
+    # TEST_12: Both links coexist without unique constraint failure
+    doc_links = repo.list_links_for_document(doc_code)
+    assert len(doc_links) == 2
+    target_codes = {l["target_code"] for l in doc_links}
+    assert target_codes == {"101-P-2A", "101-P-2B"}
+
+    # TEST_13: Evidence and notes remain distinct
+    assert link_a["target_code"] == "101-P-2A"
+    assert link_b["target_code"] == "101-P-2B"
+
+
+def test_r9c2_side_and_multi_pump_separation(test_env):
+    """R9C2: Independent dimensions - equipment unit suffix (A/B) vs seal side (DE/NDE)."""
+    svc = test_env["service"]
+    repo = test_env["repo"]
+
+    # Register DE drawing
+    doc_de = svc.register_drawing(
+        file_bytes=SYNTHETIC_PDF,
+        filename="GA-289674_DE.pdf",
+        drawing_number="GA-289674",
+        title="Drive End Seal",
+        revision="0",
+    )
+    # Register NDE drawing
+    doc_nde = svc.register_drawing(
+        file_bytes=SYNTHETIC_PDF + b"%NDE_BINARY",
+        filename="GA-289675_NDE.pdf",
+        drawing_number="GA-289675",
+        title="Non-Drive End Seal",
+        revision="0",
+    )
+
+    # Link DE drawing to both pump units 211-P-26A and 211-P-26B
+    svc.link_drawing(
+        document_code=doc_de["document_code"],
+        target_type="PUMP",
+        target_code="211-P-26A",
+        equipment_side="DE",
+    )
+    svc.link_drawing(
+        document_code=doc_de["document_code"],
+        target_type="PUMP",
+        target_code="211-P-26B",
+        equipment_side="DE",
+    )
+
+    # Link NDE drawing to both pump units 211-P-26A and 211-P-26B
+    svc.link_drawing(
+        document_code=doc_nde["document_code"],
+        target_type="PUMP",
+        target_code="211-P-26A",
+        equipment_side="NDE",
+    )
+    svc.link_drawing(
+        document_code=doc_nde["document_code"],
+        target_type="PUMP",
+        target_code="211-P-26B",
+        equipment_side="NDE",
+    )
+
+    # Verify pump 211-P-26A has both DE and NDE drawings correctly assigned
+    links_26a = repo.list_links_for_target("PUMP", "211-P-26A")
+    assert len(links_26a) == 2
+    side_map_a = {l["equipment_side"]: l["drawing_number"] for l in links_26a}
+    assert side_map_a["DE"] == "GA-289674"
+    assert side_map_a["NDE"] == "GA-289675"
+
+    # Verify pump 211-P-26B has both DE and NDE drawings correctly assigned
+    links_26b = repo.list_links_for_target("PUMP", "211-P-26B")
+    assert len(links_26b) == 2
+    side_map_b = {l["equipment_side"]: l["drawing_number"] for l in links_26b}
+    assert side_map_b["DE"] == "GA-289674"
+    assert side_map_b["NDE"] == "GA-289675"
+
+
+def test_r9c2_null_side_preserved_no_inference(test_env):
+    """R9C2: No side evidence stores equipment_side=NULL without automated inference."""
+    svc = test_env["service"]
+    doc = svc.register_drawing(
+        file_bytes=SYNTHETIC_PDF,
+        filename="E12936.pdf",
+        drawing_number="E12936",
+        title="Generic Seal",
+        revision="0",
+        asset_code="945-P-1A",
+        # equipment_side omitted -> defaults to None
+    )
+    doc_detail = svc.get_drawing(doc["document_code"])
+    links = doc_detail["links"]
+    assert len(links) == 1
+    assert links[0]["equipment_side"] is None
+
+
+def test_r9c2_api_link_endpoint_with_equipment_side(test_env):
+    """R9C2: API endpoint /api/ltsa/drawings/{document_code}/links supports equipment_side."""
+    client = test_env["client"]
+    svc = test_env["service"]
+
+    doc = svc.register_drawing(
+        file_bytes=SYNTHETIC_PDF,
+        filename="E13410.pdf",
+        drawing_number="E13410",
+        title="Seal 940-P-1",
+        revision="0",
+    )
+    doc_code = doc["document_code"]
+
+    # 1. Valid DE side -> 201 Created
+    app.dependency_overrides[get_current_user] = lambda: make_identity("TAP_ADMIN")
+    res = client.post(
+        f"/api/ltsa/drawings/{doc_code}/links",
+        data={
+            "target_type": "PUMP",
+            "target_code": "940-P-1A",
+            "equipment_side": "DE",
+        },
+    )
+    assert res.status_code == 201
+    assert res.json()["data"]["equipment_side"] == "DE"
+
+    # 2. Invalid side ('UNKNOWN') -> 422 Unprocessable Entity
+    res_bad = client.post(
+        f"/api/ltsa/drawings/{doc_code}/links",
+        data={
+            "target_type": "PUMP",
+            "target_code": "940-P-1B",
+            "equipment_side": "UNKNOWN",
+        },
+    )
+    assert res_bad.status_code == 422
+    assert "Invalid equipment_side" in res_bad.json()["detail"]
+
+    # 3. Empty/omitted side -> 201 Created with equipment_side=None
+    res_null = client.post(
+        f"/api/ltsa/drawings/{doc_code}/links",
+        data={
+            "target_type": "PUMP",
+            "target_code": "940-P-1C",
+        },
+    )
+    assert res_null.status_code == 201
+    assert res_null.json()["data"]["equipment_side"] is None
+
+
+# ==============================================================================
+# R9D-BR03: Legacy / Newer Drawing Lineage Tests
+# ==============================================================================
+
+def test_r9d_br03_generation_classification():
+    """R9D-BR03: Classifies E-series as LEGACY and GA-series as NEWER; others None."""
+    # E-series -> LEGACY
+    assert classify_drawing_generation("E12930") == "LEGACY"
+    assert classify_drawing_generation("E12894") == "LEGACY"
+    assert classify_drawing_generation("E-12936") == "LEGACY"
+    assert classify_drawing_generation("e13410") == "LEGACY"
+
+    # GA-series -> NEWER
+    assert classify_drawing_generation("GA-243047") == "NEWER"
+    assert classify_drawing_generation("GA289674") == "NEWER"
+    assert classify_drawing_generation("ga-187530") == "NEWER"
+
+    # Others / non-classified -> None
+    assert classify_drawing_generation("TMI-8B-1525") is None
+    assert classify_drawing_generation("DWG-001") is None
+    assert classify_drawing_generation("") is None
+    assert classify_drawing_generation(None) is None
+
+
+def test_r9d_br03_unlinked_legacy_newer_coexistence(test_env):
+    """R9D-BR03: E-series and GA-series coexist without automatic superseding."""
+    svc = test_env["service"]
+    repo = test_env["repo"]
+
+    # Register legacy E-series drawing
+    doc_legacy = svc.register_drawing(
+        file_bytes=SYNTHETIC_PDF,
+        filename="E12930.pdf",
+        drawing_number="E12930",
+        title="Pump 101-P-2 Legacy Seal Drawing",
+        revision="0",
+        asset_code="101-P-2A",
+    )
+    assert doc_legacy["drawing_generation"] == "LEGACY"
+    assert doc_legacy.get("superseded_by_document_code") is None
+
+    # Register newer GA-series drawing for the same pump
+    doc_newer = svc.register_drawing(
+        file_bytes=SYNTHETIC_PDF + b"%NEWER_BINARY",
+        filename="GA-243047.pdf",
+        drawing_number="GA-243047",
+        title="Pump 101-P-2 Newer Seal Drawing",
+        revision="0",
+        asset_code="101-P-2A",
+    )
+    assert doc_newer["drawing_generation"] == "NEWER"
+    assert doc_newer.get("superseded_by_document_code") is None
+
+    # CRITICAL: No automatic lineage! E drawing MUST NOT be superseded automatically
+    legacy_refetched = repo.get_document_by_code(doc_legacy["document_code"])
+    assert legacy_refetched["superseded_by_document_code"] is None
+    assert legacy_refetched["is_current_revision"] is True  # still current for its own series
+    assert legacy_refetched["status"] == "APPROVED"  # NOT deleted or marked superseded
+
+    # Both documents exist in repository
+    assert len(repo.documents) == 2
+
+
+def test_r9d_br03_validated_lineage_linking(test_env):
+    """R9D-BR03: Explicit validated lineage linking preserves legacy doc and historical links."""
+    svc = test_env["service"]
+    repo = test_env["repo"]
+
+    # Register legacy drawing
+    doc_legacy = svc.register_drawing(
+        file_bytes=SYNTHETIC_PDF,
+        filename="E12930.pdf",
+        drawing_number="E12930",
+        title="Legacy Seal Drawing",
+        revision="0",
+        asset_code="101-P-2A",
+    )
+    legacy_code = doc_legacy["document_code"]
+
+    # Register newer drawing
+    doc_newer = svc.register_drawing(
+        file_bytes=SYNTHETIC_PDF + b"%GA_BIN",
+        filename="GA-243047.pdf",
+        drawing_number="GA-243047",
+        title="Newer GA Seal Drawing",
+        revision="0",
+        asset_code="101-P-2A",
+    )
+    newer_code = doc_newer["document_code"]
+
+    # Establish authoritative lineage
+    updated_legacy = svc.link_drawing_lineage(
+        legacy_document_code=legacy_code,
+        newer_document_code=newer_code,
+        evidence_method="VALIDATED_ENGINEERING_LINEAGE",
+        notes="Lineage confirmed by 101-P-2 folder evidence (R9D-BR03)",
+    )
+
+    # Legacy doc now points to newer doc
+    assert updated_legacy["superseded_by_document_code"] == newer_code
+
+    # Legacy doc is NOT deleted and still exists in repo
+    assert repo.get_document_by_code(legacy_code) is not None
+
+    # Traceability link exists in link table
+    links = repo.list_links_for_document(legacy_code)
+    drawing_links = [l for l in links if l.get("target_type") == "DRAWING"]
+    assert len(drawing_links) == 1
+    assert drawing_links[0]["target_code"] == newer_code
+    assert drawing_links[0]["confidence_status"] == "CONFIRMED"
+
+    # Original pump link remains intact (not overwritten or dropped)
+    pump_links = [l for l in links if l.get("target_type") == "PUMP"]
+    assert len(pump_links) == 1
+    assert pump_links[0]["target_code"] == "101-P-2A"
+
+
+def test_r9d_br03_api_lineage_endpoint(test_env):
+    """R9D-BR03: API POST /{document_code}/lineage establishes validated lineage."""
+    client = test_env["client"]
+    svc = test_env["service"]
+
+    doc_legacy = svc.register_drawing(
+        file_bytes=SYNTHETIC_PDF,
+        filename="E12894.pdf",
+        drawing_number="E12894",
+        title="Old Seal",
+        revision="0",
+    )
+    doc_newer = svc.register_drawing(
+        file_bytes=SYNTHETIC_PDF + b"%V2",
+        filename="GA-289674.pdf",
+        drawing_number="GA-289674",
+        title="New Seal",
+        revision="0",
+    )
+
+    legacy_code = doc_legacy["document_code"]
+    newer_code = doc_newer["document_code"]
+
+    app.dependency_overrides[get_current_user] = lambda: make_identity("TAP_ADMIN")
+    res = client.post(
+        f"/api/ltsa/drawings/{legacy_code}/lineage",
+        data={
+            "superseded_by_document_code": newer_code,
+            "evidence_method": "APPROVED_MAPPING",
+            "notes": "Verified by engineering review",
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()["data"]
+    assert data["superseded_by_document_code"] == newer_code

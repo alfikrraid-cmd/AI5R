@@ -19,8 +19,10 @@ from .drawing_file_validator import (
     validate_drawing_file,
 )
 from .drawing_reference_normalizer import (
+    classify_drawing_generation,
     normalize_reference,
     parse_reference_components,
+    validate_equipment_side,
 )
 from .drawing_repository import (
     DrawingRepositoryProtocol,
@@ -68,10 +70,13 @@ class DrawingService:
         uploaded_by: str | None = None,
         seal_code: str | None = None,
         asset_code: str | None = None,
+        equipment_side: str | None = None,
+        drawing_generation: str | None = None,
         provenance: str = "MANUAL",
         is_revision_upload: bool = False,
     ) -> dict[str, Any]:
         """Validates and registers an engineering drawing binary and metadata."""
+        norm_side = validate_equipment_side(equipment_side)
         # 1. Validation (extension, size, magic signature)
         validated = validate_drawing_file(file_bytes, filename)
         clean_ext = str(validated["clean_extension"])
@@ -85,6 +90,7 @@ class DrawingService:
         raw_drawing_number = drawing_number.strip()
         norm_drawing_number = normalize_reference(raw_drawing_number)
         norm_revision = (revision.strip().upper() if revision else "UNKNOWN") or "UNKNOWN"
+        generation = drawing_generation or classify_drawing_generation(norm_drawing_number)
 
         # 4. Conflict & Deduplication Check
         existing_rev = self.repository.get_document_by_number_and_revision(
@@ -151,6 +157,7 @@ class DrawingService:
                 provenance=provenance,
                 revision_status=revision_status,
                 is_current_revision=is_current,
+                drawing_generation=generation,
                 status=doc_status,
             )
 
@@ -181,6 +188,7 @@ class DrawingService:
                     normalized_reference=norm_drawing_number,
                     target_type="PUMP",
                     target_code=asset_code,
+                    equipment_side=norm_side,
                     source_type="ENGINEERING_DOCUMENT",
                     evidence_method="EXPLICIT_METADATA",
                     confidence_status="CONFIRMED",
@@ -253,6 +261,7 @@ class DrawingService:
         drawing_number: str,
         target_type: str,
         target_code: str,
+        equipment_side: str | None = None,
         source_type: str,
         source_record_id: str | None = None,
         created_by: str | None = None,
@@ -260,6 +269,7 @@ class DrawingService:
     ) -> dict[str, Any]:
         """Registers a first-class REFERENCE_ONLY association without requiring a physical file."""
         norm_dwg = normalize_reference(drawing_number)
+        norm_side = validate_equipment_side(equipment_side)
         return self.repository.create_link(
             document_code=None,  # Nullable for reference-only
             drawing_number=norm_dwg,
@@ -267,6 +277,7 @@ class DrawingService:
             normalized_reference=norm_dwg,
             target_type=target_type,
             target_code=target_code,
+            equipment_side=norm_side,
             source_type=source_type,
             source_record_id=source_record_id,
             evidence_method="SOURCE_REFERENCE",
@@ -281,6 +292,7 @@ class DrawingService:
         document_code: str,
         target_type: str,
         target_code: str,
+        equipment_side: str | None = None,
         evidence_method: str = "MANUAL_VERIFICATION",
         created_by: str | None = None,
         notes: str | None = None,
@@ -290,6 +302,7 @@ class DrawingService:
         if doc is None:
             raise DrawingNotFoundError(f"Drawing document {document_code} not found")
 
+        norm_side = validate_equipment_side(equipment_side)
         drawing_number = doc.get("document_number", "")
         link = self.repository.create_link(
             document_code=document_code,
@@ -298,6 +311,7 @@ class DrawingService:
             normalized_reference=normalize_reference(drawing_number),
             target_type=target_type,
             target_code=target_code,
+            equipment_side=norm_side,
             source_type="MANUAL_LINK",
             evidence_method=evidence_method,
             confidence_status="CONFIRMED",
@@ -307,19 +321,64 @@ class DrawingService:
 
         if self.change_history is not None and created_by is not None:
             try:
+                side_info = f":{norm_side}" if norm_side else ""
                 self.change_history.append(
                     entity_type="DRAWING",
                     entity_id=document_code,
                     field_name="DRAWING_LINK",
                     old_value=None,
-                    new_value=f"{target_type}:{target_code}",
+                    new_value=f"{target_type}:{target_code}{side_info}",
                     changed_by=str(created_by),
-                    reason=f"Linked drawing {drawing_number} to {target_type} {target_code}",
+                    reason=f"Linked drawing {drawing_number} to {target_type} {target_code}{side_info}",
                 )
             except Exception as audit_err:
                 logger.warning("Audit log write failed for drawing link: %s", audit_err)
 
         return link
+
+    def link_drawing_lineage(
+        self,
+        *,
+        legacy_document_code: str,
+        newer_document_code: str,
+        evidence_method: str = "VALIDATED_ENGINEERING_LINEAGE",
+        notes: str | None = None,
+        linked_by: str | None = None,
+    ) -> dict[str, Any]:
+        """Establishes an authoritative lineage relationship between legacy and newer drawings (R9D-BR03).
+
+        Designates that a legacy drawing (e.g. E-series) is superseded by a newer
+        drawing (e.g. GA-series) based on validated evidence.
+        Preserves the legacy document and all of its historical references (zero deletion).
+        """
+        legacy_doc = self.repository.get_document_by_code(legacy_document_code)
+        if not legacy_doc:
+            raise DrawingNotFoundError(f"Legacy drawing document '{legacy_document_code}' not found")
+
+        newer_doc = self.repository.get_document_by_code(newer_document_code)
+        if not newer_doc:
+            raise DrawingNotFoundError(f"Newer drawing document '{newer_document_code}' not found")
+
+        # Update superseded_by_document_code on legacy document
+        updated = self.repository.set_lineage(legacy_document_code, newer_document_code)
+
+        # Record explicit traceability link
+        self.repository.create_link(
+            document_code=legacy_document_code,
+            drawing_number=str(legacy_doc.get("document_number", "")),
+            raw_reference=str(legacy_doc.get("document_number", "")),
+            normalized_reference=normalize_reference(str(legacy_doc.get("document_number", ""))),
+            target_type="DRAWING",
+            target_code=newer_document_code,
+            equipment_side=None,
+            source_type="LINEAGE_RECONCILIATION",
+            evidence_method=evidence_method,
+            confidence_status="CONFIRMED",
+            notes=notes or f"Superseded by newer drawing {newer_doc.get('document_number')}",
+            created_by=linked_by,
+        )
+
+        return updated or legacy_doc
 
 
 __all__ = [

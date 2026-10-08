@@ -23,6 +23,7 @@ from fastapi import (
 from fastapi.responses import Response, StreamingResponse
 
 from API.auth_service import AuthenticatedIdentity, resolve_area_scope
+from API.drawing_reference_normalizer import validate_equipment_side
 from API.drawing_file_validator import (
     DrawingFileTooLargeError,
     DrawingSignatureMismatchError,
@@ -122,10 +123,17 @@ async def upload_drawing(
     revision: str | None = Form(default=None),
     seal_code: str | None = Form(default=None),
     asset_code: str | None = Form(default=None),
+    equipment_side: str | None = Form(default=None),
+    drawing_generation: str | None = Form(default=None),
     file: UploadFile = File(...),
     current_user: AuthenticatedIdentity = Depends(get_current_user),
     drawing_service=Depends(get_drawing_service),
 ) -> Payload:
+    try:
+        norm_side = validate_equipment_side(equipment_side)
+    except ValueError as val_err:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(val_err))
+
     file_bytes = await file.read()
     try:
         created = drawing_service.register_drawing(
@@ -137,6 +145,8 @@ async def upload_drawing(
             uploaded_by=current_user.user_id,
             seal_code=seal_code,
             asset_code=asset_code,
+            equipment_side=norm_side,
+            drawing_generation=drawing_generation,
             provenance="MANUAL",
             is_revision_upload=False,
         )
@@ -319,15 +329,24 @@ def create_drawing_link(
     document_code: str,
     target_type: str = Form(...),
     target_code: str = Form(...),
+    equipment_side: str | None = Form(default=None),
     evidence_method: str = Form(default="MANUAL_VERIFICATION"),
     notes: str | None = Form(default=None),
     current_user: AuthenticatedIdentity = Depends(get_current_user),
     drawing_service=Depends(get_drawing_service),
 ) -> Payload:
-    if target_type not in ("SEAL", "PUMP", "INSTALLATION", "HISTORICAL_SERVICE"):
+    if target_type not in ("SEAL", "PUMP", "INSTALLATION", "HISTORICAL_SERVICE", "DRAWING"):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Invalid target_type: {target_type}",
+        )
+
+    try:
+        norm_side = validate_equipment_side(equipment_side)
+    except ValueError as val_err:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(val_err),
         )
 
     try:
@@ -335,6 +354,7 @@ def create_drawing_link(
             document_code=document_code,
             target_type=target_type,
             target_code=target_code,
+            equipment_side=norm_side,
             evidence_method=evidence_method,
             created_by=current_user.user_id,
             notes=notes,
@@ -343,3 +363,30 @@ def create_drawing_link(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Drawing document not found")
 
     return {"data": link}
+
+
+@router.post(
+    "/{document_code}/lineage",
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_permission("drawing.manage"))],
+)
+def link_drawing_lineage(
+    document_code: str,
+    superseded_by_document_code: str = Form(...),
+    evidence_method: str = Form(default="VALIDATED_ENGINEERING_LINEAGE"),
+    notes: str | None = Form(default=None),
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
+    drawing_service=Depends(get_drawing_service),
+) -> Payload:
+    try:
+        updated = drawing_service.link_drawing_lineage(
+            legacy_document_code=document_code,
+            newer_document_code=superseded_by_document_code,
+            evidence_method=evidence_method,
+            notes=notes,
+            linked_by=current_user.user_id,
+        )
+    except DrawingNotFoundError as not_found:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(not_found))
+
+    return {"data": updated}
