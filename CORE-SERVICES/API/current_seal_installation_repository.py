@@ -55,7 +55,7 @@ class CurrentSealInstallationRepository:
         sql = (
             f"SELECT {_COLUMNS} FROM public.current_seal_installation "
             f"WHERE pump_tag_number = {_sql(pump_tag)} AND removed_at IS NULL "
-            f"ORDER BY created_at ASC;"
+            f"ORDER BY created_at ASC"
         )
         try:
             return _json_query(sql, self.runner) if _json_query else []
@@ -87,7 +87,7 @@ class CurrentSealInstallationRepository:
         sql = (
             f"INSERT INTO public.current_seal_installation ({', '.join(present_cols)}) "
             f"VALUES ({', '.join(val_sqls)}) "
-            f"RETURNING {_COLUMNS};"
+            f"RETURNING {_COLUMNS}"
         )
         rows = _json_query(sql, self.runner) if _json_query else []
         return rows[0] if rows else {}
@@ -96,7 +96,7 @@ class CurrentSealInstallationRepository:
         """List all active installations across all pumps."""
         sql = (
             f"SELECT {_COLUMNS} FROM public.current_seal_installation "
-            f"WHERE removed_at IS NULL ORDER BY pump_tag_number, equipment_side;"
+            f"WHERE removed_at IS NULL ORDER BY pump_tag_number, equipment_side"
         )
         try:
             return _json_query(sql, self.runner) if _json_query else []
@@ -104,7 +104,7 @@ class CurrentSealInstallationRepository:
             return []
 
     def get_by_id(self, id: str) -> Optional[Dict[str, Any]]:
-        sql = f"SELECT {_COLUMNS} FROM public.current_seal_installation WHERE id = {_sql(id)};"
+        sql = f"SELECT {_COLUMNS} FROM public.current_seal_installation WHERE id = {_sql(id)}"
         try:
             rows = _json_query(sql, self.runner) if _json_query else []
             return rows[0] if rows else None
@@ -116,7 +116,7 @@ class CurrentSealInstallationRepository:
         sql = (
             "UPDATE public.current_seal_installation "
             f"SET removed_at = {_sql(rem_val)}, updated_at = NOW() "
-            f"WHERE id = {_sql(id)};"
+            f"WHERE id = {_sql(id)}"
         )
         if _json_query:
             _json_query(sql, self.runner)
