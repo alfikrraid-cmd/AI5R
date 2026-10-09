@@ -61,6 +61,11 @@ from API.record_change_history_repository import RecordChangeHistoryRepository
 from API.drawing_repository import DrawingRepository
 from API.minio_storage_service import MinIOStorageService
 from API.drawing_service import DrawingService
+from API.current_seal_installation_repository import (
+    CurrentSealInstallationRepository,
+    InMemoryCurrentSealInstallationRepository,
+)
+from API.current_seal_installation_service import CurrentSealInstallationService
 from API.seal_unit_repository import SealUnitRepository
 from API.seal_lifecycle_service import SealLifecycleEventRepository
 from API.seal_inspection_service import SealInspectionRepository
@@ -263,6 +268,14 @@ _drawing_service = DrawingService(
     repository=_drawing_repository,
     storage_service=_drawing_storage_service,
     change_history_repository=_record_change_history_repository,
+)
+
+# LTSA Current Mechanical Seal Installation Foundation (R3A)
+_current_seal_installation_repository = CurrentSealInstallationRepository(_import_database_runner)
+_current_seal_installation_service = CurrentSealInstallationService(
+    repository=_current_seal_installation_repository,
+    pump_gateway=_pump_gateway,
+    asset_registry_repository=_asset_registry_repository,
 )
 
 # LTSA_POWER_BI_R1B -- governed read-only BI datasets (contract ltsa-bi/1.0.0),
@@ -671,6 +684,14 @@ def get_drawing_storage_service() -> MinIOStorageService:
 
 def get_drawing_service() -> DrawingService:
     return _drawing_service
+
+
+def get_current_seal_installation_repository() -> CurrentSealInstallationRepository:
+    return _current_seal_installation_repository
+
+
+def get_current_seal_installation_service() -> CurrentSealInstallationService:
+    return _current_seal_installation_service
 
 
 _ltsa_analytics_service = LTSAAnalyticsService(_import_database_runner)

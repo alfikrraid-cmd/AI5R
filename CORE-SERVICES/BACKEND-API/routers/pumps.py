@@ -18,6 +18,7 @@ from API.maintenance_intelligence_service import (
 from dependencies import (
     get_cm_report_gateway,
     get_condition_monitoring_reading_gateway,
+    get_current_seal_installation_service,
     get_current_user,
     get_asset_registry_repository,
     get_engineering_context_engine,
@@ -473,4 +474,26 @@ def get_ltsa_pump_lifecycle(
         "tag_number": tag,
         "data": dataclasses.asdict(lifecycle),
     }
+
+
+# LTSA_CURRENT_INSTALLATION_R3A -- Current Mechanical Seal Installation API.
+# Reads active records from current_seal_installation where removed_at IS NULL.
+# Strictly enforces:
+# - Never substitutes configured/design seal.
+# - Never substitutes drawing applicability.
+# - Preserves RBAC and Pertamina area data scoping.
+@router.get("/api/ltsa/pumps/{tag}/current-installation")
+@router.get("/pumps/{tag}/current-installation")
+def get_ltsa_pump_current_installation(
+    tag: str,
+    current_installation_service=Depends(get_current_seal_installation_service),
+    pump_gateway=Depends(get_pump_gateway),
+    asset_registry_repository=Depends(get_asset_registry_repository),
+    current_user: AuthenticatedIdentity = Depends(get_current_user),
+) -> Payload:
+    _guard_tag_in_scope(tag, pump_gateway, current_user, asset_registry_repository)
+    result = current_installation_service.get_current_installation(tag)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Pump not found")
+    return result
 
