@@ -54,11 +54,11 @@ class CurrentSealInstallationRepository:
         """Fetch all active (removed_at IS NULL) installation records for a pump."""
         sql = (
             f"SELECT {_COLUMNS} FROM public.current_seal_installation "
-            f"WHERE pump_tag_number = %(tag)s AND removed_at IS NULL "
+            f"WHERE pump_tag_number = {_sql(pump_tag)} AND removed_at IS NULL "
             f"ORDER BY created_at ASC;"
         )
         try:
-            return self.runner.fetch_all(sql, {"tag": pump_tag})
+            return _json_query(sql, self.runner) if _json_query else []
         except Exception:
             # Safe fall-through if table does not exist yet (e.g. pre-migration R3A baseline)
             return []
@@ -82,14 +82,14 @@ class CurrentSealInstallationRepository:
             "removed_at",
         ]
         present_cols = [c for c in cols if c in kwargs]
-        val_placeholders = [f"%({c})s" for c in present_cols]
+        val_sqls = [_sql(kwargs[c]) if kwargs[c] is not None else "NULL" for c in present_cols]
 
         sql = (
             f"INSERT INTO public.current_seal_installation ({', '.join(present_cols)}) "
-            f"VALUES ({', '.join(val_placeholders)}) "
+            f"VALUES ({', '.join(val_sqls)}) "
             f"RETURNING {_COLUMNS};"
         )
-        rows = self.runner.fetch_all(sql, kwargs)
+        rows = _json_query(sql, self.runner) if _json_query else []
         return rows[0] if rows else {}
 
     def list_active(self) -> List[Dict[str, Any]]:
@@ -99,14 +99,14 @@ class CurrentSealInstallationRepository:
             f"WHERE removed_at IS NULL ORDER BY pump_tag_number, equipment_side;"
         )
         try:
-            return self.runner.fetch_all(sql, {})
+            return _json_query(sql, self.runner) if _json_query else []
         except Exception:
             return []
 
     def get_by_id(self, id: str) -> Optional[Dict[str, Any]]:
-        sql = f"SELECT {_COLUMNS} FROM public.current_seal_installation WHERE id = %(id)s;"
+        sql = f"SELECT {_COLUMNS} FROM public.current_seal_installation WHERE id = {_sql(id)};"
         try:
-            rows = self.runner.fetch_all(sql, {"id": id})
+            rows = _json_query(sql, self.runner) if _json_query else []
             return rows[0] if rows else None
         except Exception:
             return None
@@ -115,10 +115,11 @@ class CurrentSealInstallationRepository:
         rem_val = removed_at or datetime.now(timezone.utc).isoformat()
         sql = (
             "UPDATE public.current_seal_installation "
-            "SET removed_at = %(rem)s, updated_at = NOW() "
-            "WHERE id = %(id)s;"
+            f"SET removed_at = {_sql(rem_val)}, updated_at = NOW() "
+            f"WHERE id = {_sql(id)};"
         )
-        self.runner.execute(sql, {"id": id, "rem": rem_val})
+        if _json_query:
+            _json_query(sql, self.runner)
 
 
 class InMemoryCurrentSealInstallationRepository:
