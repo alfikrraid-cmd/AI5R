@@ -13,7 +13,7 @@ import { EmptySection } from "./KnowledgeCard";
 // disabled CTA, the Open Design's own placeholder-navigation note for
 // row items).
 
-function DrawingRow({ drawing }) {
+function DrawingRow({ drawing, onOpenViewer }) {
   return (
     <div className="part-item" data-testid="knowledge-drawing-item">
       <div className="part-row">
@@ -29,14 +29,18 @@ function DrawingRow({ drawing }) {
         {" · Diunggah "}
         <span data-testid="knowledge-drawing-uploaded">{drawing.uploadedAt ?? "-"}</span>
       </div>
-      <button type="button" className="btn-link">
+      <button
+        type="button"
+        className="btn-link"
+        onClick={() => onOpenViewer?.(drawing)}
+      >
         Buka Viewer
       </button>
     </div>
   );
 }
 
-export default function KnowledgeDrawingSection({ items = [] }) {
+export default function KnowledgeDrawingSection({ items = [], onOpenViewer }) {
   if (!items.length) {
     return <EmptySection title="Belum ada gambar teknik" />;
   }
@@ -44,7 +48,7 @@ export default function KnowledgeDrawingSection({ items = [] }) {
   return (
     <div data-testid="knowledge-drawing-section">
       {items.map((drawing) => (
-        <DrawingRow key={drawing.id} drawing={drawing} />
+        <DrawingRow key={drawing.id} drawing={drawing} onOpenViewer={onOpenViewer} />
       ))}
     </div>
   );

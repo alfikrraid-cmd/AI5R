@@ -13,62 +13,24 @@ import OEMKnowledgePanel from "../components/OEMKnowledgePanel";
 import DrawingBomTable from "../components/DrawingBomTable";
 import DrawingFutureCapabilitiesPanel from "../components/DrawingFutureCapabilitiesPanel";
 import DrawingIntelligencePanel from "../components/DrawingIntelligencePanel";
-import { getPumpKnowledge, getSealCompatibility, getSeals, getDocuments } from "../../../api/ai5rClient";
+import PumpTagSelector from "../components/PumpTagSelector";
+import { getPumps, getDrawings, getPumpKnowledge, getSealCompatibility, getSeals, getDocuments } from "../../../api/ai5rClient";
 import { mapDrawingRecord } from "../utils/drawingMapping";
 import { resolveCompatibleSeals } from "../utils/sealMapping";
 import "./DrawingWorkspace.css";
 
 /**
- * LTSA Drawing Workspace — Foundation (RC-003A) + Knowledge Hub (RC-003B)
- * + Drawing Intelligence (RC-003C, final phase), extending the approved
- * Open Design (DESIGN/LTSA/DRAWING_WORKSPACE/drawing-workspace-spec.html
- * + drawing-workspace-refinement.html). RC-003A's shell, Library, Viewer,
- * Metadata, Revision, and Navigation panels are unmodified in position
- * and behavior. RC-003B's five panels (Drawing Health, Seal Component
- * Navigator, OEM Knowledge, BOM, Future Capabilities) are unmodified.
- * RC-003C's DrawingIntelligencePanel (AI Analysis, Relationship Graph,
- * Knowledge Graph, OCR, Drawing Highlight, Digital Twin, Future
- * Integration Panel -- all disclosed placeholders) is appended to the
- * same right-hand data column, in the same three-column grid RC-003A
- * already established -- no layout redesign. Engineering AI, Graphiti,
- * OCR, Knowledge Graph, Relationship Engine, Digital Twin, Recommendation
- * Engine, backend, API, database, drawing overlay, and drawing annotation
- * are all explicitly out of scope for this RC and are not implemented
- * here.
- *
- * MWO-LTSA-051A: no new backend, API, or database query was added for
- * Drawing. The existing, already-real GET /api/ltsa/pumps/{tag}/knowledge endpoint
- * (getPumpKnowledge(), already used by Pump.jsx/Seal.jsx) already returns
- * a `drawings` field (LTSAKnowledgeService._build_drawings()) -- this is
- * the one reused source of real drawing data. `drawings` stays an
- * injectable prop (MWO-LTSA-036L) that always wins when passed, exactly
- * as before -- every existing prop-driven caller/test is unaffected. Only
- * when no `drawings` prop is given does this component now self-fetch,
- * mirroring the same hybrid prop/fetch pattern Pump.jsx/Seal.jsx already
- * use: if `navContext.assetTag` is present, it calls the existing
- * getPumpKnowledge(tag) and maps `data.drawings` through
- * mapDrawingRecord(); otherwise it falls back to the same genuine empty
- * state as before (every panel below already has one, nothing
- * fabricated).
- *
- * MWO-LTSA-062 -- Seal/Document relationships. The Knowledge endpoint's
- * drawing rows still carry no seal_code (a frozen, deliberately narrow
- * shape from MWO-LTSA-033 -- not reopened by this MWO, see
- * drawingMapping.js's own header comment). Instead, alongside
- * getPumpKnowledge(), this effect now also calls the existing
- * getSealCompatibility() (already real, already used by Seal.jsx) to
- * resolve which seal_code(s) are compatible with this pump
- * (resolveCompatibleSeals(), sealMapping.js), the existing getSeals() to
- * look up those seals' real model name, and the existing getDocuments()
- * (the same real seal_engineering_document list Document Workspace now
- * reads) to find every non-DRAWING document sharing one of those
- * seal_code(s) -- passed into mapDrawingRecord()'s optional third
- * argument. Every drawing shown for this pump gets the same
- * pump-level-resolved sealModel/relatedDocuments (no per-drawing
- * seal_code exists to resolve them any more precisely) -- an honest,
- * real relationship, not a fabricated one.
+ * LTSA Drawing Workspace (R9E).
+ * Exposes authoritative engineering drawings for pumps via the Drawing API.
+ * Supports active pump selection, deep-linking via navContext, side badges (DE/NDE),
+ * reference-only handling, and authenticated content viewing/downloading.
  */
 export default function DrawingWorkspace({ onNavigate, navContext, drawings: drawingsProp }) {
+  const [activeTag, setActiveTag] = useState(navContext?.assetTag ?? null);
+  const [pumps, setPumps] = useState([]);
+  const [pumpsLoading, setPumpsLoading] = useState(false);
+  const [pumpsError, setPumpsError] = useState(null);
+
   const [fetchedDrawings, setFetchedDrawings] = useState([]);
   const drawings = drawingsProp ?? fetchedDrawings;
 
@@ -78,58 +40,119 @@ export default function DrawingWorkspace({ onNavigate, navContext, drawings: dra
   const selectedDrawing = drawings.find((drawing) => drawing.id === selectedDrawingId) ?? null;
 
   useEffect(() => {
+    let active = true;
+    setPumpsLoading(true);
+    getPumps()
+      .then((items) => {
+        if (active) setPumps(items || []);
+      })
+      .catch((err) => {
+        if (active) setPumpsError(err);
+      })
+      .finally(() => {
+        if (active) setPumpsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (navContext?.assetTag && navContext.assetTag !== activeTag) {
+      setActiveTag(navContext.assetTag);
+    }
+  }, [navContext?.assetTag]);
+
+  useEffect(() => {
     if (drawingsProp) {
       return;
     }
 
-    const assetTag = navContext?.assetTag;
-
-    if (!assetTag) {
+    if (!activeTag) {
       setFetchedDrawings([]);
       return;
     }
 
     let active = true;
 
-    Promise.all([getPumpKnowledge(assetTag), getSealCompatibility(), getSeals(), getDocuments()])
-      .then(([knowledgeResponse, compatibilityRecords, sealRecords, documentRecords]) => {
+    Promise.all([
+      getDrawings({ targetCode: activeTag }).catch(() => []),
+      getPumpKnowledge(activeTag).catch(() => null),
+      getSealCompatibility().catch(() => []),
+      getSeals().catch(() => []),
+      getDocuments().catch(() => []),
+    ])
+      .then(([drawingRecords, knowledgeResponse, compatibilityRecords, sealRecords, documentRecords]) => {
         if (!active) {
           return;
         }
 
-        const compatibleSealCodes = resolveCompatibleSeals(assetTag, compatibilityRecords);
+        const compatibleSealCodes = resolveCompatibleSeals(activeTag, compatibilityRecords || []);
 
-        const sealModel = compatibleSealCodes
-          .map((sealCode) => sealRecords.find((seal) => seal.seal_code === sealCode)?.model)
-          .filter(Boolean)
-          .join(", ") || null;
+        const sealModel =
+          (compatibleSealCodes || [])
+            .map((sealCode) => (sealRecords || []).find((seal) => seal.seal_code === sealCode)?.model)
+            .filter(Boolean)
+            .join(", ") || null;
 
-        const relatedDocuments = documentRecords.filter(
+        const relatedDocuments = (documentRecords || []).filter(
           (document) =>
             document.document_type !== "DRAWING" && compatibleSealCodes.includes(document.seal_code)
         );
 
-        const records = knowledgeResponse?.data?.drawings ?? [];
-        setFetchedDrawings(
-          records.map((record) => mapDrawingRecord(record, assetTag, { sealModel, relatedDocuments }))
+        const records =
+          drawingRecords && drawingRecords.length > 0
+            ? drawingRecords
+            : knowledgeResponse?.data?.drawings ?? [];
+
+        const mapped = records.map((record) =>
+          mapDrawingRecord(record, activeTag, { sealModel, relatedDocuments })
         );
+
+        setFetchedDrawings(mapped);
+
+        let targetId = mapped[0]?.id ?? null;
+        if (navContext?.drawingId) {
+          const matched = mapped.find(
+            (d) =>
+              d.id === navContext.drawingId ||
+              d.documentCode === navContext.drawingId ||
+              d.drawingNumber === navContext.drawingId
+          );
+          if (matched) {
+            targetId = matched.id;
+          }
+        }
+        setSelectedDrawingId(targetId);
       })
       .catch(() => {
         if (active) {
           setFetchedDrawings([]);
+          setSelectedDrawingId(null);
         }
       });
 
     return () => {
       active = false;
     };
-  }, [drawingsProp, navContext?.assetTag]);
+  }, [drawingsProp, activeTag, navContext?.drawingId]);
 
   useEffect(() => {
-    setSelectedDrawingId((current) =>
-      current && drawings.some((drawing) => drawing.id === current) ? current : drawings[0]?.id ?? null
-    );
-  }, [drawings]);
+    setSelectedDrawingId((current) => {
+      if (navContext?.drawingId) {
+        const found = drawings.find(
+          (d) =>
+            d.id === navContext.drawingId ||
+            d.documentCode === navContext.drawingId ||
+            d.drawingNumber === navContext.drawingId
+        );
+        if (found) return found.id;
+      }
+      return current && drawings.some((drawing) => drawing.id === current)
+        ? current
+        : drawings[0]?.id ?? null;
+    });
+  }, [drawings, navContext?.drawingId]);
 
   useEffect(() => {
     setOpenedRevision(null);
@@ -141,7 +164,23 @@ export default function DrawingWorkspace({ onNavigate, navContext, drawings: dra
 
   return (
     <div>
-      <PageHeader title="Drawing Workspace" subtitle="LTSA Engineering — Mechanical Seal Drawing Library" />
+      <PageHeader
+        title="Drawing Workspace"
+        subtitle={
+          activeTag
+            ? `LTSA Engineering — Mechanical Seal Drawing Library · Pump ${activeTag}`
+            : "LTSA Engineering — Mechanical Seal Drawing Library"
+        }
+        actions={
+          <PumpTagSelector
+            pumps={pumps}
+            currentTag={activeTag}
+            loading={pumpsLoading}
+            error={pumpsError}
+            onSelect={(tag) => setActiveTag(tag)}
+          />
+        }
+      />
 
       <div className="drawing-workspace-layout">
         <div className="drawing-workspace-library">

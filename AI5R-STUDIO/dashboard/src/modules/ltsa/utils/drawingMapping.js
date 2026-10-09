@@ -94,36 +94,49 @@ export function isDrawingObsolete(drawing) {
  * their honest pre-062 default when the caller has nothing real to pass.
  */
 export function mapDrawingRecord(record, equipmentTag, { sealModel = null, relatedDocuments = [] } = {}) {
-  const revisions = record.revision
+  const revisions = Array.isArray(record.revisions) && record.revisions.length > 0
+    ? record.revisions
+    : record.revision
     ? [
         {
           revision: record.revision,
-          date: record.uploaded_at ?? null,
-          author: null,
+          date: record.uploaded_at || record.created_at || null,
+          author: record.uploaded_by || null,
           checker: null,
           approvedBy: null,
-          description: null,
-          approvalStatus: null,
-          current: true,
-          obsolete: false,
+          description: record.notes || null,
+          approvalStatus: record.revision_status || (record.status === "APPROVED" ? "APPROVED" : null),
+          current: Boolean(record.is_current_revision ?? true),
+          obsolete: record.status === "SUPERSEDED",
         },
       ]
     : [];
 
   return {
-    id: record.drawing_id,
+    id: record.document_code || record.drawing_id || record.document_number,
+    documentCode: record.document_code || record.drawing_id || record.document_number,
     title: record.title ?? null,
-    drawingNumber: record.document_number ?? null,
-    drawingType: null,
-    equipmentTag: equipmentTag ?? null,
+    drawingNumber: record.document_number || record.drawing_number || null,
+    drawingType: record.document_type || "DRAWING",
+    equipmentTag: equipmentTag || record.target_code || null,
+    equipmentSide: record.equipment_side || null,
+    confidenceStatus: record.confidence_status || (record.status === "APPROVED" ? "CONFIRMED" : "REFERENCE_ONLY"),
+    evidenceMethod: record.evidence_method || null,
+    drawingGeneration: record.drawing_generation || "STANDARD",
+    storageAvailable: record.storage_available !== undefined ? Boolean(record.storage_available) : Boolean(record.object_key),
+    contentType: record.content_type || "application/pdf",
+    fileName: record.file_name || null,
+    fileSizeBytes: record.file_size_bytes || 0,
+    uploadedBy: record.uploaded_by || null,
     sealModel,
     apiPlan: null,
     currentRevision: record.revision ?? null,
     status: record.status ?? null,
     revisions,
-    bom: [],
-    oem: null,
+    bom: Array.isArray(record.bom) ? record.bom : [],
+    oem: record.oem || null,
     relatedDocuments,
+    notes: record.notes || null,
   };
 }
 

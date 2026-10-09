@@ -1806,3 +1806,77 @@ export async function getLtsaAnalyticsEffectiveness(params = {}) {
     const payload = await response.json();
     return payload?.data ?? null;
 }
+
+// LTSA Mechanical Seal Engineering Drawing API Client (R9E)
+export async function getDrawings(params = {}) {
+    const searchParams = new URLSearchParams();
+    if (params.drawingNumber) searchParams.append("drawing_number", params.drawingNumber);
+    if (params.sealCode) searchParams.append("seal_code", params.sealCode);
+    if (params.status) searchParams.append("status", params.status);
+    if (params.targetCode) searchParams.append("target_code", params.targetCode);
+    if (params.targetType) searchParams.append("target_type", params.targetType);
+    if (params.limit !== undefined) searchParams.append("limit", String(params.limit));
+    if (params.offset !== undefined) searchParams.append("offset", String(params.offset));
+
+    const qs = searchParams.toString();
+    const url = `${API_URL}/api/ltsa/drawings${qs ? `?${qs}` : ""}`;
+    const response = await apiFetch(url);
+    if (!response.ok) {
+        throw new Error(`Failed to fetch drawings: ${response.status} ${response.statusText}`);
+    }
+    const payload = await response.json();
+    return payload?.data ?? [];
+}
+
+function _encodeDocCode(code) {
+    return String(code).split("/").map(encodeURIComponent).join("/");
+}
+
+export async function getDrawing(documentCode) {
+    if (!documentCode) throw new Error("documentCode is required");
+    const response = await apiFetch(`${API_URL}/api/ltsa/drawings/${_encodeDocCode(documentCode)}`);
+    if (!response.ok) {
+        throw new Error(`Failed to fetch drawing detail: ${response.status} ${response.statusText}`);
+    }
+    const payload = await response.json();
+    return payload?.data ?? null;
+}
+
+export async function getDrawingContentBlob(documentCode) {
+    if (!documentCode) throw new Error("documentCode is required");
+    const response = await apiFetch(`${API_URL}/api/ltsa/drawings/${_encodeDocCode(documentCode)}/content`);
+    if (!response.ok) {
+        const errorText = await response.text().catch(() => "");
+        const error = new Error(`Failed to fetch drawing content: ${response.status} ${response.statusText}`);
+        error.status = response.status;
+        error.detail = errorText;
+        throw error;
+    }
+    const blob = await response.blob();
+    const contentType = response.headers.get("content-type") || "application/pdf";
+
+    let filename = `${documentCode.replace(/[/\\?%*:|"<>]/g, "_")}.pdf`;
+    const disposition = response.headers.get("content-disposition");
+    if (disposition) {
+        const match = disposition.match(/filename=["']?([^"';]+)["']?/i);
+        if (match?.[1]) {
+            filename = match[1].trim();
+        }
+    }
+    const url = URL.createObjectURL(blob);
+    return { blob, url, contentType, filename };
+}
+
+export async function downloadDrawingFile(documentCode, filenameOverride = null) {
+    const { url, filename } = await getDrawingContentBlob(documentCode);
+    try {
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filenameOverride || filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    } finally {
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+}

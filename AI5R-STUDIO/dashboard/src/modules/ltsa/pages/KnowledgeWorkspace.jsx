@@ -381,7 +381,15 @@ export default function KnowledgeWorkspace({ tag, onNavigate }) {
 
               <KnowledgeSection id="drawings" title="Drawings" badge={String(data.drawings.length)}>
                 <KnowledgeCard variant="row-list">
-                  <KnowledgeDrawingSection items={data.drawings} />
+                  <KnowledgeDrawingSection
+                    items={data.drawings}
+                    onOpenViewer={(drawing) =>
+                      onNavigate?.("drawing", {
+                        assetTag: tag,
+                        drawingId: drawing?.id || drawing?.documentNumber,
+                      })
+                    }
+                  />
                 </KnowledgeCard>
               </KnowledgeSection>
 
@@ -395,7 +403,15 @@ export default function KnowledgeWorkspace({ tag, onNavigate }) {
                   "DRAWING" -- no new component, no new visual language. */}
               <KnowledgeSection id="documents" title="Documents" badge={String(data.documents.length)}>
                 <KnowledgeCard variant="row-list">
-                  <KnowledgeDrawingSection items={data.documents} />
+                  <KnowledgeDrawingSection
+                    items={data.documents}
+                    onOpenViewer={(drawing) =>
+                      onNavigate?.("drawing", {
+                        assetTag: tag,
+                        drawingId: drawing?.id || drawing?.documentNumber,
+                      })
+                    }
+                  />
                 </KnowledgeCard>
               </KnowledgeSection>
             </aside>

@@ -74,10 +74,35 @@ export default function DrawingLibraryPanel({ drawings, selectedDrawingId, onSel
                       }}
                     >
                       <span>
-                        <div>{drawing.drawingType}</div>
-                        <div style={{ fontSize: 12, color: colors.textMuted }}>{drawing.drawingNumber}</div>
+                        <div style={{ display: "flex", alignItems: "center", gap: spacing.xs }}>
+                          <span style={{ fontWeight: 600 }}>{drawing.drawingNumber || drawing.title}</span>
+                          {drawing.equipmentSide ? (
+                            <span
+                              style={{
+                                padding: "1px 5px",
+                                fontSize: 10,
+                                borderRadius: 3,
+                                fontWeight: 700,
+                                background: drawing.equipmentSide === "DE" ? "rgba(59, 130, 246, 0.2)" : "rgba(168, 85, 247, 0.2)",
+                                color: drawing.equipmentSide === "DE" ? "#60a5fa" : "#c084fc",
+                              }}
+                            >
+                              {drawing.equipmentSide}
+                            </span>
+                          ) : null}
+                          {drawing.storageAvailable ? (
+                            <span style={{ padding: "1px 4px", fontSize: 9, borderRadius: 2, background: "rgba(34, 197, 94, 0.2)", color: "#4ade80", fontWeight: 700 }}>
+                              FILE
+                            </span>
+                          ) : (
+                            <span style={{ padding: "1px 4px", fontSize: 9, borderRadius: 2, background: "rgba(148, 163, 184, 0.15)", color: "#94a3b8", fontWeight: 600 }}>
+                              REF
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: 12, color: colors.textMuted }}>{drawing.title}</div>
                       </span>
-                      <span style={{ fontSize: 11, color: colors.textMuted }}>Rev {drawing.currentRevision}</span>
+                      <span style={{ fontSize: 11, color: colors.textMuted }}>Rev {drawing.currentRevision ?? "-"}</span>
                     </button>
                   );
                 })}
