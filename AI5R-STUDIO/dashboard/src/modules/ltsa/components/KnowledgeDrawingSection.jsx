@@ -13,6 +13,14 @@ import { EmptySection } from "./KnowledgeCard";
 // disabled CTA, the Open Design's own placeholder-navigation note for
 // row items).
 
+// LTSA_ASSET360_DRAWING_READ_PATH_REPAIR_R2 -- a governed asset link's
+// confidence, shown as stored; rows without a link (seal documents, the
+// Documents section) carry no confidence and show no label.
+const CONFIDENCE_LABEL = {
+  CONFIRMED: "Terkonfirmasi",
+  REFERENCE_ONLY: "Hanya referensi",
+};
+
 function DrawingRow({ drawing, onOpenViewer }) {
   return (
     <div className="part-item" data-testid="knowledge-drawing-item">
@@ -21,6 +29,16 @@ function DrawingRow({ drawing, onOpenViewer }) {
         <span className="stock-flag" data-testid="knowledge-drawing-status">
           {drawing.status ?? "Unavailable"}
         </span>
+        {drawing.confidenceStatus ? (
+          <span className="stock-flag" data-testid="knowledge-drawing-confidence">
+            {CONFIDENCE_LABEL[drawing.confidenceStatus] ?? drawing.confidenceStatus}
+          </span>
+        ) : null}
+        {drawing.equipmentSide ? (
+          <span className="stock-flag" data-testid="knowledge-drawing-side">
+            {drawing.equipmentSide}
+          </span>
+        ) : null}
       </div>
       <div className="part-meta">
         <span data-testid="knowledge-drawing-document-number">{drawing.documentNumber ?? "Unavailable"}</span>
@@ -47,8 +65,12 @@ export default function KnowledgeDrawingSection({ items = [], onOpenViewer }) {
 
   return (
     <div data-testid="knowledge-drawing-section">
-      {items.map((drawing) => (
-        <DrawingRow key={drawing.id} drawing={drawing} onOpenViewer={onOpenViewer} />
+      {items.map((drawing, index) => (
+        <DrawingRow
+          key={`${drawing.id ?? drawing.documentNumber ?? index}-${drawing.equipmentSide ?? ""}`}
+          drawing={drawing}
+          onOpenViewer={onOpenViewer}
+        />
       ))}
     </div>
   );

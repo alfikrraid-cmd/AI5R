@@ -16,6 +16,11 @@ definition of "breakdown" (a maintenance_history record whose linked
 work order has work_type == 'CM'), generalized from "latest" to the
 full list -- not a new business rule.
 
+drawings (LTSA_ASSET360_DRAWING_READ_PATH_REPAIR_R2): the governed
+asset->drawing links in drawing_engineering_link (via DrawingRepository)
+come first, with their confidence_status passed through; the original
+MWO-LTSA-033 seal-linked source below follows, de-duplicated.
+
 drawings (MWO-LTSA-033): populated from seal_engineering_document
 (BP-SEAL-ENGINEERING-DOCUMENT, MWO-LTSA-030/040B), filtered to
 document_type == 'DRAWING' and to the seal_codes already found compatible
@@ -106,6 +111,32 @@ class LTSAKnowledge:
     work_orders: list[dict[str, Any]] = field(default_factory=list)
 
 
+def _drawing_metadata(
+    record: dict[str, Any],
+    *,
+    link_source: str,
+    confidence_status: str | None = None,
+    evidence_method: str | None = None,
+    equipment_side: str | None = None,
+) -> dict[str, Any]:
+    """One drawings row: the MWO-LTSA-033 metadata fields plus where the
+    row came from (ASSET_LINK / SEAL_DOCUMENT) and, for an asset link, its
+    governed classification passed through as stored."""
+    return {
+        "drawing_id": record.get("document_code"),
+        "title": record.get("title"),
+        "document_number": record.get("document_number"),
+        "revision": record.get("revision"),
+        "status": record.get("status"),
+        "file_name": record.get("file_name"),
+        "uploaded_at": record.get("created_at"),
+        "link_source": link_source,
+        "confidence_status": confidence_status,
+        "evidence_method": evidence_method,
+        "equipment_side": equipment_side,
+    }
+
+
 class LTSAKnowledgeService:
     """Aggregates existing LTSA services/gateways into LTSAKnowledge. No
     SQL, no repository layer, no duplicated business logic -- every
@@ -133,6 +164,7 @@ class LTSAKnowledgeService:
         condition_monitoring_schedule_repository: Any | None = None,
         mechanical_seal_stock_repository: Any | None = None,
         asset_registry_repository: AssetRegistryRepository | None = None,
+        drawing_repository: Any | None = None,
     ) -> None:
         self.pump_gateway = pump_gateway or PumpGateway()
         self.maintenance_history_gateway = maintenance_history_gateway or MaintenanceHistoryGateway()
@@ -162,6 +194,7 @@ class LTSAKnowledgeService:
         self.condition_monitoring_schedule_repository = condition_monitoring_schedule_repository
         self.mechanical_seal_stock_repository = mechanical_seal_stock_repository
         self.asset_registry_repository = asset_registry_repository
+        self.drawing_repository = drawing_repository
 
     def build(self, tag_number: str) -> LTSAKnowledge:
         compatible_seals = self._build_compatible_seals(tag_number)
@@ -182,7 +215,7 @@ class LTSAKnowledgeService:
             pm_history=self._build_pm_history(tag_number),
             cm_history=self._build_cm_history(tag_number),
             breakdown_history=self._build_breakdown_history(tag_number, work_orders_response),
-            drawings=self._build_drawings(compatible_seals),
+            drawings=self._build_drawings(tag_number, compatible_seals),
             recommendation=(),
             pm_schedules=self._build_pm_schedules(tag_number),
             condition_monitoring_schedules=self._build_condition_monitoring_schedules(tag_number),
@@ -233,24 +266,43 @@ class LTSAKnowledgeService:
             return []
         return self.mechanical_seal_stock_repository.list_for_equipment(tag_number)
 
-    def _build_drawings(self, spare_parts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def _build_drawings(self, tag_number: str, spare_parts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        # LTSA_ASSET360_DRAWING_READ_PATH_REPAIR_R2 -- the governed
+        # asset->drawing links (drawing_engineering_link, read through
+        # DrawingRepository.list_drawings_for_target, the same query
+        # GET /api/ltsa/drawings?target_code= already uses) come first,
+        # each carrying its own confidence_status unchanged (a
+        # REFERENCE_ONLY link is never presented as confirmed). Seal-linked
+        # seal_engineering_document drawings follow, skipping any document
+        # already listed through an asset link. Metadata only, as before:
+        # object_key/checksum stay behind drawing.read on the drawings API.
+        asset_links = (
+            self.drawing_repository.list_drawings_for_target(tag_number, "PUMP")
+            if self.drawing_repository is not None
+            else []
+        )
+        drawings = [
+            _drawing_metadata(
+                record,
+                link_source="ASSET_LINK",
+                confidence_status=record.get("confidence_status"),
+                evidence_method=record.get("evidence_method"),
+                equipment_side=record.get("equipment_side"),
+            )
+            for record in asset_links
+        ]
+
+        linked_document_codes = {d["drawing_id"] for d in drawings if d["drawing_id"]}
         compatible_seal_codes = {part["seal_code"] for part in spare_parts}
         response = self.seal_engineering_document_gateway.list_seal_engineering_documents()
-
-        return [
-            {
-                "drawing_id": record.get("document_code"),
-                "title": record.get("title"),
-                "document_number": record.get("document_number"),
-                "revision": record.get("revision"),
-                "status": record.get("status"),
-                "file_name": record.get("file_name"),
-                "uploaded_at": record.get("created_at"),
-            }
+        drawings.extend(
+            _drawing_metadata(record, link_source="SEAL_DOCUMENT")
             for record in (response.get("data") or [])
             if record.get("document_type") == "DRAWING"
             and record.get("seal_code") in compatible_seal_codes
-        ]
+            and record.get("document_code") not in linked_document_codes
+        )
+        return drawings
 
     def _build_pm_schedules(self, tag_number: str) -> list[dict[str, Any]]:
         if self.pm_schedule_repository is not None:

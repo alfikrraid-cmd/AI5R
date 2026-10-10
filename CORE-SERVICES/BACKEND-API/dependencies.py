@@ -319,6 +319,7 @@ _ltsa_knowledge_service = LTSAKnowledgeService(
     condition_monitoring_schedule_repository=_condition_monitoring_schedule_repository,
     mechanical_seal_stock_repository=_mechanical_seal_stock_repository,
     asset_registry_repository=_asset_registry_repository,
+    drawing_repository=_drawing_repository,
 )
 
 # MWO-LTSA-ENGINEERING-AI-CMON-REASONING-020B -- a SEPARATE

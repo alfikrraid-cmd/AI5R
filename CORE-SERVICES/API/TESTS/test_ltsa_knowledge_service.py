@@ -56,6 +56,7 @@ def _service(
     condition_monitoring_readings=None,
     pm_occurrence_repository=None,
     condition_monitoring_reading_repository=None,
+    drawing_repository=None,
 ):
     return LTSAKnowledgeService(
         pump_gateway=pump or FakePumpGateway(),
@@ -79,7 +80,52 @@ def _service(
         ),
         pm_occurrence_repository=pm_occurrence_repository,
         condition_monitoring_reading_repository=condition_monitoring_reading_repository,
+        drawing_repository=drawing_repository,
     )
+
+
+class FakeDrawingRepository:
+    """Stands in for DrawingRepository.list_drawings_for_target(): one row
+    per drawing_engineering_link joined to its seal_engineering_document,
+    in the repository's own column names."""
+
+    def __init__(self, rows_by_target=None):
+        self._rows_by_target = rows_by_target or {}
+        self.calls = []
+
+    def list_drawings_for_target(self, target_code, target_type="PUMP"):
+        self.calls.append((target_code, target_type))
+        return list(self._rows_by_target.get((target_type, target_code), []))
+
+
+def _link_row(document_code, document_number, confidence_status, *, equipment_side=None, **overrides):
+    row = {
+        "document_code": document_code,
+        "seal_code": None,
+        "document_type": "DRAWING",
+        "document_number": document_number,
+        "title": f"{document_number} Engineering Drawing",
+        "revision": "0",
+        "object_key": f"drawings/{document_number}/0/abc.pdf",
+        "sha256_checksum": "abc",
+        "file_size_bytes": 60966,
+        "content_type": "application/pdf",
+        "file_name": f"{document_number}.pdf",
+        "status": "ACTIVE",
+        "created_at": "2026-10-01T00:00:00",
+        "link_id": f"LINK-{document_code}",
+        "target_type": "PUMP",
+        "target_code": TAG,
+        "equipment_side": equipment_side,
+        "confidence_status": confidence_status,
+        "evidence_method": "MATCHED_EXACT" if confidence_status == "CONFIRMED" else "MATCHED_BY_ARCHIVE_SCOPE",
+        "notes": "note",
+        "raw_reference": "641-P-5 AB New",
+        "normalized_reference": document_number,
+        "storage_available": True,
+    }
+    row.update(overrides)
+    return row
 
 
 TAG = "641-P-5"
@@ -349,6 +395,10 @@ def test_drawings_field_lists_drawing_type_documents_for_compatible_seals():
             "status": "APPROVED",
             "file_name": "sc-001-ga.pdf",
             "uploaded_at": "2026-05-01T00:00:00Z",
+            "link_source": "SEAL_DOCUMENT",
+            "confidence_status": None,
+            "evidence_method": None,
+            "equipment_side": None,
         }
     ]
 
@@ -464,16 +514,128 @@ def test_drawings_field_maps_only_the_seven_required_metadata_fields():
 
     knowledge = service.build(TAG)
 
-    assert set(knowledge.drawings[0].keys()) == {
-        "drawing_id",
-        "title",
-        "document_number",
-        "revision",
-        "status",
-        "file_name",
-        "uploaded_at",
-    }
+    assert set(knowledge.drawings[0].keys()) == DRAWING_KEYS
     assert knowledge.drawings[0]["uploaded_at"] == "2026-05-01T00:00:00Z"
+    assert knowledge.drawings[0]["link_source"] == "SEAL_DOCUMENT"
+    assert knowledge.drawings[0]["confidence_status"] is None
+
+
+# LTSA_ASSET360_DRAWING_READ_PATH_REPAIR_R2 -- the seven MWO-LTSA-033
+# metadata fields plus the governed link's own classification. Still
+# metadata only: no object_key, checksum or storage pointer.
+DRAWING_KEYS = {
+    "drawing_id",
+    "title",
+    "document_number",
+    "revision",
+    "status",
+    "file_name",
+    "uploaded_at",
+    "link_source",
+    "confidence_status",
+    "evidence_method",
+    "equipment_side",
+}
+
+
+def test_drawings_include_governed_asset_links_from_drawing_repository():
+    repo = FakeDrawingRepository(
+        {("PUMP", TAG): [_link_row("U-14050-1", "U-14050-1", "REFERENCE_ONLY"), _link_row("E12918", "E12918", "CONFIRMED")]}
+    )
+    service = _service(drawing_repository=repo)
+
+    knowledge = service.build(TAG)
+
+    assert repo.calls == [(TAG, "PUMP")]
+    assert [d["drawing_id"] for d in knowledge.drawings] == ["U-14050-1", "E12918"]
+    first = knowledge.drawings[0]
+    assert set(first.keys()) == DRAWING_KEYS
+    assert first["document_number"] == "U-14050-1"
+    assert first["title"] == "U-14050-1 Engineering Drawing"
+    assert first["file_name"] == "U-14050-1.pdf"
+    assert first["uploaded_at"] == "2026-10-01T00:00:00"
+    assert first["link_source"] == "ASSET_LINK"
+    assert first["evidence_method"] == "MATCHED_BY_ARCHIVE_SCOPE"
+
+
+def test_asset_link_confidence_is_passed_through_never_upgraded():
+    repo = FakeDrawingRepository({("PUMP", TAG): [_link_row("U-14050-1", "U-14050-1", "REFERENCE_ONLY")]})
+
+    knowledge = _service(drawing_repository=repo).build(TAG)
+
+    assert knowledge.drawings[0]["confidence_status"] == "REFERENCE_ONLY"
+
+
+def test_asset_link_drawings_never_expose_storage_pointer_or_checksum():
+    repo = FakeDrawingRepository({("PUMP", TAG): [_link_row("U-14050-1", "U-14050-1", "CONFIRMED")]})
+
+    drawing = _service(drawing_repository=repo).build(TAG).drawings[0]
+
+    for leaked in ("object_key", "sha256_checksum", "storage_available", "raw_reference", "notes", "link_id"):
+        assert leaked not in drawing
+
+
+def test_asset_link_rows_for_distinct_sides_are_kept():
+    repo = FakeDrawingRepository(
+        {
+            ("PUMP", TAG): [
+                _link_row("DOC-DE", "D-1", "CONFIRMED", equipment_side="DE"),
+                _link_row("DOC-DE", "D-1", "CONFIRMED", equipment_side="NDE"),
+            ]
+        }
+    )
+
+    drawings = _service(drawing_repository=repo).build(TAG).drawings
+
+    assert [(d["drawing_id"], d["equipment_side"]) for d in drawings] == [("DOC-DE", "DE"), ("DOC-DE", "NDE")]
+
+
+def test_seal_document_already_linked_to_the_asset_is_not_listed_twice():
+    repo = FakeDrawingRepository({("PUMP", TAG): [_link_row("DOC-001", "DWG-4471", "CONFIRMED")]})
+    service = _service(
+        seal_compatibility=[{"seal_code": "SC-001", "pump_tag_number": TAG}],
+        seal_engineering_documents=[
+            {
+                "document_code": "DOC-001",
+                "seal_code": "SC-001",
+                "document_type": "DRAWING",
+                "title": "SC-001 GA Drawing",
+                "document_number": "DWG-4471",
+                "revision": "B",
+                "status": "APPROVED",
+                "file_name": "sc-001-ga.pdf",
+                "created_at": "2026-05-01T00:00:00Z",
+            },
+            {
+                "document_code": "DOC-002",
+                "seal_code": "SC-001",
+                "document_type": "DRAWING",
+                "title": "Cross-Section",
+                "document_number": "DWG-2",
+                "revision": "A",
+                "status": "APPROVED",
+                "file_name": "x.pdf",
+                "created_at": "2026-05-02T00:00:00Z",
+            },
+        ],
+        drawing_repository=repo,
+    )
+
+    drawings = service.build(TAG).drawings
+
+    assert [(d["drawing_id"], d["link_source"]) for d in drawings] == [
+        ("DOC-001", "ASSET_LINK"),
+        ("DOC-002", "SEAL_DOCUMENT"),
+    ]
+
+
+def test_drawings_without_drawing_repository_keep_seal_document_behavior():
+    service = _service(
+        seal_compatibility=[{"seal_code": "SC-001", "pump_tag_number": TAG}],
+        seal_engineering_documents=[],
+    )
+
+    assert service.build(TAG).drawings == []
 
 
 def test_recommendation_field_exists_and_is_populated_by_recommendation_engine():

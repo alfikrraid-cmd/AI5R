@@ -1123,3 +1123,41 @@ def test_high_confidence_never_renders_confirmed_root_cause():
     assert "- HIGH" in answer.answer
     assert "Root cause not confirmed." in answer.answer
     assert "confirmed root cause" not in answer.answer.lower()
+
+
+# LTSA_ASSET360_DRAWING_READ_PATH_REPAIR_R2B -- knowledge.drawings now also
+# carries drawings linked directly to the asset, so the empty answer must
+# not claim the search covered only the pump's compatible seals.
+class _NoDrawingsKnowledgeService:
+    def build(self, tag):
+        return LTSAKnowledge(
+            tag_number=tag,
+            pump={"tag_number": tag},
+            seal=[],
+            inventory=[],
+            pm_history=[],
+            cm_history=[],
+            breakdown_history=[],
+            drawings=[],
+            recommendation=(),
+            pm_schedules=[],
+            condition_monitoring_schedules=[],
+            condition_monitoring_readings=[],
+        )
+
+
+@pytest.mark.parametrize(
+    ("language", "expected"),
+    [
+        ("en", "No engineering drawings are associated with 211-P-10A."),
+        ("id", "Tidak ada gambar teknik yang terkait dengan 211-P-10A."),
+    ],
+)
+def test_drawing_answer_without_drawings_describes_the_asset_not_compatible_seals(language, expected):
+    from API.copilot_ask_service import _handle_drawing_document
+
+    answer = _handle_drawing_document("211-P-10A", ltsa_knowledge_service=_NoDrawingsKnowledgeService(), language=language)
+
+    assert answer.answer == expected
+    assert answer.kind == FACT
+    assert "compatible" not in answer.answer.lower() and "kompatibel" not in answer.answer.lower()

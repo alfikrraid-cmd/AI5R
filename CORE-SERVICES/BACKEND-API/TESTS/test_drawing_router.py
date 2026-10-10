@@ -659,7 +659,7 @@ def test_34_pump_knowledge_service_compatibility():
 
     service = LTSAKnowledgeService(seal_engineering_document_gateway=fake_doc_gateway)
     spare_parts = [{"seal_code": "SL-001"}]
-    drawings = service._build_drawings(spare_parts)
+    drawings = service._build_drawings("PUMP-1", spare_parts)
     assert len(drawings) == 1
     assert drawings[0]["drawing_id"] == "DOC-1"
     assert drawings[0]["document_number"] == "E12894"

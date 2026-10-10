@@ -576,6 +576,73 @@ describe("Drawing Viewer Integration (MWO-LTSA-034)", () => {
     expect(within(drawingsSection).getByTestId("knowledge-drawing-status")).toHaveTextContent("APPROVED");
     expect(within(drawingsSection).getByRole("button", { name: /Buka Viewer/i })).toBeInTheDocument();
   });
+
+  // LTSA_ASSET360_DRAWING_READ_PATH_REPAIR_R2 -- governed asset links carry
+  // their own confidence; a REFERENCE_ONLY link must never read as confirmed.
+  it("labels a reference-only asset link as reference only", () => {
+    render(<KnowledgeDrawingSection items={[{ ...DRAWING_A, confidenceStatus: "REFERENCE_ONLY" }]} />);
+
+    expect(screen.getByTestId("knowledge-drawing-confidence")).toHaveTextContent("Hanya referensi");
+  });
+
+  it("labels a confirmed asset link as confirmed", () => {
+    render(<KnowledgeDrawingSection items={[{ ...DRAWING_A, confidenceStatus: "CONFIRMED" }]} />);
+
+    expect(screen.getByTestId("knowledge-drawing-confidence")).toHaveTextContent("Terkonfirmasi");
+  });
+
+  it("shows no confidence label for a row without a governed link", () => {
+    render(<KnowledgeDrawingSection items={[DRAWING_A]} />);
+
+    expect(screen.queryByTestId("knowledge-drawing-confidence")).not.toBeInTheDocument();
+  });
+
+  it("shows the equipment side and keeps one row per side of the same drawing", () => {
+    render(
+      <KnowledgeDrawingSection
+        items={[
+          { ...DRAWING_A, confidenceStatus: "CONFIRMED", equipmentSide: "DE" },
+          { ...DRAWING_A, confidenceStatus: "CONFIRMED", equipmentSide: "NDE" },
+        ]}
+      />
+    );
+
+    expect(screen.getAllByTestId("knowledge-drawing-item")).toHaveLength(2);
+    expect(screen.getAllByTestId("knowledge-drawing-side").map((el) => el.textContent)).toEqual(["DE", "NDE"]);
+  });
+
+  it("maps governed asset-link drawings from the Knowledge API with their confidence", async () => {
+    getPumpKnowledge.mockResolvedValue(
+      backendResponse({
+        data: {
+          ...backendResponse().data,
+          drawings: [
+            {
+              drawing_id: "U-14050-1",
+              title: "U-14050-1 Engineering Drawing",
+              document_number: "U-14050-1",
+              revision: "0",
+              status: "ACTIVE",
+              file_name: "U-14050-1.pdf",
+              uploaded_at: "2026-10-01T00:00:00",
+              link_source: "ASSET_LINK",
+              confidence_status: "REFERENCE_ONLY",
+              evidence_method: "MATCHED_BY_ARCHIVE_SCOPE",
+              equipment_side: null,
+            },
+          ],
+        },
+      })
+    );
+
+    render(<KnowledgeWorkspace tag={TAG} />);
+
+    await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());
+    const drawingsSection = screen.getByTestId("knowledge-section-drawings");
+    expect(within(drawingsSection).getByText("U-14050-1 Engineering Drawing")).toBeInTheDocument();
+    expect(within(drawingsSection).getByTestId("knowledge-drawing-confidence")).toHaveTextContent("Hanya referensi");
+    expect(within(drawingsSection).queryByTestId("knowledge-drawing-side")).not.toBeInTheDocument();
+  });
 });
 
 describe("Reuse verification", () => {

@@ -988,8 +988,8 @@ def _handle_drawing_document(tag: str, *, ltsa_knowledge_service, language: str 
         drawings = knowledge.drawings or []
         if not drawings:
             if language == "id":
-                return CopilotAnswer(f"Tidak ada gambar/dokumen untuk seal kompatibel {tag}.", FACT, ())
-            return CopilotAnswer(f"No drawings/documents found for {tag}'s compatible seals.", FACT, ())
+                return CopilotAnswer(f"Tidak ada gambar teknik yang terkait dengan {tag}.", FACT, ())
+            return CopilotAnswer(f"No engineering drawings are associated with {tag}.", FACT, ())
         lines = [f"- {d.get('document_number') or d.get('drawing_id')}: {d.get('title') or 'N/A'} (rev {d.get('revision') or 'N/A'})" for d in drawings]
         if language == "id":
             answer = f"{len(drawings)} gambar/dokumen untuk {tag}:\n" + "\n".join(lines)

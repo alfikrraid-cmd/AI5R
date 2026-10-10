@@ -166,6 +166,10 @@ function mapRefItem(record, { idField, nameLabel, metaField, descriptionField })
 // (the pointer to the binary) is deliberately not mapped through: this
 // MWO's scope is metadata only, and the backend's own docstring already
 // excludes file_reference for the same reason.
+// LTSA_ASSET360_DRAWING_READ_PATH_REPAIR_R2 -- also carries the governed
+// asset link's own classification (confidenceStatus/evidenceMethod/
+// equipmentSide/linkSource) unchanged, so a REFERENCE_ONLY link is rendered
+// as such and never as a confirmed drawing.
 function mapDrawings(drawings) {
   return (drawings ?? []).map((record) => ({
     id: record.drawing_id,
@@ -174,6 +178,10 @@ function mapDrawings(drawings) {
     revision: record.revision,
     status: record.status,
     uploadedAt: record.uploaded_at,
+    linkSource: record.link_source ?? undefined,
+    confidenceStatus: record.confidence_status ?? undefined,
+    evidenceMethod: record.evidence_method ?? undefined,
+    equipmentSide: record.equipment_side ?? undefined,
   }));
 }
 
