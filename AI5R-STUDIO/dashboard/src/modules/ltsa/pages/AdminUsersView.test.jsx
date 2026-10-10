@@ -379,3 +379,101 @@ describe("AdminUsersView actions", () => {
     );
   });
 });
+
+// LTSA_PERTAMINA_RBAC_SCOPE_AND_REQUEST_R2 -- Access Scope for scope-driven
+// Pertamina roles: All Assets / Area Engineer / Maintenance Area.
+describe("Create User access scope", () => {
+  async function openCreate(role) {
+    render(<AdminUsersView canManageUsers={true} session={SUPERUSER_SESSION} />);
+    await waitFor(() => expect(screen.getByText("tapeng")).toBeTruthy());
+    fireEvent.click(screen.getByText("Create User"));
+    fireEvent.change(screen.getByLabelText("Username"), { target: { value: "yohanes.test" } });
+    fireEvent.change(screen.getByLabelText("Initial credential"), { target: { value: "TEMPORARY_PASSWORD" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "Temp-Passw0rd-2026" } });
+    fireEvent.change(screen.getByLabelText("Organization ID"), { target: { value: "org-pertamina" } });
+    fireEvent.change(screen.getByLabelText("Role"), { target: { value: role } });
+  }
+
+  const optionValues = (label) => Array.from(screen.getByLabelText(label).querySelectorAll("option")).map((o) => o.value);
+  const optionLabels = (label) => Array.from(screen.getByLabelText(label).querySelectorAll("option")).map((o) => o.textContent);
+
+  it("exposes Access Scope only for scope-driven Pertamina roles", async () => {
+    await openCreate("PERTAMINA_ENGINEER");
+    expect(optionLabels("Access Scope")).toEqual(["Select access scope", "All Assets", "Area Engineer", "Maintenance Area"]);
+    fireEvent.change(screen.getByLabelText("Role"), { target: { value: "PERTAMINA_VIEWER" } });
+    expect(screen.getByLabelText("Access Scope")).toBeTruthy();
+    for (const role of ["TAP_ENGINEER", "JOHN_CRANE_ENGINEER", "TAP_ADMIN", "SUPERUSER"]) {
+      fireEvent.change(screen.getByLabelText("Role"), { target: { value: role } });
+      expect(screen.queryByLabelText("Access Scope")).toBeNull();
+      expect(screen.queryByLabelText("Scope value")).toBeNull();
+    }
+  });
+
+  it("All Assets hides the value selector and submits ALL with no value", async () => {
+    await openCreate("PERTAMINA_ENGINEER");
+    fireEvent.change(screen.getByLabelText("Access Scope"), { target: { value: "ALL" } });
+    expect(screen.queryByLabelText("Scope value")).toBeNull();
+    fireEvent.click(screen.getByText("Create"));
+    await waitFor(() =>
+      expect(createAdminUser).toHaveBeenCalledWith({
+        username: "yohanes.test", email: null, credentialMode: "TEMPORARY_PASSWORD", password: "Temp-Passw0rd-2026",
+        organizationId: "org-pertamina", role: "PERTAMINA_ENGINEER", dataScopeType: "ALL", dataScopeValue: null,
+      })
+    );
+  });
+
+  it("Area Engineer offers exactly the six governed areas and submits AREA + code", async () => {
+    await openCreate("PERTAMINA_ENGINEER");
+    fireEvent.change(screen.getByLabelText("Access Scope"), { target: { value: "AREA" } });
+    expect(optionValues("Scope value")).toEqual(["", "HOC", "HSC", "S_PAKNING", "HCC", "OM", "UTL"]);
+    expect(optionLabels("Scope value")).toEqual(["Select area", "HOC", "HSC", "S. Pakning", "HCC", "OM", "UTL"]);
+    fireEvent.change(screen.getByLabelText("Scope value"), { target: { value: "HCC" } });
+    fireEvent.click(screen.getByText("Create"));
+    await waitFor(() =>
+      expect(createAdminUser).toHaveBeenCalledWith(
+        expect.objectContaining({ role: "PERTAMINA_ENGINEER", dataScopeType: "AREA", dataScopeValue: "HCC" })
+      )
+    );
+  });
+
+  it("Maintenance Area offers MA 1, MA 2, MA 3 & MA 4 and submits MA + code", async () => {
+    await openCreate("PERTAMINA_ENGINEER");
+    fireEvent.change(screen.getByLabelText("Access Scope"), { target: { value: "MA" } });
+    expect(optionValues("Scope value")).toEqual(["", "MA1", "MA2", "MA3_4"]);
+    expect(optionLabels("Scope value")).toEqual(["Select maintenance area", "MA 1", "MA 2", "MA 3 & MA 4"]);
+    fireEvent.change(screen.getByLabelText("Scope value"), { target: { value: "MA3_4" } });
+    fireEvent.click(screen.getByText("Create"));
+    await waitFor(() =>
+      expect(createAdminUser).toHaveBeenCalledWith(
+        expect.objectContaining({ dataScopeType: "MA", dataScopeValue: "MA3_4" })
+      )
+    );
+  });
+
+  it("blocks submit when the scope or its value is missing (native required + code guard)", async () => {
+    await openCreate("PERTAMINA_ENGINEER");
+    // Native constraint validation: the empty required select stops the submit.
+    expect(screen.getByLabelText("Access Scope").validity.valueMissing).toBe(true);
+    fireEvent.click(screen.getByText("Create"));
+    // Code guard, for a submit that bypasses native validation.
+    fireEvent.submit(screen.getByTestId("admin-users-create-form"));
+    await waitFor(() => expect(screen.getByTestId("admin-users-action-error").textContent).toMatch(/Select an access scope/));
+    fireEvent.change(screen.getByLabelText("Access Scope"), { target: { value: "AREA" } });
+    expect(screen.getByLabelText("Scope value").validity.valueMissing).toBe(true);
+    fireEvent.submit(screen.getByTestId("admin-users-create-form"));
+    await waitFor(() =>
+      expect(screen.getByTestId("admin-users-action-error").textContent).toMatch(/Select the area or maintenance area/)
+    );
+    expect(createAdminUser).not.toHaveBeenCalled();
+  });
+
+  it("changing the role clears a previously chosen scope", async () => {
+    await openCreate("PERTAMINA_ENGINEER");
+    fireEvent.change(screen.getByLabelText("Access Scope"), { target: { value: "AREA" } });
+    fireEvent.change(screen.getByLabelText("Scope value"), { target: { value: "HOC" } });
+    fireEvent.change(screen.getByLabelText("Role"), { target: { value: "TAP_ENGINEER" } });
+    fireEvent.change(screen.getByLabelText("Role"), { target: { value: "PERTAMINA_ENGINEER" } });
+    expect(screen.getByLabelText("Access Scope").value).toBe("");
+    expect(screen.queryByLabelText("Scope value")).toBeNull();
+  });
+});

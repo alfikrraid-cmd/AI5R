@@ -53,6 +53,11 @@ class AdminCreateUserRequest(BaseModel):
     credential_mode: str | None = None
     organization_id: str
     role: str
+    # LTSA_PERTAMINA_RBAC_SCOPE_AND_REQUEST_R2 -- required for PERTAMINA_*
+    # roles (ALL / AREA / MA, see auth_service.validate_membership_data_scope),
+    # rejected for every other role.
+    data_scope_type: str | None = None
+    data_scope_value: str | None = None
 
 
 class AdminUpdateUserStatusRequest(BaseModel):
@@ -652,3 +657,11 @@ class ResetPasswordRequest(BaseModel):
     token: str
     new_password: str
 
+
+
+# LTSA_PERTAMINA_RBAC_SCOPE_AND_REQUEST_R2 -- a PM / CM / Installation request.
+# Only what the requester says; code, status, requester and time are server-set.
+class WorkRequestCreateRequest(BaseModel):
+    request_type: str
+    asset_code: str
+    description: str

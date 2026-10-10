@@ -39,7 +39,7 @@ if str(_INGESTION_DIR) not in sys.path:
 
 from ltsa_pump_inventory_db_upsert import _json_query, _sql  # noqa: E402
 
-from .pump_area_scope import canonical_area_sql, normalize_area_token
+from .pump_area_scope import canonical_area_sql, normalize_area_token, scope_sql_condition
 
 if TYPE_CHECKING:
     from ltsa_pump_inventory_db_upsert import DatabaseRunner
@@ -67,12 +67,9 @@ class LTSAAnalyticsService:
 
         # Area scoping (security / tenancy), on the canonical area.
         area_expr = canonical_area_sql(f"{pump_alias}.area")
-        if scope is not None:
-            if scope:
-                values = ", ".join(_sql(a) for a in sorted(scope))
-                clauses.append(f"{area_expr} IN ({values})")
-            else:
-                clauses.append("FALSE")
+        scope_condition = scope_sql_condition(scope, area_expr, _sql)
+        if scope_condition:
+            clauses.append(scope_condition)
 
         # Specific Area filter (or contract_area) -- an additional narrowing
         # only, always ANDed with the scope clause above. The dashboard
@@ -103,13 +100,8 @@ class LTSAAnalyticsService:
     def get_filter_options(self, *, scope: frozenset[str] | None = None) -> dict[str, Any]:
         """Returns distinct filter options available in the live database."""
         area_expr = canonical_area_sql("area")
-        scope_clause = ""
-        if scope is not None:
-            if scope:
-                values = ", ".join(_sql(a) for a in sorted(scope))
-                scope_clause = f"WHERE {area_expr} IN ({values})"
-            else:
-                scope_clause = "WHERE FALSE"
+        scope_condition = scope_sql_condition(scope, area_expr, _sql)
+        scope_clause = f"WHERE {scope_condition}" if scope_condition else ""
 
         area_rows = _json_query(
             f"""

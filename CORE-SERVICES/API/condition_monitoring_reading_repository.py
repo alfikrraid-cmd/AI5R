@@ -26,6 +26,7 @@ if str(_INGESTION_DIR) not in sys.path:
 from ltsa_pump_inventory_db_upsert import _json_query, _sql  # noqa: E402
 
 from .pm_cm_workflow_service import DRAFT, RETURNED_FOR_CORRECTION  # noqa: E402
+from .pump_area_scope import scope_sql_condition  # noqa: E402
 
 if TYPE_CHECKING:
     from ltsa_pump_inventory_db_upsert import DatabaseRunner
@@ -121,13 +122,8 @@ class ConditionMonitoringReadingRepository:
         )
 
     def list_all(self, *, scope: frozenset[str] | None = None, limit: int = 25, offset: int = 0) -> dict:
-        scope_clause = ""
-        if scope is not None:
-            if scope:
-                values = ", ".join(_sql(area) for area in sorted(scope))
-                scope_clause = f"WHERE pump.area IN ({values})"
-            else:
-                scope_clause = "WHERE FALSE"
+        scope_condition = scope_sql_condition(scope, "pump.area", _sql)
+        scope_clause = f"WHERE {scope_condition}" if scope_condition else ""
         rows = _json_query(
             "SELECT r.*, pump.area, pump.name AS pump_name "
             "FROM condition_monitoring_reading r "

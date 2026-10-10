@@ -159,9 +159,12 @@ def test_pertamina_engineer_gains_no_internal_admin_write_or_master_permission()
         "audit.read_full",
     ):
         assert forbidden not in perms
+    # LTSA_PERTAMINA_RBAC_SCOPE_AND_REQUEST_R2 -- VIEW + REQUEST: the two
+    # request permissions only submit an ltsa_work_request.
     assert perms == frozenset(
         {"pump.read", "seal.read", "inventory.read", "maintenance.read", "condition.read",
-         "drawing.read", "engineering_ai.ask", "dashboard.read"}
+         "drawing.read", "engineering_ai.ask", "dashboard.read",
+         "maintenance.request", "installation.request"}
     )
 
 
@@ -329,13 +332,15 @@ def test_census_fixture_matches_frozen_production_totals():
     assert len(PRODUCTION_AREA_CENSUS) == 22
 
 
-def test_pertamina_all_counts_finite_six_including_aliases_and_excludes_other_areas():
+def test_pertamina_all_counts_every_ltsa_pump_including_other_area_labels():
+    # LTSA_PERTAMINA_RBAC_SCOPE_AND_REQUEST_R2 -- ALL is every LTSA asset
+    # (was the finite six areas only: 230 of 252 in this census fixture).
     data = _pump_count(_pertamina("ALL"))
-    assert data["pump_count"] == 230
-    for outside in ("FRAKSINASI", "Fraksinasi", "REAKTOR", "Reaktor", "DCU", "AMINE", "CDU", "DHDT",
-                    "H2 PLAN", "ITY", "PL1", "PL2", "VACUUM"):
-        assert outside not in data["area_distribution"]
-    # Fleet-wide seal stock is withheld from a scoped overview.
+    assert data["pump_count"] == 252
+    for other in ("FRAKSINASI", "Fraksinasi", "REAKTOR", "Reaktor", "DCU", "AMINE", "CDU", "DHDT",
+                  "H2 PLAN", "ITY", "PL1", "PL2", "VACUUM"):
+        assert other in data["area_distribution"]
+    # Still a scope, not unrestricted: fleet-wide seal stock stays withheld.
     assert data["seal_stock_count"] is None
 
 

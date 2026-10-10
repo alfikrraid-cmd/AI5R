@@ -54,6 +54,7 @@ from API.installation_gateway import InstallationGateway
 from API.ltsa_analytics_service import LTSAAnalyticsService
 from API.ltsa_knowledge_service import LTSAKnowledgeService
 from API.asset_registry_repository import AssetRegistryRepository
+from API.work_request_repository import WorkRequestRepository
 from API.recommendation_engine import RecommendationEngine
 from API.maintenance_history_gateway import MaintenanceHistoryGateway
 from API.pm_cm_evidence_repository import PMCMEvidenceRepository
@@ -170,6 +171,8 @@ def _resolve_import_database_config() -> DatabaseConfig:
 _import_database_runner = DatabaseRunner(_resolve_import_database_config())
 _mechanical_seal_stock_repository = MechanicalSealStockRepository(_import_database_runner)
 _asset_registry_repository = AssetRegistryRepository(_import_database_runner)
+# LTSA_PERTAMINA_RBAC_SCOPE_AND_REQUEST_R2 -- PM / CM / Installation requests.
+_work_request_repository = WorkRequestRepository(_import_database_runner)
 
 # MWO-LTSA-AI-COPILOT-NATURAL-LANGUAGE-ROUTING-017A -- same singleton
 # DatabaseRunner as above, not a second connection. Copilot's fleet-wide
@@ -522,6 +525,10 @@ def get_ltsa_knowledge_service() -> LTSAKnowledgeService:
 
 def get_asset_registry_repository() -> AssetRegistryRepository:
     return _asset_registry_repository
+
+
+def get_work_request_repository() -> WorkRequestRepository:
+    return _work_request_repository
 
 
 def get_equipment_timeline_service() -> EquipmentTimelineService:

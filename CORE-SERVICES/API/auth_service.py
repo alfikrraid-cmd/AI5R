@@ -183,11 +183,18 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "internal_component.read",
         }
     ),
+    # LTSA_PERTAMINA_RBAC_SCOPE_AND_REQUEST_R2 -- VIEW + REQUEST only.
+    # maintenance.request / installation.request only submit an
+    # ltsa_work_request (PM/CM and Installation respectively); they never
+    # create or change a work order, PM/CM record or installation record --
+    # that stays behind maintenance.write / installation.write, which this
+    # role does not have.
     "PERTAMINA_ENGINEER": frozenset(
         {
             "pump.read", "seal.read", "inventory.read", "maintenance.read",
             "condition.read", "drawing.read", "engineering_ai.ask",
             "dashboard.read",
+            "maintenance.request", "installation.request",
         }
     ),
     "PERTAMINA_VIEWER": frozenset(
@@ -494,6 +501,48 @@ def resolve_identity(
 _UNRESTRICTED_ROLES = frozenset({"SUPERUSER", "TAP_ADMIN", "TAP_ENGINEER", "JOHN_CRANE_ENGINEER"})
 
 
+# LTSA_PERTAMINA_RBAC_SCOPE_AND_REQUEST_R2 -- roles whose asset visibility
+# comes from organization_memberships.data_scope_type/value. Every other role
+# carries no data scope (TAP/JC are unrestricted; BI_READER is path-confined).
+SCOPE_DRIVEN_ROLES: frozenset[str] = frozenset({"PERTAMINA_ENGINEER", "PERTAMINA_VIEWER"})
+
+
+class DataScopeValidationError(ValueError):
+    """A membership data scope that does not fit the governed vocabulary."""
+
+
+def validate_membership_data_scope(
+    role: str, scope_type: str | None, scope_value: str | None
+) -> tuple[str | None, str | None]:
+    """The (data_scope_type, data_scope_value) to store for a new membership.
+    Scope-driven roles require ALL (no value), AREA (one of AREA_CODES) or
+    MA (MA1 / MA2 / MA3_4); nothing is defaulted. Other roles must not carry
+    a scope. Raises DataScopeValidationError otherwise."""
+    from .pump_area_scope import AREA_CODES, PERTAMINA_MA_SCOPE_VALUES
+
+    scope_type = (scope_type or "").strip().upper() or None
+    scope_value = (scope_value or "").strip().upper() or None
+    if role not in SCOPE_DRIVEN_ROLES:
+        if scope_type or scope_value:
+            raise DataScopeValidationError(f"Role {role} does not take a data scope")
+        return None, None
+    if scope_type is None:
+        raise DataScopeValidationError(f"Role {role} requires a data scope (ALL, AREA or MA)")
+    if scope_type == "ALL":
+        if scope_value is not None:
+            raise DataScopeValidationError("Data scope ALL takes no value")
+        return "ALL", None
+    if scope_type == "AREA":
+        if scope_value not in AREA_CODES:
+            raise DataScopeValidationError(f"Unknown area: {scope_value}")
+        return "AREA", scope_value
+    if scope_type == "MA":
+        if scope_value not in PERTAMINA_MA_SCOPE_VALUES:
+            raise DataScopeValidationError(f"Unknown maintenance area: {scope_value}")
+        return "MA", scope_value
+    raise DataScopeValidationError(f"Unknown data scope type: {scope_type}")
+
+
 def resolve_area_scope(identity: "AuthenticatedIdentity") -> frozenset[str] | None:
     """Returns the set of physical Area codes `identity` may see, or None
     for "unrestricted" (every non-Pertamina role, always). A Pertamina
@@ -508,21 +557,32 @@ def resolve_area_scope(identity: "AuthenticatedIdentity") -> frozenset[str] | No
     auth_service, but this keeps the dependency direction explicit)."""
     if identity.role in _UNRESTRICTED_ROLES:
         return None
-    from .pump_area_scope import AREA_CODES, MA_AREA_GROUPS
+    from .pump_area_scope import ALL_ASSETS_SCOPE, AREA_CODES, MA_AREA_GROUPS, MA_SCOPE_GROUPS
 
+    # LTSA_PERTAMINA_RBAC_SCOPE_AND_REQUEST_R2 -- ALL is every legitimate
+    # LTSA asset (ALL_ASSETS_SCOPE), no longer only assets whose raw area
+    # label happens to be one of AREA_CODES. MA resolves the governed
+    # MA1 / MA2 / MA3_4 values and, unchanged, the legacy MA3 / MA4 rows
+    # (new users can only be created with the governed values). Anything
+    # else still fails closed.
     scope_type = identity.data_scope_type.strip().upper() if identity.data_scope_type else None
     if scope_type == "ALL":
-        return AREA_CODES
+        return ALL_ASSETS_SCOPE
     if scope_type == "AREA" and identity.data_scope_value in AREA_CODES:
         return frozenset({identity.data_scope_value})
-    if scope_type == "MA" and identity.data_scope_value in MA_AREA_GROUPS:
-        return MA_AREA_GROUPS[identity.data_scope_value]
+    if scope_type == "MA":
+        ma_areas = MA_SCOPE_GROUPS.get(identity.data_scope_value) or MA_AREA_GROUPS.get(identity.data_scope_value)
+        if ma_areas:
+            return ma_areas
     return frozenset()
 
 
 __all__ = [
     "ROLE_PERMISSIONS",
     "resolve_area_scope",
+    "SCOPE_DRIVEN_ROLES",
+    "DataScopeValidationError",
+    "validate_membership_data_scope",
     "permissions_for_role",
     "AuthConfigurationError",
     "AuthenticationError",

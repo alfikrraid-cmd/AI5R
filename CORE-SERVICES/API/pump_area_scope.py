@@ -34,6 +34,33 @@ MA_AREA_GROUPS: dict[str, frozenset[str]] = {
     "MA4": frozenset({"OM"}),
 }
 
+# LTSA_PERTAMINA_RBAC_SCOPE_AND_REQUEST_R2 -- the governed Pertamina MA scope
+# values (Chief-locked): MA1, MA2 and the combined MA3_4. MA3_4 is exactly
+# the union of the existing MA3 and MA4 groups -- no new area membership.
+# MA3/MA4 stay in MA_AREA_GROUPS for resolve_area_ma()'s per-area MA buckets.
+PERTAMINA_MA_SCOPE_VALUES: tuple[str, ...] = ("MA1", "MA2", "MA3_4")
+MA_SCOPE_GROUPS: dict[str, frozenset[str]] = {
+    "MA1": MA_AREA_GROUPS["MA1"],
+    "MA2": MA_AREA_GROUPS["MA2"],
+    "MA3_4": MA_AREA_GROUPS["MA3"] | MA_AREA_GROUPS["MA4"],
+}
+
+
+class AllAssetsScope(frozenset):
+    """data_scope_type=ALL for a Pertamina role: every legitimate LTSA asset,
+    whatever its raw area label (REAKTOR, FRAKSINASI, ...). Still a scope,
+    never the unrestricted None -- TAP-only behavior keyed on `scope is None`
+    (internal stock, unfiltered fleet counts) stays hidden. Its members are
+    the six AREA_CODES, so area pickers and an explicit single-area filter
+    keep working; only the membership test differs (is_area_in_scope)."""
+
+
+ALL_ASSETS_SCOPE: frozenset[str] = AllAssetsScope(AREA_CODES)
+
+
+def is_all_assets_scope(scope: frozenset[str] | None) -> bool:
+    return isinstance(scope, AllAssetsScope)
+
 
 _AREA_TOKEN_MAP: dict[str, str] = {
     "HOC": "HOC",
@@ -107,8 +134,24 @@ def is_area_in_scope(area: str | None, scope: frozenset[str] | None) -> bool:
         return True
     if area is None:
         return False
+    if is_all_assets_scope(scope):
+        return True
     canonical = normalize_area_token(area) or area.strip().upper()
     return canonical in scope
+
+
+def scope_sql_condition(scope: frozenset[str] | None, column: str, quote: Any) -> str | None:
+    """The SQL counterpart of is_area_in_scope for a nullable joined area
+    `column`: None = no condition (unrestricted); ALL = the record resolves
+    to an asset (column IS NOT NULL); empty = FALSE; otherwise membership
+    in the scope's codes, quoted with the caller's own `quote` (_sql)."""
+    if scope is None:
+        return None
+    if is_all_assets_scope(scope):
+        return f"{column} IS NOT NULL"
+    if not scope:
+        return "FALSE"
+    return f"{column} IN ({', '.join(quote(area) for area in sorted(scope))})"
 
 
 def filter_records_by_scope(
@@ -262,6 +305,12 @@ __all__ = [
     "authorized_area_options",
     "canonical_area_sql",
     "MA_AREA_GROUPS",
+    "MA_SCOPE_GROUPS",
+    "PERTAMINA_MA_SCOPE_VALUES",
+    "AllAssetsScope",
+    "ALL_ASSETS_SCOPE",
+    "is_all_assets_scope",
+    "scope_sql_condition",
     "resolve_ma_areas",
     "resolve_area_ma",
     "format_area_display",

@@ -42,7 +42,7 @@ from API.auth_service import (  # noqa: E402
     AuthenticatedIdentity,
     resolve_area_scope,
 )
-from API.pump_area_scope import AREA_CODES, is_area_in_scope  # noqa: E402
+from API.pump_area_scope import AREA_CODES, is_all_assets_scope, is_area_in_scope  # noqa: E402
 
 client = TestClient(app)
 
@@ -154,13 +154,16 @@ class TestPertaminaEngineerResolveAreaScope:
     def test_negative_all_scope_is_never_none_unrestricted(self):
         # Even with ALL scope, the resolved scope must NOT be None.
         # None grants superuser bypass across arbitrary values.
-        # AREA_CODES explicitly bounds visibility to valid LTSA physical areas.
+        # LTSA_PERTAMINA_RBAC_SCOPE_AND_REQUEST_R2 -- ALL is the governed
+        # all-assets scope: every LTSA asset whatever its raw area label,
+        # never an asset with no area, never the unrestricted None.
         ident = _make_identity("PERTAMINA_ENGINEER", data_scope_type="ALL")
         scope = resolve_area_scope(ident)
         assert scope is not None
         assert isinstance(scope, frozenset)
+        assert is_all_assets_scope(scope)
         assert scope == AREA_CODES
-        assert is_area_in_scope("NON_LTSA_AREA", scope) is False
+        assert is_area_in_scope("REAKTOR", scope) is True
         assert is_area_in_scope(None, scope) is False
 
     def test_null_scope_fails_closed(self):

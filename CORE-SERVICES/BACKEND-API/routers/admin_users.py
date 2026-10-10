@@ -12,7 +12,13 @@ from API.auth_admin_service import (
     guard_last_superuser,
 )
 from API.auth_password import PasswordPolicyError, hash_password, validate_password_policy
-from API.auth_service import ROLE_PERMISSIONS, can_delegate_role, normalize_username
+from API.auth_service import (
+    ROLE_PERMISSIONS,
+    DataScopeValidationError,
+    can_delegate_role,
+    normalize_username,
+    validate_membership_data_scope,
+)
 from API.password_reset_service import PasswordResetService
 from API.whatsapp_registration_service import (
     IdentityNotPendingError,
@@ -187,6 +193,15 @@ def create_user(
     except DelegationDeniedError as error:
         raise HTTPException(status_code=403, detail=str(error))
 
+    # LTSA_PERTAMINA_RBAC_SCOPE_AND_REQUEST_R2 -- the scope only narrows which
+    # assets a scope-driven role sees; it never adds a permission.
+    try:
+        data_scope_type, data_scope_value = validate_membership_data_scope(
+            payload.role, payload.data_scope_type, payload.data_scope_value
+        )
+    except DataScopeValidationError as error:
+        raise HTTPException(status_code=422, detail=str(error))
+
     target_organization_id = _target_create_organization(current_user, payload.organization_id)
     if auth_repository.find_organization_by_id(target_organization_id) is None:
         raise HTTPException(status_code=404, detail="Organization not found")
@@ -230,6 +245,9 @@ def create_user(
     }
     if payload.name is not None:
         kwargs["name"] = payload.name
+    if data_scope_type is not None:
+        kwargs["data_scope_type"] = data_scope_type
+        kwargs["data_scope_value"] = data_scope_value
     try:
         try:
             user_id = auth_repository.create_user_with_membership(**kwargs)
@@ -245,6 +263,8 @@ def create_user(
         "email": email,
         "organization_id": target_organization_id,
         "role": payload.role,
+        "data_scope_type": data_scope_type,
+        "data_scope_value": data_scope_value,
         "credential_mode": credential_mode,
         "must_change_password": True,
     }

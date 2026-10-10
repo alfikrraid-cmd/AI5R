@@ -11,6 +11,7 @@ if str(_INGESTION_DIR) not in sys.path:
     sys.path.insert(0, str(_INGESTION_DIR))
 
 from ltsa_pump_inventory_db_upsert import _json_query, _sql  # noqa: E402
+from .pump_area_scope import scope_sql_condition  # noqa: E402
 
 if TYPE_CHECKING:
     from ltsa_pump_inventory_db_upsert import DatabaseRunner
@@ -25,12 +26,8 @@ def _detail(message: str, row: dict | None) -> dict:
 
 
 def _scope_where(column: str, scope: frozenset[str] | None) -> str:
-    if scope is None:
-        return ""
-    if not scope:
-        return "WHERE FALSE"
-    values = ", ".join(_sql(area) for area in sorted(scope))
-    return f"WHERE {column} IN ({values})"
+    condition = scope_sql_condition(scope, column, _sql)
+    return f"WHERE {condition}" if condition else ""
 
 
 def _scope_and(column: str, scope: frozenset[str] | None) -> str:

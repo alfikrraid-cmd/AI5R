@@ -83,10 +83,47 @@ const CREDENTIAL_MODES = [
   { value: "TEMPORARY_PASSWORD", label: "Temporary password (must change at first sign-in)" },
 ];
 
+// LTSA_PERTAMINA_RBAC_SCOPE_AND_REQUEST_R2 -- role decides what a user may do,
+// access scope decides which assets. Only these roles take a scope; the
+// backend (auth_service.validate_membership_data_scope) is authoritative.
+const SCOPE_DRIVEN_ROLES = ["PERTAMINA_ENGINEER", "PERTAMINA_VIEWER"];
+
+const ACCESS_SCOPES = [
+  { value: "ALL", label: "All Assets" },
+  { value: "AREA", label: "Area Engineer" },
+  { value: "MA", label: "Maintenance Area" },
+];
+
+const SCOPE_VALUE_OPTIONS = {
+  AREA: {
+    placeholder: "Select area",
+    options: [
+      { value: "HOC", label: "HOC" },
+      { value: "HSC", label: "HSC" },
+      { value: "S_PAKNING", label: "S. Pakning" },
+      { value: "HCC", label: "HCC" },
+      { value: "OM", label: "OM" },
+      { value: "UTL", label: "UTL" },
+    ],
+  },
+  MA: {
+    placeholder: "Select maintenance area",
+    options: [
+      { value: "MA1", label: "MA 1" },
+      { value: "MA2", label: "MA 2" },
+      { value: "MA3_4", label: "MA 3 & MA 4" },
+    ],
+  },
+};
+
+function isScopeDrivenRole(role) {
+  return SCOPE_DRIVEN_ROLES.includes(role);
+}
+
 function emptyCreateForm(organizationId, role) {
   return {
     username: "", name: "", email: "", password: "", credentialMode: "EMAIL_SET_PASSWORD",
-    organizationId, role,
+    organizationId, role, scopeType: "", scopeValue: "",
   };
 }
 
@@ -205,6 +242,15 @@ export default function AdminUsersView({ canManageUsers = false, session = null 
         return;
       }
     }
+    const scoped = isScopeDrivenRole(createForm.role);
+    if (scoped && !createForm.scopeType) {
+      setActionError("Select an access scope for this role.");
+      return;
+    }
+    if (scoped && createForm.scopeType !== "ALL" && !createForm.scopeValue) {
+      setActionError("Select the area or maintenance area for this access scope.");
+      return;
+    }
     const payload = {
       username: createForm.username,
       email: createForm.email || null,
@@ -217,6 +263,10 @@ export default function AdminUsersView({ canManageUsers = false, session = null 
     }
     if (createForm.name) {
       payload.name = createForm.name;
+    }
+    if (scoped) {
+      payload.dataScopeType = createForm.scopeType;
+      payload.dataScopeValue = createForm.scopeType === "ALL" ? null : createForm.scopeValue;
     }
     setNotice(null);
     setShowCreate(false);
@@ -356,12 +406,38 @@ export default function AdminUsersView({ canManageUsers = false, session = null 
           <select
             aria-label="Role"
             value={createForm.role}
-            onChange={(e) => setCreateForm((f) => ({ ...f, role: e.target.value }))}
+            onChange={(e) => setCreateForm((f) => ({ ...f, role: e.target.value, scopeType: "", scopeValue: "" }))}
           >
             {roleOptions.map((role) => (
               <option key={role} value={role}>{role}</option>
             ))}
           </select>
+          {isScopeDrivenRole(createForm.role) && (
+            <select
+              aria-label="Access Scope"
+              value={createForm.scopeType}
+              onChange={(e) => setCreateForm((f) => ({ ...f, scopeType: e.target.value, scopeValue: "" }))}
+              required
+            >
+              <option value="">Select access scope</option>
+              {ACCESS_SCOPES.map((scope) => (
+                <option key={scope.value} value={scope.value}>{scope.label}</option>
+              ))}
+            </select>
+          )}
+          {isScopeDrivenRole(createForm.role) && SCOPE_VALUE_OPTIONS[createForm.scopeType] && (
+            <select
+              aria-label="Scope value"
+              value={createForm.scopeValue}
+              onChange={(e) => setCreateForm((f) => ({ ...f, scopeValue: e.target.value }))}
+              required
+            >
+              <option value="">{SCOPE_VALUE_OPTIONS[createForm.scopeType].placeholder}</option>
+              {SCOPE_VALUE_OPTIONS[createForm.scopeType].options.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          )}
           {/* JC organization assignment is explicit for SUPERUSER and follows
               the current organization for TAP_ADMIN; the backend remains
               authoritative for organization and role delegation. */}

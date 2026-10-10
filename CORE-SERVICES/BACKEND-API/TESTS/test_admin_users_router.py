@@ -77,10 +77,11 @@ class FakeAuthRepository:
             {"user_id": user_id, "organization_id": organization_id, "role": role, "created_by": created_by}
         )
 
-    def create_user_with_membership(self, *, username, email, password_hash, organization_id, role, created_by=None, must_change_password=False):
+    def create_user_with_membership(self, *, username, email, password_hash, organization_id, role, created_by=None, must_change_password=False, data_scope_type=None, data_scope_value=None):
         user_id = self.create_user(username=username, email=email, password_hash=password_hash, created_by=created_by)
         self.created_users[-1]["must_change_password"] = must_change_password
         self.create_membership(user_id=user_id, organization_id=organization_id, role=role, created_by=created_by)
+        self.created_memberships[-1].update({"data_scope_type": data_scope_type, "data_scope_value": data_scope_value})
         return user_id
 
     def find_active_membership_for_user(self, user_id):
@@ -657,3 +658,101 @@ class TestSetPasswordLinkEndpoint:
         response = client.post("/api/admin/users/u-1/set-password-link")
         assert response.status_code == 403
         assert service.calls == []
+
+
+# LTSA_PERTAMINA_RBAC_SCOPE_AND_REQUEST_R2 -- governed create-time data scope.
+def _create_pertamina(repo, *, role="PERTAMINA_ENGINEER", scope_type=None, scope_value=None, organization_id="org-pertamina"):
+    body = {"username": "yohanes.test", "password": "Temp-Passw0rd-2026", "organization_id": organization_id, "role": role}
+    if scope_type is not None:
+        body["data_scope_type"] = scope_type
+    if scope_value is not None:
+        body["data_scope_value"] = scope_value
+    return client.post("/api/admin/users", json=body)
+
+
+class TestCreateUserDataScope:
+    @pytest.mark.parametrize(
+        ("scope_type", "scope_value", "stored"),
+        [
+            ("ALL", None, ("ALL", None)),
+            ("all", None, ("ALL", None)),
+            ("AREA", "HCC", ("AREA", "HCC")),
+            ("AREA", "S_PAKNING", ("AREA", "S_PAKNING")),
+            ("MA", "MA1", ("MA", "MA1")),
+            ("MA", "MA3_4", ("MA", "MA3_4")),
+        ],
+    )
+    def test_superuser_creates_pertamina_engineer_with_governed_scope(self, scope_type, scope_value, stored):
+        repo = FakeAuthRepository(organizations={"org-tap", "org-pertamina"})
+        _override(role="SUPERUSER", repo=repo)
+        response = _create_pertamina(repo, scope_type=scope_type, scope_value=scope_value)
+        assert response.status_code == 200, response.text
+        membership = repo.created_memberships[-1]
+        assert (membership["data_scope_type"], membership["data_scope_value"]) == stored
+        assert membership["role"] == "PERTAMINA_ENGINEER"
+        assert membership["organization_id"] == "org-pertamina"
+        assert (response.json()["data_scope_type"], response.json()["data_scope_value"]) == stored
+
+    @pytest.mark.parametrize(
+        ("scope_type", "scope_value"),
+        [
+            (None, None),            # missing scope: never defaulted to ALL
+            ("ALL", "HCC"),          # ALL takes no value
+            ("AREA", None),
+            ("AREA", "REAKTOR"),     # raw area label, not a governed area
+            ("MA", None),
+            ("MA", "MA3"),           # legacy value, not in the governed MA vocabulary
+            ("MA", "MA4"),
+            ("ZONE", "Z1"),
+        ],
+    )
+    def test_missing_or_invalid_pertamina_scope_is_rejected_and_creates_nothing(self, scope_type, scope_value):
+        repo = FakeAuthRepository(organizations={"org-tap", "org-pertamina"})
+        _override(role="SUPERUSER", repo=repo)
+        response = _create_pertamina(repo, scope_type=scope_type, scope_value=scope_value)
+        assert response.status_code == 422
+        assert repo.created_users == []
+        assert repo.created_memberships == []
+
+    def test_pertamina_viewer_is_also_scope_driven(self):
+        repo = FakeAuthRepository(organizations={"org-tap", "org-pertamina"})
+        _override(role="SUPERUSER", repo=repo)
+        assert _create_pertamina(repo, role="PERTAMINA_VIEWER").status_code == 422
+        assert _create_pertamina(repo, role="PERTAMINA_VIEWER", scope_type="AREA", scope_value="HOC").status_code == 200
+
+    @pytest.mark.parametrize("role", ["TAP_ENGINEER", "JOHN_CRANE_ENGINEER", "TAP_ADMIN", "SUPERUSER"])
+    def test_non_scope_roles_reject_a_scope_and_store_none_without_one(self, role):
+        repo = FakeAuthRepository()
+        _override(role="SUPERUSER", repo=repo)
+        rejected = client.post(
+            "/api/admin/users",
+            json={"username": "x.user", "password": "Temp-Passw0rd-2026", "organization_id": "org-tap", "role": role, "data_scope_type": "ALL"},
+        )
+        assert rejected.status_code == 422
+        assert repo.created_memberships == []
+        accepted = client.post(
+            "/api/admin/users",
+            json={"username": "x.user", "password": "Temp-Passw0rd-2026", "organization_id": "org-tap", "role": role},
+        )
+        assert accepted.status_code == 200
+        assert repo.created_memberships[-1]["data_scope_type"] is None
+
+    def test_scope_never_changes_the_role_or_its_permissions(self):
+        repo = FakeAuthRepository(organizations={"org-tap", "org-pertamina"})
+        _override(role="SUPERUSER", repo=repo)
+        assert _create_pertamina(repo, scope_type="ALL").status_code == 200
+        assert repo.created_memberships[-1]["role"] == "PERTAMINA_ENGINEER"
+        assert "admin.users" not in ROLE_PERMISSIONS["PERTAMINA_ENGINEER"]
+        assert "maintenance.write" not in ROLE_PERMISSIONS["PERTAMINA_ENGINEER"]
+
+    def test_tap_admin_still_cannot_create_a_scoped_pertamina_user(self):
+        repo = FakeAuthRepository(organizations={"org-tap", "org-pertamina"})
+        _override(role="TAP_ADMIN", repo=repo)
+        assert _create_pertamina(repo, scope_type="ALL").status_code == 403
+        assert repo.created_memberships == []
+
+    def test_unknown_organization_still_rejected_with_a_valid_scope(self):
+        repo = FakeAuthRepository()
+        _override(role="SUPERUSER", repo=repo)
+        assert _create_pertamina(repo, scope_type="ALL", organization_id="org-missing").status_code == 404
+        assert repo.created_memberships == []

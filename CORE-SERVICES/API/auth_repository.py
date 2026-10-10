@@ -195,6 +195,8 @@ class AuthRepository:
         role: str,
         created_by: str | None = None,
         must_change_password: bool = False,
+        data_scope_type: str | None = None,
+        data_scope_value: str | None = None,
     ) -> str:
         rows = json.loads(
             self._runner.query_scalar(
@@ -203,8 +205,8 @@ class AuthRepository:
                 f"({_sql(normalize_username(username))}, {_sql(name)}, {_sql(email.lower() if email else None)}, {_sql(password_hash)}, {_sql(bool(must_change_password))}, {_sql(created_by)}, {_sql(created_by)}) "
                 "RETURNING id"
                 "), ins_membership AS ("
-                "INSERT INTO organization_memberships (user_id, organization_id, role, created_by, updated_by) "
-                f"SELECT id, {_sql(organization_id)}, {_sql(role)}, {_sql(created_by)}, {_sql(created_by)} FROM ins_user "
+                "INSERT INTO organization_memberships (user_id, organization_id, role, data_scope_type, data_scope_value, created_by, updated_by) "
+                f"SELECT id, {_sql(organization_id)}, {_sql(role)}, {_sql(data_scope_type)}, {_sql(data_scope_value)}, {_sql(created_by)}, {_sql(created_by)} FROM ins_user "
                 "RETURNING user_id"
                 ") SELECT COALESCE(json_agg(row_to_json(t))::text, '[]') "
                 "FROM (SELECT u.id FROM ins_user u JOIN ins_membership m ON m.user_id = u.id) t;"

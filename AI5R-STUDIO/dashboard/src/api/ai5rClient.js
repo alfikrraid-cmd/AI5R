@@ -1186,10 +1186,14 @@ export async function getAdminUsers() {
 // "EMAIL_SET_PASSWORD" (no password; the user gets a set-password email) or
 // "TEMPORARY_PASSWORD" (admin-supplied password the user must change at
 // first sign-in). Omitted, the backend infers it from whether a password is sent.
-export async function createAdminUser({ username, name, email, password, credentialMode, organizationId, role }) {
+export async function createAdminUser({ username, name, email, password, credentialMode, organizationId, role, dataScopeType, dataScopeValue }) {
     const body = { username, name: name || null, email: email || null, organization_id: organizationId, role };
     if (credentialMode) body.credential_mode = credentialMode;
     if (password) body.password = password;
+    if (dataScopeType) {
+        body.data_scope_type = dataScopeType;
+        body.data_scope_value = dataScopeValue ?? null;
+    }
     return _adminUsersRequest(`${API_URL}/api/admin/users`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

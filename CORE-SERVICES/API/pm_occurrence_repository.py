@@ -34,6 +34,7 @@ if str(_INGESTION_DIR) not in sys.path:
 from ltsa_pump_inventory_db_upsert import _json_query, _sql  # noqa: E402
 
 from .pm_cm_workflow_service import DRAFT, RETURNED_FOR_CORRECTION  # noqa: E402
+from .pump_area_scope import scope_sql_condition  # noqa: E402
 
 if TYPE_CHECKING:
     from ltsa_pump_inventory_db_upsert import DatabaseRunner
@@ -95,13 +96,8 @@ class PMOccurrenceRepository:
         # caller needing true pagination can still lower it/page with
         # offset; this is a read-only, additive method, no change to any
         # existing method's behavior.
-        scope_clause = ""
-        if scope is not None:
-            if scope:
-                values = ", ".join(_sql(area) for area in sorted(scope))
-                scope_clause = f"AND pump.area IN ({values})"
-            else:
-                scope_clause = "AND FALSE"
+        scope_condition = scope_sql_condition(scope, "pump.area", _sql)
+        scope_clause = f"AND {scope_condition}" if scope_condition else ""
         columns = ", ".join(f"r.{col}" for col in _SELECT_COLUMNS.split(", "))
         return _json_query(
             f"SELECT {columns}, pump.area "

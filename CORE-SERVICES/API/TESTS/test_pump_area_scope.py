@@ -18,6 +18,7 @@ from API.pump_area_scope import (  # noqa: E402
     AREA_CODES,
     MA_AREA_GROUPS,
     filter_records_by_scope,
+    is_all_assets_scope,
     is_area_in_scope,
 )
 
@@ -120,15 +121,21 @@ class TestResolveAreaScopePertaminaByAll:
 
     def test_pertamina_engineer_is_never_unrestricted_even_with_all_scope(self):
         # CRITICAL NEGATIVE TEST:
-        # resolve_area_scope must return AREA_CODES, NEVER None.
-        # None grants unrestricted superuser status, bypassing area bounds.
-        # AREA_CODES explicitly bounds access to valid LTSA physical areas.
+        # resolve_area_scope must NEVER return None for a Pertamina role --
+        # None is the TAP/JC unrestricted marker that also unlocks TAP-only
+        # data (internal stock, unfiltered fleet counts).
+        # LTSA_PERTAMINA_RBAC_SCOPE_AND_REQUEST_R2 -- ALL is the governed
+        # all-assets scope: every LTSA asset, including raw area labels
+        # outside AREA_CODES (REAKTOR, FRAKSINASI, ...), but still never an
+        # asset without an area.
         identity = _identity("PERTAMINA_ENGINEER", data_scope_type="ALL")
         scope = resolve_area_scope(identity)
         assert scope is not None
         assert isinstance(scope, frozenset)
+        assert is_all_assets_scope(scope)
         assert scope == AREA_CODES
-        assert is_area_in_scope("NON_LTSA_AREA", scope) is False
+        assert is_area_in_scope("REAKTOR", scope) is True
+        assert is_area_in_scope("FRAKSINASI", scope) is True
         assert is_area_in_scope(None, scope) is False
         assert is_area_in_scope("HOC", scope) is True
         assert is_area_in_scope("HSC", scope) is True

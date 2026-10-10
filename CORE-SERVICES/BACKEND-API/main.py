@@ -68,6 +68,7 @@ from routers import (
     record_edit,
     seal,
     work_orders,
+    work_request,
     whatsapp_group_agent,
     whatsapp_group_agent_admin,
     whatsapp_intake,
@@ -124,6 +125,7 @@ app.include_router(dashboard.router)
 app.include_router(pumps.router)
 app.include_router(seal.router)
 app.include_router(work_orders.router)
+app.include_router(work_request.router)
 app.include_router(maintenance.router)
 app.include_router(copilot.router)
 app.include_router(import_router.router)
