@@ -1,0 +1,144 @@
+/* ==========================================================================
+   CurrentInstallationCard -- LTSA_CURRENT_INSTALLATION_ASSET360_UI_R4
+   Responsive card for authoritative Current Mechanical Seal Installation.
+   Side-by-side DE/NDE on desktop, stacked on mobile.
+   Neutral indicator for configured vs installed variant differences.
+   ========================================================================== */
+
+.current-installation-card {
+  margin-bottom: var(--space-4, 16px);
+  background: var(--surface, #ffffff);
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.1));
+  border-radius: var(--radius-md, 12px);
+  padding: var(--space-4, 16px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+}
+
+.current-installation-card.is-loading {
+  padding: var(--space-5, 24px);
+  gap: var(--space-2, 8px);
+}
+
+.current-installation-card.is-error {
+  border-color: var(--status-critical, #d93025);
+  background: color-mix(in oklab, var(--status-critical, #d93025) 5%, var(--surface, #ffffff));
+}
+
+.current-installation-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3, 12px);
+}
+
+.current-installation-header .knowledge-seal-subhead {
+  margin: 0;
+}
+
+.positions-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4, 16px);
+}
+
+@media (max-width: 768px) {
+  .positions-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.positions-single {
+  display: flex;
+  flex-direction: column;
+}
+
+.position-block {
+  background: var(--surface-2, rgba(127, 127, 127, 0.05));
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.08));
+  border-radius: var(--radius-sm, 8px);
+  padding: var(--space-4, 16px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+}
+
+.position-block.is-empty {
+  opacity: 0.85;
+}
+
+.position-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2, 8px);
+  padding-bottom: var(--space-2, 8px);
+  border-bottom: 1px solid var(--border, rgba(0, 0, 0, 0.08));
+}
+
+.position-title-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  flex-wrap: wrap;
+}
+
+.position-title {
+  margin: 0;
+  font-size: var(--text-sm, 13px);
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.position-subtext,
+.notice-text {
+  margin: 0;
+  font-size: var(--text-sm, 13px);
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.position-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.seal-diff-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--muted, #666) 12%, transparent);
+  color: var(--fg, #222);
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.12));
+  letter-spacing: 0.01em;
+}
+
+.drawing-action-group {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+}
+
+.drawing-viewer-btn {
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: var(--accent, #1a73e8);
+}
+
+.drawing-viewer-btn:hover {
+  opacity: 0.8;
+}
+
+.current-installation-empty-notice {
+  padding: var(--space-2, 8px) 0;
+}
+

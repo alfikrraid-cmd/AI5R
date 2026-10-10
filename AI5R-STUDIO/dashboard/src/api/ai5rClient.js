@@ -1880,3 +1880,14 @@ export async function downloadDrawingFile(documentCode, filenameOverride = null)
         setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
 }
+
+// LTSA Current Mechanical Seal Installation API Client (R4)
+export async function getPumpCurrentInstallation(tagNumber) {
+    if (!tagNumber) throw new Error("tagNumber is required");
+    const response = await apiFetch(`${API_URL}/api/ltsa/pumps/${encodeURIComponent(tagNumber)}/current-installation`);
+    if (!response.ok) {
+        throw new Error(`Failed to fetch current installation: ${response.status} ${response.statusText}`);
+    }
+    const payload = await response.json();
+    return payload?.data ?? payload;
+}

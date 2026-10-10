@@ -20,6 +20,7 @@ vi.mock("../../../api/ai5rClient", () => ({
     { tag_number: "212-P-18B", area: "Area 212" },
   ]),
   getPMCMEvidence: vi.fn().mockResolvedValue([]),
+  getPumpCurrentInstallation: vi.fn().mockResolvedValue({ success: true, data: { status: "NO_CURRENT_RECORD", positions: {} } }),
 }));
 
 afterEach(() => {
@@ -349,7 +350,13 @@ describe("AI Engineering Copilot section (J) -- existing Copilot behavior preser
   it("does not call askCopilot (or any API beyond getPumpKnowledge) on mount", async () => {
     getPumpKnowledge.mockResolvedValue(backendResponse());
     const client = await import("../../../api/ai5rClient");
-    const otherKeys = Object.keys(client).filter((key) => key !== "getPumpKnowledge" && key !== "getPumps" && key !== "getPMCMEvidence");
+    const otherKeys = Object.keys(client).filter(
+      (key) =>
+        key !== "getPumpKnowledge" &&
+        key !== "getPumps" &&
+        key !== "getPMCMEvidence" &&
+        key !== "getPumpCurrentInstallation"
+    );
 
     render(<KnowledgeWorkspace tag={TAG} />);
     await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());

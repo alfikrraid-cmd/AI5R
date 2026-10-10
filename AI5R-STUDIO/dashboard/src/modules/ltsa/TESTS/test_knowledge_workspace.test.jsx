@@ -16,6 +16,7 @@ import { getPumpKnowledge } from "../../../api/ai5rClient";
 vi.mock("../../../api/ai5rClient", () => ({
   getPumpKnowledge: vi.fn(),
   getPumps: vi.fn(() => Promise.resolve([])),
+  getPumpCurrentInstallation: vi.fn(() => Promise.resolve({ success: true, data: { status: "NO_CURRENT_RECORD", positions: {} } })),
 }));
 
 afterEach(() => {
@@ -583,7 +584,10 @@ describe("Reuse verification", () => {
     const client = await import("../../../api/ai5rClient");
     // getPumps feeds only the searchable pump selector (the pump list), the
     // same allowance the Asset 360 test file makes (b6d2fea6).
-    const otherKeys = Object.keys(client).filter((key) => key !== "getPumpKnowledge" && key !== "getPumps");
+    // getPumpCurrentInstallation feeds CurrentInstallationCard (R4).
+    const otherKeys = Object.keys(client).filter(
+      (key) => key !== "getPumpKnowledge" && key !== "getPumps" && key !== "getPumpCurrentInstallation"
+    );
 
     render(<KnowledgeWorkspace tag={TAG} />);
     await waitFor(() => expect(screen.getByTestId("knowledge-workspace-success")).toBeInTheDocument());

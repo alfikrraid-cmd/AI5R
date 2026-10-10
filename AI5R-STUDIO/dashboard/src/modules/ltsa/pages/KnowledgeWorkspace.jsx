@@ -6,6 +6,7 @@ import KnowledgeTimeline from "../components/KnowledgeTimeline";
 import KnowledgeSummary from "../components/KnowledgeSummary";
 import KnowledgeInventory from "../components/KnowledgeInventory";
 import KnowledgeSeal from "../components/KnowledgeSeal";
+import CurrentInstallationCard from "../components/CurrentInstallationCard";
 import KnowledgeAIInsight from "../components/KnowledgeAIInsight";
 import KnowledgeDrawingSection from "../components/KnowledgeDrawingSection";
 import KnowledgeRecommendation from "../components/KnowledgeRecommendation";
@@ -259,6 +260,12 @@ export default function KnowledgeWorkspace({ tag, onNavigate }) {
                   time), Actual Operating Hours, Compatible Seals and
                   installation history in one place. */}
               <KnowledgeSection id="seal" title="Mechanical Seal" badge={data.currentInstallation.statusLabel}>
+                <CurrentInstallationCard
+                  tag={tag}
+                  configuredSeal={data.configuredSeal}
+                  drawings={data.drawings}
+                  onNavigate={onNavigate}
+                />
                 <KnowledgeCard variant="kv">
                   <KnowledgeSeal
                     configuredSeal={data.configuredSeal}
