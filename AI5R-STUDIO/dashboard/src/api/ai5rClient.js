@@ -1231,6 +1231,28 @@ export async function resetAdminUserPassword(userId, newPassword) {
     });
 }
 
+// LTSA_PERTAMINA_WORK_REQUEST_UI_R2B -- submit a PM / CM / INSTALLATION
+// request (POST /api/ltsa/work-requests, R2). Only what the requester says
+// is sent; request code, status, requester and time are server-set. A
+// non-2xx rejects with an Error carrying `.status` (403 missing permission,
+// 404 unknown or out-of-scope asset, 422 validation) like _adminUsersRequest.
+export async function createWorkRequest({ requestType, assetCode, description }) {
+    const response = await apiFetch(`${API_URL}/api/ltsa/work-requests`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ request_type: requestType, asset_code: assetCode, description }),
+    });
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok) {
+        const error = new Error(formatApiErrorDetail(payload?.detail) || payload?.message || "Work request API unavailable");
+        error.status = response.status;
+        throw error;
+    }
+
+    return payload;
+}
+
 // AI5R-WHATSAPP-SENDER-ADMIN-001 -- WhatsApp sender identity admin
 // lifecycle (register -> PENDING, activate -> ACTIVE), same router
 // (routers/admin_users.py) and same admin.users gate as every other

@@ -73,6 +73,13 @@ export const PERMISSIONS = Object.freeze({
   MAINTENANCE_WRITE: "maintenance.write",
   MAINTENANCE_ADMIN_REVIEW: "maintenance.admin_review",
   MAINTENANCE_TECHNICAL_REVIEW: "maintenance.technical_review",
+  // LTSA_PERTAMINA_WORK_REQUEST_UI_R2B -- the R2 request-only permissions
+  // (POST /api/ltsa/work-requests): PM/CM need maintenance.request,
+  // INSTALLATION needs installation.request. Reused verbatim from the
+  // backend; they submit a request record only, never a PM/CM result or an
+  // installation record.
+  MAINTENANCE_REQUEST: "maintenance.request",
+  INSTALLATION_REQUEST: "installation.request",
   // MWO-LTSA-AUDIT-CHANGE-HISTORY-001 / MWO-LTSA-HISTORICAL-REVIEW-UI-001
   // -- reused verbatim, both reserved/added on the backend for exactly
   // this (record.edit gates the generic Edit Value engine AND the

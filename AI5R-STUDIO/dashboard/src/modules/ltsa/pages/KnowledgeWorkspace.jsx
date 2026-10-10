@@ -18,6 +18,7 @@ import KnowledgeUnifiedHistory from "../components/KnowledgeUnifiedHistory";
 import KnowledgePmHistorySection from "../components/KnowledgePmHistorySection";
 import KnowledgeWorkOrdersSection from "../components/KnowledgeWorkOrdersSection";
 import CopilotPanel from "../components/CopilotPanel";
+import WorkRequestAction from "../components/WorkRequestAction";
 import { useKnowledgeWorkspace } from "../hooks/useKnowledgeWorkspace";
 import WorkspaceShell from "../workspace/WorkspaceShell";
 import { useWorkspaceTheme } from "../workspace/WorkspaceTheme";
@@ -207,15 +208,20 @@ export default function KnowledgeWorkspace({ tag, onNavigate }) {
                   <span className="eyebrow">{data.equipment.tag}</span>
                   <h2 className="rail-title">{data.equipment.name ?? data.equipment.tag}</h2>
                 </div>
-                <button
-                  type="button"
-                  className="btn-link"
-                  data-testid="knowledge-workspace-refresh"
-                  aria-label="Muat ulang data peralatan"
-                  onClick={refresh}
-                >
-                  Muat Ulang
-                </button>
+                <div className="kn-header-actions">
+                  <button
+                    type="button"
+                    className="btn-link"
+                    data-testid="knowledge-workspace-refresh"
+                    aria-label="Muat ulang data peralatan"
+                    onClick={refresh}
+                  >
+                    Muat Ulang
+                  </button>
+                  {/* LTSA_PERTAMINA_WORK_REQUEST_UI_R2B -- request-only
+                      action; renders nothing without a request permission. */}
+                  <WorkRequestAction assetTag={data.equipment.tag} />
+                </div>
               </div>
 
               {/* MWO-LTSA-ASSET360-CONSOLIDATION-001 -- Section navigator:
